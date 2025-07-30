@@ -339,14 +339,24 @@
                     <div class="flex items-center justify-between mb-6">
                         <div>
                             <h3 class="text-lg font-medium text-white">Historical Data Analysis</h3>
-                            <p class="text-sm text-gray-400">3-year analysis period (1095 days)</p>
+                            <p class="text-sm text-gray-400">{{ getPeriodDescription() }} analysis period ({{ getPeriodDays() }} days)</p>
                         </div>
                         <div class="flex items-center space-x-4">
                             <input v-model="historicalTicker" 
                                    @keyup.enter="loadHistoricalData"
                                    placeholder="Enter ticker symbol (e.g., AAPL)"
                                    class="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                                    <button @click="loadHistoricalData"
+                            
+                            <select v-model="selectedPeriod" 
+                                    @change="loadHistoricalData"
+                                    class="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600">
+                                <option value="180">6 Months</option>
+                                <option value="365">1 Year</option>
+                                <option value="730">2 Years</option>
+                                <option value="1095" selected>3 Years</option>
+                            </select>
+                            
+                            <button @click="loadHistoricalData"
                                 :disabled="!historicalTicker.trim() || loading.historical"
                                 class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-md text-sm font-medium">
                             <i v-if="!loading.historical" class="fas fa-search mr-2"></i>
@@ -368,7 +378,7 @@
                     
                     <div v-if="loading.historical" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
-                        <p class="mt-2 text-gray-400">Analyzing 3 years of historical data...</p>
+                        <p class="mt-2 text-gray-400">Analyzing {{ getPeriodDescription() }} of historical data...</p>
                         <p class="text-sm text-gray-500">This may take a few moments</p>
                     </div>
                     
@@ -378,7 +388,7 @@
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
-                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of 25%+ gap-up data (3-year analysis)</p>
+                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of 25%+ gap-up data ({{ getPeriodDescription() }} analysis)</p>
                                 </div>
                                 <div class="text-right">
                                     <p class="text-sm text-gray-400">Analysis Period</p>
@@ -429,62 +439,134 @@
                         
                         <!-- Historical Data Table -->
                         <div class="bg-gray-700 rounded-lg overflow-hidden">
-                            <div class="overflow-x-auto max-w-full">
+                            <div class="historical-table-container">
                                 <table class="w-full text-sm min-w-max">
                                     <thead class="bg-gray-600">
                                         <tr>
-                                            <th @click="sortTable('date')" class="px-4 py-3 text-left text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('date')" class="px-3 py-3 text-left text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-between">
                                                     <span>Date</span>
                                                     <i :class="getSortIcon('date')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('gap up % at open')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('pd close')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
-                                                    <span>Gap %</span>
-                                                    <i :class="getSortIcon('gap up % at open')" class="ml-2"></i>
+                                                    <span>Prev Close</span>
+                                                    <i :class="getSortIcon('pd close')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('premarket open')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('premarket open')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
-                                                    <span>Premarket</span>
+                                                    <span>Pre Open</span>
                                                     <i :class="getSortIcon('premarket open')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('open')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('premarket high')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Pre High</span>
+                                                    <i :class="getSortIcon('premarket high')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('premarket high time')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Pre High Time</span>
+                                                    <i :class="getSortIcon('premarket high time')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('premarket volume')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Pre Volume</span>
+                                                    <i :class="getSortIcon('premarket volume')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('open')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
                                                     <span>Open</span>
                                                     <i :class="getSortIcon('open')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('day high')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('gap up % at open')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
-                                                    <span>High</span>
+                                                    <span>Gap %</span>
+                                                    <i :class="getSortIcon('gap up % at open')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('day high')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Day High</span>
                                                     <i :class="getSortIcon('day high')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('close price')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('day high time')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>High Time</span>
+                                                    <i :class="getSortIcon('day high time')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('day high %')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>High %</span>
+                                                    <i :class="getSortIcon('day high %')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('close price')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
                                                     <span>Close</span>
                                                     <i :class="getSortIcon('close price')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('Runner/Fader')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('closing percent')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Close %</span>
+                                                    <i :class="getSortIcon('closing percent')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('afterhours close')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>After Hours</span>
+                                                    <i :class="getSortIcon('afterhours close')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('total volume')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Volume</span>
+                                                    <i :class="getSortIcon('total volume')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('VWAP Crosses')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>VWAP</span>
+                                                    <i :class="getSortIcon('VWAP Crosses')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('Runner/Fader')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
                                                     <span>Pattern</span>
                                                     <i :class="getSortIcon('Runner/Fader')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('volume_millions')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('high')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
-                                                    <span>Volume (M)</span>
+                                                    <span>High</span>
+                                                    <i :class="getSortIcon('high')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('low')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Low</span>
+                                                    <i :class="getSortIcon('low')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('volume_millions')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Vol (M)</span>
                                                     <i :class="getSortIcon('volume_millions')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('VWAP Crosses')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                            <th @click="sortTable('dollar_volume_millions')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
-                                                    <span>VWAP</span>
-                                                    <i :class="getSortIcon('VWAP Crosses')" class="ml-2"></i>
+                                                    <span>$ Vol (M)</span>
+                                                    <i :class="getSortIcon('dollar_volume_millions')" class="ml-2"></i>
                                                 </div>
                                             </th>
                                         </tr>
@@ -492,27 +574,35 @@
                                     <tbody class="divide-y divide-gray-600">
                                         <tr v-for="day in historicalData" :key="day.date" 
                                             class="hover:bg-gray-600 transition-colors">
-                                            <td class="px-4 py-3 text-gray-300">{{ formatDate(day.date) }}</td>
-                                            <td class="px-4 py-3 text-right" :class="day['gap up % at open'] && day['gap up % at open'] > 0 ? 'text-green-400' : 'text-gray-400'">
+                                            <td class="px-3 py-3 text-gray-300 whitespace-nowrap">{{ formatDate(day.date) }}</td>
+                                            <td class="px-3 py-3 text-right text-gray-400 whitespace-nowrap">${{ day['pd close'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">${{ day['premarket open'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">${{ day['premarket high'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">{{ day['premarket high time'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">{{ formatNumber(day['premarket volume']) || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-white whitespace-nowrap">${{ day.open }}</td>
+                                            <td class="px-3 py-3 text-right whitespace-nowrap" :class="day['gap up % at open'] && day['gap up % at open'] > 0 ? 'text-green-400' : 'text-gray-400'">
                                                 {{ day['gap up % at open'] ? (day['gap up % at open'] > 0 ? '+' : '') + day['gap up % at open'] + '%' : 'N/A' }}
                                             </td>
-                                            <td class="px-4 py-3 text-right text-blue-400">
-                                                <div class="text-xs">
-                                                    <div v-if="day['premarket open']">${{ day['premarket open'] }}</div>
-                                                    <div v-if="day['premarket high']">${{ day['premarket high'] }}</div>
-                                                    <div v-if="day['premarket high time']">{{ day['premarket high time'] }}</div>
-                                                </div>
+                                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">${{ day['day high'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">{{ day['day high time'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">{{ day['day high %'] ? (day['day high %'] > 0 ? '+' : '') + day['day high %'] + '%' : 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-white whitespace-nowrap">${{ day['close price'] }}</td>
+                                            <td class="px-3 py-3 text-right whitespace-nowrap" :class="day['closing percent'] && day['closing percent'] > 0 ? 'text-green-400' : 'text-gray-400'">
+                                                {{ day['closing percent'] ? (day['closing percent'] > 0 ? '+' : '') + day['closing percent'] + '%' : 'N/A' }}
                                             </td>
-                                            <td class="px-4 py-3 text-right text-white">${{ day.open }}</td>
-                                            <td class="px-4 py-3 text-right text-green-400">${{ day['day high'] }}</td>
-                                            <td class="px-4 py-3 text-right text-white">${{ day['close price'] }}</td>
-                                            <td class="px-4 py-3 text-right">
+                                            <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">${{ day['afterhours close'] || 'N/A' }}</td>
+                                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">{{ formatNumber(day['total volume']) }}</td>
+                                            <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">{{ day['VWAP Crosses'] || 0 }}</td>
+                                            <td class="px-3 py-3 text-right whitespace-nowrap">
                                                 <span :class="getPatternColor(day['Runner/Fader'])" class="px-2 py-1 rounded text-xs font-medium">
                                                     {{ day['Runner/Fader'] }}
                                                 </span>
                                             </td>
-                                            <td class="px-4 py-3 text-right text-gray-300">{{ day.volume_millions }}M</td>
-                                            <td class="px-4 py-3 text-right text-purple-400">{{ day['VWAP Crosses'] || 0 }}</td>
+                                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">${{ day.high }}</td>
+                                            <td class="px-3 py-3 text-right text-red-400 whitespace-nowrap">${{ day.low }}</td>
+                                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">{{ day.volume_millions }}M</td>
+                                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">${{ day.dollar_volume_millions }}M</td>
                                         </tr>
                                     </tbody>
                                 </table>

@@ -641,20 +641,31 @@ def get_market_data_endpoint(ticker):
 
 @app.route('/api/historical-data/<ticker>')
 def get_historical_data_endpoint(ticker):
-    """Get historical data for a ticker"""
+    """Get historical data for a ticker with intelligent caching"""
     try:
         days = request.args.get('days', 30, type=int)
+        use_cache = request.args.get('cache', 'true').lower() == 'true'
         
         if REAL_DATA_AVAILABLE and os.environ.get('POLYGON_API_KEY'):
-            # Use real historical data
-            historical_result = get_historical_gap_up_data(ticker, days)
+            # Use real historical data with caching
+            historical_result = get_historical_gap_up_data(ticker, days, use_cache=use_cache)
             if historical_result:
+                # Get cache status for response
+                from historical_cache import historical_cache
+                cache_status = historical_cache.get_cache_status(ticker)
+                
                 return jsonify({
                     'success': True,
                     'data': historical_result,
                     'ticker': ticker,
                     'days': days,
-                    'source': 'real'
+                    'source': 'real',
+                    'cache_info': {
+                        'cached': cache_status.get('cached', False),
+                        'total_records': cache_status.get('total_records', 0),
+                        'last_updated': cache_status.get('last_updated'),
+                        'data_range': cache_status.get('data_range')
+                    }
                 })
         
         # Fallback to mock data
@@ -686,6 +697,60 @@ def get_historical_data_endpoint(ticker):
             'ticker': ticker,
             'days': days,
             'source': 'mock'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/stats')
+def get_cache_stats():
+    """Get cache statistics"""
+    try:
+        from historical_data import get_cache_stats
+        stats = get_cache_stats()
+        return jsonify({
+            'success': True,
+            'data': stats
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache_endpoint():
+    """Clear cache for a specific ticker or all tickers"""
+    try:
+        data = request.get_json() or {}
+        ticker = data.get('ticker')  # If None, clears all cache
+        
+        from historical_data import clear_cache
+        success = clear_cache(ticker)
+        
+        return jsonify({
+            'success': success,
+            'message': f"Cache cleared for {'all tickers' if ticker is None else ticker}",
+            'ticker': ticker
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/status/<ticker>')
+def get_cache_status_endpoint(ticker):
+    """Get cache status for a specific ticker"""
+    try:
+        from historical_cache import historical_cache
+        status = historical_cache.get_cache_status(ticker)
+        
+        return jsonify({
+            'success': True,
+            'data': status
         })
     except Exception as e:
         return jsonify({

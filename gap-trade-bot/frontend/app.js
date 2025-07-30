@@ -62,6 +62,7 @@ try {
                 // Historical data
                 historicalTicker: '',
                 historicalData: [],
+                selectedPeriod: '1095', // Default to 3 years
                 sortColumn: '',
                 sortDirection: 'asc'
             }
@@ -371,10 +372,10 @@ try {
                 
                 try {
                     this.loading.historical = true;
-                    console.log(`📊 Loading historical data for ${this.historicalTicker}...`);
+                    console.log(`📊 Loading historical data for ${this.historicalTicker} (${this.getPeriodDescription()})...`);
                     
                     const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?days=1095`, {
+                    const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?days=${this.selectedPeriod}`, {
                         headers: {
                             'Authorization': `Bearer ${sessionToken}`
                         }
@@ -388,8 +389,8 @@ try {
                         );
                         
                         this.historicalData = filteredData;
-                        console.log(`✅ Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker} (filtered from ${data.data.length} total days over 3 years)`);
-                        this.showNotification(`Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker.toUpperCase()} (3-year analysis)`, 'success');
+                        console.log(`✅ Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker} (filtered from ${data.data.length} total days over ${this.getPeriodDescription()})`);
+                        this.showNotification(`Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker.toUpperCase()} (${this.getPeriodDescription()} analysis)`, 'success');
                     } else {
                         console.error(`❌ Failed to load historical data for ${this.historicalTicker}:`, data.error);
                         this.showNotification(`Failed to load historical data for ${this.historicalTicker.toUpperCase()}`, 'error');
@@ -1184,6 +1185,25 @@ try {
                     default:
                         return 'bg-gray-600 text-gray-300';
                 }
+            },
+            
+            getPeriodDescription() {
+                switch (this.selectedPeriod) {
+                    case '180':
+                        return '6 Months';
+                    case '365':
+                        return '1 Year';
+                    case '730':
+                        return '2 Years';
+                    case '1095':
+                        return '3 Years';
+                    default:
+                        return '3 Years';
+                }
+            },
+            
+            getPeriodDays() {
+                return parseInt(this.selectedPeriod) || 1095;
             },
             
             showNotification(message, type = 'info') {
