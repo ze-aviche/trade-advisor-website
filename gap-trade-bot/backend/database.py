@@ -9,7 +9,9 @@ import json
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
-DATABASE_FILE = 'trading_advisor.db'
+# Use absolute path to ensure consistency
+script_dir = os.path.dirname(os.path.abspath(__file__))
+DATABASE_FILE = os.path.join(script_dir, 'trading_advisor.db')
 
 class DatabaseManager:
     def __init__(self):

@@ -643,13 +643,13 @@ def get_market_data_endpoint(ticker):
 def get_historical_data_endpoint(ticker):
     """Get historical data for a ticker with intelligent caching"""
     try:
-        days = request.args.get('days', 30, type=int)
+        days = request.args.get('days', 365, type=int)  # Default to 1 year
         use_cache = request.args.get('cache', 'true').lower() == 'true'
         
         if REAL_DATA_AVAILABLE and os.environ.get('POLYGON_API_KEY'):
             # Use real historical data with caching
             historical_result = get_historical_gap_up_data(ticker, days, use_cache=use_cache)
-            if historical_result:
+            if historical_result is not None:  # Check for None, not truthiness (empty list is valid)
                 # Get cache status for response
                 from historical_cache import historical_cache
                 cache_status = historical_cache.get_cache_status(ticker)
@@ -668,27 +668,44 @@ def get_historical_data_endpoint(ticker):
                     }
                 })
         
-        # Fallback to mock data
+        # Fallback to mock data (only gap-up days)
         mock_data = []
         base_price = random.uniform(50, 500)
         
-        for i in range(days):
-            date = (datetime.now() - timedelta(days=days-i-1)).strftime('%Y-%m-%d')
-            open_price = base_price + random.uniform(-10, 10)
+        # Generate only gap-up days (25%+ gap)
+        gap_up_days = random.randint(0, 5)  # 0-5 gap-up days
+        
+        for i in range(gap_up_days):
+            date = (datetime.now() - timedelta(days=random.randint(1, 365))).strftime('%Y-%m-%d')
+            gap_percent = random.uniform(25, 100)  # 25% to 100% gap
+            previous_close = base_price + random.uniform(-10, 10)
+            open_price = previous_close * (1 + gap_percent / 100)
             close_price = open_price + random.uniform(-5, 5)
             high_price = max(open_price, close_price) + random.uniform(0, 3)
             low_price = min(open_price, close_price) - random.uniform(0, 3)
             
             mock_data.append({
                 'date': date,
+                'pd close': round(previous_close, 2),
+                'premarket open': round(open_price * 1.02, 2),
+                'premarket high': round(high_price * 1.01, 2),
+                'premarket high time': '09:30',
+                'premarket volume': random.randint(100000, 2000000),
                 'open': round(open_price, 2),
+                'gap up % at open': round(gap_percent, 2),
+                'day high': round(high_price, 2),
+                'day high time': '09:35',
+                'day high %': round(gap_percent + random.uniform(0, 10), 2),
+                'close price': round(close_price, 2),
+                'closing percent': round(((close_price - previous_close) / previous_close) * 100, 2),
+                'afterhours close': round(close_price * 1.01, 2),
+                'total volume': random.randint(1000000, 50000000),
+                'VWAP Crosses': random.randint(50, 200),
+                'Runner/Fader': 'Runner' if close_price > open_price else 'Fader',
                 'high': round(high_price, 2),
                 'low': round(low_price, 2),
-                'close': round(close_price, 2),
-                'volume': random.randint(100000, 5000000),
-                'vwap': round((open_price + close_price) / 2, 2),
-                'change': round(close_price - open_price, 2),
-                'change_percent': round(((close_price - open_price) / open_price) * 100, 2)
+                'volume_millions': round(random.randint(1000000, 50000000) / 1000000, 2),
+                'dollar_volume_millions': round((random.randint(1000000, 50000000) * high_price) / 1000000, 2)
             })
         
         return jsonify({

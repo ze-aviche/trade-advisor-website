@@ -16,7 +16,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class HistoricalDataCache:
-    def __init__(self, db_file='trading_advisor.db'):
+    def __init__(self, db_file=None):
+        # Use absolute path to ensure consistency
+        if db_file is None:
+            # Get the directory where this script is located
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            db_file = os.path.join(script_dir, 'trading_advisor.db')
+        
         self.db_file = db_file
         self.init_cache_tables()
     
@@ -130,8 +136,8 @@ class HistoricalDataCache:
             logger.error(f"❌ Error finding cache gaps for {ticker}: {e}")
             return []
     
-    def store_historical_data(self, ticker: str, data_list: List[Dict]) -> bool:
-        """Store historical data in cache"""
+    def store_historical_data(self, ticker: str, data_list: List[Dict], query_start_date: str = None, query_end_date: str = None) -> bool:
+        """Store historical data in cache with actual query range"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -150,10 +156,16 @@ class HistoricalDataCache:
                     ''', (ticker, date, json.dumps(data_point)))
                     stored_count += 1
                 
-                # Update cache metadata
+                # Update cache metadata with actual query range
                 if data_list:
-                    start_date = min(data['date'] for data in data_list if data.get('date'))
-                    end_date = max(data['date'] for data in data_list if data.get('date'))
+                    # Use actual query range if provided, otherwise use data range
+                    if query_start_date and query_end_date:
+                        start_date = query_start_date
+                        end_date = query_end_date
+                    else:
+                        # Fallback to data range (for backward compatibility)
+                        start_date = min(data['date'] for data in data_list if data.get('date'))
+                        end_date = max(data['date'] for data in data_list if data.get('date'))
                     
                     cursor.execute('''
                         INSERT OR REPLACE INTO cache_metadata 
@@ -163,7 +175,7 @@ class HistoricalDataCache:
                     ''', (ticker, start_date, end_date, ticker))
                 
                 conn.commit()
-                logger.info(f"💾 Stored {stored_count} records for {ticker} in cache")
+                logger.info(f"💾 Stored {stored_count} records for {ticker} in cache (query range: {query_start_date} to {query_end_date})")
                 return True
                 
         except Exception as e:

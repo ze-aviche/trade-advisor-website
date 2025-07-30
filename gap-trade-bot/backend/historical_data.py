@@ -329,9 +329,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
     """
     Get comprehensive historical gap-up data for a stock using intelligent caching.
     Returns detailed gap-up analysis for the specified number of days.
+    Only caches days when stocks actually gap up by 25% or more (gap_percent >= 25).
     """
     try:
-        # Calculate date range
+        # Calculate date range based on requested days (not always 3 years)
         end_date = dt.now().date()
         start_date = end_date - timedelta(days=days)
         
@@ -339,40 +340,189 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
         from_date = start_date.strftime("%Y-%m-%d")
         to_date = end_date.strftime("%Y-%m-%d")
         
-        logger.info(f"📊 Fetching historical gap-up data for {ticker} from {from_date} to {to_date}")
+        logger.info(f"📊 Fetching historical gap-up data for {ticker} from {from_date} to {to_date} ({days} days)")
+        
+        cached_data = []  # Initialize cached_data in outer scope
         
         if use_cache:
             # Check cache status
             cache_status = historical_cache.get_cache_status(ticker)
             logger.info(f"Cache status for {ticker}: {cache_status}")
             
-            # Get cached data
+            # Get cached data for the requested range
             cached_data = historical_cache.get_cached_data(ticker, from_date, to_date)
+            logger.info(f"DEBUG: Retrieved {len(cached_data)} cached records for {ticker}")
             
-            if cached_data and len(cached_data) >= days * 0.8:  # If we have 80% of requested data cached
-                logger.info(f"✅ Using cached data for {ticker} ({len(cached_data)} records)")
+            if cached_data:
+                logger.info(f"✅ Found {len(cached_data)} cached gap-up records for {ticker}")
                 
-                # Check for missing dates and fetch only delta
-                missing_dates = historical_cache.get_cache_gaps(ticker, from_date, to_date)
+                # Check if we have enough gap-up days in the requested date range
+                requested_start = (end_date - timedelta(days=days)).strftime("%Y-%m-%d")
+                requested_end = to_date
                 
-                if missing_dates:
-                    logger.info(f"🔄 Fetching missing data for {ticker}: {len(missing_dates)} dates")
-                    polygon_client = get_polygon_client()
+                # Filter cached data to only include gap-up days within the requested date range
+                requested_cached_data = [data for data in cached_data 
+                                      if requested_start <= data['date'] <= requested_end]
+                
+                logger.info(f"📊 Requested range: {requested_start} to {requested_end}")
+                logger.info(f"📊 Found {len(requested_cached_data)} gap-up days in requested range")
+                
+                # Check if requested range extends beyond cached range
+                cache_range = cache_status.get('data_range', {})
+                cache_start = cache_range.get('start') if cache_range else None
+                cache_end = cache_range.get('end') if cache_range else None
+                
+                if cache_start and cache_end:
+                    # Check if requested range extends beyond cached range
+                    cache_start_date = datetime.strptime(cache_start, "%Y-%m-%d").date()
+                    cache_end_date = datetime.strptime(cache_end, "%Y-%m-%d").date()
+                    requested_start_date = datetime.strptime(requested_start, "%Y-%m-%d").date()
+                    requested_end_date = datetime.strptime(requested_end, "%Y-%m-%d").date()
                     
-                    new_data = []
-                    for missing_date in missing_dates:
-                        data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
-                        if data_point:
-                            new_data.append(data_point)
+                    # Check if requested range extends beyond cached range
+                    extends_before = requested_start_date < cache_start_date
+                    extends_after = requested_end_date > cache_end_date
                     
-                    # Store new data in cache
-                    if new_data:
-                        historical_cache.store_historical_data(ticker, new_data)
-                        cached_data.extend(new_data)
-                
-                # Sort by date and return
-                cached_data.sort(key=lambda x: x['date'])
-                return cached_data[:days]  # Return only requested number of days
+                    if extends_before or extends_after:
+                        # Requested range extends beyond cached range, fetch delta
+                        logger.info(f"🔄 Requested range extends beyond cache (before: {extends_before}, after: {extends_after})")
+                        missing_dates = historical_cache.get_cache_gaps(ticker, requested_start, requested_end)
+                        logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
+                        
+                        if missing_dates:
+                            logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
+                            polygon_client = get_polygon_client()
+                            
+                            delta_data = []
+                            for missing_date in missing_dates:
+                                data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
+                                gap_percent = data_point.get('gap up % at open') if data_point else None
+                                if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
+                                    delta_data.append(data_point)
+                            
+                            # Store new delta data in cache (even if empty)
+                            if delta_data:
+                                historical_cache.store_historical_data(ticker, delta_data, requested_start, requested_end)
+                                logger.info(f"💾 Cached {len(delta_data)} new gap-up days from delta for {ticker}")
+                            else:
+                                # Cache empty delta result to avoid re-searching this period
+                                historical_cache.store_historical_data(ticker, [], requested_start, requested_end)
+                                logger.info(f"💾 Cached empty delta result (no gap-ups) for {ticker} in period {requested_start} to {requested_end}")
+                            
+                            # Combine cached data with delta data
+                            all_data = requested_cached_data + delta_data
+                            all_data.sort(key=lambda x: x['date'], reverse=True)
+                            logger.info(f"✅ Returning {len(all_data)} gap-up days (cached: {len(requested_cached_data)}, delta: {len(delta_data)})")
+                            return all_data
+                        else:
+                            logger.info(f"✅ No missing dates to fetch for requested range")
+                            return requested_cached_data
+                    else:
+                        # Requested range is within cached range
+                        if requested_cached_data:
+                            requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
+                            logger.info(f"✅ Returning {len(requested_cached_data)} gap-up days from cache for requested range")
+                            return requested_cached_data
+                        else:
+                            logger.info(f"✅ No gap-up days found in requested range (within cache)")
+                            return []
+                else:
+                    # No cache range info, return cached data if any
+                    if requested_cached_data:
+                        requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
+                        logger.info(f"✅ Returning {len(requested_cached_data)} gap-up days from cache for requested range")
+                        return requested_cached_data
+                    else:
+                        logger.info(f"🔄 No gap-up days found in requested range, checking for delta")
+                    
+                    # Only fetch delta if the requested range extends beyond our cached data range
+                    cache_range = cache_status.get('data_range', {})
+                    cache_start = cache_range.get('start') if cache_range else None
+                    cache_end = cache_range.get('end') if cache_range else None
+                    
+                    if cache_start and cache_end:
+                        # Check if requested range extends beyond cached range
+                        cache_start_date = datetime.strptime(cache_start, "%Y-%m-%d").date()
+                        cache_end_date = datetime.strptime(cache_end, "%Y-%m-%d").date()
+                        requested_start_date = datetime.strptime(requested_start, "%Y-%m-%d").date()
+                        requested_end_date = datetime.strptime(requested_end, "%Y-%m-%d").date()
+                        
+                        # Check if requested range extends beyond cached range
+                        extends_before = requested_start_date < cache_start_date
+                        extends_after = requested_end_date > cache_end_date
+                        
+                        if extends_before or extends_after:
+                            # Requested range extends beyond cached range, fetch delta
+                            logger.info(f"🔄 Requested range extends beyond cache (before: {extends_before}, after: {extends_after})")
+                            missing_dates = historical_cache.get_cache_gaps(ticker, requested_start, requested_end)
+                        else:
+                            # Requested range is completely within cached range, but no gap-ups found
+                            logger.info(f"✅ Requested range is within cache, but no gap-up days found in this period")
+                            return []
+                            logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
+                            
+                            if missing_dates:
+                                logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
+                                polygon_client = get_polygon_client()
+                                
+                                delta_data = []
+                                for missing_date in missing_dates:
+                                    data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
+                                    gap_percent = data_point.get('gap up % at open') if data_point else None
+                                    if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
+                                        delta_data.append(data_point)
+                                
+                                # Store new delta data in cache (even if empty)
+                                if delta_data:
+                                    historical_cache.store_historical_data(ticker, delta_data, requested_start, requested_end)
+                                    logger.info(f"💾 Cached {len(delta_data)} new gap-up days from delta for {ticker}")
+                                else:
+                                    # Cache empty delta result to avoid re-searching this period
+                                    historical_cache.store_historical_data(ticker, [], requested_start, requested_end)
+                                    logger.info(f"💾 Cached empty delta result (no gap-ups) for {ticker} in period {requested_start} to {requested_end}")
+                                
+                                # Return delta data (these are the only gap-up days in the requested range)
+                                delta_data.sort(key=lambda x: x['date'], reverse=True)
+                                logger.info(f"✅ Returning {len(delta_data)} gap-up days from delta for requested range")
+                                return delta_data
+                            else:
+                                logger.info(f"✅ No missing dates to fetch for requested range")
+                                return []
+                    else:
+                        # No cache range info, fetch delta for the entire requested range
+                        logger.info(f"🔄 No cache range info, fetching delta for entire requested range")
+                        missing_dates = historical_cache.get_cache_gaps(ticker, requested_start, requested_end)
+                        logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
+                        
+                        if missing_dates:
+                            logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
+                            polygon_client = get_polygon_client()
+                            
+                            delta_data = []
+                            for missing_date in missing_dates:
+                                data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
+                                gap_percent = data_point.get('gap up % at open') if data_point else None
+                                if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
+                                    delta_data.append(data_point)
+                            
+                            # Store new delta data in cache (even if empty)
+                            if delta_data:
+                                historical_cache.store_historical_data(ticker, delta_data, requested_start, requested_end)
+                                logger.info(f"💾 Cached {len(delta_data)} new gap-up days from delta for {ticker}")
+                            else:
+                                # Cache empty delta result to avoid re-searching this period
+                                historical_cache.store_historical_data(ticker, [], requested_start, requested_end)
+                                logger.info(f"💾 Cached empty delta result (no gap-ups) for {ticker} in period {requested_start} to {requested_end}")
+                            
+                            # Return delta data (these are the only gap-up days in the requested range)
+                            delta_data.sort(key=lambda x: x['date'], reverse=True)
+                            logger.info(f"✅ Returning {len(delta_data)} gap-up days from delta for requested range")
+                            return delta_data
+                        else:
+                            logger.info(f"✅ No missing dates to fetch for requested range")
+                            return []
+            else:
+                logger.info(f"DEBUG: No cached data found for {ticker}, will fetch from Polygon")
         
         # If no cache or insufficient cached data, fetch from Polygon
         logger.info(f"🔄 Fetching fresh data from Polygon for {ticker}")
@@ -394,6 +544,8 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
         
         # Convert to list of dictionaries with comprehensive analysis
         historical_data = []
+        major_gap_up_data = []  # Separate list for major gap-up days only (25%+)
+        
         for i, agg in enumerate(aggs):
             # Calculate gap percentage if we have previous day data
             gap_percent = None
@@ -466,16 +618,30 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                 'dollar_volume_millions': round((agg.volume * agg.high) / 1000000, 2)
             }
             historical_data.append(data_point)
+            
+            # Only add to major_gap_up_data if it's a major gap-up day (25%+)
+            if gap_percent and gap_percent >= 25:
+                major_gap_up_data.append(data_point)
         
-        # Sort by date (oldest first)
-        historical_data.sort(key=lambda x: x['date'])
+        # Sort by date (most recent first)
+        historical_data.sort(key=lambda x: x['date'], reverse=True)
+        major_gap_up_data.sort(key=lambda x: x['date'], reverse=True)
         
-        # Store in cache if caching is enabled
+        # Store cache result (even if no gap-ups found) if caching is enabled
         if use_cache:
-            historical_cache.store_historical_data(ticker, historical_data)
+            if major_gap_up_data:
+                historical_cache.store_historical_data(ticker, major_gap_up_data, from_date, to_date)
+                logger.info(f"💾 Cached {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+            else:
+                # Cache empty result to avoid re-searching this period
+                historical_cache.store_historical_data(ticker, [], from_date, to_date)
+                logger.info(f"💾 Cached empty result (no gap-ups) for {ticker} in period {from_date} to {to_date}")
         
-        logger.info(f"✅ Retrieved {len(historical_data)} days of historical gap-up data for {ticker}")
-        return historical_data
+        logger.info(f"✅ Retrieved {len(historical_data)} days of historical data for {ticker}")
+        logger.info(f"📈 Found {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+        
+        # Return only gap-up data (never return all historical data)
+        return major_gap_up_data[:days]  # Return gap-up data only
         
     except Exception as e:
         logger.error(f"❌ Error getting historical gap-up data for {ticker}: {e}")

@@ -1,0 +1,87 @@
+sqlite3 trading_advisor.db
+.tables
+.schema historical_data_cache
+.schema cache_metadata
+
+-- Count total records
+SELECT COUNT(*) FROM historical_data_cache;
+
+-- Count records by ticker
+SELECT ticker, COUNT(*) as records FROM historical_data_cache GROUP BY ticker;
+
+-- View all cached records
+SELECT ticker, date, created_at FROM historical_data_cache ORDER BY date DESC;
+
+-- View all metadata
+SELECT * FROM cache_metadata;
+
+-- View specific ticker metadata
+SELECT * FROM cache_metadata WHERE ticker = 'LIDR';
+
+-- View gap-up days for a specific ticker
+SELECT ticker, date, LENGTH(data_json) as json_size FROM historical_data_cache WHERE ticker = 'LIDR';
+
+-- View the actual cached data (JSON)
+SELECT ticker, date, data_json FROM historical_data_cache WHERE ticker = 'LIDR' LIMIT 1;
+
+-- Find all gap-up days in the last 30 days
+SELECT ticker, date FROM historical_data_cache 
+WHERE date >= date('now', '-30 days') 
+ORDER BY date DESC;
+
+-- Count gap-up days by month
+SELECT strftime('%Y-%m', date) as month, COUNT(*) as gap_ups 
+FROM historical_data_cache 
+GROUP BY month 
+ORDER BY month DESC;
+
+-- Find tickers with most gap-up days
+SELECT ticker, COUNT(*) as gap_up_count 
+FROM historical_data_cache 
+GROUP BY ticker 
+ORDER BY gap_up_count DESC;
+
+-- Check database size
+SELECT COUNT(*) as total_records FROM historical_data_cache;
+SELECT COUNT(DISTINCT ticker) as unique_tickers FROM historical_data_cache;
+
+-- Clear cache for specific ticker
+DELETE FROM historical_data_cache WHERE ticker = 'LIDR';
+DELETE FROM cache_metadata WHERE ticker = 'LIDR';
+
+-- Clear all cache
+DELETE FROM historical_data_cache;
+DELETE FROM cache_metadata;
+
+# Export to CSV
+sqlite3 trading_advisor.db "SELECT ticker, date, data_json FROM historical_data_cache;" > cache_data.csv
+
+# Export table structure
+sqlite3 trading_advisor.db ".schema" > schema.sql
+
+# Quick count
+sqlite3 trading_advisor.db "SELECT COUNT(*) FROM historical_data_cache;"
+
+# Check specific ticker
+sqlite3 trading_advisor.db "SELECT COUNT(*) FROM historical_data_cache WHERE ticker = 'LIDR';"
+
+# View recent cache updates
+sqlite3 trading_advisor.db "SELECT ticker, date, updated_at FROM historical_data_cache ORDER BY updated_at DESC LIMIT 5;"
+
+-- Set output format
+.mode column
+.headers on
+
+-- Then run your queries for better formatting
+SELECT ticker, date, updated_at FROM historical_data_cache;
+
+.quit
+
+# Check current cache status
+sqlite3 trading_advisor.db "SELECT ticker, COUNT(*) as records FROM historical_data_cache GROUP BY ticker;"
+
+# View cache metadata
+sqlite3 trading_advisor.db "SELECT * FROM cache_metadata;"
+
+# Check total cache size
+sqlite3 trading_advisor.db "SELECT COUNT(*) as total_records, COUNT(DISTINCT ticker) as unique_tickers FROM historical_data_cache;"
