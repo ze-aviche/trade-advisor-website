@@ -1,0 +1,17 @@
+2025-07-30 18:38:21,621 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:38:21,622 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 18:38:21,623 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:38:21,623 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:38:21,626 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:38:21,631 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 18:38:21,632 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:38:21,633 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:38:22,180 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:38:22,183 | historical_data | INFO | historical_data.py:474 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for WINT from 2025-06-30 to 2025-07-30 (30 days)
+2025-07-30 18:38:22,185 | historical_data | INFO | historical_data.py:481 | get_historical_gap_up_data() | Cache status for WINT: {'ticker': 'WINT', 'cached': True, 'total_records': 9, 'last_updated': '2025-07-30 23:33:03', 'data_range': {'start': '2024-07-30', 'end': '2025-07-30'}}
+2025-07-30 18:38:22,186 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 4 cached records for WINT
+2025-07-30 18:38:22,187 | historical_data | INFO | historical_data.py:485 | get_historical_gap_up_data() | DEBUG: Retrieved 4 cached records for WINT
+2025-07-30 18:38:22,187 | historical_data | INFO | historical_data.py:488 | get_historical_gap_up_data() | ✅ Found 4 cached gap-up records for WINT
+2025-07-30 18:38:22,187 | historical_data | INFO | historical_data.py:498 | get_historical_gap_up_data() | 📊 Requested range: 2025-06-30 to 2025-07-30
+2025-07-30 18:38:22,188 | historical_data | INFO | historical_data.py:499 | get_historical_gap_up_data() | 📊 Found 4 gap-up days in requested range
+2025-07-30 18:38:22,205 | historical_data | INFO | historical_data.py:569 | get_historical_gap_up_data() | ✅ Returning 4 gap-up days from cache for requested range

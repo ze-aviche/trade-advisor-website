@@ -1,0 +1,36 @@
+2025-07-30 18:36:07,022 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:07,023 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:36:07,023 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:07,023 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:15,762 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:15,762 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:36:15,763 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:15,763 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:27,376 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:27,378 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:36:27,378 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:27,378 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:36,935 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:36,935 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:36:36,935 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:36,935 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:47,489 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:47,489 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:36:47,489 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:47,490 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:00,046 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:00,047 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:37:00,047 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:00,047 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:08,387 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:08,388 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:37:08,388 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:08,388 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:17,864 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:17,865 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:37:17,865 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:17,865 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:30,433 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:30,434 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-30 18:37:30,437 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:30,437 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log

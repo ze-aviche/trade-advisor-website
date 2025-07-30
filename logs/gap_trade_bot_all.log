@@ -1,0 +1,137 @@
+2025-07-30 18:36:07,028 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:07,028 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:36:07,028 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:07,028 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:07,332 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:36:07,483 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:36:07,649 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:36:07,885 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:07] "GET /socket.io/?EIO=4&transport=polling&t=PXTiNN7 HTTP/1.1" 200 -
+2025-07-30 18:36:07,900 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:07] "POST /socket.io/?EIO=4&transport=polling&t=PXTiNNH&sid=R894crsX6zwe-wU4AAAA HTTP/1.1" 200 -
+2025-07-30 18:36:07,901 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:07] "GET /socket.io/?EIO=4&transport=polling&t=PXTiNNJ&sid=R894crsX6zwe-wU4AAAA HTTP/1.1" 200 -
+2025-07-30 18:36:07,913 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:07] "GET /socket.io/?EIO=4&transport=polling&t=PXTiNNa&sid=R894crsX6zwe-wU4AAAA HTTP/1.1" 200 -
+2025-07-30 18:36:07,923 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:07] "POST /socket.io/?EIO=4&transport=polling&t=PXTiNNd&sid=R894crsX6zwe-wU4AAAA HTTP/1.1" 200 -
+2025-07-30 18:36:14,288 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/app.py', reloading
+2025-07-30 18:36:14,302 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/app.py', reloading
+2025-07-30 18:36:15,769 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:15,769 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:36:15,770 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:15,770 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:15,954 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:36:16,038 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:36:16,049 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:36:16,883 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:16] "GET /socket.io/?EIO=4&transport=polling&t=PXTiPZm HTTP/1.1" 200 -
+2025-07-30 18:36:16,893 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:16] "POST /socket.io/?EIO=4&transport=polling&t=PXTiPZr&sid=7ejq4lyyAjpiM59HAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:16,894 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:16] "GET /socket.io/?EIO=4&transport=polling&t=PXTiPZs&sid=7ejq4lyyAjpiM59HAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:25,878 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/app.py', reloading
+2025-07-30 18:36:25,886 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/app.py', reloading
+2025-07-30 18:36:27,381 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:27,381 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:36:27,381 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:27,381 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:27,646 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:36:27,765 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:36:27,790 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:36:27,883 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:27] "GET /socket.io/?EIO=4&transport=polling&t=PXTiSFd HTTP/1.1" 200 -
+2025-07-30 18:36:27,891 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:27] "POST /socket.io/?EIO=4&transport=polling&t=PXTiSFj&sid=70cul1GtJtVGLOntAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:27,895 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:27] "GET /socket.io/?EIO=4&transport=polling&t=PXTiSFk&sid=70cul1GtJtVGLOntAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:35,821 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/app.py', reloading
+2025-07-30 18:36:35,830 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/app.py', reloading
+2025-07-30 18:36:36,938 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:36,940 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:36:37,001 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:37,001 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:37,267 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:36:37,435 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:36:37,488 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:36:37,888 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:37] "GET /socket.io/?EIO=4&transport=polling&t=PXTiUhu HTTP/1.1" 200 -
+2025-07-30 18:36:37,900 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:37] "POST /socket.io/?EIO=4&transport=polling&t=PXTiUi2&sid=MgxXdIhWcAFG5I0xAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:37,922 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:37] "GET /socket.io/?EIO=4&transport=polling&t=PXTiUi2.0&sid=MgxXdIhWcAFG5I0xAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:46,169 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:36:46,182 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:36:47,493 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:36:47,493 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:36:47,493 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:36:47,494 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:36:47,783 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:36:47,895 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:36:47,912 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:36:47,974 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:47] "GET /socket.io/?EIO=4&transport=polling&t=PXTiX87 HTTP/1.1" 200 -
+2025-07-30 18:36:47,994 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:47] "POST /socket.io/?EIO=4&transport=polling&t=PXTiX9k&sid=V3P2Np4SKCuUEkhGAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:48,004 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:48] "GET /socket.io/?EIO=4&transport=polling&t=PXTiX9m&sid=V3P2Np4SKCuUEkhGAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:48,012 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:48] "GET /socket.io/?EIO=4&transport=polling&t=PXTiXA6&sid=V3P2Np4SKCuUEkhGAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:48,014 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:48] "POST /socket.io/?EIO=4&transport=polling&t=PXTiXA6.0&sid=V3P2Np4SKCuUEkhGAAAA HTTP/1.1" 200 -
+2025-07-30 18:36:48,910 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:48] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-30 18:36:48,918 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:48] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:36:48,925 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:48] "GET /api/health HTTP/1.1" 200 -
+2025-07-30 18:36:51,342 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:36:51] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:36:58,454 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:36:58,464 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:00,050 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:00,050 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:37:00,050 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:00,050 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:00,262 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:37:00,359 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:37:00,374 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:37:00,884 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:00] "GET /socket.io/?EIO=4&transport=polling&t=PXTiaJG HTTP/1.1" 200 -
+2025-07-30 18:37:00,896 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:00] "POST /socket.io/?EIO=4&transport=polling&t=PXTiaJM&sid=7RYlW5ZLf7WlunmPAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:00,899 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:00] "GET /socket.io/?EIO=4&transport=polling&t=PXTiaJM.0&sid=7RYlW5ZLf7WlunmPAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:07,182 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:07,194 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:08,392 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:08,393 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:37:08,393 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:08,394 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:08,609 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:37:08,693 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:37:08,703 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:37:08,887 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:08] "GET /socket.io/?EIO=4&transport=polling&t=PXTicGH HTTP/1.1" 200 -
+2025-07-30 18:37:08,899 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:08] "POST /socket.io/?EIO=4&transport=polling&t=PXTicGQ&sid=TzJCj8gCwL04c_CDAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:08,904 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:08] "GET /socket.io/?EIO=4&transport=polling&t=PXTicGR&sid=TzJCj8gCwL04c_CDAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:16,466 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:16,480 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:17,867 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:17,868 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:37:17,868 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:17,868 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:18,090 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:37:18,172 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:37:18,182 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:37:18,194 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:18] "GET /socket.io/?EIO=4&transport=polling&t=PXTieSv HTTP/1.1" 200 -
+2025-07-30 18:37:18,206 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:18] "POST /socket.io/?EIO=4&transport=polling&t=PXTieXr&sid=cYPi1W_CghtQwn6gAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:18,207 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:18] "GET /socket.io/?EIO=4&transport=polling&t=PXTieXr.0&sid=cYPi1W_CghtQwn6gAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:29,099 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:29,108 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/historical_data.py', reloading
+2025-07-30 18:37:30,442 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:37:30,442 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-30 18:37:30,443 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:37:30,443 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:37:30,921 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-30 18:37:31,062 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-30 18:37:31,088 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-30 18:37:31,117 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:31] "GET /socket.io/?EIO=4&transport=polling&t=PXTihe1 HTTP/1.1" 200 -
+2025-07-30 18:37:31,136 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:31] "POST /socket.io/?EIO=4&transport=polling&t=PXTihho&sid=Op90XXPBUHvK4wXWAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:31,145 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:31] "GET /socket.io/?EIO=4&transport=polling&t=PXTihho.0&sid=Op90XXPBUHvK4wXWAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:31,155 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:31] "GET /socket.io/?EIO=4&transport=polling&t=PXTihiC&sid=Op90XXPBUHvK4wXWAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:31,165 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:31] "POST /socket.io/?EIO=4&transport=polling&t=PXTihiD&sid=Op90XXPBUHvK4wXWAAAA HTTP/1.1" 200 -
+2025-07-30 18:37:48,986 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:48] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-30 18:37:48,987 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:48] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:37:48,990 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:48] "GET /api/health HTTP/1.1" 200 -
+2025-07-30 18:37:49,900 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:49] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-30 18:37:49,922 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:49] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-30 18:37:49,936 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:49] "GET /api/trades HTTP/1.1" 200 -
+2025-07-30 18:37:49,942 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:49] "GET /api/trades HTTP/1.1" 200 -
+2025-07-30 18:37:51,447 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:51] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:37:53,976 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:37:53] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:38:48,902 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:38:48] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-30 18:38:48,919 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:38:48] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:38:48,927 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:38:48] "GET /api/health HTTP/1.1" 200 -
+2025-07-30 18:38:51,567 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:38:51] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:39:48,897 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:39:48] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-30 18:39:48,903 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:39:48] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:39:48,906 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:39:48] "GET /api/health HTTP/1.1" 200 -
+2025-07-30 18:39:54,204 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:39:54] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:40:48,907 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:40:48] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-30 18:40:48,956 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:40:48] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-30 18:40:48,961 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:40:48] "GET /api/health HTTP/1.1" 200 -
+2025-07-30 18:40:52,895 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 18:40:52] "GET /api/gap-ups HTTP/1.1" 200 -

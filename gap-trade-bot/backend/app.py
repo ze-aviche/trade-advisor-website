@@ -14,9 +14,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
+from logging_config import setup_logging, get_logger, log_api_request, log_performance, log_error
 
 # Load environment variables
 load_dotenv()
+
+# Setup comprehensive logging
+setup_logging(log_level='INFO', log_dir='../logs')
+app_logger = get_logger('app')
 
 # Import real gap-up detection functions
 try:
@@ -642,9 +647,13 @@ def get_market_data_endpoint(ticker):
 @app.route('/api/historical-data/<ticker>')
 def get_historical_data_endpoint(ticker):
     """Get historical data for a ticker with intelligent caching"""
+    start_time = time.time()
     try:
         days = request.args.get('days', 365, type=int)  # Default to 1 year
         use_cache = request.args.get('cache', 'true').lower() == 'true'
+        
+        app_logger.info(f"📊 Historical data request for {ticker} | Days: {days} | Cache: {use_cache}")
+        log_api_request('GET', f'/api/historical-data/{ticker}', 200, user_agent=request.headers.get('User-Agent'))
         
         if REAL_DATA_AVAILABLE and os.environ.get('POLYGON_API_KEY'):
             # Use real historical data with caching
@@ -653,6 +662,14 @@ def get_historical_data_endpoint(ticker):
                 # Get cache status for response
                 from historical_cache import historical_cache
                 cache_status = historical_cache.get_cache_status(ticker)
+                
+                duration = time.time() - start_time
+                log_performance('historical_data_real', duration, {
+                    'ticker': ticker, 
+                    'days': days, 
+                    'data_points': len(historical_result),
+                    'cached': cache_status.get('cached', False)
+                })
                 
                 return jsonify({
                     'success': True,
@@ -700,13 +717,16 @@ def get_historical_data_endpoint(ticker):
                 'closing percent': round(((close_price - previous_close) / previous_close) * 100, 2),
                 'afterhours close': round(close_price * 1.01, 2),
                 'total volume': random.randint(1000000, 50000000),
-                'VWAP Crosses': random.randint(50, 200),
+                'VWAP Crosses': None,  # Removed for performance
                 'Runner/Fader': 'Runner' if close_price > open_price else 'Fader',
                 'high': round(high_price, 2),
                 'low': round(low_price, 2),
                 'volume_millions': round(random.randint(1000000, 50000000) / 1000000, 2),
                 'dollar_volume_millions': round((random.randint(1000000, 50000000) * high_price) / 1000000, 2)
             })
+        
+        duration = time.time() - start_time
+        log_performance('historical_data_mock', duration, {'ticker': ticker, 'days': days, 'data_points': len(mock_data)})
         
         return jsonify({
             'success': True,
@@ -715,6 +735,105 @@ def get_historical_data_endpoint(ticker):
             'days': days,
             'source': 'mock'
         })
+    except Exception as e:
+        duration = time.time() - start_time
+        log_error(e, {'ticker': ticker, 'days': days, 'endpoint': 'historical_data'})
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/historical-data/batch', methods=['POST'])
+def get_batch_historical_data_endpoint():
+    """Get historical data for multiple tickers using optimized batch processing"""
+    try:
+        data = request.get_json()
+        tickers = data.get('tickers', [])
+        days = data.get('days', 365)
+        use_cache = data.get('cache', True)
+        
+        if not tickers:
+            return jsonify({
+                'success': False,
+                'error': 'No tickers provided'
+            }), 400
+        
+        if REAL_DATA_AVAILABLE and os.environ.get('POLYGON_API_KEY'):
+            # Use real historical data with parallel processing
+            from historical_data import get_batch_historical_data_for_tickers
+            results = get_batch_historical_data_for_tickers(tickers, days, use_cache)
+            
+            # Get cache status for all tickers
+            from historical_cache import historical_cache
+            cache_info = {}
+            for ticker in tickers:
+                cache_status = historical_cache.get_cache_status(ticker)
+                cache_info[ticker] = {
+                    'cached': cache_status.get('cached', False),
+                    'total_records': cache_status.get('total_records', 0),
+                    'last_updated': cache_status.get('last_updated'),
+                    'data_range': cache_status.get('data_range')
+                }
+            
+            return jsonify({
+                'success': True,
+                'data': results,
+                'tickers': tickers,
+                'days': days,
+                'source': 'real',
+                'cache_info': cache_info
+            })
+        
+        # Fallback to mock data for multiple tickers
+        mock_results = {}
+        for ticker in tickers:
+            mock_data = []
+            base_price = random.uniform(50, 500)
+            gap_up_days = random.randint(0, 5)
+            
+            for i in range(gap_up_days):
+                date = (datetime.now() - timedelta(days=random.randint(1, 365))).strftime('%Y-%m-%d')
+                gap_percent = random.uniform(25, 100)
+                previous_close = base_price + random.uniform(-10, 10)
+                open_price = previous_close * (1 + gap_percent / 100)
+                close_price = open_price + random.uniform(-5, 5)
+                high_price = max(open_price, close_price) + random.uniform(0, 3)
+                low_price = min(open_price, close_price) - random.uniform(0, 3)
+                
+                mock_data.append({
+                    'date': date,
+                    'pd close': round(previous_close, 2),
+                    'premarket open': round(open_price * 1.02, 2),
+                    'premarket high': round(high_price * 1.01, 2),
+                    'premarket high time': '09:30',
+                    'premarket volume': random.randint(100000, 2000000),
+                    'open': round(open_price, 2),
+                    'gap up % at open': round(gap_percent, 2),
+                    'day high': round(high_price, 2),
+                    'day high time': '09:35',
+                    'day high %': round(gap_percent + random.uniform(0, 10), 2),
+                    'close price': round(close_price, 2),
+                    'closing percent': round(((close_price - previous_close) / previous_close) * 100, 2),
+                    'afterhours close': round(close_price * 1.01, 2),
+                    'total volume': random.randint(1000000, 50000000),
+                    'VWAP Crosses': None,  # Removed for performance
+                    'Runner/Fader': 'Runner' if close_price > open_price else 'Fader',
+                    'high': round(high_price, 2),
+                    'low': round(low_price, 2),
+                    'volume_millions': round(random.randint(1000000, 50000000) / 1000000, 2),
+                    'dollar_volume_millions': round((random.randint(1000000, 50000000) * high_price) / 1000000, 2)
+                })
+            
+            mock_results[ticker] = mock_data
+        
+        return jsonify({
+            'success': True,
+            'data': mock_results,
+            'tickers': tickers,
+            'days': days,
+            'source': 'mock'
+        })
+        
     except Exception as e:
         return jsonify({
             'success': False,
