@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Advisor Dashboard</title>
+    
+    <!-- Vue.js 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Axios for API calls -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    
+    <!-- Chart.js for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Socket.IO client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Custom styles for notifications -->
+    <style>
+        .notification-slide-in {
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        .notification-slide-out {
+            animation: slideOut 0.5s ease-in;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateY(-100%);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateY(0);
+            }
+            to {
+                transform: translateY(-100%);
+            }
+        }
+        
+        .notification-bounce {
+            animation: bounce 0.6s ease-out;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 53%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40%, 43% {
+                transform: translateY(-10px);
+            }
+            70% {
+                transform: translateY(-5px);
+            }
+            90% {
+                transform: translateY(-2px);
+            }
+        }
+    </style>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-900 text-white">
+    <div id="app">
+        <!-- Header -->
+        <div class="bg-gray-900 border-b border-gray-700 px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-2xl font-bold text-white">Trading Advisor</h1>
+                    <div class="flex items-center space-x-2">
+                        <div class="w-2 h-2 rounded-full" :class="systemStatus.connected ? 'bg-green-400' : 'bg-red-400'"></div>
+                        <span class="text-sm text-gray-400">{{ systemStatus.connected ? 'Connected' : 'Disconnected' }}</span>
+                    </div>
+                    <div v-if="systemStatus.websocketConnected" class="flex items-center space-x-2">
+                        <div class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                        <span class="text-sm text-blue-400">Live Data</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2 text-gray-400">
+                        <i class="fas fa-user-circle"></i>
+                        <span class="text-sm">{{ user ? user.username : 'Guest' }}</span>
+                    </div>
+                    <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                    <button @click="logout" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-sm font-medium">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="bg-gray-800 border-b border-gray-700 px-6 py-2">
+            <div class="flex items-center space-x-8">
+                <button @click="activeTab = 'dashboard'" 
+                        :class="activeTab === 'dashboard' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
+                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
+                    <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                </button>
+                <button @click="activeTab = 'gap-ups'" 
+                        :class="activeTab === 'gap-ups' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
+                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
+                    <i class="fas fa-arrow-up mr-2"></i>Gap-Ups
+                </button>
+                <button @click="activeTab = 'historical'" 
+                        :class="activeTab === 'historical' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
+                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
+                    <i class="fas fa-history mr-2"></i>Historical
+                </button>
+                <button @click="activeTab = 'trades'" 
+                        :class="activeTab === 'trades' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
+                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
+                    <i class="fas fa-exchange-alt mr-2"></i>Trades
+                </button>
+                <button @click="activeTab = 'ai-chat'" 
+                        :class="activeTab === 'ai-chat' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
+                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
+                    <i class="fas fa-robot mr-2"></i>AI Chat
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <!-- Dashboard Tab -->
+            <div v-if="activeTab === 'dashboard'" class="space-y-6">
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-arrow-up text-green-400 text-2xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-400">Gap-Up Stocks</p>
+                                <p class="text-2xl font-semibold text-white">{{ stats.gapUps }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exchange-alt text-blue-400 text-2xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-400">Total Trades</p>
+                                <p class="text-2xl font-semibold text-white">{{ stats.totalTrades }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-dollar-sign text-green-400 text-2xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-400">P&L</p>
+                                <p class="text-2xl font-semibold" :class="(stats.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    ${{ (stats.pnl || 0).toFixed(2) }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-percentage text-yellow-400 text-2xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-400">Win Rate</p>
+                                <p class="text-2xl font-semibold text-white">{{ stats.winRate }}%</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <h3 class="text-lg font-medium text-white mb-4">P&L Over Time</h3>
+                        <div class="relative" style="height: 300px;">
+                            <canvas id="pnlChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <h3 class="text-lg font-medium text-white mb-4">Trade Distribution</h3>
+                        <div class="relative" style="height: 300px;">
+                            <canvas id="tradeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="text-lg font-medium text-white mb-4">Recent Activity</h3>
+                    <div class="space-y-3">
+                        <div v-for="activity in recentActivity" :key="activity.id" 
+                             class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                            <div class="flex items-center">
+                                <i :class="activity.icon" class="mr-3 text-lg" :class="activity.color"></i>
+                                <div>
+                                    <p class="text-sm font-medium text-white">{{ activity.title }}</p>
+                                    <p class="text-xs text-gray-400">{{ activity.description }}</p>
+                                </div>
+                            </div>
+                            <span class="text-xs text-gray-400">{{ activity.time }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gap-Ups Tab -->
+            <div v-if="activeTab === 'gap-ups'" class="space-y-6">
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <h3 class="text-lg font-medium text-white">Gap-Up Stocks</h3>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                                <span class="text-xs text-gray-400">Auto-updating</span>
+                                <span class="text-xs text-blue-400 bg-blue-900 bg-opacity-50 px-2 py-1 rounded">≥$1</span>
+                            </div>
+                        </div>
+                        <button @click="loadGapUps" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                    
+                    <div v-if="loading.gapUps" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                        <p class="mt-2 text-gray-400">Loading gap-up stocks...</p>
+                    </div>
+                    
+                    <div v-else-if="gapUps.length === 0" class="text-center py-8">
+                        <i class="fas fa-info-circle text-2xl text-gray-400"></i>
+                        <p class="mt-2 text-gray-400">No gap-up stocks found</p>
+                    </div>
+                    
+                    <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div v-for="stock in gapUps" :key="stock.ticker" 
+                             class="bg-gray-700 rounded-lg p-6 hover:bg-gray-600 transition-colors border border-gray-600">
+                            
+                            <!-- Header with ticker and price -->
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h4 class="text-xl font-bold text-white">{{ stock.ticker }}</h4>
+                                    <p class="text-sm text-gray-400">{{ stock.company_name || 'N/A' }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-2xl font-bold" :class="getPriceColor(stock)">
+                                        ${{ stock.price }}
+                                        <span v-if="livePrices[stock.ticker]" class="text-sm ml-1" :class="getPriceChangeColor(livePrices[stock.ticker].change_percent || 0)">
+                                            {{ (livePrices[stock.ticker].change_percent || 0) >= 0 ? '+' : '' }}{{ (livePrices[stock.ticker].change_percent || 0).toFixed(2) }}%
+                                        </span>
+                                    </p>
+                                    <p class="text-sm text-green-400">+{{ stock.gap_percent }}% gap</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Gap percentage highlight -->
+                            <div class="mb-4 p-3 bg-green-900 bg-opacity-30 rounded-lg border border-green-500">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm text-gray-300">Gap Percentage:</span>
+                                    <span class="text-lg font-bold text-green-400">+{{ stock.gap_percent }}%</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Stock details grid -->
+                            <div class="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <p class="text-gray-400">Previous Close:</p>
+                                    <p class="text-white font-medium">${{ stock.previous_close || 'N/A' }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400">Change:</p>
+                                    <p class="text-white font-medium">${{ stock.change }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400">Volume:</p>
+                                    <p class="text-white font-medium">{{ formatNumber(stock.volume) }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400">Market Cap:</p>
+                                    <p class="text-white font-medium">{{ formatMarketCap(stock.market_cap) }}</p>
+                                </div>
+                                <div class="col-span-2">
+                                    <p class="text-gray-400">Sector:</p>
+                                    <p class="text-white font-medium">{{ stock.sector || 'N/A' }}</p>
+                                </div>
+                                <div class="col-span-2">
+                                    <p class="text-gray-400">List Date:</p>
+                                    <p class="text-white font-medium">{{ formatDate(stock.list_date) || 'N/A' }}</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Real-time indicator -->
+                            <div v-if="livePrices[stock.ticker]" class="mt-3 p-2 bg-blue-900 bg-opacity-20 rounded border border-blue-500">
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="text-blue-300">Live Price:</span>
+                                    <span class="font-bold" :class="getPriceChangeColor(livePrices[stock.ticker].change_percent)">
+                                        ${{ livePrices[stock.ticker].price }}
+                                        <span class="ml-1">
+                                            {{ livePrices[stock.ticker].change_percent >= 0 ? '+' : '' }}{{ livePrices[stock.ticker].change_percent.toFixed(2) }}%
+                                        </span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Historical Data Tab -->
+            <div v-if="activeTab === 'historical'" class="space-y-6">
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 class="text-lg font-medium text-white">Historical Data Analysis</h3>
+                            <p class="text-sm text-gray-400">3-year analysis period (1095 days)</p>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <input v-model="historicalTicker" 
+                                   @keyup.enter="loadHistoricalData"
+                                   placeholder="Enter ticker symbol (e.g., AAPL)"
+                                   class="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                                    <button @click="loadHistoricalData"
+                                :disabled="!historicalTicker.trim() || loading.historical"
+                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-md text-sm font-medium">
+                            <i v-if="!loading.historical" class="fas fa-search mr-2"></i>
+                            <i v-else class="fas fa-spinner fa-spin mr-2"></i>
+                            {{ loading.historical ? 'Analyzing...' : 'Analyze' }}
+                        </button>
+                            <button @click="downloadExcel" 
+                                    :disabled="historicalData.length === 0"
+                                    class="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-file-excel mr-2"></i>Excel
+                            </button>
+                            <button @click="downloadCSV" 
+                                    :disabled="historicalData.length === 0"
+                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-file-csv mr-2"></i>CSV
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div v-if="loading.historical" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                        <p class="mt-2 text-gray-400">Analyzing 3 years of historical data...</p>
+                        <p class="text-sm text-gray-500">This may take a few moments</p>
+                    </div>
+                    
+                    <div v-else-if="historicalData.length > 0" class="space-y-4">
+                        <!-- Stock Info Header -->
+                        <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
+                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of 25%+ gap-up data (3-year analysis)</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm text-gray-400">Analysis Period</p>
+                                    <p class="text-lg font-semibold text-white">{{ formatDate(historicalData[0].date) }} - {{ formatDate(historicalData[historicalData.length-1].date) }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Quick Stats -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <div class="flex items-center">
+                                    <i class="fas fa-arrow-up text-green-400 text-xl mr-3"></i>
+                                    <div>
+                                        <p class="text-sm text-gray-400">25%+ Gap-Up Days</p>
+                                        <p class="text-lg font-semibold text-white">{{ getGapUpDaysCount() }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <div class="flex items-center">
+                                    <i class="fas fa-running text-green-400 text-xl mr-3"></i>
+                                    <div>
+                                        <p class="text-sm text-gray-400">Runner Days</p>
+                                        <p class="text-lg font-semibold text-white">{{ getRunnerDaysCount() }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <div class="flex items-center">
+                                    <i class="fas fa-chart-line text-red-400 text-xl mr-3"></i>
+                                    <div>
+                                        <p class="text-sm text-gray-400">Fader Days</p>
+                                        <p class="text-lg font-semibold text-white">{{ getFaderDaysCount() }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <div class="flex items-center">
+                                    <i class="fas fa-percentage text-blue-400 text-xl mr-3"></i>
+                                    <div>
+                                        <p class="text-sm text-gray-400">Avg 25%+ Gap %</p>
+                                        <p class="text-lg font-semibold text-white">{{ getAverageGapPercent() }}%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Historical Data Table -->
+                        <div class="bg-gray-700 rounded-lg overflow-hidden">
+                            <div class="overflow-x-auto max-w-full">
+                                <table class="w-full text-sm min-w-max">
+                                    <thead class="bg-gray-600">
+                                        <tr>
+                                            <th @click="sortTable('date')" class="px-4 py-3 text-left text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-between">
+                                                    <span>Date</span>
+                                                    <i :class="getSortIcon('date')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('gap up % at open')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Gap %</span>
+                                                    <i :class="getSortIcon('gap up % at open')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('premarket open')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Premarket</span>
+                                                    <i :class="getSortIcon('premarket open')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('open')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Open</span>
+                                                    <i :class="getSortIcon('open')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('day high')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>High</span>
+                                                    <i :class="getSortIcon('day high')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('close price')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Close</span>
+                                                    <i :class="getSortIcon('close price')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('Runner/Fader')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Pattern</span>
+                                                    <i :class="getSortIcon('Runner/Fader')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('volume_millions')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>Volume (M)</span>
+                                                    <i :class="getSortIcon('volume_millions')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                            <th @click="sortTable('VWAP Crosses')" class="px-4 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors">
+                                                <div class="flex items-center justify-end">
+                                                    <span>VWAP</span>
+                                                    <i :class="getSortIcon('VWAP Crosses')" class="ml-2"></i>
+                                                </div>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-600">
+                                        <tr v-for="day in historicalData" :key="day.date" 
+                                            class="hover:bg-gray-600 transition-colors">
+                                            <td class="px-4 py-3 text-gray-300">{{ formatDate(day.date) }}</td>
+                                            <td class="px-4 py-3 text-right" :class="day['gap up % at open'] && day['gap up % at open'] > 0 ? 'text-green-400' : 'text-gray-400'">
+                                                {{ day['gap up % at open'] ? (day['gap up % at open'] > 0 ? '+' : '') + day['gap up % at open'] + '%' : 'N/A' }}
+                                            </td>
+                                            <td class="px-4 py-3 text-right text-blue-400">
+                                                <div class="text-xs">
+                                                    <div v-if="day['premarket open']">${{ day['premarket open'] }}</div>
+                                                    <div v-if="day['premarket high']">${{ day['premarket high'] }}</div>
+                                                    <div v-if="day['premarket high time']">{{ day['premarket high time'] }}</div>
+                                                </div>
+                                            </td>
+                                            <td class="px-4 py-3 text-right text-white">${{ day.open }}</td>
+                                            <td class="px-4 py-3 text-right text-green-400">${{ day['day high'] }}</td>
+                                            <td class="px-4 py-3 text-right text-white">${{ day['close price'] }}</td>
+                                            <td class="px-4 py-3 text-right">
+                                                <span :class="getPatternColor(day['Runner/Fader'])" class="px-2 py-1 rounded text-xs font-medium">
+                                                    {{ day['Runner/Fader'] }}
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3 text-right text-gray-300">{{ day.volume_millions }}M</td>
+                                            <td class="px-4 py-3 text-right text-purple-400">{{ day['VWAP Crosses'] || 0 }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div v-else-if="historicalTicker && !loading.historical" class="text-center py-8">
+                        <i class="fas fa-chart-line text-2xl text-gray-400"></i>
+                        <p class="mt-2 text-gray-400">No 25%+ gap-up data available for {{ historicalTicker.toUpperCase() }}</p>
+                        <p class="text-sm text-gray-500">This stock may not have had significant gap-ups in the last 3 years</p>
+                    </div>
+                    
+                    <div v-else class="text-center py-8">
+                        <i class="fas fa-search text-2xl text-gray-400"></i>
+                        <p class="mt-2 text-gray-400">Enter a ticker symbol to analyze historical data</p>
+                        <p class="text-sm text-gray-500">Example: AAPL, TSLA, NVDA</p>
+                        <p class="text-xs text-gray-600 mt-2">Shows only days with 25%+ gap-ups (3-year analysis)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trades Tab -->
+            <div v-if="activeTab === 'trades'" class="space-y-6">
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Trade History</h3>
+                        <button @click="loadTrades" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                    
+                    <div v-if="loading.trades" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                        <p class="mt-2 text-gray-400">Loading trades...</p>
+                    </div>
+                    
+                    <div v-else class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Quantity</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">P&L</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-800 divide-y divide-gray-700">
+                                <tr v-for="trade in trades" :key="trade.id">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ trade.ticker }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                        <span :class="trade.direction === 'long' ? 'text-green-400' : 'text-red-400'">
+                                            {{ trade.direction.toUpperCase() }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ trade.quantity }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ trade.price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                        <span :class="getStatusColor(trade.status)">{{ trade.status }}</span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        ${{ trade.pnl ? trade.pnl.toFixed(2) : '0.00' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatDate(trade.submitted_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Chat Tab -->
+            <div v-if="activeTab === 'ai-chat'" class="space-y-6">
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">AI Trading Assistant</h3>
+                        <button @click="startChatSession" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-robot mr-2"></i>Start Session
+                        </button>
+                    </div>
+                    
+                    <!-- Chat Messages -->
+                    <div class="h-96 overflow-y-auto mb-4 p-4 bg-gray-700 rounded-lg">
+                        <div v-for="message in chatMessages" :key="message.id" 
+                             class="mb-4" :class="message.type === 'user' ? 'text-right' : 'text-left'">
+                            <div :class="message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white'"
+                                 class="inline-block max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
+                                <p class="text-sm">{{ message.content }}</p>
+                                <p class="text-xs opacity-75 mt-1">{{ formatTime(message.timestamp) }}</p>
+                            </div>
+                        </div>
+                        
+                        <div v-if="chatLoading" class="text-center py-4">
+                            <i class="fas fa-spinner fa-spin text-blue-400"></i>
+                            <p class="text-sm text-gray-400 mt-2">AI is thinking...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Input -->
+                    <div class="flex space-x-2">
+                        <input v-model="chatInput" @keyup.enter="sendChatMessage" 
+                               type="text" placeholder="Ask the AI about trading strategies..."
+                               class="flex-1 bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button @click="sendChatMessage" 
+                                :disabled="!chatInput.trim() || chatLoading"
+                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-lg text-sm font-medium">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+    <script>
+        // Fallback for debugging
+        setTimeout(() => {
+            if (!document.querySelector('#app').innerHTML.trim()) {
+                console.error('❌ Vue.js app failed to load');
+                document.querySelector('#app').innerHTML = `
+                    <div class="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+                        <div class="text-center">
+                            <h1 class="text-2xl font-bold mb-4">Trading Advisor Dashboard</h1>
+                            <p class="text-gray-400 mb-4">Loading application...</p>
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto"></div>
+                            <p class="text-sm text-gray-500 mt-4">Check browser console for errors</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }, 3000);
+    </script>
+</body>
+</html> 
