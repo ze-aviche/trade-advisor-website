@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Horizontal Scroll Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Historical data table specific styling */
+        .historical-table-container {
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            scrollbar-width: thin;
+            scrollbar-color: #6B7280 #374151;
+            position: relative;
+        }
+
+        .historical-table-container::-webkit-scrollbar {
+            height: 16px;
+        }
+
+        .historical-table-container::-webkit-scrollbar-track {
+            background: #374151;
+            border-radius: 8px;
+            margin: 2px;
+        }
+
+        .historical-table-container::-webkit-scrollbar-thumb {
+            background: #6B7280;
+            border-radius: 8px;
+            border: 2px solid #374151;
+            min-width: 40px;
+        }
+
+        .historical-table-container::-webkit-scrollbar-thumb:hover {
+            background: #9CA3AF;
+        }
+
+        .historical-table-container::-webkit-scrollbar-corner {
+            background: #374151;
+        }
+
+        .historical-table-container table {
+            min-width: max-content;
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .historical-table-container th {
+            background-color: #4B5563;
+            color: #D1D5DB;
+            font-weight: 600;
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 2px solid #374151;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            white-space: nowrap;
+            font-size: 0.875rem;
+            min-width: 120px;
+        }
+
+        .historical-table-container td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #374151;
+            color: #D1D5DB;
+            white-space: nowrap;
+            font-size: 0.875rem;
+            min-width: 120px;
+        }
+
+        .historical-table-container tr:hover {
+            background-color: #4B5563;
+            transition: background-color 0.2s ease;
+        }
+
+        /* Force horizontal scroll */
+        .historical-table-container {
+            display: block;
+            width: 100%;
+            overflow-x: scroll;
+            overflow-y: hidden;
+        }
+
+        .historical-table-container table {
+            display: table;
+            width: max-content;
+            min-width: 100%;
+            border-collapse: collapse;
+        }
+
+        /* Ensure table cells don't wrap */
+        .historical-table-container th,
+        .historical-table-container td {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Responsive table */
+        @media (max-width: 1024px) {
+            .historical-table-container {
+                font-size: 0.75rem;
+            }
+            
+            .historical-table-container th,
+            .historical-table-container td {
+                padding: 8px 12px;
+                min-width: 100px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6">Horizontal Scroll Test</h1>
+        
+        <div class="bg-gray-700 rounded-lg overflow-hidden">
+            <div class="mb-2 text-sm text-gray-400 px-4 py-2">
+                <i class="fas fa-arrows-alt-h mr-2"></i>
+                Scroll horizontally to view all columns
+            </div>
+            <div class="historical-table-container">
+                <table class="text-sm" style="min-width: max-content; width: 100%;">
+                    <thead class="bg-gray-600">
+                        <tr>
+                            <th class="px-3 py-3 text-left text-gray-300 font-medium whitespace-nowrap">Date</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Prev Close</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Pre Open</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Pre High</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Pre High Time</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Pre Volume</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Open</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Gap %</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Day High</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">High Time</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">High %</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Close</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Close %</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">After Hours</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Volume</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">VWAP</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Pattern</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">High</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Low</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">Vol (M)</th>
+                            <th class="px-3 py-3 text-right text-gray-300 font-medium whitespace-nowrap">$ Vol (M)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-600">
+                        <tr class="hover:bg-gray-600 transition-colors">
+                            <td class="px-3 py-3 text-gray-300 whitespace-nowrap">2025-07-30</td>
+                            <td class="px-3 py-3 text-right text-gray-400 whitespace-nowrap">$214.05</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">$215.00</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">$216.50</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">08:15</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">1.2M</td>
+                            <td class="px-3 py-3 text-right text-white whitespace-nowrap">$215.50</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">+0.68%</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">$218.75</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">14:30</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">+2.20%</td>
+                            <td class="px-3 py-3 text-right text-white whitespace-nowrap">$217.25</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">+1.49%</td>
+                            <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">$217.50</td>
+                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">45.2M</td>
+                            <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">12</td>
+                            <td class="px-3 py-3 text-right whitespace-nowrap">
+                                <span class="bg-green-600 text-white px-2 py-1 rounded text-xs font-medium">Runner</span>
+                            </td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">$218.75</td>
+                            <td class="px-3 py-3 text-right text-red-400 whitespace-nowrap">$214.80</td>
+                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">45.2M</td>
+                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">$9,823M</td>
+                        </tr>
+                        <tr class="hover:bg-gray-600 transition-colors">
+                            <td class="px-3 py-3 text-gray-300 whitespace-nowrap">2025-07-29</td>
+                            <td class="px-3 py-3 text-right text-gray-400 whitespace-nowrap">$213.20</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">$214.00</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">$215.25</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">08:45</td>
+                            <td class="px-3 py-3 text-right text-blue-400 whitespace-nowrap">0.8M</td>
+                            <td class="px-3 py-3 text-right text-white whitespace-nowrap">$214.03</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">+0.39%</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">$214.84</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">15:34</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">+0.77%</td>
+                            <td class="px-3 py-3 text-right text-white whitespace-nowrap">$214.05</td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">+0.40%</td>
+                            <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">$214.10</td>
+                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">37.9M</td>
+                            <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">0</td>
+                            <td class="px-3 py-3 text-right whitespace-nowrap">
+                                <span class="bg-green-600 text-white px-2 py-1 rounded text-xs font-medium">Runner</span>
+                            </td>
+                            <td class="px-3 py-3 text-right text-green-400 whitespace-nowrap">$214.84</td>
+                            <td class="px-3 py-3 text-right text-red-400 whitespace-nowrap">$213.06</td>
+                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">37.9M</td>
+                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">$8,134M</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="mt-6 text-sm text-gray-400">
+            <p><strong>Test Instructions:</strong></p>
+            <ul class="list-disc list-inside mt-2 space-y-1">
+                <li>Try scrolling horizontally to see all columns</li>
+                <li>The scrollbar should be visible at the bottom</li>
+                <li>All columns should be accessible by scrolling</li>
+                <li>Text should not wrap in cells</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html> 
