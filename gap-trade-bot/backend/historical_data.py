@@ -374,10 +374,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                 
                 if cache_start and cache_end:
                     # Check if requested range extends beyond cached range
-                    cache_start_date = datetime.strptime(cache_start, "%Y-%m-%d").date()
-                    cache_end_date = datetime.strptime(cache_end, "%Y-%m-%d").date()
-                    requested_start_date = datetime.strptime(requested_start, "%Y-%m-%d").date()
-                    requested_end_date = datetime.strptime(requested_end, "%Y-%m-%d").date()
+                    cache_start_date = dt.strptime(cache_start, "%Y-%m-%d").date()
+                    cache_end_date = dt.strptime(cache_end, "%Y-%m-%d").date()
+                    requested_start_date = dt.strptime(requested_start, "%Y-%m-%d").date()
+                    requested_end_date = dt.strptime(requested_end, "%Y-%m-%d").date()
                     
                     # Check if requested range extends beyond cached range
                     extends_before = requested_start_date < cache_start_date
@@ -386,8 +386,22 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                     if extends_before or extends_after:
                         # Requested range extends beyond cached range, fetch delta
                         logger.info(f"🔄 Requested range extends beyond cache (before: {extends_before}, after: {extends_after})")
-                        missing_dates = historical_cache.get_cache_gaps(ticker, requested_start, requested_end)
-                        logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
+                        
+                        # Calculate the actual missing date ranges
+                        missing_dates = []
+                        if extends_before:
+                            # Get missing dates from requested_start to cache_start_date - 1 day
+                            missing_before = historical_cache.get_cache_gaps(ticker, requested_start, (cache_start_date - timedelta(days=1)).strftime('%Y-%m-%d'))
+                            missing_dates.extend(missing_before)
+                            logger.info(f"DEBUG: Found {len(missing_before)} missing dates before cache")
+                        
+                        if extends_after:
+                            # Get missing dates from cache_end_date + 1 day to requested_end
+                            missing_after = historical_cache.get_cache_gaps(ticker, (cache_end_date + timedelta(days=1)).strftime('%Y-%m-%d'), requested_end)
+                            missing_dates.extend(missing_after)
+                            logger.info(f"DEBUG: Found {len(missing_after)} missing dates after cache")
+                        
+                        logger.info(f"DEBUG: Found {len(missing_dates)} total missing dates for requested range")
                         
                         if missing_dates:
                             logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
@@ -442,10 +456,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                     
                     if cache_start and cache_end:
                         # Check if requested range extends beyond cached range
-                        cache_start_date = datetime.strptime(cache_start, "%Y-%m-%d").date()
-                        cache_end_date = datetime.strptime(cache_end, "%Y-%m-%d").date()
-                        requested_start_date = datetime.strptime(requested_start, "%Y-%m-%d").date()
-                        requested_end_date = datetime.strptime(requested_end, "%Y-%m-%d").date()
+                        cache_start_date = dt.strptime(cache_start, "%Y-%m-%d").date()
+                        cache_end_date = dt.strptime(cache_end, "%Y-%m-%d").date()
+                        requested_start_date = dt.strptime(requested_start, "%Y-%m-%d").date()
+                        requested_end_date = dt.strptime(requested_end, "%Y-%m-%d").date()
                         
                         # Check if requested range extends beyond cached range
                         extends_before = requested_start_date < cache_start_date
@@ -454,7 +468,22 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                         if extends_before or extends_after:
                             # Requested range extends beyond cached range, fetch delta
                             logger.info(f"🔄 Requested range extends beyond cache (before: {extends_before}, after: {extends_after})")
-                            missing_dates = historical_cache.get_cache_gaps(ticker, requested_start, requested_end)
+                            
+                            # Calculate the actual missing date ranges
+                            missing_dates = []
+                            if extends_before:
+                                # Get missing dates from requested_start to cache_start_date - 1 day
+                                missing_before = historical_cache.get_cache_gaps(ticker, requested_start, (cache_start_date - timedelta(days=1)).strftime('%Y-%m-%d'))
+                                missing_dates.extend(missing_before)
+                                logger.info(f"DEBUG: Found {len(missing_before)} missing dates before cache")
+                            
+                            if extends_after:
+                                # Get missing dates from cache_end_date + 1 day to requested_end
+                                missing_after = historical_cache.get_cache_gaps(ticker, (cache_end_date + timedelta(days=1)).strftime('%Y-%m-%d'), requested_end)
+                                missing_dates.extend(missing_after)
+                                logger.info(f"DEBUG: Found {len(missing_after)} missing dates after cache")
+                            
+                            logger.info(f"DEBUG: Found {len(missing_dates)} total missing dates for requested range")
                         else:
                             # Requested range is completely within cached range, but no gap-ups found
                             logger.info(f"✅ Requested range is within cache, but no gap-up days found in this period")
