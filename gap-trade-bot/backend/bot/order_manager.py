@@ -497,3 +497,6 @@ class OrderManager:
         # Mock commission calculation
         commission_rate = 0.005  # $0.005 per share
         return quantity * commission_rate 
+
+# Global order manager instance
+order_manager = OrderManager() 

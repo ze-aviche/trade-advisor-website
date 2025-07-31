@@ -8,4 +8,11 @@
 3. Start both servers (recommended)
 4. Exit
 
-Enter your choice (1-4): 
+Enter your choice (1-4): Traceback (most recent call last):
+  File "/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/start.py", line 119, in <module>
+    main()
+    ~~~~^^
+  File "/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/start.py", line 74, in main
+    choice = input("\nEnter your choice (1-4): ").strip()
+             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 5] Input/output error

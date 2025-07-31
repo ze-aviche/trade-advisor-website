@@ -1,220 +1,310 @@
-# 🚀 **Gap-Trade-Bot: Advanced Trading Bot**
+# 🤖 Gap Trade Bot
 
-## 📋 **Overview**
+A sophisticated automated trading bot that identifies and trades gap-up stocks using real-time market data, historical analysis, and advanced risk management.
 
-A sophisticated trading bot that identifies and trades gap-up stocks using advanced technical analysis, volume confirmation, and VWAP analysis.
+## 🚀 Features
 
-## 🎯 **Features**
+- **Real-time Gap Detection**: Identifies stocks that gap up at market open
+- **Break Out Strategy**: Trades stocks breaking above day high with volume confirmation
+- **Risk Management**: 15% stop-loss, position sizing, daily loss limits
+- **Alpaca Integration**: Paper trading with real market data
+- **WebSocket Data**: Real-time price, volume, and VWAP data
+- **Historical Analysis**: Compares current conditions with historical patterns
+- **Database Tracking**: Persistent storage of positions, orders, and performance
+- **Multi-terminal Management**: Start, stop, and monitor from different terminals
 
-### **Core Trading Logic**
-- **Gap Detection**: Identifies stocks with 25%+ gap-ups
-- **Volume Analysis**: Requires institutional-quality volume
-- **VWAP Confirmation**: Price must be above Volume Weighted Average Price
-- **Break Out Strategy**: Buy when price breaks above day's high
-- **Risk Management**: 15% stop-loss, position sizing, daily limits
+## 📊 Strategy Overview
 
-### **Technical Indicators**
-- **VWAP**: Volume Weighted Average Price calculation
-- **Volume Ratios**: Current vs 30-day average volume
-- **Gap Analysis**: Opening gap percentage calculation
-- **Price Levels**: Day high, VWAP, current price analysis
+### Break Out Strategy
+- **Entry**: Buy when price breaks above day high with volume confirmation
+- **Volume Conditions**: 
+  - Minimum volume threshold
+  - Volume above VWAP
+  - Dynamic volume multiplier based on market conditions
+- **Exit Conditions**:
+  - 15% stop-loss
+  - 50% profit target
+  - Trailing stop (basic implementation)
 
-### **Risk Controls**
-- **Volume Minimums**: 500K+ shares required
-- **Breakout Volume**: 2x average volume for confirmation
-- **Confidence Scoring**: 60%+ confidence required
-- **Multiple Confirmations**: Price + Volume + VWAP
+## 🛠️ Installation & Setup
 
-## 🏗️ **Architecture**
+### Prerequisites
+- Python 3.8+
+- Alpaca Trading Account (paper or live)
+- Polygon API Key (for market data)
 
-### **Core Components**
+### 1. Install Dependencies
+```bash
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
 ```
-backend/bot/
-├── config.py              # Configuration management
-├── data_manager.py        # Real-time and historical data
-├── websocket_client.py    # Live market data
-├── position_manager.py    # Position tracking
-├── risk_manager.py        # Risk management
-├── order_manager.py       # Order execution
-├── trading_bot.py         # Main bot orchestrator
-├── run_bot.py            # Bot runner
-└── strategies/
-    └── break_out.py      # Break out strategy
+
+### 2. Configure Environment Variables
+Create `.env` file in `backend/` directory:
+```bash
+# Alpaca Trading API Credentials
+ALPACA_API_KEY=your_alpaca_api_key_here
+ALPACA_SECRET_KEY=your_alpaca_secret_key_here
+ALPACA_ENDPOINT=https://paper-api.alpaca.markets
+
+# Polygon API Key (for market data)
+POLYGON_API_KEY=your_polygon_api_key_here
+
+# Broker Selection
+BROKER_TYPE=alpaca
 ```
 
-### **Strategy Components**
-- **Break Out Strategy**: Enhanced with volume and VWAP analysis
-- **Volume Thresholds**: 500K minimum, 2M+ for huge volume bonus
-- **VWAP Analysis**: Real-time VWAP calculation and confirmation
-- **Confidence Scoring**: Multi-factor confidence calculation
+### 3. Get API Keys
+- **Alpaca**: Sign up at [alpaca.markets](https://alpaca.markets) for paper trading
+- **Polygon**: Sign up at [polygon.io](https://polygon.io) for market data
 
-## 🚀 **Quick Start**
+## 🚀 Usage
 
-### **1. Setup Environment**
+### Starting the Bot
 ```bash
 cd backend/bot
-pip install -r ../requirements.txt
-```
-
-### **2. Configure API Keys**
-```bash
-export POLYGON_API_KEY="your_polygon_api_key"
-export ALPACA_API_KEY="your_alpaca_api_key"
-export ALPACA_SECRET_KEY="your_alpaca_secret"
-```
-
-### **3. Test Strategy**
-```bash
-python3 -c "from strategies import BreakOutStrategy; s = BreakOutStrategy(); print('✅ Strategy loaded')"
-```
-
-### **4. Run Bot (Mock Mode)**
-```bash
+source ../../venv/bin/activate
 python3 run_bot.py
 ```
 
-## 📊 **Strategy Details**
+### Stopping the Bot
+```bash
+# From another terminal
+cd backend/bot
+./stop_bot.sh
 
-### **Break Out Strategy**
-- **Entry**: Buy when price breaks above day's high
-- **Volume**: Must have 500K+ shares and 2x average volume
-- **VWAP**: Price must be above VWAP
-- **Exit**: 50% profit target or 15% stop-loss
-- **Confidence**: 60%+ required for entry
-
-### **Entry Conditions**
-1. ✅ Gap-up ≥ 25%
-2. ✅ Price > Day High
-3. ✅ Market is open
-4. ✅ Price > VWAP
-5. ✅ Volume ≥ 500,000 shares
-6. ✅ Volume ≥ 2x average volume
-
-### **Confidence Scoring**
-- **Base**: 50%
-- **Huge Volume** (≥2M): +20
-- **Breakout Volume** (≥2x avg): +15
-- **Above VWAP**: +10
-- **Gap (30%+)**: +10
-- **Market Open**: +10
-
-## 🔧 **Configuration**
-
-### **Strategy Parameters**
-```python
-'break_out': {
-    'target_multiplier': 1.5,      # 50% profit target
-    'stop_loss_multiplier': 0.85,  # 15% stop loss
-    'min_gap_percentage': 25,      # Minimum gap
-    'volume_threshold': 500000,     # Minimum volume
-    'confidence_threshold': 60      # Minimum confidence
-}
+# Or using PID
+kill $(cat bot.pid)
 ```
 
-### **Volume Thresholds**
-- **Minimum Volume**: 500,000 shares
-- **High Volume**: 2,000,000+ shares (+20 confidence)
-- **Breakout Volume**: 2x average volume (+15 confidence)
-
-## 📈 **Monitoring**
-
-### **Real-time Monitoring**
-- **WebSocket Connection**: Live price and volume data
-- **Position Tracking**: Real-time P&L calculation
-- **Risk Monitoring**: Daily loss limits and portfolio risk
-- **Order Management**: Pending and executed orders
-
-### **Performance Metrics**
-- **Win Rate**: Percentage of profitable trades
-- **Average P&L**: Average profit/loss per trade
-- **Max Drawdown**: Maximum portfolio decline
-- **Sharpe Ratio**: Risk-adjusted returns
-
-## 🛡️ **Safety Features**
-
-### **Risk Management**
-- **Position Sizing**: 1000 shares per trade
-- **Stop Loss**: 15% automatic stop-loss
-- **Daily Limits**: Maximum daily loss limits
-- **Portfolio Risk**: Maximum portfolio exposure
-
-### **Mock Mode**
-- **Paper Trading**: Test without real money
-- **Real-time Simulation**: Full bot functionality
-- **Performance Testing**: Strategy validation
-- **Risk-Free Learning**: Safe environment for testing
-
-## 📚 **Adding New Strategies**
-
-### **Strategy Template**
-```python
-class NewStrategy:
-    def __init__(self):
-        self.name = "new_strategy"
-        self.description = "Strategy description"
-    
-    def analyze_entry_conditions(self, ticker, current_data):
-        # Analysis logic
-        pass
-    
-    def should_enter_position(self, analysis):
-        # Entry decision
-        pass
-    
-    def execute_entry(self, ticker, current_price, day_high):
-        # Entry execution
-        pass
+### Checking Bot Status
+```bash
+cd backend/bot
+./check_bot.sh
 ```
 
-### **Integration Steps**
-1. Create strategy file in `strategies/`
-2. Add to `strategies/__init__.py`
-3. Update `config.py` with parameters
-4. Test with mock data
-5. Add to trading bot
+### Background Operation
+```bash
+# Start in background
+cd backend/bot
+source ../../venv/bin/activate
+nohup python3 run_bot.py > bot.log 2>&1 &
 
-## 🔮 **Future Enhancements**
+# Check if running
+./check_bot.sh
 
-### **Planned Features**
-- **Multiple Strategies**: Additional trading strategies
-- **Machine Learning**: AI-powered signal generation
-- **Backtesting**: Historical strategy performance
-- **Portfolio Optimization**: Multi-asset allocation
-- **Real Broker Integration**: Live trading capabilities
+# Stop background process
+./stop_bot.sh
+```
 
-### **Advanced Features**
-- **Options Trading**: Options strategy support
-- **Sector Analysis**: Sector rotation strategies
-- **News Integration**: News-based trading signals
-- **Social Sentiment**: Social media sentiment analysis
+## 📁 Project Structure
 
-## 📖 **Documentation**
+```
+backend/bot/
+├── README.md                 # This file
+├── run_bot.py               # Main bot runner
+├── stop_bot.sh              # Stop script
+├── check_bot.sh             # Status check script
+├── config.py                # Configuration management
+├── trading_bot.py           # Main bot orchestrator
+├── data_manager.py          # Real-time and historical data
+├── websocket_client.py      # WebSocket market data
+├── position_manager.py      # Position tracking
+├── order_manager.py         # Order execution
+├── risk_manager.py          # Risk management
+├── alpaca_client.py         # Alpaca broker integration
+├── broker_factory.py        # Broker selection
+├── trading_database.py      # Database management
+├── strategies/
+│   └── break_out.py        # Break out strategy
+├── logs/                    # Log files
+├── bot.pid                  # Process ID (created when running)
+└── bot_status.json         # Bot status (created when running)
+```
 
-- **`README.md`**: This file - Overview and setup
-- **`ENHANCED_STRATEGY_SUMMARY.md`**: Detailed strategy analysis
-- **`LEARNING_GUIDE.md`**: Step-by-step learning guide
-- **`TECHNICAL_DOCUMENTATION.md`**: Technical implementation details
+## 🔧 Configuration
 
-## ⚠️ **Important Notes**
+### Trading Parameters
+- **Volume per trade**: 1000 shares
+- **Stop loss**: 15%
+- **Profit target**: 50%
+- **Max positions**: 10 concurrent
+- **Daily loss limit**: $1000
 
-### **Risk Disclaimer**
-- This is experimental software
-- Use only with paper trading initially
-- Never risk more than you can afford to lose
-- Past performance doesn't guarantee future results
+### Strategy Parameters
+- **Minimum gap**: 25%
+- **Volume threshold**: 500,000 shares
+- **Confidence threshold**: 60%
+- **Historical analysis**: 730 days (2 years)
 
-### **Testing Requirements**
-- Always test in mock mode first
-- Validate strategies with historical data
-- Monitor performance closely
-- Start with small position sizes
+### Market Hours
+- **Pre-market**: 4:00 AM ET
+- **Market open**: 9:30 AM ET
+- **Market close**: 4:00 PM ET
+- **After-hours**: 8:00 PM ET
 
-## 🎉 **Getting Started**
+## 📊 Monitoring & Logs
 
-1. **Read the Documentation**: Start with `LEARNING_GUIDE.md`
-2. **Test the Strategy**: Run in mock mode
-3. **Understand the Code**: Follow the learning guide
-4. **Customize**: Modify parameters and strategies
-5. **Monitor**: Watch performance and adjust
+### Log Files
+- `logs/all.log` - All bot activity
+- `logs/errors.log` - Error messages
+- `logs/api.log` - API calls
+- `logs/performance.log` - Performance metrics
+- `logs/cache.log` - Cache operations
+
+### Status Files
+- `bot.pid` - Process ID for external management
+- `bot_status.json` - Current bot status and statistics
+
+### Database Files
+- `trading_advisor.db` - Historical data cache
+- `trading_positions.db` - Positions, orders, trades
+
+## 🔍 Strategy Details
+
+### Break Out Strategy Logic
+
+1. **Gap Detection**: Identifies stocks with 25%+ gap-up
+2. **Volume Analysis**: Checks for sufficient volume and VWAP confirmation
+3. **Historical Comparison**: Analyzes similar historical patterns
+4. **Entry Conditions**:
+   - Price above day high
+   - Volume above threshold
+   - Above VWAP
+   - High confidence score
+5. **Risk Management**:
+   - Position sizing based on risk
+   - Stop-loss orders
+   - Profit target orders
+
+### Volume Forecasting
+- Predicts full-day volume based on current volume and time
+- Adjusts volume requirements based on market conditions
+- Dynamic volume multiplier based on performance
+
+## 🛡️ Risk Management
+
+### Position Sizing
+- Maximum 2% portfolio risk per trade
+- Position size calculated based on stop-loss distance
+- Account for available capital
+
+### Stop Loss
+- 15% fixed stop-loss
+- Automatic stop-loss order placement
+- Real-time position monitoring
+
+### Daily Limits
+- Maximum daily loss: $1000
+- Maximum concurrent positions: 10
+- Portfolio risk limits
+
+## 📈 Performance Tracking
+
+### Metrics Tracked
+- Total trades
+- Winning/losing trades
+- Win rate
+- Total P&L
+- Average trade duration
+- Position performance
+
+### Database Tables
+- `positions` - Open positions
+- `orders` - Order history
+- `trades` - Completed trades
+- `performance_metrics` - Daily performance
+- `risk_limits` - Risk management settings
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Bot won't start:**
+```bash
+# Check dependencies
+pip install -r requirements.txt
+
+# Check environment variables
+python3 -c "from config import config; print(config.validate_config())"
+```
+
+**Can't stop bot:**
+```bash
+# Force kill
+kill -KILL $(cat bot.pid)
+
+# Find and kill by process name
+pkill -f "python3 run_bot.py"
+```
+
+**No gap-up stocks found:**
+- Check if market is open
+- Verify Polygon API key
+- Check network connection
+
+**Order placement fails:**
+- Verify Alpaca credentials
+- Check account status
+- Ensure sufficient buying power
+
+### Log Analysis
+```bash
+# View recent logs
+tail -f logs/all.log
+
+# Check for errors
+tail -f logs/errors.log
+
+# Monitor API calls
+tail -f logs/api.log
+```
+
+## 🔮 Future Enhancements
+
+### Planned Features
+- [ ] Advanced exit strategies (trailing stops, time-based)
+- [ ] Multiple strategy support
+- [ ] DAS Trading Platform integration
+- [ ] Real-time performance dashboard
+- [ ] Email/SMS alerts
+- [ ] Backtesting framework
+- [ ] Machine learning integration
+
+### Strategy Improvements
+- [ ] Dynamic stop-loss adjustment
+- [ ] Volume profile analysis
+- [ ] Market sentiment integration
+- [ ] Sector rotation analysis
+- [ ] Options trading support
+
+## 📞 Support
+
+### Getting Help
+1. Check the logs for error messages
+2. Verify all API keys are correct
+3. Ensure market is open for testing
+4. Review configuration settings
+
+### Debug Mode
+```bash
+# Enable debug logging
+export LOG_LEVEL=DEBUG
+python3 run_bot.py
+```
+
+## ⚠️ Disclaimer
+
+This trading bot is for educational and testing purposes. Trading involves substantial risk of loss and is not suitable for all investors. Past performance does not guarantee future results. Always test thoroughly with paper trading before using real money.
+
+## 📄 License
+
+This project is for educational purposes. Use at your own risk.
+
+---
 
 **Happy Trading! 🚀📈** 

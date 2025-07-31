@@ -9,7 +9,9 @@ import sys
 import os
 import signal
 import time
+import json
 from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -20,19 +22,57 @@ from logging_config import get_logger
 logger = get_logger(__name__)
 
 class BotRunner:
-    """Simple bot runner with signal handling"""
+    """Simple bot runner with signal handling and PID management"""
     
     def __init__(self):
         self.running = False
+        self.pid_file = Path(__file__).parent / "bot.pid"
+        self.status_file = Path(__file__).parent / "bot_status.json"
+        
+    def write_pid_file(self):
+        """Write PID to file for external management"""
+        try:
+            with open(self.pid_file, 'w') as f:
+                f.write(str(os.getpid()))
+            logger.info(f"📝 PID file written: {self.pid_file}")
+        except Exception as e:
+            logger.error(f"❌ Error writing PID file: {e}")
+    
+    def remove_pid_file(self):
+        """Remove PID file"""
+        try:
+            if self.pid_file.exists():
+                self.pid_file.unlink()
+                logger.info("🗑️ PID file removed")
+        except Exception as e:
+            logger.error(f"❌ Error removing PID file: {e}")
+    
+    def write_status_file(self, status: dict):
+        """Write bot status to file"""
+        try:
+            with open(self.status_file, 'w') as f:
+                json.dump(status, f, indent=2)
+        except Exception as e:
+            logger.error(f"❌ Error writing status file: {e}")
         
     async def start_bot(self):
         """Start the trading bot"""
         try:
             logger.info("🚀 Starting Trading Bot...")
-            logger.info("📊 Strategy: Buy Over HOD")
+            logger.info("📊 Strategy: Break Out")
             logger.info("💰 Volume: 1000 shares per trade")
             logger.info("🛑 Stop Loss: 15%")
             logger.info("🎯 Target: 50% profit")
+            
+            # Write PID file
+            self.write_pid_file()
+            
+            # Write initial status
+            self.write_status_file({
+                'status': 'running',
+                'started_at': datetime.now().isoformat(),
+                'pid': os.getpid()
+            })
             
             # Start the bot
             await trading_bot.start()
@@ -48,6 +88,13 @@ class BotRunner:
         """Stop the trading bot"""
         try:
             logger.info("🛑 Stopping Trading Bot...")
+            
+            # Update status
+            self.write_status_file({
+                'status': 'stopping',
+                'stopped_at': datetime.now().isoformat()
+            })
+            
             await trading_bot.stop()
             
             # Print final statistics
@@ -61,6 +108,16 @@ class BotRunner:
             position_summary = status.get('position_summary', {})
             logger.info(f"   Active Positions: {position_summary.get('active_positions', 0)}")
             logger.info(f"   Total P&L: ${position_summary.get('total_pnl', 0):.2f}")
+            
+            # Update final status
+            self.write_status_file({
+                'status': 'stopped',
+                'stopped_at': datetime.now().isoformat(),
+                'final_stats': status
+            })
+            
+            # Remove PID file
+            self.remove_pid_file()
             
             logger.info("✅ Trading Bot stopped")
             
@@ -98,11 +155,8 @@ if __name__ == "__main__":
     print("🤖 Gap Trade Bot")
     print("=" * 50)
     print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("📊 Strategy: Buy Over HOD")
-    print("💰 Volume: 1000 shares per trade")
-    print("🛑 Stop Loss: 15%")
-    print("🎯 Target: 50% profit")
+    print(f"📝 PID file: {Path(__file__).parent / 'bot.pid'}")
+    print("🛑 To stop: kill $(cat bot.pid) or use stop_bot.sh")
     print("=" * 50)
     
-    # Run the bot
     asyncio.run(main()) 

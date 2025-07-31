@@ -3886,3 +3886,428 @@
 2025-07-31 02:42:12,424 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:42:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
 2025-07-31 02:42:12,438 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:42:12] "GET /api/health HTTP/1.1" 200 -
 2025-07-31 02:42:12,721 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:42:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:43:12,398 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:43:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:43:12,417 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:43:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:43:12,437 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:43:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:43:12,711 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:43:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:44:12,366 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:44:12,381 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:44:12,382 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:44:12,387 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:44:12,389 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:44:12,391 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:44:12,402 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:44:12,416 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:44:12,631 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:44:12,886 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:44:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:45:12,360 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:45:12,364 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:45:12,395 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:45:12,716 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:45:15,936 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/config.py', reloading
+2025-07-31 02:45:16,225 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:45:17,648 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:45:17,648 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:45:17,648 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:45:17,648 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:45:18,245 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:45:18,385 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:45:18,482 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:45:18,527 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:45:18,555 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:18] "GET /socket.io/?EIO=4&transport=polling&t=PXVSL07 HTTP/1.1" 200 -
+2025-07-31 02:45:18,570 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:18] "POST /socket.io/?EIO=4&transport=polling&t=PXVSL3W&sid=pfazON1sbRNNrfzLAAAA HTTP/1.1" 200 -
+2025-07-31 02:45:18,577 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:18] "GET /socket.io/?EIO=4&transport=polling&t=PXVSL3X&sid=pfazON1sbRNNrfzLAAAA HTTP/1.1" 200 -
+2025-07-31 02:45:18,592 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:18] "GET /socket.io/?EIO=4&transport=polling&t=PXVSL3t&sid=pfazON1sbRNNrfzLAAAA HTTP/1.1" 200 -
+2025-07-31 02:45:18,599 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:45:18] "POST /socket.io/?EIO=4&transport=polling&t=PXVSL3u&sid=pfazON1sbRNNrfzLAAAA HTTP/1.1" 200 -
+2025-07-31 02:46:12,358 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:46:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:46:12,363 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:46:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:46:12,366 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:46:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:46:12,725 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:46:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:47:06,559 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/order_manager.py', reloading
+2025-07-31 02:47:06,575 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/order_manager.py', reloading
+2025-07-31 02:47:07,454 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:47:08,624 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:47:08,624 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:47:08,625 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:47:08,625 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:47:09,095 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:47:09,221 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:47:09,281 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:47:09,337 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:47:09,363 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:09] "GET /socket.io/?EIO=4&transport=polling&t=PXVSm6Y HTTP/1.1" 200 -
+2025-07-31 02:47:09,375 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:09] "POST /socket.io/?EIO=4&transport=polling&t=PXVSm6s&sid=Z-_lRrMvVp5uaDzHAAAA HTTP/1.1" 200 -
+2025-07-31 02:47:09,382 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:09] "GET /socket.io/?EIO=4&transport=polling&t=PXVSm6t&sid=Z-_lRrMvVp5uaDzHAAAA HTTP/1.1" 200 -
+2025-07-31 02:47:09,395 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:09] "GET /socket.io/?EIO=4&transport=polling&t=PXVSm7A&sid=Z-_lRrMvVp5uaDzHAAAA HTTP/1.1" 200 -
+2025-07-31 02:47:09,398 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:09] "POST /socket.io/?EIO=4&transport=polling&t=PXVSm7B&sid=Z-_lRrMvVp5uaDzHAAAA HTTP/1.1" 200 -
+2025-07-31 02:47:12,391 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:47:12,405 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:47:12,425 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:47:12,759 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:47:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:48:12,393 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:48:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:48:12,405 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:48:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:48:12,440 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:48:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:48:12,728 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:48:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:49:12,368 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:49:12,370 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:49:12,372 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:49:12,375 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:49:12,378 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:49:12,383 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:49:12,399 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:49:12,405 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:49:12,617 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:49:12,858 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:49:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:50:12,366 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:50:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:50:12,377 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:50:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:50:12,381 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:50:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:50:12,603 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:50:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:51:12,366 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:51:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:51:12,372 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:51:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:51:12,377 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:51:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:51:12,847 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:51:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:52:12,369 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:52:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:52:12,372 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:52:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:52:12,378 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:52:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:52:12,629 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:52:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:53:09,803 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:09,816 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:10,608 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:53:12,413 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:53:12,414 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:53:12,414 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:53:12,414 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:53:12,770 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:53:12,867 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:53:12,918 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:53:12,945 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:53:12,978 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:53:12,978 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:12] "GET /socket.io/?EIO=4&transport=polling&t=PXVU8Uy HTTP/1.1" 200 -
+2025-07-31 02:53:12,983 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:53:12,995 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:53:13,002 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:13] "POST /socket.io/?EIO=4&transport=polling&t=PXVU8uS&sid=gztdVXv5y6J15EPJAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:13,019 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:13] "GET /socket.io/?EIO=4&transport=polling&t=PXVU8uS.0&sid=gztdVXv5y6J15EPJAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:13,336 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:13] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:53:16,313 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:16,329 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:17,298 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:53:18,186 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:53:18,186 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:53:18,187 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:53:18,187 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:53:18,435 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:53:18,521 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:53:18,549 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:53:18,563 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:53:18,583 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:18] "GET /socket.io/?EIO=4&transport=polling&t=PXVUACM HTTP/1.1" 200 -
+2025-07-31 02:53:18,606 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:18] "POST /socket.io/?EIO=4&transport=polling&t=PXVUAF-&sid=D4saS3unZPxpOucKAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:18,608 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:18] "GET /socket.io/?EIO=4&transport=polling&t=PXVUAF_&sid=D4saS3unZPxpOucKAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:39,156 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:39,180 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:40,022 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:53:41,568 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:53:41,568 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:53:41,568 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:53:41,569 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:53:42,046 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:53:42,189 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:53:42,229 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:53:42,263 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:53:42,373 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:42] "GET /socket.io/?EIO=4&transport=polling&t=PXVUG3L HTTP/1.1" 200 -
+2025-07-31 02:53:42,384 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:42] "POST /socket.io/?EIO=4&transport=polling&t=PXVUG3e&sid=iNPCjQtDavwegno7AAAA HTTP/1.1" 200 -
+2025-07-31 02:53:42,395 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:42] "GET /socket.io/?EIO=4&transport=polling&t=PXVUG3f&sid=iNPCjQtDavwegno7AAAA HTTP/1.1" 200 -
+2025-07-31 02:53:46,588 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:46,600 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:47,714 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:53:48,524 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:53:48,525 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:53:48,525 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:53:48,525 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:53:48,780 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:53:48,889 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:53:48,919 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:53:48,934 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:53:49,388 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:49] "GET /socket.io/?EIO=4&transport=polling&t=PXVUHmy HTTP/1.1" 200 -
+2025-07-31 02:53:49,401 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:49] "POST /socket.io/?EIO=4&transport=polling&t=PXVUHnE&sid=pneOouEIc3HBOL9CAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:49,402 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:49] "GET /socket.io/?EIO=4&transport=polling&t=PXVUHnE.0&sid=pneOouEIc3HBOL9CAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:49,412 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:49] "GET /socket.io/?EIO=4&transport=polling&t=PXVUHnU&sid=pneOouEIc3HBOL9CAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:49,417 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:53:49] "POST /socket.io/?EIO=4&transport=polling&t=PXVUHnW&sid=pneOouEIc3HBOL9CAAAA HTTP/1.1" 200 -
+2025-07-31 02:53:57,539 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:57,551 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:53:58,225 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:53:59,820 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:53:59,821 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:53:59,821 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:53:59,821 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:54:00,156 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:54:00,306 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:54:00,363 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:54:00,398 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:54:00,425 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:00] "GET /socket.io/?EIO=4&transport=polling&t=PXVUKDN HTTP/1.1" 200 -
+2025-07-31 02:54:00,440 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:00] "POST /socket.io/?EIO=4&transport=polling&t=PXVUKTi&sid=Qx7pQ6IVgsH8HNX5AAAA HTTP/1.1" 200 -
+2025-07-31 02:54:00,448 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:00] "GET /socket.io/?EIO=4&transport=polling&t=PXVUKTj&sid=Qx7pQ6IVgsH8HNX5AAAA HTTP/1.1" 200 -
+2025-07-31 02:54:12,436 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:54:12,467 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:54:12,474 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:54:12,477 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:54:12,485 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:54:12,491 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:54:12,507 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:54:12,515 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:54:13,257 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:13] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:54:13,693 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:13] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:54:35,468 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:54:35,480 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:54:35,939 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:54:37,553 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:54:37,554 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:54:37,554 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:54:37,555 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:54:37,867 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:54:37,968 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:54:38,019 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:54:38,037 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:54:38,101 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:38] "GET /socket.io/?EIO=4&transport=polling&t=PXVUTVI HTTP/1.1" 200 -
+2025-07-31 02:54:38,115 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:38] "POST /socket.io/?EIO=4&transport=polling&t=PXVUTgO&sid=LRiKEjMXrMuAUyeyAAAA HTTP/1.1" 200 -
+2025-07-31 02:54:38,120 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:38] "GET /socket.io/?EIO=4&transport=polling&t=PXVUTgP&sid=LRiKEjMXrMuAUyeyAAAA HTTP/1.1" 200 -
+2025-07-31 02:54:38,128 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:38] "GET /socket.io/?EIO=4&transport=polling&t=PXVUTgi&sid=LRiKEjMXrMuAUyeyAAAA HTTP/1.1" 200 -
+2025-07-31 02:54:38,132 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:38] "POST /socket.io/?EIO=4&transport=polling&t=PXVUTgj&sid=LRiKEjMXrMuAUyeyAAAA HTTP/1.1" 200 -
+2025-07-31 02:54:48,195 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:54:48,206 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_bot.py', reloading
+2025-07-31 02:54:49,318 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:54:50,186 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:54:50,187 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:54:50,187 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:54:50,187 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:54:50,413 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:54:50,497 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:54:50,536 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:54:50,560 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:54:50,594 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:50] "GET /socket.io/?EIO=4&transport=polling&t=PXVUWgS HTTP/1.1" 200 -
+2025-07-31 02:54:50,608 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:50] "POST /socket.io/?EIO=4&transport=polling&t=PXVUWja&sid=if8Gy50aEqbO7PI9AAAA HTTP/1.1" 200 -
+2025-07-31 02:54:50,609 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:54:50] "GET /socket.io/?EIO=4&transport=polling&t=PXVUWjb&sid=if8Gy50aEqbO7PI9AAAA HTTP/1.1" 200 -
+2025-07-31 02:55:12,432 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:55:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:55:12,434 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:55:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:55:12,444 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:55:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:55:12,668 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:55:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:56:12,407 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:56:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:56:12,409 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:56:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:56:12,432 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:56:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:56:12,687 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:56:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:57:12,427 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:57:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:57:12,429 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:57:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:57:12,443 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:57:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:57:12,796 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:57:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:58:12,414 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:58:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:58:12,427 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:58:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:58:12,433 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:58:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:58:12,768 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:58:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:59:12,420 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:59:12,422 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:59:12,430 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:59:12,435 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:59:12,442 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:59:12,447 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:59:12,454 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:59:12,460 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:59:12,651 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:59:12,861 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:59:30,444 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/run_bot.py', reloading
+2025-07-31 02:59:30,619 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 02:59:31,895 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:59:31,895 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:59:31,895 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:59:31,895 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:59:32,198 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 02:59:32,284 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:59:32,321 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 02:59:32,333 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 02:59:32,353 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:32] "GET /socket.io/?EIO=4&transport=polling&t=PXVVbHE HTTP/1.1" 200 -
+2025-07-31 02:59:32,363 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:32] "POST /socket.io/?EIO=4&transport=polling&t=PXVVbW4&sid=9_Fe1ylO4i2JSHpMAAAA HTTP/1.1" 200 -
+2025-07-31 02:59:32,369 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 02:59:32] "GET /socket.io/?EIO=4&transport=polling&t=PXVVbW5&sid=9_Fe1ylO4i2JSHpMAAAA HTTP/1.1" 200 -
+2025-07-31 03:00:12,540 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:00:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:00:12,545 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:00:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:00:12,552 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:00:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:00:16,358 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:00:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:01:12,433 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:01:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:01:12,440 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:01:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:01:12,447 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:01:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:01:16,019 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:01:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:02:12,436 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:02:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:02:12,441 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:02:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:02:12,452 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:02:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:02:16,220 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:02:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:03:09,966 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/run_bot.py', reloading
+2025-07-31 03:03:09,977 | werkzeug | INFO | _internal.py:97 | _log() |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/run_bot.py', reloading
+2025-07-31 03:03:10,585 | werkzeug | INFO | _internal.py:97 | _log() |  * Restarting with watchdog (fsevents)
+2025-07-31 03:03:12,017 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 03:03:12,018 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 03:03:12,018 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 03:03:12,018 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 03:03:12,397 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
+2025-07-31 03:03:12,604 | werkzeug | WARNING | _internal.py:97 | _log() | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 03:03:12,666 | werkzeug | WARNING | _internal.py:97 | _log() |  * Debugger is active!
+2025-07-31 03:03:12,693 | werkzeug | INFO | _internal.py:97 | _log() |  * Debugger PIN: 145-947-109
+2025-07-31 03:03:12,719 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:03:12,725 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:03:12,731 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:12] "GET /socket.io/?EIO=4&transport=polling&t=PXVWRET HTTP/1.1" 200 -
+2025-07-31 03:03:12,742 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:03:12,757 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:12] "POST /socket.io/?EIO=4&transport=polling&t=PXVWRJV&sid=AWikxmfgsASOpbkUAAAA HTTP/1.1" 200 -
+2025-07-31 03:03:12,764 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:12] "GET /socket.io/?EIO=4&transport=polling&t=PXVWRJW&sid=AWikxmfgsASOpbkUAAAA HTTP/1.1" 200 -
+2025-07-31 03:03:18,405 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:03:18] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:04:12,428 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:04:12,431 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:04:12,432 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:04:12,436 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:04:12,453 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:04:12,469 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:04:12,477 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:04:12,482 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:04:15,966 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:04:19,767 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:04:19] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:05:12,429 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:05:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:05:12,442 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:05:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:05:12,471 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:05:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:05:15,915 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:05:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:06:12,454 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:06:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:06:12,457 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:06:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:06:12,473 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:06:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:06:16,873 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:06:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:07:12,437 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:07:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:07:12,450 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:07:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:07:12,454 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:07:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:07:15,738 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:07:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:08:12,427 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:08:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:08:12,434 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:08:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:08:12,443 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:08:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:08:17,367 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:08:17] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:09:12,352 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:09:12,354 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:09:12,357 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:09:12,367 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:09:12,374 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:09:12,379 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:09:12,385 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:09:12,390 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:09:20,090 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:20] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:09:23,520 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:09:23] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:10:12,351 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:10:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:10:12,354 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:10:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:10:12,388 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:10:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:10:15,889 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:10:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:11:12,400 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:11:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:11:12,406 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:11:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:11:12,412 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:11:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:11:15,827 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:11:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:12:12,365 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:12:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:12:12,370 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:12:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:12:12,376 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:12:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:12:15,767 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:12:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:13:12,379 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:13:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:13:12,399 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:13:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:13:12,401 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:13:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:13:16,088 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:13:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:14:12,367 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:14:12,371 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:14:12,400 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:14:12,405 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:14:12,406 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:14:12,409 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:14:12,416 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:14:12,421 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:14:15,948 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:14:19,732 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:14:19] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:15:12,432 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:15:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:15:12,460 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:15:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:15:12,464 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:15:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:15:18,336 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:15:18] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:16:12,359 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:16:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:16:12,389 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:16:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:16:12,395 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:16:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:16:16,454 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:16:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:17:12,351 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:17:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:17:12,355 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:17:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:17:12,360 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:17:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:17:16,038 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:17:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:18:12,352 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:18:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:18:12,357 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:18:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:18:12,363 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:18:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:18:15,869 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:18:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:19:12,357 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:19:12,362 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:19:12,366 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:19:12,377 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:19:12,382 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:19:12,385 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:19:12,396 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:19:12,416 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:19:17,131 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:17] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:19:20,937 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:19:20] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:20:12,347 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:20:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:20:12,351 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:20:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:20:12,377 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:20:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:20:17,799 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:20:17] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:21:12,460 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:21:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:21:12,489 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:21:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:21:12,497 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:21:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:21:16,230 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:21:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:12,364 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:22:12,367 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:12,389 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:22:16,126 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:23,280 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 03:22:23,281 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/logs
+2025-07-31 03:22:23,282 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 03:22:23,282 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 03:22:29,349 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:22:29,354 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:22:29,523 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:29,528 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:29,546 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:29,550 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:29,559 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:29] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:35,149 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:35] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:35,225 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:35] "GET /socket.io/?EIO=4&transport=polling&t=PXVat7M HTTP/1.1" 200 -
+2025-07-31 03:22:35,263 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:35] "POST /socket.io/?EIO=4&transport=polling&t=PXVat7d&sid=UAk2mSgRRSB346pzAAAC HTTP/1.1" 200 -
+2025-07-31 03:22:35,267 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:35] "GET /socket.io/?EIO=4&transport=polling&t=PXVat7f&sid=UAk2mSgRRSB346pzAAAC HTTP/1.1" 200 -
+2025-07-31 03:22:36,203 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "GET /socket.io/?EIO=4&transport=websocket&sid=UAk2mSgRRSB346pzAAAC HTTP/1.1" 200 -
+2025-07-31 03:22:36,424 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:22:36,430 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:22:36,464 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:36,468 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:36,470 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:36,473 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:36,481 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:36] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 03:22:41,487 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:41] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:22:41,517 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:41] "GET /socket.io/?EIO=4&transport=polling&t=PXVaufZ HTTP/1.1" 200 -
+2025-07-31 03:22:41,538 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:41] "POST /socket.io/?EIO=4&transport=polling&t=PXVauft&sid=Bep97mZGnoDek8-EAAAE HTTP/1.1" 200 -
+2025-07-31 03:22:41,540 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:22:41] "GET /socket.io/?EIO=4&transport=polling&t=PXVauft.0&sid=Bep97mZGnoDek8-EAAAE HTTP/1.1" 200 -
+2025-07-31 03:23:00,192 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:00] "OPTIONS /api/historical-data/PIII?days=365&cache=true&_t=1753950180186 HTTP/1.1" 200 -
+2025-07-31 03:23:00,200 | app | INFO | app.py:655 | get_historical_data_endpoint() | 📊 Historical data request for PIII | Days: 365 | Cache: True
+2025-07-31 03:23:00,200 | api | INFO | logging_config.py:173 | log_api_request() | 🌐 GET /api/historical-data/PIII | Status: 200 | User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36
+2025-07-31 03:23:00,204 | historical_data | INFO | historical_data.py:510 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for PIII from 2024-07-31 to 2025-07-31 (365 days)
+2025-07-31 03:23:00,208 | historical_data | INFO | historical_data.py:517 | get_historical_gap_up_data() | Cache status for PIII: {'ticker': 'PIII', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-31 03:23:00,211 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for PIII
+2025-07-31 03:23:00,211 | historical_data | INFO | historical_data.py:521 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for PIII
+2025-07-31 03:23:00,211 | historical_data | INFO | historical_data.py:707 | get_historical_gap_up_data() | DEBUG: No cached data found for PIII, will fetch from Polygon
+2025-07-31 03:23:00,211 | historical_data | INFO | historical_data.py:710 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for PIII
+2025-07-31 03:23:00,457 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.245s | Details: {'ticker': 'PIII', 'start_date': '2024-07-31', 'end_date': '2025-07-31', 'data_points': 250}
+2025-07-31 03:23:00,458 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 250 days of batch data for PIII
+2025-07-31 03:23:00,473 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for PIII on 2025-01-14: 30.34%
+2025-07-31 03:23:01,086 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for PIII on 2025-07-30: 37.07%
+2025-07-31 03:23:01,565 | historical_data | INFO | historical_data.py:487 | process_batch_data_to_gap_ups() | 📈 Found 2 major gap-up days (25%+) for PIII
+2025-07-31 03:23:01,584 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 2 records for PIII in cache (query range: 2024-07-31 to 2025-07-31)
+2025-07-31 03:23:01,585 | historical_data | INFO | historical_data.py:729 | get_historical_gap_up_data() | 💾 Cached 2 major gap-up days (25%+) for PIII
+2025-07-31 03:23:01,585 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 1.383s | Details: {'ticker': 'PIII', 'days': 365, 'use_cache': True, 'total_days': 250, 'gap_up_days': 2}
+2025-07-31 03:23:01,586 | historical_data | INFO | historical_data.py:744 | get_historical_gap_up_data() | ✅ Retrieved 250 days of historical data for PIII
+2025-07-31 03:23:01,586 | historical_data | INFO | historical_data.py:745 | get_historical_gap_up_data() | 📈 Found 2 major gap-up days (25%+) for PIII
+2025-07-31 03:23:01,587 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 1.387s | Details: {'ticker': 'PIII', 'days': 365, 'data_points': 2, 'cached': True}
+2025-07-31 03:23:01,588 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:01] "GET /api/historical-data/PIII?days=365&cache=true&_t=1753950180186 HTTP/1.1" 200 -
+2025-07-31 03:23:07,947 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:07] "GET /socket.io/?EIO=4&transport=websocket&sid=Bep97mZGnoDek8-EAAAE HTTP/1.1" 200 -
+2025-07-31 03:23:12,400 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 03:23:12,445 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:23:12,475 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 03:23:13,399 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:13] "GET /socket.io/?EIO=4&transport=websocket&sid=AWikxmfgsASOpbkUAAAA HTTP/1.1" 200 -
+2025-07-31 03:23:16,566 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [31/Jul/2025 03:23:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 03:48:00,038 | urllib3.connectionpool | WARNING | connectionpool.py:868 | urlopen() | Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x109bbf610>: Failed to establish a new connection: [Errno 50] Network is down')': /v2/aggs/ticker/TSLA/range/1/day/2025-07-31/2025-07-31
+2025-07-31 03:48:07,927 | urllib3.connectionpool | WARNING | connectionpool.py:868 | urlopen() | Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /v2/snapshot/locale/us/markets/stocks/gainers?include_otc=false
+2025-07-31 03:48:08,136 | urllib3.connectionpool | WARNING | connectionpool.py:868 | urlopen() | Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ConnectionResetError(54, 'Connection reset by peer')': /v2/snapshot/locale/us/markets/stocks/gainers?include_otc=false

@@ -173,11 +173,11 @@ class TradingBot:
     async def _analyze_trading_opportunities(self):
         """Analyze current market for trading opportunities"""
         try:
-            gap_up_stocks = self.data_manager.get_gap_up_stocks()
+            gap_up_stocks = data_manager.get_gap_up_stocks()
             
             for ticker in gap_up_stocks:
                 # Get real-time data
-                current_data = self.data_manager.get_real_time_data(ticker)
+                current_data = data_manager.get_real_time_data(ticker)
                 if not current_data:
                     continue
                 
@@ -191,15 +191,14 @@ class TradingBot:
                     
                     # Check if we should enter position
                     if strategy.should_enter_position(analysis):
-                        self._execute_strategy_entry(ticker, strategy, current_data)
+                        await self._execute_strategy_entry(ticker, strategy, current_data)
                 
         except Exception as e:
             logger.error(f"❌ Error analyzing trading opportunities: {e}")
     
-    async def _execute_strategy_entry(self, ticker: str, strategy: Any, analysis: Dict[str, Any]):
+    async def _execute_strategy_entry(self, ticker: str, strategy: Any, current_data: Dict[str, Any]):
         """Execute strategy entry"""
         try:
-            current_data = analysis.get('current_metrics', {})
             current_price = current_data.get('current_price', 0)
             day_high = current_data.get('day_high', 0)
             
@@ -231,7 +230,7 @@ class TradingBot:
                 return
             
             # Open position
-            if position_manager.open_position(entry_order):
+            if position_manager.open_position(ticker, position_size, 'buy', current_price):
                 logger.info(f"📈 Position opened: {ticker} @ ${current_price:.2f}")
                 
                 # Place stop-loss order
@@ -251,22 +250,28 @@ class TradingBot:
     async def _check_positions(self):
         """Check existing positions for exit conditions"""
         try:
+            positions = position_manager.get_all_positions()
+            if not positions:
+                return
+                
             current_prices = {}
             
             # Get current prices for all positions
-            for ticker in position_manager.get_all_positions():
+            for position in positions:
+                ticker = position['ticker']
                 price = websocket_client.get_current_price(ticker)
                 if price:
                     current_prices[ticker] = price
             
             # Check each position
-            for ticker, position in position_manager.get_all_positions().items():
+            for position in positions:
+                ticker = position['ticker']
                 current_price = current_prices.get(ticker)
                 if not current_price:
                     continue
                 
                 # Update position with current price
-                exit_signal = position_manager.update_position_prices(ticker, current_price)
+                exit_signal = position_manager.update_position_prices({ticker: current_price})
                 
                 if exit_signal and exit_signal.get('exit_signal'):
                     await self._execute_position_exit(ticker, current_price, exit_signal.get('exit_reason'))
@@ -328,7 +333,8 @@ class TradingBot:
             triggered_limits = order_manager.check_limit_orders(current_prices)
             
             # Process triggered orders
-            for order_id in triggered_stops + triggered_limits:
+            all_triggered = (triggered_stops or []) + (triggered_limits or [])
+            for order_id in all_triggered:
                 order = order_manager.get_order_status(order_id)
                 if order and order['status'] == 'executed':
                     await self._process_executed_order(order)

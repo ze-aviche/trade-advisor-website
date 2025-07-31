@@ -2549,3 +2549,8 @@
 2025-07-30 19:42:33,838 | historical_data | INFO | historical_data.py:583 | get_historical_gap_up_data() | ✅ Returning 17 gap-up days (cached: 9, delta: 8)
 2025-07-30 19:42:33,840 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 2.448s | Details: {'ticker': 'HOLO', 'days': 1095, 'data_points': 17, 'cached': True}
 2025-07-30 19:42:33,841 | werkzeug | INFO | _internal.py:97 | _log() | 127.0.0.1 - - [30/Jul/2025 19:42:33] "GET /api/historical-data/HOLO?days=1095&cache=true&_t=1753922551372 HTTP/1.1" 200 -
+2025-07-31 03:22:23,287 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 03:22:23,288 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/../logs
+2025-07-31 03:22:23,289 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 03:22:23,289 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 03:22:23,579 | historical_cache | INFO | historical_cache.py:80 | init_cache_tables() | ✅ Historical data cache tables initialized
