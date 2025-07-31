@@ -34936,3 +34936,1878 @@ Using last trading day: 2025-07-30 for JEM
 2025-07-31 01:56:12,237 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:56:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
 2025-07-31 01:56:12,243 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:56:12] "GET /api/health HTTP/1.1" 200 -
 2025-07-31 01:56:15,042 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:56:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:57:12,234 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:57:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 01:57:12,241 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:57:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:57:12,253 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:57:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 01:57:15,371 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:57:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:58:12,228 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:58:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 01:58:12,235 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:58:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:58:12,254 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:58:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 01:58:15,289 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:58:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:59:12,240 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 01:59:12,243 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:59:12,258 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 01:59:12,284 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:59:12,288 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 01:59:12,291 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 01:59:12,303 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 01:59:12,309 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 01:59:15,450 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 01:59:17,576 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+2025-07-31 01:59:17,585 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: r48QMCBEEi9QPMwfAAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"109c44c41f7979ec833fd89d1b160f56","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"e1ec2f60623b82a163558cf4bab3f617","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"c9295cb519c36394cadfd5ea1ee8e21d","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"3f35503f386c930037bdd9288bbaf7dd","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"c8bc8e106978aea0ee06025ac0e52240","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+2025-07-31 01:59:18,948 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 01:59:22,954 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 01:59:22,957 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 01:59:22,958 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 01:59:22,959 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 01:59:22,968 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 01:59:22,969 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 01:59:22,969 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 01:59:22,969 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 01:59:23,777 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 01:59:24,154 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 01:59:24,257 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 01:59:24,623 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 01:59:24,664 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:24] "GET /socket.io/?EIO=4&transport=polling&t=PXVHpeU HTTP/1.1" 200 -
+2025-07-31 01:59:24,687 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:24] "POST /socket.io/?EIO=4&transport=polling&t=PXVHqj-&sid=mziSQSGM7ZPvgTInAAAA HTTP/1.1" 200 -
+2025-07-31 01:59:24,696 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:24] "GET /socket.io/?EIO=4&transport=polling&t=PXVHqj_&sid=mziSQSGM7ZPvgTInAAAA HTTP/1.1" 200 -
+2025-07-31 01:59:26,646 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+2025-07-31 01:59:26,672 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: Xj1aBX4cB9rwHPG8AAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+2025-07-31 01:59:27,127 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 01:59:28,605 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 01:59:28,606 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 01:59:28,606 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 01:59:28,606 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 01:59:28,610 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 01:59:28,611 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 01:59:28,611 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 01:59:28,611 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 01:59:29,487 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 01:59:29,793 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 01:59:29,906 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 01:59:29,941 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 01:59:30,018 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:30] "GET /socket.io/?EIO=4&transport=polling&t=PXVHrbT HTTP/1.1" 200 -
+2025-07-31 01:59:30,039 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:30] "POST /socket.io/?EIO=4&transport=polling&t=PXVHs1e&sid=sUagVvajusTwmzBdAAAA HTTP/1.1" 200 -
+2025-07-31 01:59:30,041 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:30] "GET /socket.io/?EIO=4&transport=polling&t=PXVHs1f&sid=sUagVvajusTwmzBdAAAA HTTP/1.1" 200 -
+2025-07-31 01:59:30,056 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:30] "GET /socket.io/?EIO=4&transport=polling&t=PXVHs22&sid=sUagVvajusTwmzBdAAAA HTTP/1.1" 200 -
+2025-07-31 01:59:30,060 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 01:59:30] "POST /socket.io/?EIO=4&transport=polling&t=PXVHs23&sid=sUagVvajusTwmzBdAAAA HTTP/1.1" 200 -
+2025-07-31 02:00:12,265 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:00:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:00:12,268 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:00:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:00:12,271 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:00:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:00:13,305 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/position_manager.py', reloading
+2025-07-31 02:00:13,314 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/position_manager.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: jswgLENXdWj62hJ-AAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"0ef8fcc18e6dbb800731a6faac439e78","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+2025-07-31 02:00:13,797 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:00:15,364 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:00:15,365 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:00:15,365 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:00:15,365 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:00:15,370 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:00:15,372 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:00:15,372 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:00:15,372 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:00:15,704 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:00:15,947 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:00:16,002 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:00:16,033 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:00:16,058 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:00:16] "GET /socket.io/?EIO=4&transport=polling&t=PXVI13t HTTP/1.1" 200 -
+2025-07-31 02:00:16,075 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:00:16] "POST /socket.io/?EIO=4&transport=polling&t=PXVI1G_&sid=n0-eVVrJm3hIpY3MAAAA HTTP/1.1" 200 -
+2025-07-31 02:00:16,076 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:00:16] "GET /socket.io/?EIO=4&transport=polling&t=PXVI1H0&sid=n0-eVVrJm3hIpY3MAAAA HTTP/1.1" 200 -
+2025-07-31 02:01:12,248 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:01:12,250 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:01:12,304 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:01:15,821 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:01:50,761 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/order_manager.py', reloading
+2025-07-31 02:01:50,768 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/order_manager.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: faCh6VLNb36jG_ZBAAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"6ae518b4d7203731bf64d6979713b68a","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+2025-07-31 02:01:51,247 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:01:52,773 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:01:52,775 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:01:52,776 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:01:52,776 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:01:52,783 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:01:52,783 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:01:52,786 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:01:52,787 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:01:53,425 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:01:53,760 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:01:53,923 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:01:53,986 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:01:54,010 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:54] "GET /socket.io/?EIO=4&transport=polling&t=PXVIOlY HTTP/1.1" 200 -
+2025-07-31 02:01:54,023 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:54] "POST /socket.io/?EIO=4&transport=polling&t=PXVIPBT&sid=eX7Zdc14HW1uLlxwAAAA HTTP/1.1" 200 -
+2025-07-31 02:01:54,024 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:54] "GET /socket.io/?EIO=4&transport=polling&t=PXVIPBT.0&sid=eX7Zdc14HW1uLlxwAAAA HTTP/1.1" 200 -
+2025-07-31 02:01:54,033 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:54] "GET /socket.io/?EIO=4&transport=polling&t=PXVIPBh&sid=eX7Zdc14HW1uLlxwAAAA HTTP/1.1" 200 -
+2025-07-31 02:01:54,039 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:01:54] "POST /socket.io/?EIO=4&transport=polling&t=PXVIPBl&sid=eX7Zdc14HW1uLlxwAAAA HTTP/1.1" 200 -
+2025-07-31 02:02:12,248 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:02:12,252 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:02:12,273 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:02:15,767 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:02:37,519 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/test_trading_database.py', reloading
+2025-07-31 02:02:37,531 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/test_trading_database.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: OoBHpSDnzBbBlHONAAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"2b665b5be4e64592971e623412b86c54","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+2025-07-31 02:02:39,078 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:02:41,418 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:02:41,419 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:02:41,420 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:02:41,420 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:02:41,427 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:02:41,427 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:02:41,427 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:02:41,428 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:02:41,964 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:02:42,303 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:02:42,391 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:02:42,421 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:02:42,521 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:42] "GET /socket.io/?EIO=4&transport=polling&t=PXVIaTZ HTTP/1.1" 200 -
+2025-07-31 02:02:42,535 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:42] "POST /socket.io/?EIO=4&transport=polling&t=PXVIb1S&sid=YbE1xOn5lAUrocuvAAAA HTTP/1.1" 200 -
+2025-07-31 02:02:42,541 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:42] "GET /socket.io/?EIO=4&transport=polling&t=PXVIb1S.0&sid=YbE1xOn5lAUrocuvAAAA HTTP/1.1" 200 -
+2025-07-31 02:02:42,551 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:02:42] "GET /socket.io/?EIO=4&transport=polling&t=PXVIb1n&sid=YbE1xOn5lAUrocuvAAAA HTTP/1.1" 200 -
+2025-07-31 02:03:12,255 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:03:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:03:12,259 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:03:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:03:12,291 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:03:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:03:15,751 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:03:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:04:12,258 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:04:12,275 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:04:12,279 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:04:12,306 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:04:12,308 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:04:12,322 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:04:12,325 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:04:12,354 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:04:15,431 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:04:18,658 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:18] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:04:25,963 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+2025-07-31 02:04:25,987 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: cY8TreNH8kp5Q-MqAAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"d8fd92fbf0c1aed6d9ef1d8c44449f44","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"b0fd449a072eab127b7be31ab6ad1c28","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"f50a371e67dfd681c8546034b9c4263c","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+2025-07-31 02:04:26,480 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:04:27,598 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:04:27,600 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:04:27,600 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:04:27,600 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:04:27,605 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:04:27,606 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:04:27,606 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:04:27,606 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:04:27,995 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:04:28,081 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:04:28,126 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:04:28,154 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:04:28,236 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:28] "GET /socket.io/?EIO=4&transport=polling&t=PXVI-r6 HTTP/1.1" 200 -
+2025-07-31 02:04:28,245 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:28] "POST /socket.io/?EIO=4&transport=polling&t=PXVI-rE&sid=RGQdG2nOcoqCphSbAAAA HTTP/1.1" 200 -
+2025-07-31 02:04:28,252 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:04:28] "GET /socket.io/?EIO=4&transport=polling&t=PXVI-rF&sid=RGQdG2nOcoqCphSbAAAA HTTP/1.1" 200 -
+2025-07-31 02:05:04,753 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+2025-07-31 02:05:04,763 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/trading_database.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: MJebsXz35d448tRxAAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+2025-07-31 02:05:05,604 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:05:06,789 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:05:06,791 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:05:06,791 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:05:06,791 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:05:06,794 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:05:06,795 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:05:06,795 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:05:06,795 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:05:07,221 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:05:07,353 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:05:07,391 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:05:07,417 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:05:07,449 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:07] "GET /socket.io/?EIO=4&transport=polling&t=PXVJ8MO HTTP/1.1" 200 -
+2025-07-31 02:05:07,500 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:07] "POST /socket.io/?EIO=4&transport=polling&t=PXVJ8Px&sid=THjf7Vd1gwa1HvbeAAAA HTTP/1.1" 200 -
+2025-07-31 02:05:07,515 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:07] "GET /socket.io/?EIO=4&transport=polling&t=PXVJ8Py&sid=THjf7Vd1gwa1HvbeAAAA HTTP/1.1" 200 -
+2025-07-31 02:05:12,247 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:05:12,258 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:05:12,272 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:05:16,066 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:05:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:06:12,236 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:06:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:06:12,271 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:06:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:06:12,276 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:06:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:06:16,766 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:06:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:07:12,240 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:07:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:07:12,245 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:07:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:07:12,254 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:07:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:07:15,184 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:07:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:08:12,240 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:08:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:08:12,247 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:08:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:08:12,272 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:08:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:08:15,755 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:08:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:09:12,291 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:09:12,332 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:09:12,338 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:09:12,356 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:09:12,368 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:09:12,377 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:09:12,386 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:09:12,394 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:09:15,633 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:09:18,787 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:09:18] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:10:12,245 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:10:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:10:12,246 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:10:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:10:12,258 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:10:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:10:15,208 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:10:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:11:12,244 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:11:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:11:12,247 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:11:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:11:12,255 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:11:12] "GET /api/health HTTP/1.1" 200 -
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: JYQhGzzF8mSE9-n2AAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"01789f2791f0dafa87bdf9fed242b651","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"535b1acab0245496f2461bde2eafb801","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"b82908afbeb3cacc4554b7f14c081e27","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"2f87c925feae9b737678a3cf130a4a96","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"a618b63351a80dc09a8a557f84e866f7","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+🔍 Scanning for real-time gap-ups...
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"8110a49c7609acc888c0e2acf4950b09","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"6eb2186835933ab2ce6975ce67b107f2","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"c76fead2a8ff5789352e295cd7dab6b4","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA2025-07-31 02:11:15,292 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:11:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:12:12,247 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:12:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:12:12,250 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:12:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:12:12,269 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:12:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:12:16,939 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:12:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:13:12,257 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:13:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:13:12,258 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:13:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:13:12,269 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:13:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:13:15,051 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:13:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:14:12,257 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:14:12,270 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:14:12,299 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:14:12,305 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:14:12,309 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:14:12,313 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:14:12,318 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:14:12,334 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:12] "GET /api/trades HTTP/1.1" 200 -
+
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+Error decoding json response: Expecting value: line 1 column 1 (char 0)
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...2025-07-31 02:14:15,224 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:14:18,321 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:14:18] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:15:12,249 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:15:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:15:12,252 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:15:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:15:12,268 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:15:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:15:15,649 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:15:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:16:12,262 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:16:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:16:12,265 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:16:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:16:12,271 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:16:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:16:15,571 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:16:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:17:12,253 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:17:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:17:12,259 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:17:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:17:12,267 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:17:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:17:16,858 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:17:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:18:12,259 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:18:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:18:12,263 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:18:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:18:12,270 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:18:12] "GET /api/health HTTP/1.1" 200 -
+
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"ee1e276b9c2cbdf2ca0fcc9600689859","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"402a64116535327de9ea03f868048497","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+🔍 Scanning for real-time gap-ups...
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"4e0807edd688791f3f37b1f197a64e22","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"52c9a56b95f85c66fa0ebea3c8cac04f","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"ec3823cb5b01ba5eaa170bbd74615132","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"fd0ff6560ae21b90923dfe176e574747","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"343244a961b6afe9e31f6f6d587a148a","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"d7670beb524e3da8fbb8b860667ad04a","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 212025-07-31 02:18:15,394 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:18:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:19:12,272 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:19:12,276 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:19:12,283 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:19:12,291 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:19:12,306 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:19:12,307 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:19:12,317 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:19:12,326 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:19:15,290 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:19:18,386 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:19:18] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:20:12,304 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:20:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:20:12,307 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:20:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:20:12,314 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:20:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:20:15,298 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:20:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:21:12,262 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:21:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:21:12,266 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:21:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:21:12,274 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:21:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:21:15,531 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:21:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:22:12,257 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:22:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:22:12,259 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:22:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:22:12,268 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:22:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:22:15,507 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:22:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:23:12,268 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:23:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:23:12,278 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:23:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:23:12,311 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:23:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:23:16,273 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:23:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:24:12,352 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:24:12,357 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:24:12,363 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:24:12,366 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:24:12,383 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:24:12,388 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:24:12,400 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:24:12,409 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:24:16,701 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:16] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:24:21,398 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:24:21] "GET /api/gap-ups HTTP/1.1" 200 -
+
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"53ac51abe077e289403d4a34e2223252","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"109ee7c97f547040fabad3be7fe8f985","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"b852a3e957b87bd489ac80c426fc144e","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"d3a015b8bb88eebe2220e672b6ea3768","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"e3217210f771d3c46594506a0b363df4","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"26959bf5d5d7b7123a5274f343da629e","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"669693dda731285bc8e131872fdb3bc8","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"7d37e9bfcef70eabf48bc906d02168d6","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...2025-07-31 02:25:12,322 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:25:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:25:12,326 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:25:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:25:12,335 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:25:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:25:15,220 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:25:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:26:12,321 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:26:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:26:12,325 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:26:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:26:12,334 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:26:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:26:15,476 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:26:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:27:12,323 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:27:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:27:12,327 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:27:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:27:12,347 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:27:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:27:15,413 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:27:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:28:12,327 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:28:12,329 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:28:12,341 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:28:15,607 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:15] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:28:48,164 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sseclient/__init__.py', reloading
+2025-07-31 02:28:48,166 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sseclient/__init__.py', reloading
+2025-07-31 02:28:48,167 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sseclient/version.py', reloading
+2025-07-31 02:28:48,170 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sseclient/version.py', reloading
+2025-07-31 02:28:48,190 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/__init__.py', reloading
+2025-07-31 02:28:48,191 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/__init__.py', reloading
+2025-07-31 02:28:48,260 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/__init__.py', reloading
+2025-07-31 02:28:48,346 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Africa/__init__.py', reloading
+2025-07-31 02:28:48,536 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/America/__init__.py', reloading
+2025-07-31 02:28:48,558 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/America/Argentina/__init__.py', reloading
+2025-07-31 02:28:48,566 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/America/Indiana/__init__.py', reloading
+2025-07-31 02:28:48,575 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/America/Kentucky/__init__.py', reloading
+2025-07-31 02:28:48,578 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/America/North_Dakota/__init__.py', reloading
+2025-07-31 02:28:48,593 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Antarctica/__init__.py', reloading
+2025-07-31 02:28:48,595 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Arctic/__init__.py', reloading
+2025-07-31 02:28:48,725 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Asia/__init__.py', reloading
+2025-07-31 02:28:48,742 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Atlantic/__init__.py', reloading
+2025-07-31 02:28:48,790 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Australia/__init__.py', reloading
+2025-07-31 02:28:48,794 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Brazil/__init__.py', reloading
+2025-07-31 02:28:48,802 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Canada/__init__.py', reloading
+2025-07-31 02:28:48,806 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Chile/__init__.py', reloading
+2025-07-31 02:28:48,862 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Etc/__init__.py', reloading
+2025-07-31 02:28:48,962 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Europe/__init__.py', reloading
+2025-07-31 02:28:48,975 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Indian/__init__.py', reloading
+2025-07-31 02:28:48,996 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/tzdata/zoneinfo/Mexico/__init__.py', reloading
+
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"96be531d9bbd76a0a132355cf88c3342","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"54d8ef1dcd166c9e1ff6606987e0f0dc","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"411f1fd700a80f93a7733144d9fec2e6","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"ec77fa53b7aac2757ec4ab9a00cc0847","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+2025-07-31 02:28:49,477 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:28:51,383 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:28:51,388 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:28:51,389 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:28:51,389 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:28:51,400 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:28:51,400 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:28:51,401 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:28:51,401 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:28:52,056 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:28:52,325 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:28:52,471 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:28:52,535 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:28:52,569 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:52] "GET /socket.io/?EIO=4&transport=polling&t=PXVOZoA HTTP/1.1" 200 -
+2025-07-31 02:28:52,588 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:52] "POST /socket.io/?EIO=4&transport=polling&t=PXVOaLS&sid=VQ6ML1nJ-8rLPWeUAAAA HTTP/1.1" 200 -
+2025-07-31 02:28:52,596 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:52] "GET /socket.io/?EIO=4&transport=polling&t=PXVOaLU&sid=VQ6ML1nJ-8rLPWeUAAAA HTTP/1.1" 200 -
+2025-07-31 02:28:52,604 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:28:52] "GET /socket.io/?EIO=4&transport=polling&t=PXVOaLv&sid=VQ6ML1nJ-8rLPWeUAAAA HTTP/1.1" 200 -
+2025-07-31 02:29:12,341 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:29:12,344 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:29:12,363 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:29:12,368 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:29:12,382 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:29:12,384 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:29:12,391 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:29:12,420 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:29:14,383 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/__init__.py', reloading
+2025-07-31 02:29:14,386 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/__init__.py', reloading
+2025-07-31 02:29:14,387 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/__init__.py', reloading
+2025-07-31 02:29:14,389 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/__init__.py', reloading
+2025-07-31 02:29:14,390 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/client.py', reloading
+2025-07-31 02:29:14,391 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/client.py', reloading
+2025-07-31 02:29:14,393 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/enums.py', reloading
+2025-07-31 02:29:14,397 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/enums.py', reloading
+2025-07-31 02:29:14,400 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/__init__.py', reloading
+2025-07-31 02:29:14,404 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/__init__.py', reloading
+2025-07-31 02:29:14,407 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/accounts.py', reloading
+2025-07-31 02:29:14,407 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/accounts.py', reloading
+2025-07-31 02:29:14,408 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/cip.py', reloading
+2025-07-31 02:29:14,412 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/cip.py', reloading
+2025-07-31 02:29:14,413 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/documents.py', reloading
+2025-07-31 02:29:14,415 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/documents.py', reloading
+2025-07-31 02:29:14,417 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/funding.py', reloading
+2025-07-31 02:29:14,419 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/funding.py', reloading
+2025-07-31 02:29:14,420 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/journals.py', reloading
+2025-07-31 02:29:14,423 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/journals.py', reloading
+2025-07-31 02:29:14,424 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/rebalancing.py', reloading
+2025-07-31 02:29:14,427 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/rebalancing.py', reloading
+2025-07-31 02:29:14,428 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/trading.py', reloading
+2025-07-31 02:29:14,429 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/models/trading.py', reloading
+2025-07-31 02:29:14,430 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/requests.py', reloading
+2025-07-31 02:29:14,430 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/broker/requests.py', reloading
+2025-07-31 02:29:14,431 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/__init__.py', reloading
+2025-07-31 02:29:14,435 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/__init__.py', reloading
+2025-07-31 02:29:14,439 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/constants.py', reloading
+2025-07-31 02:29:14,440 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/constants.py', reloading
+2025-07-31 02:29:14,442 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/enums.py', reloading
+2025-07-31 02:29:14,446 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/enums.py', reloading
+2025-07-31 02:29:14,448 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/exceptions.py', reloading
+2025-07-31 02:29:14,449 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/exceptions.py', reloading
+2025-07-31 02:29:14,450 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/models.py', reloading
+2025-07-31 02:29:14,451 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/models.py', reloading
+2025-07-31 02:29:14,452 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/requests.py', reloading
+2025-07-31 02:29:14,456 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/requests.py', reloading
+2025-07-31 02:29:14,456 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/rest.py', reloading
+2025-07-31 02:29:14,461 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/rest.py', reloading
+2025-07-31 02:29:14,462 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/types.py', reloading
+2025-07-31 02:29:14,462 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/types.py', reloading
+2025-07-31 02:29:14,462 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/utils.py', reloading
+2025-07-31 02:29:14,463 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/common/utils.py', reloading
+2025-07-31 02:29:14,463 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/__init__.py', reloading
+2025-07-31 02:29:14,464 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/__init__.py', reloading
+2025-07-31 02:29:14,464 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/enums.py', reloading
+2025-07-31 02:29:14,465 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/enums.py', reloading
+2025-07-31 02:29:14,465 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/__init__.py', reloading
+2025-07-31 02:29:14,466 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/__init__.py', reloading
+2025-07-31 02:29:14,466 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/corporate_actions.py', reloading
+2025-07-31 02:29:14,468 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/corporate_actions.py', reloading
+2025-07-31 02:29:14,468 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/crypto.py', reloading
+2025-07-31 02:29:14,482 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/crypto.py', reloading
+2025-07-31 02:29:14,484 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/news.py', reloading
+2025-07-31 02:29:14,487 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/news.py', reloading
+2025-07-31 02:29:14,487 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/option.py', reloading
+2025-07-31 02:29:14,488 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/option.py', reloading
+2025-07-31 02:29:14,488 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/screener.py', reloading
+2025-07-31 02:29:14,490 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/screener.py', reloading
+2025-07-31 02:29:14,493 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/stock.py', reloading
+2025-07-31 02:29:14,494 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/stock.py', reloading
+2025-07-31 02:29:14,494 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/utils.py', reloading
+2025-07-31 02:29:14,494 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/historical/utils.py', reloading
+2025-07-31 02:29:14,495 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/__init__.py', reloading
+2025-07-31 02:29:14,495 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/__init__.py', reloading
+2025-07-31 02:29:14,496 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/crypto.py', reloading
+2025-07-31 02:29:14,496 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/crypto.py', reloading
+2025-07-31 02:29:14,496 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/news.py', reloading
+2025-07-31 02:29:14,497 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/news.py', reloading
+2025-07-31 02:29:14,499 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/option.py', reloading
+2025-07-31 02:29:14,500 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/option.py', reloading
+2025-07-31 02:29:14,501 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/stock.py', reloading
+2025-07-31 02:29:14,504 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/stock.py', reloading
+2025-07-31 02:29:14,505 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/websocket.py', reloading
+2025-07-31 02:29:14,505 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/live/websocket.py', reloading
+2025-07-31 02:29:14,506 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/mappings.py', reloading
+2025-07-31 02:29:14,511 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/mappings.py', reloading
+2025-07-31 02:29:14,512 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/__init__.py', reloading
+2025-07-31 02:29:14,513 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/__init__.py', reloading
+2025-07-31 02:29:14,515 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/bars.py', reloading
+2025-07-31 02:29:14,517 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/bars.py', reloading
+2025-07-31 02:29:14,518 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/base.py', reloading
+2025-07-31 02:29:14,520 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/base.py', reloading
+2025-07-31 02:29:14,521 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/corporate_actions.py', reloading
+2025-07-31 02:29:14,522 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/corporate_actions.py', reloading
+2025-07-31 02:29:14,524 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/news.py', reloading
+2025-07-31 02:29:14,525 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/news.py', reloading
+2025-07-31 02:29:14,527 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/orderbooks.py', reloading
+2025-07-31 02:29:14,528 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/orderbooks.py', reloading
+2025-07-31 02:29:14,529 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/quotes.py', reloading
+2025-07-31 02:29:14,529 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/quotes.py', reloading
+2025-07-31 02:29:14,530 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/screener.py', reloading
+2025-07-31 02:29:14,531 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/screener.py', reloading
+2025-07-31 02:29:14,531 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/snapshots.py', reloading
+2025-07-31 02:29:14,532 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/snapshots.py', reloading
+2025-07-31 02:29:14,533 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/trades.py', reloading
+2025-07-31 02:29:14,535 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/models/trades.py', reloading
+2025-07-31 02:29:14,535 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/requests.py', reloading
+2025-07-31 02:29:14,537 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/requests.py', reloading
+2025-07-31 02:29:14,537 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/timeframe.py', reloading
+2025-07-31 02:29:14,538 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/data/timeframe.py', reloading
+2025-07-31 02:29:14,540 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/__init__.py', reloading
+2025-07-31 02:29:14,540 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/__init__.py', reloading
+2025-07-31 02:29:14,541 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/client.py', reloading
+2025-07-31 02:29:14,542 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/client.py', reloading
+2025-07-31 02:29:14,544 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/enums.py', reloading
+2025-07-31 02:29:14,545 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/enums.py', reloading
+2025-07-31 02:29:14,546 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/models.py', reloading
+2025-07-31 02:29:14,547 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/models.py', reloading
+2025-07-31 02:29:14,548 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/requests.py', reloading
+2025-07-31 02:29:14,549 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/requests.py', reloading
+2025-07-31 02:29:14,549 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/stream.py', reloading
+2025-07-31 02:29:14,552 | INFO | werkzeug |  * Detected change in '/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/alpaca/trading/stream.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+Client connected: F6dzwnURJz6XddKvAAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"83f7d1b2769848c56ea1828e58f96ef3","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+2025-07-31 02:29:15,092 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:29:16,852 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:29:16,854 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:29:16,855 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:29:16,855 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:29:16,867 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:29:16,867 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:29:16,867 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:29:16,868 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:29:17,349 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:29:17,460 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:29:17,501 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:29:17,517 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:29:17,541 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:17] "GET /socket.io/?EIO=4&transport=polling&t=PXVOg8Q HTTP/1.1" 200 -
+2025-07-31 02:29:17,553 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:17] "POST /socket.io/?EIO=4&transport=polling&t=PXVOgRd&sid=DVeIb2ROKqR68H9mAAAA HTTP/1.1" 200 -
+2025-07-31 02:29:17,567 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:17] "GET /socket.io/?EIO=4&transport=polling&t=PXVOgRe&sid=DVeIb2ROKqR68H9mAAAA HTTP/1.1" 200 -
+2025-07-31 02:29:22,413 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:29:22] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:30:12,335 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:30:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:30:12,341 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:30:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:30:12,355 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:30:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:30:12,624 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:30:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:31:12,335 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:31:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:31:12,339 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:31:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:31:12,365 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:31:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:31:12,682 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:31:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:32:12,338 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:32:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:32:12,343 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:32:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:32:12,359 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:32:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:32:13,279 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:32:13] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:33:12,355 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:33:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:33:12,357 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:33:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:33:12,372 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:33:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:33:12,654 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:33:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:34:12,340 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:34:12,358 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:34:12,377 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:34:12,384 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:34:12,394 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:34:12,399 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:34:12,406 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:34:12,412 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:34:12,809 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:34:13,182 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:34:13] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:35:12,331 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:35:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:35:12,338 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:35:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:35:12,347 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:35:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:35:12,596 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:35:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:36:12,347 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:36:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:36:12,351 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:36:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:36:12,360 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:36:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:36:12,579 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:36:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:37:12,381 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:37:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:37:12,385 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:37:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:37:12,425 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:37:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:37:12,794 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:37:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:38:12,377 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:38:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:38:12,378 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:38:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:38:12,384 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:38:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:38:12,612 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:38:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:39:12,347 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:39:12,351 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:39:12,355 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:39:12,362 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:39:12,380 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "OPTIONS /api/trades HTTP/1.1" 200 -
+2025-07-31 02:39:12,384 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:39:12,395 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:39:12,399 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "GET /api/trades HTTP/1.1" 200 -
+2025-07-31 02:39:12,624 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:39:12,845 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:39:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:40:12,349 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:40:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:40:12,355 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:40:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:40:12,368 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:40:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:40:12,734 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:40:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:41:12,383 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:41:12,386 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:41:12,409 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:41:12,869 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:12] "GET /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:41:26,889 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/alpaca_client.py', reloading
+2025-07-31 02:41:26,897 | INFO | werkzeug |  * Detected change in '/Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/alpaca_client.py', reloading
+✅ Database initialized: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/trading_advisor.db
+✅ Migrated 3 users from JSON to database
+🚀 Starting Trading Advisor Web API...
+📊 API available at: http://localhost:5000
+🔧 Health check: http://localhost:5000/api/health
+🌐 Frontend should be served from: http://localhost:3000
+✅ Real data enabled - Gap-up detection available
+✅ Polygon API key found in environment
+✅ Real-time price update thread started
+🔍 Scanning for real-time gap-ups...
+✅ Real-time gap-up monitoring started
+✅ Real-time gap-up monitoring started (25%+ threshold)
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+Client connected: Tu6PX2egTv3nb7l3AAAB
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+✅ Processing 21 gainers from Polygon API
+❌ Error processing STRC: {"status":"NOT_FOUND","request_id":"574d7ecc80b18911e111c929cd194e63","message":"Ticker not found."}
+Using last trading day: 2025-07-30 for REPL
+Using last trading day: 2025-07-30 for VRME
+Using last trading day: 2025-07-30 for SGD
+Using last trading day: 2025-07-30 for BGLC
+Using last trading day: 2025-07-30 for RAYA
+Using last trading day: 2025-07-30 for SUPX
+Using last trading day: 2025-07-30 for XBP
+Using last trading day: 2025-07-30 for ALHC
+Using last trading day: 2025-07-30 for PIII
+Using last trading day: 2025-07-30 for JEM
+📊 Total tickers processed: 21
+📊 Common stock tickers: 10
+📊 Tickers with price < $1: 2
+✅ Final gap-up stocks found: 0
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+Subscribed to stocks: ['AAPL', 'TSLA', 'NVDA', 'AMD']
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Scanning for real-time gap-ups...
+❌ No tickers returned from Polygon API
+🔍 Attempting to fetch real gap-up data...
+✅ Polygon API client initialized successfully
+Fetching gainers from Polygon API...
+❌ No tickers returned from Polygon API
+⚠️ No real gap-up data available, falling back to mock data
+2025-07-31 02:41:27,583 | INFO | werkzeug |  * Restarting with watchdog (fsevents)
+2025-07-31 02:41:29,533 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:41:29,538 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-31 02:41:29,539 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:41:29,539 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:41:29,546 | INFO | startup | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:41:29,547 | INFO | startup | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/../logs
+2025-07-31 02:41:29,547 | INFO | startup | 🔧 Log level: INFO
+2025-07-31 02:41:29,547 | INFO | startup | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:41:30,188 | INFO | historical_cache | ✅ Historical data cache tables initialized
+2025-07-31 02:41:30,320 | WARNING | werkzeug | Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+2025-07-31 02:41:30,407 | WARNING | werkzeug |  * Debugger is active!
+2025-07-31 02:41:30,454 | INFO | werkzeug |  * Debugger PIN: 145-947-109
+2025-07-31 02:41:30,482 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:30] "GET /socket.io/?EIO=4&transport=polling&t=PXVRT5v HTTP/1.1" 200 -
+2025-07-31 02:41:30,497 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:30] "POST /socket.io/?EIO=4&transport=polling&t=PXVRTNr&sid=POHLqg-v7iIl0oH9AAAA HTTP/1.1" 200 -
+2025-07-31 02:41:30,501 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:30] "GET /socket.io/?EIO=4&transport=polling&t=PXVRTNs&sid=POHLqg-v7iIl0oH9AAAA HTTP/1.1" 200 -
+2025-07-31 02:41:30,520 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:30] "GET /socket.io/?EIO=4&transport=polling&t=PXVRTOE&sid=POHLqg-v7iIl0oH9AAAA HTTP/1.1" 200 -
+2025-07-31 02:41:30,528 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:41:30] "POST /socket.io/?EIO=4&transport=polling&t=PXVRTOF&sid=POHLqg-v7iIl0oH9AAAA HTTP/1.1" 200 -
+2025-07-31 02:42:12,419 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:42:12] "OPTIONS /api/health HTTP/1.1" 200 -
+2025-07-31 02:42:12,424 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:42:12] "OPTIONS /api/gap-ups HTTP/1.1" 200 -
+2025-07-31 02:42:12,438 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:42:12] "GET /api/health HTTP/1.1" 200 -
+2025-07-31 02:42:12,721 | INFO | werkzeug | 127.0.0.1 - - [31/Jul/2025 02:42:12] "GET /api/gap-ups HTTP/1.1" 200 -

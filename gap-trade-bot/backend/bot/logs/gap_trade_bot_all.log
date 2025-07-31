@@ -48,3 +48,54 @@
 2025-07-31 00:17:15,307 | data_manager | INFO | data_manager.py:32 | __init__() | ✅ Data manager initialized
 2025-07-31 00:17:15,307 | data_manager | INFO | data_manager.py:61 | get_gap_up_stocks() | 🔍 Scanning for real-time gap-ups using gap_up_detector...
 2025-07-31 00:17:18,789 | data_manager | WARNING | data_manager.py:67 | get_gap_up_stocks() | ⚠️ No gap-up stocks found
+2025-07-31 02:04:14,441 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:04:14,442 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/logs
+2025-07-31 02:04:14,443 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:04:14,443 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:04:14,487 | trading_database | INFO | trading_database.py:158 | init_trading_tables() | ✅ Trading database tables initialized
+2025-07-31 02:04:14,509 | position_manager | INFO | position_manager.py:39 | load_positions() | 📊 Loaded 0 open positions from database
+2025-07-31 02:04:14,509 | position_manager | INFO | position_manager.py:25 | __init__() | ✅ Position manager initialized with database backend
+2025-07-31 02:04:14,547 | trading_database | INFO | trading_database.py:175 | open_position() | 📈 Position opened: AAPL 100 shares buy @ $150.5
+2025-07-31 02:04:14,548 | position_manager | INFO | position_manager.py:66 | open_position() | 📈 Position opened: AAPL 100 shares buy @ $150.5
+2025-07-31 02:04:14,566 | broker_factory | ERROR | broker_factory.py:42 | get_broker_client() | ❌ Error importing broker client: No module named 'alpaca'
+2025-07-31 02:04:14,568 | order_manager | INFO | order_manager.py:43 | __init__() | ⚠️ Using mock mode for order execution (no broker credentials)
+2025-07-31 02:04:14,576 | trading_database | INFO | trading_database.py:332 | store_order() | 📋 Order stored: TSLA buy
+2025-07-31 02:04:14,577 | order_manager | INFO | order_manager.py:115 | place_buy_order() | ✅ Mock BUY order executed: TSLA 50 shares @ $250.00
+2025-07-31 02:04:14,581 | trading_database | INFO | trading_database.py:439 | record_trade() | 💰 Trade recorded: AAPL P&L: $450.00
+2025-07-31 02:04:14,583 | trading_database | ERROR | trading_database.py:510 | update_performance_metrics() | ❌ Error updating performance metrics: table performance_metrics has no column named updated_at
+2025-07-31 02:04:33,988 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:04:33,990 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/logs
+2025-07-31 02:04:33,990 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:04:33,990 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:04:33,995 | trading_database | INFO | trading_database.py:159 | init_trading_tables() | ✅ Trading database tables initialized
+2025-07-31 02:04:34,000 | position_manager | INFO | position_manager.py:39 | load_positions() | 📊 Loaded 1 open positions from database
+2025-07-31 02:04:34,001 | position_manager | INFO | position_manager.py:25 | __init__() | ✅ Position manager initialized with database backend
+2025-07-31 02:04:34,014 | trading_database | INFO | trading_database.py:176 | open_position() | 📈 Position opened: AAPL 100 shares buy @ $150.5
+2025-07-31 02:04:34,015 | position_manager | INFO | position_manager.py:66 | open_position() | 📈 Position opened: AAPL 100 shares buy @ $150.5
+2025-07-31 02:04:34,022 | broker_factory | ERROR | broker_factory.py:42 | get_broker_client() | ❌ Error importing broker client: No module named 'alpaca'
+2025-07-31 02:04:34,024 | order_manager | INFO | order_manager.py:43 | __init__() | ⚠️ Using mock mode for order execution (no broker credentials)
+2025-07-31 02:04:34,029 | trading_database | INFO | trading_database.py:333 | store_order() | 📋 Order stored: TSLA buy
+2025-07-31 02:04:34,030 | order_manager | INFO | order_manager.py:115 | place_buy_order() | ✅ Mock BUY order executed: TSLA 50 shares @ $250.00
+2025-07-31 02:04:34,033 | trading_database | INFO | trading_database.py:440 | record_trade() | 💰 Trade recorded: AAPL P&L: $450.00
+2025-07-31 02:04:34,034 | trading_database | ERROR | trading_database.py:511 | update_performance_metrics() | ❌ Error updating performance metrics: table performance_metrics has no column named updated_at
+2025-07-31 02:05:14,746 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:05:14,750 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/logs
+2025-07-31 02:05:14,752 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:05:14,762 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:05:14,820 | trading_database | INFO | trading_database.py:162 | init_trading_tables() | ✅ Trading database tables initialized
+2025-07-31 02:05:14,830 | position_manager | INFO | position_manager.py:39 | load_positions() | 📊 Loaded 1 open positions from database
+2025-07-31 02:05:14,831 | position_manager | INFO | position_manager.py:25 | __init__() | ✅ Position manager initialized with database backend
+2025-07-31 02:05:14,858 | trading_database | INFO | trading_database.py:179 | open_position() | 📈 Position opened: AAPL 100 shares buy @ $150.5
+2025-07-31 02:05:14,859 | position_manager | INFO | position_manager.py:66 | open_position() | 📈 Position opened: AAPL 100 shares buy @ $150.5
+2025-07-31 02:05:14,867 | broker_factory | ERROR | broker_factory.py:42 | get_broker_client() | ❌ Error importing broker client: No module named 'alpaca'
+2025-07-31 02:05:14,869 | order_manager | INFO | order_manager.py:43 | __init__() | ⚠️ Using mock mode for order execution (no broker credentials)
+2025-07-31 02:05:14,879 | trading_database | INFO | trading_database.py:336 | store_order() | 📋 Order stored: TSLA buy
+2025-07-31 02:05:14,880 | order_manager | INFO | order_manager.py:115 | place_buy_order() | ✅ Mock BUY order executed: TSLA 50 shares @ $250.00
+2025-07-31 02:05:14,886 | trading_database | INFO | trading_database.py:443 | record_trade() | 💰 Trade recorded: AAPL P&L: $450.00
+2025-07-31 02:05:14,894 | trading_database | INFO | trading_database.py:510 | update_performance_metrics() | 📊 Performance metrics updated for 2025-07-31
+2025-07-31 02:05:14,899 | trading_database | INFO | trading_database.py:579 | cleanup_old_data() | 🧹 Cleaned up data older than 1 days
+2025-07-31 02:41:59,008 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-31 02:41:59,009 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/bot/logs
+2025-07-31 02:41:59,010 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-31 02:41:59,010 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-31 02:41:59,012 | alpaca_client | WARNING | alpaca_client.py:50 | _init_clients() | ⚠️ Alpaca API credentials not configured

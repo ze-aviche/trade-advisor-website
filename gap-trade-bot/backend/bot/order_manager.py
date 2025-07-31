@@ -1,7 +1,7 @@
 """
 Order Manager for Trading Bot
 Handles order execution, order tracking, and broker integration
-Uses broker client classes for all order operations
+Uses broker client classes for all order operations and trading database for storage
 """
 
 import sys
@@ -17,11 +17,12 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from logging_config import get_logger
 from config import config
 from broker_factory import broker_factory
+from trading_database import trading_db
 
 logger = get_logger(__name__)
 
 class OrderManager:
-    """Manages order execution and tracking using broker clients"""
+    """Manages order execution and tracking using broker clients and trading database"""
     
     def __init__(self):
         self.pending_orders = {}  # Orders waiting to be executed
@@ -56,6 +57,22 @@ class OrderManager:
                     return {'error': f'Unsupported order type: {order_type}'}
                 
                 if order:
+                    # Store order in database
+                    order_data = {
+                        'order_id': order.get('order_id', f"BUY_{ticker}_{int(time.time())}"),
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'side': 'buy',
+                        'order_type': order_type,
+                        'status': 'submitted',
+                        'price': price if order_type == 'limit' else None,
+                        'limit_price': price if order_type == 'limit' else None,
+                        'broker': self.broker_info['name'],
+                        'strategy': 'break_out',
+                        'notes': f"Buy order placed via {self.broker_info['name']}"
+                    }
+                    
+                    trading_db.store_order(order_data)
                     self.executed_orders.append(order)
                     logger.info(f"✅ {self.broker_info['name']} BUY order executed: {ticker} {quantity} shares")
                     return order
@@ -79,6 +96,21 @@ class OrderManager:
                     'commission': self._calculate_commission(quantity, price)
                 }
                 
+                # Store mock order in database
+                order_data = {
+                    'order_id': order_id,
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'side': 'buy',
+                    'order_type': order_type,
+                    'status': 'executed',
+                    'price': price,
+                    'broker': 'mock',
+                    'strategy': 'break_out',
+                    'notes': 'Mock order execution'
+                }
+                
+                trading_db.store_order(order_data)
                 self.executed_orders.append(order)
                 logger.info(f"✅ Mock BUY order executed: {ticker} {quantity} shares @ ${price:.2f}")
                 
@@ -103,6 +135,22 @@ class OrderManager:
                     return {'error': f'Unsupported order type: {order_type}'}
                 
                 if order:
+                    # Store order in database
+                    order_data = {
+                        'order_id': order.get('order_id', f"SELL_{ticker}_{int(time.time())}"),
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'side': 'sell',
+                        'order_type': order_type,
+                        'status': 'submitted',
+                        'price': price if order_type == 'limit' else None,
+                        'limit_price': price if order_type == 'limit' else None,
+                        'broker': self.broker_info['name'],
+                        'strategy': 'break_out',
+                        'notes': f"Sell order placed via {self.broker_info['name']}"
+                    }
+                    
+                    trading_db.store_order(order_data)
                     self.executed_orders.append(order)
                     logger.info(f"✅ {self.broker_info['name']} SELL order executed: {ticker} {quantity} shares")
                     return order
@@ -126,6 +174,21 @@ class OrderManager:
                     'commission': self._calculate_commission(quantity, price)
                 }
                 
+                # Store mock order in database
+                order_data = {
+                    'order_id': order_id,
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'side': 'sell',
+                    'order_type': order_type,
+                    'status': 'executed',
+                    'price': price,
+                    'broker': 'mock',
+                    'strategy': 'break_out',
+                    'notes': 'Mock order execution'
+                }
+                
+                trading_db.store_order(order_data)
                 self.executed_orders.append(order)
                 logger.info(f"✅ Mock SELL order executed: {ticker} {quantity} shares @ ${price:.2f}")
                 
@@ -143,6 +206,21 @@ class OrderManager:
                 order = self.broker_client.place_stop_order(ticker, quantity, stop_price)
                 
                 if order:
+                    # Store order in database
+                    order_data = {
+                        'order_id': order.get('order_id', f"STOP_{ticker}_{int(time.time())}"),
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'side': 'sell',
+                        'order_type': 'stop',
+                        'status': 'submitted',
+                        'stop_price': stop_price,
+                        'broker': self.broker_info['name'],
+                        'strategy': 'break_out',
+                        'notes': f"Stop order placed via {self.broker_info['name']}"
+                    }
+                    
+                    trading_db.store_order(order_data)
                     self.pending_orders[order.get('order_id', f"STOP_{ticker}")] = {
                         'ticker': ticker,
                         'type': 'stop',
@@ -170,6 +248,21 @@ class OrderManager:
                     'created_at': datetime.now().isoformat()
                 }
                 
+                # Store mock order in database
+                order_data = {
+                    'order_id': order_id,
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'side': 'sell',
+                    'order_type': 'stop',
+                    'status': 'pending',
+                    'stop_price': stop_price,
+                    'broker': 'mock',
+                    'strategy': 'break_out',
+                    'notes': 'Mock stop order'
+                }
+                
+                trading_db.store_order(order_data)
                 self.pending_orders[order_id] = {
                     'ticker': ticker,
                     'type': 'stop',
@@ -194,6 +287,21 @@ class OrderManager:
                 order = self.broker_client.place_limit_order(ticker, quantity, action, limit_price)
                 
                 if order:
+                    # Store order in database
+                    order_data = {
+                        'order_id': order.get('order_id', f"LIMIT_{ticker}_{int(time.time())}"),
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'side': action,
+                        'order_type': 'limit',
+                        'status': 'submitted',
+                        'limit_price': limit_price,
+                        'broker': self.broker_info['name'],
+                        'strategy': 'break_out',
+                        'notes': f"Limit order placed via {self.broker_info['name']}"
+                    }
+                    
+                    trading_db.store_order(order_data)
                     self.pending_orders[order.get('order_id', f"LIMIT_{ticker}")] = {
                         'ticker': ticker,
                         'type': 'limit',
@@ -222,6 +330,21 @@ class OrderManager:
                     'created_at': datetime.now().isoformat()
                 }
                 
+                # Store mock order in database
+                order_data = {
+                    'order_id': order_id,
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'side': action,
+                    'order_type': 'limit',
+                    'status': 'pending',
+                    'limit_price': limit_price,
+                    'broker': 'mock',
+                    'strategy': 'break_out',
+                    'notes': 'Mock limit order'
+                }
+                
+                trading_db.store_order(order_data)
                 self.pending_orders[order_id] = {
                     'ticker': ticker,
                     'type': 'limit',
@@ -246,6 +369,9 @@ class OrderManager:
                 success = self.broker_client.cancel_order(order_id)
                 
                 if success:
+                    # Update order status in database
+                    trading_db.update_order_status(order_id, 'cancelled')
+                    
                     if order_id in self.pending_orders:
                         del self.pending_orders[order_id]
                     logger.info(f"✅ {self.broker_info['name']} order cancelled: {order_id}")
@@ -258,6 +384,8 @@ class OrderManager:
                 # Mock order cancellation
                 if order_id in self.pending_orders:
                     del self.pending_orders[order_id]
+                    # Update order status in database
+                    trading_db.update_order_status(order_id, 'cancelled')
                     logger.info(f"✅ Mock order cancelled: {order_id}")
                     return True
                 else:
@@ -324,11 +452,8 @@ class OrderManager:
                 # Use broker client to get order status
                 return self.broker_client.get_order_status(order_id)
             else:
-                # Mock order status
-                for order in self.executed_orders:
-                    if order.get('order_id') == order_id:
-                        return order
-                return None
+                # Get from database
+                return trading_db.get_order(order_id)
             
         except Exception as e:
             logger.error(f"❌ Error getting order status: {e}")
@@ -339,7 +464,8 @@ class OrderManager:
         try:
             if self.use_real_trading and self.broker_client:
                 # Use broker client to get pending orders
-                return self.broker_client.get_pending_orders()
+                orders = self.broker_client.get_pending_orders()
+                return {order['order_id']: order for order in orders}
             else:
                 # Return mock pending orders
                 return self.pending_orders
@@ -349,30 +475,19 @@ class OrderManager:
             return {}
     
     def get_executed_orders(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get executed orders"""
-        return self.executed_orders[-limit:] if self.executed_orders else []
+        """Get executed orders from database"""
+        try:
+            # Get from database
+            return trading_db.get_trade_history(limit=limit)
+        except Exception as e:
+            logger.error(f"❌ Error getting executed orders: {e}")
+            return []
     
     def get_order_summary(self) -> Dict[str, Any]:
         """Get order execution summary"""
         try:
-            total_orders = len(self.executed_orders)
-            successful_orders = len([o for o in self.executed_orders if o.get('status') == 'executed'])
-            failed_orders = len(self.failed_orders)
-            pending_orders = len(self.pending_orders)
-            
-            total_commission = sum([o.get('commission', 0) for o in self.executed_orders])
-            
-            return {
-                'total_orders': total_orders,
-                'successful_orders': successful_orders,
-                'failed_orders': failed_orders,
-                'pending_orders': pending_orders,
-                'success_rate': (successful_orders / total_orders * 100) if total_orders > 0 else 0,
-                'total_commission': total_commission,
-                'broker': self.broker_info['name'],
-                'mode': 'real' if self.use_real_trading else 'mock'
-            }
-            
+            # Get from database
+            return trading_db.get_performance_summary()
         except Exception as e:
             logger.error(f"❌ Error getting order summary: {e}")
             return {}

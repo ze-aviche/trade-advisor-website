@@ -1,359 +1,277 @@
 """
 Position Manager for Trading Bot
-Tracks and manages trading positions, P&L, and risk
+Manages open and closed trading positions using dedicated trading database
 """
 
-import sqlite3
-import json
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
 import sys
 import os
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
+from trading_database import trading_db
 
 logger = get_logger(__name__)
 
 class PositionManager:
-    """Manages trading positions and P&L tracking"""
+    """Manages trading positions using dedicated database"""
     
     def __init__(self):
-        self.db_path = config.DATABASE_PATH
-        self.active_positions = {}  # Current open positions
-        self.closed_positions = []  # Recently closed positions
-        self.daily_pnl = 0.0
-        self.total_pnl = 0.0
-        self.max_positions = config.MAX_POSITIONS
-        
-        # Initialize database
-        self._init_database()
+        self.positions = {}  # In-memory cache for quick access
+        self.load_positions()
+        logger.info("✅ Position manager initialized with database backend")
     
-    def _init_database(self):
-        """Initialize position tracking database"""
+    def load_positions(self):
+        """Load all open positions from database into memory"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            positions = trading_db.get_all_positions()
+            self.positions = {}
             
-            # Create positions table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS trading_positions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ticker TEXT NOT NULL,
-                    strategy TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    entry_price REAL NOT NULL,
-                    exit_price REAL,
-                    target_price REAL,
-                    stop_loss_price REAL,
-                    entry_time TEXT NOT NULL,
-                    exit_time TEXT,
-                    pnl REAL,
-                    pnl_percent REAL,
-                    exit_reason TEXT,
-                    status TEXT DEFAULT 'open',
-                    holding_time TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+            for position in positions:
+                ticker = position['ticker']
+                side = position['side']
+                key = f"{ticker}_{side}"
+                self.positions[key] = position
             
-            # Create daily P&L table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS daily_pnl (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT NOT NULL,
-                    total_pnl REAL DEFAULT 0,
-                    total_trades INTEGER DEFAULT 0,
-                    winning_trades INTEGER DEFAULT 0,
-                    losing_trades INTEGER DEFAULT 0,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(date)
-                )
-            ''')
-            
-            conn.commit()
-            conn.close()
-            logger.info("✅ Position database initialized")
+            logger.info(f"📊 Loaded {len(self.positions)} open positions from database")
             
         except Exception as e:
-            logger.error(f"❌ Error initializing position database: {e}")
+            logger.error(f"❌ Error loading positions: {e}")
     
-    def open_position(self, order: Dict[str, Any]) -> bool:
-        """Open a new trading position"""
+    def open_position(self, ticker: str, quantity: int, side: str, entry_price: float, 
+                     broker: str = 'alpaca', order_id: str = None) -> bool:
+        """Open a new position"""
         try:
-            ticker = order.get('ticker')
-            
-            # Check if we already have a position in this ticker
-            if ticker in self.active_positions:
-                logger.warning(f"⚠️ Already have position in {ticker}")
-                return False
-            
-            # Check maximum positions limit
-            if len(self.active_positions) >= self.max_positions:
-                logger.warning(f"⚠️ Maximum positions ({self.max_positions}) reached")
-                return False
-            
-            # Store position
-            position = {
-                'ticker': ticker,
-                'strategy': order.get('strategy'),
-                'action': order.get('action'),
-                'quantity': order.get('quantity'),
-                'entry_price': order.get('entry_price'),
-                'target_price': order.get('target_price'),
-                'stop_loss_price': order.get('stop_loss_price'),
-                'entry_time': order.get('entry_time'),
-                'position_value': order.get('position_value'),
-                'day_high_at_entry': order.get('day_high_at_entry'),
-                'risk_reward_ratio': order.get('risk_reward_ratio')
-            }
-            
-            self.active_positions[ticker] = position
-            
             # Store in database
-            self._store_position_db(position)
+            success = trading_db.open_position(ticker, quantity, side, entry_price, broker, order_id)
             
-            logger.info(f"📈 Opened position: {ticker} @ ${position['entry_price']:.2f}")
-            return True
-            
+            if success:
+                # Update in-memory cache
+                key = f"{ticker}_{side}"
+                self.positions[key] = {
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'side': side,
+                    'entry_price': entry_price,
+                    'entry_time': datetime.now().isoformat(),
+                    'status': 'open',
+                    'broker': broker,
+                    'order_id': order_id,
+                    'pnl': 0.0
+                }
+                
+                logger.info(f"📈 Position opened: {ticker} {quantity} shares {side} @ ${entry_price}")
+                return True
+            else:
+                logger.error(f"❌ Failed to open position: {ticker}")
+                return False
+                
         except Exception as e:
             logger.error(f"❌ Error opening position: {e}")
             return False
     
-    def close_position(self, ticker: str, exit_order: Dict[str, Any]) -> bool:
+    def close_position(self, ticker: str, side: str, exit_price: float, 
+                      exit_time: str = None) -> bool:
         """Close an existing position"""
         try:
-            if ticker not in self.active_positions:
-                logger.warning(f"⚠️ No active position found for {ticker}")
+            # Close in database
+            success = trading_db.close_position(ticker, side, exit_price, exit_time)
+            
+            if success:
+                # Remove from in-memory cache
+                key = f"{ticker}_{side}"
+                if key in self.positions:
+                    position = self.positions[key]
+                    entry_price = position['entry_price']
+                    quantity = position['quantity']
+                    
+                    # Calculate P&L
+                    if side == 'buy':
+                        pnl = (exit_price - entry_price) * quantity
+                    else:
+                        pnl = (entry_price - exit_price) * quantity
+                    
+                    # Record trade
+                    trade_data = {
+                        'trade_id': f"TRADE_{ticker}_{int(datetime.now().timestamp())}",
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'side': side,
+                        'entry_price': entry_price,
+                        'exit_price': exit_price,
+                        'entry_time': position['entry_time'],
+                        'exit_time': exit_time or datetime.now().isoformat(),
+                        'pnl': pnl,
+                        'commission': 0.0,  # Will be updated from broker
+                        'strategy': 'break_out',
+                        'broker': position.get('broker', 'alpaca'),
+                        'notes': f"Position closed at ${exit_price}"
+                    }
+                    
+                    trading_db.record_trade(trade_data)
+                    del self.positions[key]
+                    
+                    logger.info(f"📉 Position closed: {ticker} {side} @ ${exit_price} P&L: ${pnl:.2f}")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Position not found in memory: {ticker} {side}")
+                    return False
+            else:
+                logger.error(f"❌ Failed to close position: {ticker}")
                 return False
-            
-            position = self.active_positions[ticker]
-            
-            # Calculate final P&L
-            entry_price = position['entry_price']
-            exit_price = exit_order.get('exit_price')
-            quantity = position['quantity']
-            
-            pnl = (exit_price - entry_price) * quantity
-            pnl_percent = ((exit_price - entry_price) / entry_price) * 100
-            
-            # Update position with exit details
-            position.update({
-                'exit_price': exit_price,
-                'exit_time': exit_order.get('exit_time'),
-                'pnl': pnl,
-                'pnl_percent': pnl_percent,
-                'exit_reason': exit_order.get('exit_reason'),
-                'holding_time': exit_order.get('holding_time'),
-                'status': 'closed'
-            })
-            
-            # Move to closed positions
-            self.closed_positions.append(position)
-            del self.active_positions[ticker]
-            
-            # Update P&L tracking
-            self.daily_pnl += pnl
-            self.total_pnl += pnl
-            
-            # Update database
-            self._update_position_db(ticker, position)
-            self._update_daily_pnl(pnl)
-            
-            # Log result
-            pnl_color = "🟢" if pnl > 0 else "🔴"
-            logger.info(f"{pnl_color} Closed position: {ticker} | P&L: ${pnl:.2f} ({pnl_percent:.2f}%)")
-            
-            return True
-            
+                
         except Exception as e:
             logger.error(f"❌ Error closing position: {e}")
             return False
     
-    def get_position(self, ticker: str) -> Optional[Dict[str, Any]]:
+    def get_position(self, ticker: str, side: str = None) -> Optional[Dict[str, Any]]:
         """Get current position for a ticker"""
-        return self.active_positions.get(ticker)
-    
-    def get_all_positions(self) -> Dict[str, Dict[str, Any]]:
-        """Get all active positions"""
-        return self.active_positions.copy()
-    
-    def get_position_count(self) -> int:
-        """Get number of active positions"""
-        return len(self.active_positions)
-    
-    def can_open_position(self, ticker: str) -> bool:
-        """Check if we can open a new position"""
-        # Check if already have position in this ticker
-        if ticker in self.active_positions:
-            return False
-        
-        # Check maximum positions limit
-        if len(self.active_positions) >= self.max_positions:
-            return False
-        
-        return True
-    
-    def update_position_prices(self, ticker: str, current_price: float) -> Optional[Dict[str, Any]]:
-        """Update position with current price and check exit conditions"""
         try:
-            if ticker not in self.active_positions:
+            if side:
+                key = f"{ticker}_{side}"
+                return self.positions.get(key)
+            else:
+                # Return first position found for ticker
+                for key, position in self.positions.items():
+                    if position['ticker'] == ticker:
+                        return position
                 return None
-            
-            position = self.active_positions[ticker]
-            entry_price = position['entry_price']
-            target_price = position['target_price']
-            stop_loss_price = position['stop_loss_price']
-            
-            # Calculate current P&L
-            current_pnl = (current_price - entry_price) * position['quantity']
-            current_pnl_percent = ((current_price - entry_price) / entry_price) * 100
-            
-            # Update position with current metrics
-            position.update({
-                'current_price': current_price,
-                'current_pnl': current_pnl,
-                'current_pnl_percent': current_pnl_percent,
-                'last_updated': datetime.now().isoformat()
-            })
-            
-            # Check exit conditions
-            exit_signal = False
-            exit_reason = None
-            
-            if current_price >= target_price:
-                exit_signal = True
-                exit_reason = "profit_target"
-            elif current_price <= stop_loss_price:
-                exit_signal = True
-                exit_reason = "stop_loss"
-            
-            if exit_signal:
-                return {
-                    'ticker': ticker,
-                    'exit_signal': True,
-                    'exit_reason': exit_reason,
-                    'current_price': current_price,
-                    'current_pnl': current_pnl,
-                    'current_pnl_percent': current_pnl_percent
-                }
-            
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting position: {e}")
             return None
+    
+    def get_all_positions(self) -> List[Dict[str, Any]]:
+        """Get all open positions"""
+        try:
+            return list(self.positions.values())
+        except Exception as e:
+            logger.error(f"❌ Error getting all positions: {e}")
+            return []
+    
+    def update_position_prices(self, current_prices: Dict[str, float]) -> bool:
+        """Update position prices and calculate unrealized P&L"""
+        try:
+            updated_count = 0
+            
+            for key, position in self.positions.items():
+                ticker = position['ticker']
+                current_price = current_prices.get(ticker)
+                
+                if current_price:
+                    # Update in database
+                    success = trading_db.update_position_price(ticker, current_price)
+                    
+                    if success:
+                        # Update in-memory cache
+                        entry_price = position['entry_price']
+                        quantity = position['quantity']
+                        side = position['side']
+                        
+                        if side == 'buy':
+                            pnl = (current_price - entry_price) * quantity
+                        else:
+                            pnl = (entry_price - current_price) * quantity
+                        
+                        position['pnl'] = pnl
+                        updated_count += 1
+            
+            if updated_count > 0:
+                logger.info(f"📊 Updated prices for {updated_count} positions")
+            
+            return True
             
         except Exception as e:
             logger.error(f"❌ Error updating position prices: {e}")
-            return None
+            return False
     
-    def get_daily_pnl(self) -> float:
-        """Get today's P&L"""
-        return self.daily_pnl
-    
-    def get_total_pnl(self) -> float:
-        """Get total P&L"""
-        return self.total_pnl
+    def can_open_position(self, ticker: str, side: str) -> bool:
+        """Check if we can open a position for this ticker/side"""
+        try:
+            key = f"{ticker}_{side}"
+            return key not in self.positions
+        except Exception as e:
+            logger.error(f"❌ Error checking position availability: {e}")
+            return False
     
     def get_position_summary(self) -> Dict[str, Any]:
         """Get summary of all positions"""
         try:
-            total_positions = len(self.active_positions)
-            total_value = sum(pos.get('position_value', 0) for pos in self.active_positions.values())
+            total_positions = len(self.positions)
+            total_value = 0.0
+            total_pnl = 0.0
             
-            # Calculate average P&L for active positions
-            active_pnl = 0
-            if self.active_positions:
-                active_pnl = sum(pos.get('current_pnl', 0) for pos in self.active_positions.values())
+            for position in self.positions.values():
+                quantity = position['quantity']
+                entry_price = position['entry_price']
+                pnl = position.get('pnl', 0.0)
+                
+                total_value += quantity * entry_price
+                total_pnl += pnl
             
             return {
-                'active_positions': total_positions,
-                'total_position_value': total_value,
-                'daily_pnl': self.daily_pnl,
-                'total_pnl': self.total_pnl,
-                'active_pnl': active_pnl,
-                'max_positions': self.max_positions,
-                'available_slots': self.max_positions - total_positions
+                'total_positions': total_positions,
+                'total_value': total_value,
+                'total_pnl': total_pnl,
+                'positions': list(self.positions.values())
             }
             
         except Exception as e:
             logger.error(f"❌ Error getting position summary: {e}")
             return {}
     
-    def _store_position_db(self, position: Dict[str, Any]):
-        """Store position in database"""
+    def refresh_positions(self):
+        """Refresh positions from database"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO trading_positions 
-                (ticker, strategy, action, quantity, entry_price, target_price, stop_loss_price, entry_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                position['ticker'],
-                position['strategy'],
-                position['action'],
-                position['quantity'],
-                position['entry_price'],
-                position['target_price'],
-                position['stop_loss_price'],
-                position['entry_time']
-            ))
-            
-            conn.commit()
-            conn.close()
-            
+            self.load_positions()
+            logger.info("🔄 Positions refreshed from database")
         except Exception as e:
-            logger.error(f"❌ Error storing position in database: {e}")
+            logger.error(f"❌ Error refreshing positions: {e}")
     
-    def _update_position_db(self, ticker: str, position: Dict[str, Any]):
-        """Update position in database"""
+    def get_positions_by_broker(self, broker: str) -> List[Dict[str, Any]]:
+        """Get positions for a specific broker"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                UPDATE trading_positions 
-                SET exit_price = ?, exit_time = ?, pnl = ?, pnl_percent = ?, 
-                    exit_reason = ?, status = ?, holding_time = ?
-                WHERE ticker = ? AND status = 'open'
-            ''', (
-                position['exit_price'],
-                position['exit_time'],
-                position['pnl'],
-                position['pnl_percent'],
-                position['exit_reason'],
-                'closed',
-                position['holding_time'],
-                ticker
-            ))
-            
-            conn.commit()
-            conn.close()
-            
+            return [pos for pos in self.positions.values() if pos.get('broker') == broker]
         except Exception as e:
-            logger.error(f"❌ Error updating position in database: {e}")
+            logger.error(f"❌ Error getting positions by broker: {e}")
+            return []
     
-    def _update_daily_pnl(self, pnl: float):
-        """Update daily P&L tracking"""
+    def get_positions_by_strategy(self, strategy: str) -> List[Dict[str, Any]]:
+        """Get positions for a specific strategy"""
         try:
-            today = datetime.now().strftime('%Y-%m-%d')
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Insert or update daily P&L
-            cursor.execute('''
-                INSERT OR REPLACE INTO daily_pnl (date, total_pnl, total_trades)
-                VALUES (?, ?, 1)
-            ''', (today, pnl))
-            
-            conn.commit()
-            conn.close()
-            
+            return [pos for pos in self.positions.values() if pos.get('strategy') == strategy]
         except Exception as e:
-            logger.error(f"❌ Error updating daily P&L: {e}")
+            logger.error(f"❌ Error getting positions by strategy: {e}")
+            return []
+    
+    def get_largest_positions(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get largest positions by value"""
+        try:
+            positions = list(self.positions.values())
+            positions.sort(key=lambda x: x['quantity'] * x['entry_price'], reverse=True)
+            return positions[:limit]
+        except Exception as e:
+            logger.error(f"❌ Error getting largest positions: {e}")
+            return []
+    
+    def get_profitable_positions(self) -> List[Dict[str, Any]]:
+        """Get positions with positive P&L"""
+        try:
+            return [pos for pos in self.positions.values() if pos.get('pnl', 0) > 0]
+        except Exception as e:
+            logger.error(f"❌ Error getting profitable positions: {e}")
+            return []
+    
+    def get_losing_positions(self) -> List[Dict[str, Any]]:
+        """Get positions with negative P&L"""
+        try:
+            return [pos for pos in self.positions.values() if pos.get('pnl', 0) < 0]
+        except Exception as e:
+            logger.error(f"❌ Error getting losing positions: {e}")
+            return []
 
 # Global position manager instance
 position_manager = PositionManager() 
