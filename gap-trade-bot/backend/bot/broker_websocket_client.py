@@ -10,6 +10,7 @@ import asyncio
 import json
 import websockets
 import time
+import ssl
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Callable, Any
 import sys
@@ -50,8 +51,8 @@ class BrokerWebSocketClient:
         if self.broker_type == 'alpaca':
             # Alpaca WebSocket URL for trade updates (not order placement)
             self.ws_url = "wss://paper-api.alpaca.markets/v2/iex" if config.ALPACA_PAPER else "wss://api.alpaca.markets/v2/iex"
-            self.api_key = config.ALPACA_API_KEY
-            self.secret_key = config.ALPACA_SECRET_KEY
+            self.api_key = config.BROKER_API_KEY
+            self.secret_key = config.BROKER_SECRET
         elif self.broker_type == 'das':
             # DAS doesn't support WebSocket order placement
             logger.warning("⚠️ DAS doesn't support WebSocket order placement - using REST API only")
@@ -70,7 +71,12 @@ class BrokerWebSocketClient:
             
             logger.info(f"🔌 Connecting to {self.broker_type.upper()} WebSocket for trade updates: {self.ws_url}")
             
-            self.websocket = await websockets.connect(self.ws_url)
+            # Create SSL context that handles certificate issues on macOS
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            self.websocket = await websockets.connect(self.ws_url, ssl=ssl_context)
             self.is_connected = True
             self.reconnect_count = 0
             

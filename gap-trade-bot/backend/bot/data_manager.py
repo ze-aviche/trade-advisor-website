@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 import sqlite3
 
-# Add parent directories to path
+# Add parent directories to path for backend imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
@@ -36,9 +36,9 @@ class DataManager:
         logger.info("✅ Data manager initialized with WebSocket integration")
     
     def get_market_status(self) -> str:
-        """Get current market status"""
+        """Get current market status (including pre-market and after-hours)"""
         try:
-            # Simple market hours check (9:30 AM - 4:00 PM ET)
+            # Market hours check (4:00 AM - 8:00 PM ET including pre-market and after-hours)
             now = datetime.now()
             et_time = now.replace(tzinfo=timezone(timedelta(hours=-5)))
             
@@ -46,12 +46,18 @@ class DataManager:
             if et_time.weekday() >= 5:  # Saturday = 5, Sunday = 6
                 return 'closed'
             
-            # Check market hours (9:30 AM - 4:00 PM ET)
-            market_open = et_time.replace(hour=9, minute=30, second=0, microsecond=0)
-            market_close = et_time.replace(hour=16, minute=0, second=0, microsecond=0)
+            # Check market hours (4:00 AM - 8:00 PM ET including pre-market and after-hours)
+            pre_market_start = et_time.replace(hour=4, minute=0, second=0, microsecond=0)  # 4 AM ET
+            market_open = et_time.replace(hour=9, minute=30, second=0, microsecond=0)  # 9:30 AM ET
+            market_close_regular = et_time.replace(hour=16, minute=0, second=0, microsecond=0)  # 4 PM ET
+            market_close_extended = et_time.replace(hour=20, minute=0, second=0, microsecond=0)  # 8 PM ET
             
-            if market_open <= et_time <= market_close:
+            if pre_market_start <= et_time < market_open:
+                return 'pre_market'
+            elif market_open <= et_time <= market_close_regular:
                 return 'open'
+            elif market_close_regular < et_time <= market_close_extended:
+                return 'after_hours'
             else:
                 return 'closed'
                 
@@ -71,17 +77,32 @@ class DataManager:
                 logger.warning("⚠️ No gap-up stocks found")
                 return []
             
-            # Extract ticker symbols from the gap-up data
+            # Extract ticker symbols from the gap-up data and validate them
             gap_up_stocks = []
+            invalid_tickers = []
+            
             for stock in gap_up_data:
                 ticker = stock.get('ticker')
                 gap_percent = stock.get('gap_percent', 0)
                 
-                if ticker and gap_percent >= config.MIN_GAP_PERCENTAGE:
-                    gap_up_stocks.append(ticker)
-                    logger.info(f"📈 Found gap-up: {ticker} (+{gap_percent:.1f}%)")
+                if not ticker:
+                    continue
+                
+                # Validate ticker exists and has data
+                if self._validate_ticker(ticker):
+                    if gap_percent >= config.MIN_GAP_PERCENTAGE:
+                        gap_up_stocks.append(ticker)
+                        logger.info(f"📈 Found gap-up: {ticker} (+{gap_percent:.1f}%)")
+                    else:
+                        logger.debug(f"📊 {ticker} gap too small: {gap_percent:.1f}% < {config.MIN_GAP_PERCENTAGE}%")
+                else:
+                    invalid_tickers.append(ticker)
+                    logger.warning(f"⚠️ Invalid ticker found: {ticker} - skipping")
             
-            logger.info(f"📊 Found {len(gap_up_stocks)} stocks with real-time gap-ups today")
+            if invalid_tickers:
+                logger.warning(f"⚠️ Filtered out {len(invalid_tickers)} invalid tickers: {', '.join(invalid_tickers)}")
+            
+            logger.info(f"📊 Found {len(gap_up_stocks)} valid stocks with real-time gap-ups today")
             return gap_up_stocks
             
         except Exception as e:
@@ -91,6 +112,11 @@ class DataManager:
     def get_real_time_data(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Get real-time data for a ticker (WebSocket + REST fallback)"""
         try:
+            # Validate ticker first
+            if not self._validate_ticker(ticker):
+                logger.warning(f"⚠️ Skipping invalid ticker: {ticker}")
+                return None
+            
             current_time = time.time()
             last_update = self.last_update.get(ticker, 0)
             
@@ -613,19 +639,53 @@ class DataManager:
         else:
             return f"Conditions not met: {', '.join(reasons)}"
     
+    def _validate_ticker(self, ticker: str) -> bool:
+        """Validate if a ticker exists and has market data"""
+        try:
+            if not ticker or len(ticker) < 1:
+                return False
+            
+            # Check if ticker has basic market data
+            try:
+                # Try to get basic ticker details from Polygon
+                details = self.polygon_client.get_ticker_details(ticker)
+                if not details:
+                    logger.debug(f"❌ No ticker details found for {ticker}")
+                    return False
+                
+                # Check if it's a valid stock type
+                if hasattr(details, 'type') and details.type != 'CS':
+                    logger.debug(f"❌ {ticker} is not a common stock (type: {details.type})")
+                    return False
+                
+                # Check if it has a valid price
+                if hasattr(details, 'last_price') and details.last_price is None:
+                    logger.debug(f"❌ {ticker} has no valid price")
+                    return False
+                
+                return True
+                
+            except Exception as e:
+                logger.debug(f"❌ Error validating {ticker}: {e}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error in ticker validation for {ticker}: {e}")
+            return False
+    
     def update_real_time_data(self, ticker: str):
         """Update real-time data for a ticker"""
         try:
             real_time_data = self.get_real_time_data(ticker)
             if real_time_data:
-                self.real_time_data[ticker] = real_time_data
+                self.real_time_cache[ticker] = real_time_data
                 logger.debug(f"📊 Updated real-time data for {ticker}: ${real_time_data['current_price']}")
         except Exception as e:
             logger.error(f"❌ Error updating real-time data for {ticker}: {e}")
     
     def get_all_real_time_data(self) -> Dict[str, Dict[str, Any]]:
         """Get real-time data for all tracked stocks"""
-        return self.real_time_data.copy()
+        return self.real_time_cache.copy()
 
 # Global data manager instance
 data_manager = DataManager() 

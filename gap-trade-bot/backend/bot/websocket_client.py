@@ -7,6 +7,7 @@ import asyncio
 import json
 import websockets
 import time
+import ssl
 from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any
 import sys
@@ -44,7 +45,12 @@ class WebSocketClient:
             
             logger.info(f"🔌 Connecting to Polygon WebSocket: {ws_url}")
             
-            self.websocket = await websockets.connect(ws_url)
+            # Create SSL context that handles certificate issues on macOS
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            self.websocket = await websockets.connect(ws_url, ssl=ssl_context)
             self.is_connected = True
             self.reconnect_count = 0
             

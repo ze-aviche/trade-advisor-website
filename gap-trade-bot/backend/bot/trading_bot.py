@@ -7,11 +7,11 @@ import asyncio
 import time
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 import threading
 
-# Add parent directory to path
+# Add parent directory to path for backend imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
@@ -43,6 +43,13 @@ class TradingBot:
         self.total_trades = 0
         self.winning_trades = 0
         self.losing_trades = 0
+        
+        # Market status tracking
+        self.last_market_status = None
+        self.market_status_check_interval = 60  # Check every 60 seconds
+        self.last_market_close_check = None
+        self.market_close_time = "20:00"  # 8 PM ET (after-hours included)
+        self.subscribed_today = set()  # Track stocks subscribed today
         
         # Initialize components
         self._init_components()
@@ -76,14 +83,25 @@ class TradingBot:
             # Connect to WebSocket
             await websocket_client.connect()
             
+            # Initialize market status tracking
+            self.last_market_status = data_manager.get_market_status()
+            self.last_market_close_check = datetime.now().date()
+            logger.info(f"📊 Initial market status: {self.last_market_status}")
+            
             # Get gap-up stocks
             gap_up_stocks = data_manager.get_gap_up_stocks()
             logger.info(f"📊 Found {len(gap_up_stocks)} gap-up stocks")
             
-            # Subscribe to real-time data
-            if gap_up_stocks:
+            # Subscribe to real-time data only if market is open, pre-market, or after-hours
+            if (self.last_market_status in ['open', 'pre_market', 'after_hours']) and gap_up_stocks:
                 await websocket_client.subscribe_to_symbols(gap_up_stocks)
                 self.tracked_symbols.update(gap_up_stocks)
+                self.subscribed_today.update(gap_up_stocks)  # Track today's subscriptions
+                logger.info(f"📡 Subscribed to {len(gap_up_stocks)} new gap-up stocks: {', '.join(gap_up_stocks)}")
+            elif self.last_market_status == 'closed':
+                logger.info("🛑 Market is closed - not subscribing to any stocks")
+            else:
+                logger.info("📊 No gap-up stocks found to subscribe")
             
             # Add data callback
             websocket_client.add_data_callback(self._on_market_data)
@@ -125,16 +143,32 @@ class TradingBot:
     async def _trading_loop(self):
         """Main trading loop"""
         try:
+            loop_count = 0
             while self.is_running:
                 try:
                     if self.is_paused:
                         await asyncio.sleep(1)
                         continue
                     
+                    loop_count += 1
+                    
                     # Check if we should stop trading due to risk
                     if risk_manager.should_stop_trading():
                         logger.warning("⚠️ Stopping trading due to risk limits")
                         break
+                    
+                    # Log trading loop status every 10 iterations
+                    if loop_count % 10 == 0:
+                        await self._log_trading_status()
+                        await self._log_subscription_status()
+                    
+                    # Check market status only at 8 PM ET (after-hours included)
+                    current_time = datetime.now()
+                    et_time = current_time.replace(tzinfo=timezone(timedelta(hours=-5)))
+                    current_time_str = et_time.strftime("%H:%M")
+                    
+                    if current_time_str == self.market_close_time:
+                        await self._check_market_status()
                     
                     # Update real-time data for tracked symbols
                     await self._update_market_data()
@@ -161,6 +195,12 @@ class TradingBot:
     async def _update_market_data(self):
         """Update market data for tracked symbols"""
         try:
+            # Check if market is open before updating data
+            current_market_status = data_manager.get_market_status()
+            if current_market_status not in ['open', 'pre_market', 'after_hours']:
+                logger.debug(f"📊 Market is {current_market_status} - skipping market data updates")
+                return
+            
             for symbol in self.tracked_symbols:
                 # Get real-time data
                 real_time_data = data_manager.get_real_time_data(symbol)
@@ -173,25 +213,94 @@ class TradingBot:
     async def _analyze_trading_opportunities(self):
         """Analyze current market for trading opportunities"""
         try:
+            # Check if market is open before analyzing
+            current_market_status = data_manager.get_market_status()
+            if current_market_status not in ['open', 'pre_market', 'after_hours']:
+                logger.debug(f"📊 Market is {current_market_status} - skipping trading analysis")
+                return
+            
             gap_up_stocks = data_manager.get_gap_up_stocks()
+            logger.info(f"🔍 Analyzing {len(gap_up_stocks)} gap-up stocks for trading opportunities...")
             
             for ticker in gap_up_stocks:
                 # Get real-time data
-                current_data = data_manager.get_real_time_data(ticker)
-                if not current_data:
+                try:
+                    current_data = data_manager.get_real_time_data(ticker)
+                    if not current_data:
+                        logger.debug(f"⚠️ No real-time data available for {ticker}")
+                        continue
+                except Exception as e:
+                    logger.warning(f"⚠️ Error processing {ticker}: {e}")
                     continue
+                
+                logger.info(f"📊 Analyzing {ticker} - Price: ${current_data.get('current_price', 0):.2f}, Volume: {current_data.get('volume', 0):,}")
                 
                 # Analyze with break out strategy
                 strategy = BreakOutStrategy()
                 analysis = strategy.analyze_entry_conditions(ticker, current_data)
                 
-                if analysis.get('entry_signal', False):
+                # Log detailed analysis results
+                confidence = analysis.get('confidence', 0)
+                entry_signal = analysis.get('entry_signal', False)
+                conditions_met = analysis.get('conditions_met', {})
+                conditions_failed = analysis.get('conditions_failed', [])
+                
+                logger.info(f"🎯 {ticker} Analysis Results:")
+                logger.info(f"   📈 Entry Signal: {'✅ YES' if entry_signal else '❌ NO'}")
+                logger.info(f"   📊 Confidence: {confidence:.1f}%")
+                
+                # Log conditions met as actual condition names
+                met_conditions = []
+                failed_conditions = []
+                
+                if conditions_met.get('is_gap_up'):
+                    met_conditions.append('is_gap_up')
+                else:
+                    failed_conditions.append('is_gap_up')
+                
+                if conditions_met.get('is_above_hod'):
+                    met_conditions.append('is_above_hod')
+                else:
+                    failed_conditions.append('is_above_hod')
+                
+                if conditions_met.get('is_market_open'):
+                    met_conditions.append('is_market_open')
+                else:
+                    failed_conditions.append('is_market_open')
+                
+                if conditions_met.get('is_above_vwap'):
+                    met_conditions.append('is_above_vwap')
+                else:
+                    failed_conditions.append('is_above_vwap')
+                
+                if conditions_met.get('has_sufficient_volume'):
+                    met_conditions.append('has_sufficient_volume')
+                else:
+                    failed_conditions.append('has_sufficient_volume')
+                
+                if conditions_met.get('has_breakout_volume'):
+                    met_conditions.append('has_breakout_volume')
+                else:
+                    failed_conditions.append('has_breakout_volume')
+                
+                logger.info(f"   ✅ Conditions Met: {', '.join(met_conditions) if met_conditions else 'None'}")
+                logger.info(f"   ❌ Conditions Failed: {', '.join(failed_conditions) if failed_conditions else 'None'}")
+                
+                if entry_signal:
                     logger.info(f"🎯 Break out signal detected for {ticker}")
-                    logger.info(f"📊 Confidence: {analysis.get('confidence', 0):.1f}%")
+                    logger.info(f"📊 Confidence: {confidence:.1f}%")
                     
                     # Check if we should enter position
                     if strategy.should_enter_position(analysis):
+                        logger.info(f"🚀 Executing entry for {ticker} - Confidence: {confidence:.1f}%")
                         await self._execute_strategy_entry(ticker, strategy, current_data)
+                    else:
+                        logger.info(f"⏸️ Entry conditions not fully met for {ticker} - Skipping entry")
+                else:
+                    logger.debug(f"📊 {ticker} - No entry signal (Confidence: {confidence:.1f}%)")
+                
+        except Exception as e:
+            logger.error(f"❌ Error analyzing trading opportunities: {e}")
                 
         except Exception as e:
             logger.error(f"❌ Error analyzing trading opportunities: {e}")
@@ -202,11 +311,18 @@ class TradingBot:
             current_price = current_data.get('current_price', 0)
             day_high = current_data.get('day_high', 0)
             
+            logger.info(f"🚀 EXECUTING ENTRY FOR {ticker}")
+            logger.info(f"   📊 Entry Price: ${current_price:.2f}")
+            logger.info(f"   📈 Day High: ${day_high:.2f}")
+            
             # Calculate position size
             stop_loss_price = risk_manager.calculate_stop_loss_price(current_price)
             position_size = risk_manager.calculate_position_size(
                 current_price, stop_loss_price, 100000  # $100k available capital
             )
+            
+            logger.info(f"   💰 Position Size: {position_size:,} shares")
+            logger.info(f"   🛑 Stop Loss: ${stop_loss_price:.2f}")
             
             # Validate trade risk
             risk_valid, risk_message = risk_manager.validate_trade_risk(
@@ -217,11 +333,15 @@ class TradingBot:
                 logger.warning(f"⚠️ Risk validation failed for {ticker}: {risk_message}")
                 return
             
+            logger.info(f"   ✅ Risk validation passed")
+            
             # Execute entry order
             entry_order = strategy.execute_entry(ticker, current_price, day_high)
             if 'error' in entry_order:
                 logger.error(f"❌ Entry execution failed for {ticker}: {entry_order['error']}")
                 return
+            
+            logger.info(f"   📋 Strategy entry executed")
             
             # Place buy order
             order = order_manager.place_buy_order(ticker, position_size, current_price)
@@ -229,18 +349,23 @@ class TradingBot:
                 logger.error(f"❌ Order placement failed for {ticker}: {order['error']}")
                 return
             
+            logger.info(f"   📈 Buy order placed: {position_size:,} shares @ ${current_price:.2f}")
+            
             # Open position
             if position_manager.open_position(ticker, position_size, 'buy', current_price):
                 logger.info(f"📈 Position opened: {ticker} @ ${current_price:.2f}")
                 
                 # Place stop-loss order
                 stop_order = order_manager.place_stop_order(ticker, position_size, stop_loss_price)
+                logger.info(f"   🛑 Stop-loss order placed @ ${stop_loss_price:.2f}")
                 
                 # Place target order (optional)
                 target_price = strategy.calculate_target_price(current_price)
                 target_order = order_manager.place_limit_order(ticker, position_size, target_price, 'sell')
+                logger.info(f"   🎯 Target order placed @ ${target_price:.2f}")
                 
                 self.total_trades += 1
+                logger.info(f"   ✅ Trade #{self.total_trades} executed successfully")
             else:
                 logger.warning(f"⚠️ Failed to open position for {ticker}")
             
@@ -252,8 +377,10 @@ class TradingBot:
         try:
             positions = position_manager.get_all_positions()
             if not positions:
+                logger.debug("📊 No active positions to check")
                 return
-                
+            
+            logger.info(f"🔍 Checking {len(positions)} active positions for exit conditions...")
             current_prices = {}
             
             # Get current prices for all positions
@@ -262,19 +389,43 @@ class TradingBot:
                 price = websocket_client.get_current_price(ticker)
                 if price:
                     current_prices[ticker] = price
+                    logger.info(f"📊 {ticker} - Current Price: ${price:.2f}")
+                else:
+                    logger.warning(f"⚠️ No current price available for {ticker}")
             
             # Check each position
             for position in positions:
                 ticker = position['ticker']
+                entry_price = position.get('entry_price', 0)
+                quantity = position.get('quantity', 0)
                 current_price = current_prices.get(ticker)
+                
                 if not current_price:
+                    logger.warning(f"⚠️ Skipping {ticker} - No current price available")
                     continue
+                
+                # Calculate current P&L
+                pnl = (current_price - entry_price) * quantity
+                pnl_percent = ((current_price - entry_price) / entry_price) * 100
+                
+                logger.info(f"📊 {ticker} Position Status:")
+                logger.info(f"   📈 Entry Price: ${entry_price:.2f}")
+                logger.info(f"   📊 Current Price: ${current_price:.2f}")
+                logger.info(f"   📦 Quantity: {quantity:,}")
+                logger.info(f"   💰 P&L: ${pnl:.2f} ({pnl_percent:+.2f}%)")
                 
                 # Update position with current price
                 exit_signal = position_manager.update_position_prices({ticker: current_price})
                 
                 if exit_signal and exit_signal.get('exit_signal'):
-                    await self._execute_position_exit(ticker, current_price, exit_signal.get('exit_reason'))
+                    exit_reason = exit_signal.get('exit_reason', 'Unknown')
+                    logger.info(f"🚨 Exit signal triggered for {ticker}: {exit_reason}")
+                    await self._execute_position_exit(ticker, current_price, exit_reason)
+                else:
+                    logger.debug(f"📊 {ticker} - No exit signal (P&L: ${pnl:.2f})")
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking positions: {e}")
             
         except Exception as e:
             logger.error(f"❌ Error checking positions: {e}")
@@ -284,34 +435,54 @@ class TradingBot:
         try:
             position = position_manager.get_position(ticker)
             if not position:
+                logger.warning(f"⚠️ No position found for {ticker} during exit")
                 return
             
+            entry_price = position.get('entry_price', 0)
+            quantity = position.get('quantity', 0)
+            entry_time = position.get('entry_time', '')
+            
+            logger.info(f"🚨 EXECUTING EXIT FOR {ticker}")
+            logger.info(f"   📊 Entry Price: ${entry_price:.2f}")
+            logger.info(f"   📊 Exit Price: ${current_price:.2f}")
+            logger.info(f"   📦 Quantity: {quantity:,} shares")
+            logger.info(f"   📅 Exit Reason: {exit_reason}")
+            
+            # Calculate P&L
+            pnl = (current_price - entry_price) * quantity
+            pnl_percent = ((current_price - entry_price) / entry_price) * 100
+            
+            logger.info(f"   💰 P&L: ${pnl:.2f} ({pnl_percent:+.2f}%)")
+            
             # Place sell order
-            order = order_manager.place_sell_order(ticker, position['quantity'], current_price)
+            order = order_manager.place_sell_order(ticker, quantity, current_price)
             if 'error' in order:
                 logger.error(f"❌ Exit order failed for {ticker}: {order['error']}")
                 return
+            
+            logger.info(f"   📉 Sell order placed: {quantity:,} shares @ ${current_price:.2f}")
             
             # Close position
             exit_order = {
                 'exit_price': current_price,
                 'exit_time': datetime.now().isoformat(),
                 'exit_reason': exit_reason,
-                'holding_time': str(datetime.now() - datetime.fromisoformat(position['entry_time']))
+                'holding_time': str(datetime.now() - datetime.fromisoformat(entry_time)) if entry_time else 'N/A'
             }
             
             if position_manager.close_position(ticker, exit_order):
                 # Update trade statistics
-                pnl = exit_order.get('pnl', 0)
                 if pnl > 0:
                     self.winning_trades += 1
+                    logger.info(f"   ✅ WINNING TRADE")
                 else:
                     self.losing_trades += 1
+                    logger.info(f"   ❌ LOSING TRADE")
                 
                 # Update risk manager
                 risk_manager.update_daily_loss(abs(pnl) if pnl < 0 else 0)
                 
-                logger.info(f"📉 Position closed: {ticker} | P&L: ${pnl:.2f}")
+                logger.info(f"📉 Position closed: {ticker} | P&L: ${pnl:.2f} | Win Rate: {self.winning_trades}/{self.total_trades}")
             
         except Exception as e:
             logger.error(f"❌ Error executing position exit: {e}")
@@ -382,6 +553,167 @@ class TradingBot:
             
         except Exception as e:
             logger.error(f"❌ Error processing market data: {e}")
+    
+    async def _check_market_status(self):
+        """Check market status and manage WebSocket subscriptions"""
+        try:
+            current_time = datetime.now()
+            current_market_status = data_manager.get_market_status()
+            
+            # Check if it's market close time (4 PM ET)
+            et_time = current_time.replace(tzinfo=timezone(timedelta(hours=-5)))
+            current_time_str = et_time.strftime("%H:%M")
+            
+            # Only check for market close at 8 PM ET (includes after-hours)
+            if current_time_str == self.market_close_time:
+                if self.last_market_close_check != current_time.date():
+                    logger.info(f"🕐 After-hours close time reached ({current_time_str} ET) - checking for unsubscription")
+                    
+                    # Check for open positions before unsubscribing
+                    open_positions = position_manager.get_all_positions()
+                    positions_with_subscriptions = []
+                    
+                    for position in open_positions:
+                        ticker = position['ticker']
+                        if ticker in self.tracked_symbols:
+                            positions_with_subscriptions.append(ticker)
+                    
+                    if positions_with_subscriptions:
+                        logger.warning(f"⚠️ Found {len(positions_with_subscriptions)} open positions with active subscriptions:")
+                        for ticker in positions_with_subscriptions:
+                            position = position_manager.get_position(ticker)
+                            entry_price = position.get('entry_price', 0)
+                            quantity = position.get('quantity', 0)
+                            logger.warning(f"   📊 {ticker}: {quantity:,} shares @ ${entry_price:.2f} - KEEPING SUBSCRIPTION")
+                        
+                        # Don't unsubscribe from stocks with open positions
+                        stocks_to_unsubscribe = [s for s in self.tracked_symbols if s not in positions_with_subscriptions]
+                        
+                        if stocks_to_unsubscribe:
+                            logger.info(f"📡 Unsubscribing from {len(stocks_to_unsubscribe)} stocks without open positions")
+                            await websocket_client.unsubscribe_from_symbols(stocks_to_unsubscribe)
+                            for stock in stocks_to_unsubscribe:
+                                self.tracked_symbols.discard(stock)
+                            logger.info(f"✅ Unsubscribed from: {', '.join(stocks_to_unsubscribe)}")
+                        else:
+                            logger.info("📊 All subscribed stocks have open positions - keeping all subscriptions")
+                    else:
+                        # No open positions - unsubscribe from all
+                        if self.tracked_symbols:
+                            logger.info(f"📡 No open positions found - unsubscribing from all {len(self.tracked_symbols)} stocks")
+                            await websocket_client.unsubscribe_from_symbols(list(self.tracked_symbols))
+                            logger.info(f"✅ Unsubscribed from: {', '.join(self.tracked_symbols)}")
+                            self.tracked_symbols.clear()
+                        else:
+                            logger.info("📊 No active subscriptions to unsubscribe")
+                    
+                    self.last_market_close_check = current_time.date()
+                    logger.info("✅ After-hours close check completed")
+            
+            # Check for market open (new day, new gap-up stocks)
+            if current_market_status in ['open', 'pre_market', 'after_hours'] and self.last_market_status == 'closed':
+                logger.info("🚀 Market just opened - checking for new gap-up stocks")
+                
+                # Clear today's subscription tracking (new day)
+                self.subscribed_today.clear()
+                
+                # Get new gap-up stocks for today
+                gap_up_stocks = data_manager.get_gap_up_stocks()
+                logger.info(f"📊 Found {len(gap_up_stocks)} new gap-up stocks for today")
+                
+                if gap_up_stocks:
+                    # Subscribe to new gap-up stocks
+                    await websocket_client.subscribe_to_symbols(gap_up_stocks)
+                    self.tracked_symbols.update(gap_up_stocks)
+                    self.subscribed_today.update(gap_up_stocks)
+                    logger.info(f"📡 Subscribed to new gap-up stocks: {', '.join(gap_up_stocks)}")
+                else:
+                    logger.info("📊 No new gap-up stocks found for today")
+            
+            self.last_market_status = current_market_status
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking market status: {e}")
+    
+    async def _log_subscription_status(self):
+        """Log current subscription status"""
+        try:
+            open_positions = position_manager.get_all_positions()
+            position_tickers = {pos['ticker'] for pos in open_positions}
+            
+            logger.info("📊 SUBSCRIPTION STATUS:")
+            logger.info(f"   📡 Total Subscribed: {len(self.tracked_symbols)}")
+            logger.info(f"   📈 Open Positions: {len(open_positions)}")
+            logger.info(f"   🔗 Subscribed with Positions: {len(self.tracked_symbols.intersection(position_tickers))}")
+            
+            if self.tracked_symbols:
+                logger.info(f"   📋 Subscribed Stocks: {', '.join(sorted(self.tracked_symbols))}")
+            
+            if open_positions:
+                logger.info(f"   📋 Position Stocks: {', '.join(sorted(position_tickers))}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error logging subscription status: {e}")
+    
+    async def _log_trading_status(self):
+        """Log comprehensive trading status"""
+        try:
+            positions = position_manager.get_all_positions()
+            total_positions = len(positions)
+            
+            # Calculate total P&L
+            total_pnl = 0
+            position_details = []
+            
+            for position in positions:
+                ticker = position['ticker']
+                entry_price = position.get('entry_price', 0)
+                quantity = position.get('quantity', 0)
+                current_price = websocket_client.get_current_price(ticker)
+                
+                if current_price:
+                    pnl = (current_price - entry_price) * quantity
+                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
+                    total_pnl += pnl
+                    
+                    position_details.append({
+                        'ticker': ticker,
+                        'entry_price': entry_price,
+                        'current_price': current_price,
+                        'quantity': quantity,
+                        'pnl': pnl,
+                        'pnl_percent': pnl_percent
+                    })
+            
+            # Log trading status
+            logger.info("=" * 60)
+            logger.info("📊 TRADING BOT STATUS SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"🤖 Bot Status: {'🟢 RUNNING' if self.is_running else '🔴 STOPPED'}")
+            logger.info(f"⏸️ Paused: {'Yes' if self.is_paused else 'No'}")
+            logger.info(f"📈 Active Positions: {total_positions}")
+            logger.info(f"💰 Total P&L: ${total_pnl:.2f}")
+            logger.info(f"📊 Total Trades: {self.total_trades}")
+            logger.info(f"✅ Winning Trades: {self.winning_trades}")
+            logger.info(f"❌ Losing Trades: {self.losing_trades}")
+            
+            if self.total_trades > 0:
+                win_rate = (self.winning_trades / self.total_trades) * 100
+                logger.info(f"📈 Win Rate: {win_rate:.1f}%")
+            
+            # Log position details
+            if position_details:
+                logger.info("📊 ACTIVE POSITIONS:")
+                for pos in position_details:
+                    status_emoji = "🟢" if pos['pnl'] > 0 else "🔴"
+                    logger.info(f"   {status_emoji} {pos['ticker']}: ${pos['entry_price']:.2f} → ${pos['current_price']:.2f} ({pos['pnl_percent']:+.2f}%) | P&L: ${pos['pnl']:.2f}")
+            else:
+                logger.info("📊 No active positions")
+            
+            logger.info("=" * 60)
+            
+        except Exception as e:
+            logger.error(f"❌ Error logging trading status: {e}")
     
     def get_bot_status(self) -> Dict[str, Any]:
         """Get current bot status"""

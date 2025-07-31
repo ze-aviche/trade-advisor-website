@@ -13,11 +13,14 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-# Add parent directory to path
+# Add parent directory to path for backend imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from trading_bot import trading_bot
-from logging_config import get_logger
+from logging_config import setup_logging, get_logger
+
+# Setup bot logging
+setup_logging(log_level='INFO', log_dir='logs')
 
 logger = get_logger(__name__)
 

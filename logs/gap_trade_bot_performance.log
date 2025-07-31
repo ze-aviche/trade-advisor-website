@@ -55,3 +55,11 @@
 2025-07-31 03:57:38,082 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.313s | Details: {'ticker': 'IXHL', 'start_date': '2022-08-01', 'end_date': '2025-07-31', 'data_points': 745}
 2025-07-31 03:57:41,170 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 3.402s | Details: {'ticker': 'IXHL', 'days': 1095, 'use_cache': True, 'total_days': 745, 'gap_up_days': 5}
 2025-07-31 03:57:41,171 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 3.404s | Details: {'ticker': 'IXHL', 'days': 1095, 'data_points': 5, 'cached': True}
+2025-07-31 12:59:27,036 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_mock | Duration: 0.383s | Details: {'ticker': 'SGNX', 'days': 365, 'data_points': 1}
+2025-07-31 12:59:30,948 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_mock | Duration: 0.569s | Details: {'ticker': 'SGNX', 'days': 730, 'data_points': 5}
+2025-07-31 12:59:33,699 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_mock | Duration: 0.251s | Details: {'ticker': 'SGNX', 'days': 1095, 'data_points': 0}
+2025-07-31 12:59:42,663 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_mock | Duration: 0.248s | Details: {'ticker': 'SGNX', 'days': 730, 'data_points': 5}
+2025-07-31 12:59:51,745 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_mock | Duration: 0.245s | Details: {'ticker': 'SGNX', 'days': 180, 'data_points': 3}
+2025-07-31 13:00:12,043 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.469s | Details: {'ticker': 'APLD', 'start_date': '2022-08-01', 'end_date': '2025-07-31', 'data_points': 753}
+2025-07-31 13:00:15,444 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 3.874s | Details: {'ticker': 'APLD', 'days': 1095, 'use_cache': True, 'total_days': 753, 'gap_up_days': 3}
+2025-07-31 13:00:15,446 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 3.876s | Details: {'ticker': 'APLD', 'days': 1095, 'data_points': 3, 'cached': True}

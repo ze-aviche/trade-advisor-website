@@ -1,0 +1,8 @@
+#strategy_description: 
+stock to buy -> in historical data, it is majorly a "Runner".
+when to buy --> When the stock moves above the high of the day 
+so far, with volume, buy it after it holds
+time to buy -> should be before the "High Day" in historical data (on average)
+
+
+

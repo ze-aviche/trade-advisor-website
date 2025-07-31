@@ -52,7 +52,8 @@ console.log('✅ Vue.js loaded successfully');
                 systemStatus: {
                     connected: false,
                     realDataAvailable: false,
-                    websocketConnected: false
+                    websocketConnected: false,
+                    botRunning: false
                 },
                 
                 // User data
@@ -166,7 +167,8 @@ console.log('✅ Vue.js loaded successfully');
                     this.systemStatus = {
                         connected: true,
                         realDataAvailable: data.real_data_available,
-                        websocketConnected: data.websocket_connected
+                        websocketConnected: data.websocket_connected,
+                        botRunning: data.bot_running
                     };
                 } catch (error) {
                     console.error('Error checking system status:', error);

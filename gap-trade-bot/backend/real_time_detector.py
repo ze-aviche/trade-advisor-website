@@ -1,38 +1,44 @@
 #!/usr/bin/env python3
 """
-Real-time Gap-Up Detection System
-Monitors stocks for 25%+ gap-ups in real-time
+Real-time Gap-up Detector
+Monitors stocks for real-time gap-up opportunities
 """
+
 import os
 import time
 import threading
 from datetime import datetime, timedelta
 from polygon import RESTClient
 from dotenv import load_dotenv
+from logging_config import get_logger
 
 # Load environment variables
 load_dotenv()
 
+logger = get_logger(__name__)
+
 class RealTimeGapDetector:
+    """Real-time gap-up detection using Polygon API"""
+    
     def __init__(self):
         self.polygon_client = self._get_polygon_client()
-        self.monitored_stocks = set()
-        self.gap_threshold = 25.0  # 25% gap threshold
-        self.price_cache = {}
+        self.gap_threshold = 5.0  # Minimum gap percentage
         self.running = False
         self.callback = None
-        
+        logger.info("✅ Real-time gap-up detector initialized")
+    
     def _get_polygon_client(self):
-        """Get Polygon API client with API key"""
-        api_key = os.environ.get('POLYGON_API_KEY')
-        if not api_key:
-            api_key = "5TcX1iTW6Fu2vysfbRbw60oW3PLWsdPT"
-            print("Using default Polygon API key")
-        
-        if not api_key:
-            raise ValueError("POLYGON_API_KEY environment variable is required")
-        
-        return RESTClient(api_key)
+        """Get Polygon API client"""
+        try:
+            api_key = os.getenv('POLYGON_API_KEY')
+            if not api_key:
+                logger.error("❌ POLYGON_API_KEY not found in environment")
+                return None
+            
+            return RESTClient(api_key)
+        except Exception as e:
+            logger.error(f"❌ Error creating Polygon client: {e}")
+            return None
     
     def get_previous_close_price(self, ticker):
         """Get previous close price for a ticker"""
@@ -58,7 +64,7 @@ class RealTimeGapDetector:
                 return aggs[0].close
             return None
         except Exception as e:
-            print(f"Error getting previous close for {ticker}: {e}")
+            logger.error(f"❌ Error getting previous close for {ticker}: {e}")
             return None
     
     def get_current_price(self, ticker):
@@ -90,7 +96,7 @@ class RealTimeGapDetector:
                 return aggs[-1].close
             return None
         except Exception as e:
-            print(f"Error getting current price for {ticker}: {e}")
+            logger.error(f"❌ Error getting current price for {ticker}: {e}")
             return None
     
     def check_gap_up(self, ticker):
@@ -127,13 +133,13 @@ class RealTimeGapDetector:
             
             return None
         except Exception as e:
-            print(f"Error checking gap-up for {ticker}: {e}")
+            logger.error(f"❌ Error checking gap-up for {ticker}: {e}")
             return None
     
     def scan_for_gap_ups(self):
         """Scan all stocks for gap-ups"""
         try:
-            print("🔍 Scanning for real-time gap-ups...")
+            logger.info("🔍 Scanning for real-time gap-ups...")
             
             # Get all gainers from Polygon
             tickers = self.polygon_client.get_snapshot_direction(
@@ -142,7 +148,7 @@ class RealTimeGapDetector:
             )
             
             if not tickers:
-                print("❌ No tickers returned from Polygon API")
+                logger.warning("❌ No tickers returned from Polygon API")
                 return []
             
             gap_ups_found = []
@@ -163,7 +169,7 @@ class RealTimeGapDetector:
                 gap_up_data = self.check_gap_up(ticker)
                 if gap_up_data:
                     gap_ups_found.append(gap_up_data)
-                    print(f"🚨 REAL-TIME GAP-UP DETECTED: {ticker} - {gap_up_data['gap_percent']}%")
+                    logger.warning(f"🚨 REAL-TIME GAP-UP DETECTED: {ticker} - {gap_up_data['gap_percent']}%")
                     
                     # Call callback if set
                     if self.callback:
@@ -172,7 +178,7 @@ class RealTimeGapDetector:
             return gap_ups_found
             
         except Exception as e:
-            print(f"❌ Error scanning for gap-ups: {e}")
+            logger.error(f"❌ Error scanning for gap-ups: {e}")
             return []
     
     def start_monitoring(self, callback=None):
@@ -187,18 +193,18 @@ class RealTimeGapDetector:
                     # Wait 30 seconds before next scan
                     time.sleep(30)
                 except Exception as e:
-                    print(f"❌ Error in monitoring worker: {e}")
+                    logger.error(f"❌ Error in monitoring worker: {e}")
                     time.sleep(60)  # Wait longer on error
         
         # Start monitoring thread
         thread = threading.Thread(target=monitor_worker, daemon=True)
         thread.start()
-        print("✅ Real-time gap-up monitoring started")
+        logger.info("✅ Real-time gap-up monitoring started")
     
     def stop_monitoring(self):
         """Stop real-time monitoring"""
         self.running = False
-        print("⏹️ Real-time gap-up monitoring stopped")
+        logger.info("⏹️ Real-time gap-up monitoring stopped")
 
 # Global instance
 real_time_detector = RealTimeGapDetector() 

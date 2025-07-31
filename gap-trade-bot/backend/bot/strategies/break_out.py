@@ -67,6 +67,57 @@ class BreakOutStrategy:
             distance_from_vwap = round(((current_price - vwap) / vwap) * 100, 2) if vwap > 0 else 0
             volume_ratio = round(forecasted_volume / avg_volume, 2) if avg_volume > 0 else 0
             
+            # Log detailed condition analysis
+            logger.info(f"🔍 {ticker} - Break Out Strategy Analysis:")
+            logger.info(f"   📊 Current Price: ${current_price:.2f}")
+            logger.info(f"   📈 Day High: ${day_high:.2f}")
+            logger.info(f"   📊 Gap %: {gap_percent:.2f}% (Min: {config.MIN_GAP_PERCENTAGE}%)")
+            logger.info(f"   📊 VWAP: ${vwap:.2f}")
+            logger.info(f"   📊 Volume: {current_volume:,} (Forecasted: {forecasted_volume:,})")
+            logger.info(f"   📊 Avg Volume: {avg_volume:,} (Ratio: {volume_ratio:.2f}x)")
+            
+            # Log condition results
+            conditions_met = []
+            conditions_failed = []
+            
+            if is_gap_up:
+                conditions_met.append(f"Gap Up ({gap_percent:.2f}% >= {config.MIN_GAP_PERCENTAGE}%)")
+            else:
+                conditions_failed.append(f"Gap Up ({gap_percent:.2f}% < {config.MIN_GAP_PERCENTAGE}%)")
+            
+            if is_above_hod:
+                conditions_met.append(f"Above HOD (${current_price:.2f} > ${day_high:.2f})")
+            else:
+                conditions_failed.append(f"Above HOD (${current_price:.2f} <= ${day_high:.2f})")
+            
+            if is_market_open:
+                conditions_met.append("Market Open")
+            else:
+                conditions_failed.append(f"Market Closed ({market_status})")
+            
+            if is_above_vwap:
+                conditions_met.append(f"Above VWAP (${current_price:.2f} > ${vwap:.2f})")
+            else:
+                conditions_failed.append(f"Below VWAP (${current_price:.2f} <= ${vwap:.2f})")
+            
+            if has_sufficient_volume:
+                conditions_met.append(f"Sufficient Volume ({forecasted_volume:,} >= {self.min_volume:,})")
+            else:
+                conditions_failed.append(f"Insufficient Volume ({forecasted_volume:,} < {self.min_volume:,})")
+            
+            if has_breakout_volume:
+                conditions_met.append(f"Breakout Volume ({volume_ratio:.2f}x avg)")
+            else:
+                conditions_failed.append(f"Weak Volume ({volume_ratio:.2f}x avg)")
+            
+            logger.info(f"   ✅ Conditions Met: {len(conditions_met)}/{6}")
+            logger.info(f"   ❌ Conditions Failed: {len(conditions_failed)}/{6}")
+            
+            for condition in conditions_met:
+                logger.info(f"      ✅ {condition}")
+            for condition in conditions_failed:
+                logger.info(f"      ❌ {condition}")
+            
             analysis = {
                 'ticker': ticker,
                 'strategy': self.name,

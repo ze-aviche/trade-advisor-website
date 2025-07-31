@@ -20,7 +20,7 @@ from logging_config import setup_logging, get_logger, log_api_request, log_perfo
 load_dotenv()
 
 # Setup comprehensive logging
-setup_logging(log_level='INFO', log_dir='../logs')
+setup_logging(log_level='INFO', log_dir='logs')
 app_logger = get_logger('app')
 
 # Import real gap-up detection functions
@@ -30,14 +30,14 @@ try:
     from real_time_detector import real_time_detector
     REAL_DATA_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: Could not import gap_up_detector: {e}")
+    app_logger.warning(f"Warning: Could not import gap_up_detector: {e}")
     REAL_DATA_AVAILABLE = False
 
 # Import auth functions (these should always be available)
 try:
     from auth import auth_manager, require_auth
 except ImportError as e:
-    print(f"Warning: Could not import auth: {e}")
+    app_logger.warning(f"Warning: Could not import auth: {e}")
     # Create dummy auth functions if import fails
     auth_manager = None
     require_auth = lambda f: f  # No-op decorator
@@ -52,6 +52,62 @@ active_stocks = set()
 price_cache = {}
 websocket_connected = False
 real_time_gap_ups = []  # Store real-time detected gap-ups
+
+def check_bot_status():
+    """Check if the trading bot is running"""
+    try:
+        import os
+        import psutil
+        
+        # Check for bot PID file
+        bot_pid_file = os.path.join(os.path.dirname(__file__), 'bot', 'bot.pid')
+        
+        if os.path.exists(bot_pid_file):
+            try:
+                with open(bot_pid_file, 'r') as f:
+                    pid_content = f.read().strip()
+                    print(f"PID content: {pid_content}")
+                    # Remove any non-numeric characters (like %)
+                    pid_content = ''.join(c for c in pid_content if c.isdigit())
+                    print(f"PID content: {pid_content}")
+                    if pid_content:
+                        pid = int(pid_content)
+                        print(f"PID: {pid}")
+                    else:
+                        return False
+                
+                # Check if process is running
+                print(f"Checking posix condition: {psutil.pid_exists(pid)}")
+                if psutil.pid_exists(pid):
+                    try:
+                        process = psutil.Process(pid)
+                        print(f"Process: {process}")
+                        cmdline = ' '.join(process.cmdline())
+                        print(f"Cmdline: {cmdline}")
+                        # Check for run_bot.py in the command line
+                        if 'run_bot.py' in cmdline:
+                            print(f"run_bot.py entry found in cmdline: {cmdline}")    
+                            return True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        # Process exists but we can't access it or it's a zombie
+                        pass
+                else:
+                    # Process doesn't exist, clean up the stale PID file
+                    try:
+                        os.remove(bot_pid_file)
+                    except OSError:
+                        pass
+            except (ValueError, IOError):
+                # Invalid PID file content or can't read file
+                try:
+                    os.remove(bot_pid_file)
+                except OSError:
+                    pass
+        
+        return False
+    except Exception as e:
+        print(f"Error checking bot status: {e}")
+        return False
 
 # Mock data for fallback when real data is not available
 MOCK_GAP_UPS = [
@@ -187,7 +243,7 @@ def handle_real_time_gap_up(gap_up_data):
         'timestamp': datetime.now().isoformat()
     })
     
-    print(f"🚨 Real-time gap-up broadcast: {gap_up_data['ticker']} - {gap_up_data['gap_percent']}%")
+    app_logger.info(f"🚨 Real-time gap-up broadcast: {gap_up_data['ticker']} - {gap_up_data['gap_percent']}%")
 
 def start_price_update_thread():
     """Start background thread for price updates"""
@@ -222,11 +278,11 @@ def start_price_update_thread():
                                 broadcast_price_update(ticker, price_data)
                                 
                         except Exception as e:
-                            print(f"Error updating price for {ticker}: {e}")
+                            app_logger.error(f"Error updating price for {ticker}: {e}")
                             continue
                             
                 except Exception as e:
-                    print(f"Error in price update worker: {e}")
+                    app_logger.error(f"Error in price update worker: {e}")
                     
             # Sleep for 1 second before next update
             time.sleep(1)
@@ -234,7 +290,7 @@ def start_price_update_thread():
     # Start the background thread
     thread = threading.Thread(target=price_update_worker, daemon=True)
     thread.start()
-    print("✅ Real-time price update thread started")
+    app_logger.info("✅ Real-time price update thread started")
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
@@ -384,7 +440,8 @@ def health_check():
         'version': '1.0.0',
         'real_data_available': REAL_DATA_AVAILABLE,
         'websocket_connected': websocket_connected,
-        'active_stocks_count': len(active_stocks)
+        'active_stocks_count': len(active_stocks),
+        'bot_running': check_bot_status()
     })
 
 @app.route('/api/gap-ups')
@@ -392,11 +449,11 @@ def get_gap_ups():
     """Get current gap-up stocks"""
     try:
         if REAL_DATA_AVAILABLE:
-            print("🔍 Attempting to fetch real gap-up data...")
+            app_logger.info("🔍 Attempting to fetch real gap-up data...")
             # Use real data from Polygon API
             gap_ups = get_gap_up_stocks()
             if gap_ups and len(gap_ups) > 0:
-                print(f"✅ Successfully fetched {len(gap_ups)} real gap-up stocks")
+                app_logger.info(f"✅ Successfully fetched {len(gap_ups)} real gap-up stocks")
                 
                 # Add real-time price updates for gap-up stocks
                 for stock in gap_ups:
@@ -413,9 +470,9 @@ def get_gap_ups():
                     'source': 'real'
                 })
             else:
-                print("⚠️ No real gap-up data available, falling back to mock data")
+                app_logger.warning("⚠️ No real gap-up data available, falling back to mock data")
         else:
-            print("⚠️ Real data not available, using mock data")
+            app_logger.warning("⚠️ Real data not available, using mock data")
         
         # Fallback to mock data
         updated_gap_ups = []
@@ -895,29 +952,29 @@ def get_cache_status_endpoint(ticker):
         }), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting Trading Advisor Web API...")
-    print("📊 API available at: http://localhost:5000")
-    print("🔧 Health check: http://localhost:5000/api/health")
-    print("🌐 Frontend should be served from: http://localhost:3000")
+    app_logger.info("🚀 Starting Trading Advisor Web API...")
+    app_logger.info("📊 API available at: http://localhost:5000")
+    app_logger.info("🔧 Health check: http://localhost:5000/api/health")
+    app_logger.info("🌐 Frontend should be served from: http://localhost:3000")
     
+    # Check if real data is available
     if REAL_DATA_AVAILABLE:
-        print("✅ Real data enabled - Gap-up detection available")
-        if os.environ.get('POLYGON_API_KEY'):
-            print("✅ Polygon API key found in environment")
-        else:
-            print("⚠️ Using default Polygon API key from trading-advisor project")
+        app_logger.info("✅ Real data enabled - Gap-up detection available")
         
-        # Start real-time price update thread
-        start_price_update_thread()
+        # Check Polygon API key
+        if os.getenv('POLYGON_API_KEY'):
+            app_logger.info("✅ Polygon API key found in environment")
+        else:
+            app_logger.warning("⚠️ Using default Polygon API key from trading-advisor project")
         
         # Start real-time gap-up monitoring
         try:
-            real_time_detector.start_monitoring(callback=handle_real_time_gap_up)
-            print("✅ Real-time gap-up monitoring started (25%+ threshold)")
+            real_time_detector.start_monitoring(handle_real_time_gap_up)
+            app_logger.info("✅ Real-time gap-up monitoring started (25%+ threshold)")
         except Exception as e:
-            print(f"⚠️ Could not start real-time monitoring: {e}")
+            app_logger.error(f"⚠️ Could not start real-time monitoring: {e}")
     else:
-        print("⚠️ Real data not available - Using mock data only")
-        print("💡 Install dependencies: pip install -r requirements.txt")
+        app_logger.warning("⚠️ Real data not available - Using mock data only")
+        app_logger.info("💡 Install dependencies: pip install -r requirements.txt")
     
     socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True) 

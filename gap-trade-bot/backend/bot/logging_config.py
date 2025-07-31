@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simplified Logging Configuration for Gap-Trade-Bot
+Simplified Logging Configuration for Trading Bot
 Provides clean logging with minimal file output
 """
 import os
@@ -47,7 +47,7 @@ def setup_logging(log_level='INFO', log_dir='logs'):
     root_logger.addHandler(console_handler)
     
     # File Handler - All logs (DEBUG and above)
-    all_logs_file = log_path / 'gap_trade_backend_all.log'
+    all_logs_file = log_path / 'gap_trade_bot_all.log'
     file_handler = logging.handlers.RotatingFileHandler(
         all_logs_file,
         maxBytes=10*1024*1024,  # 10MB
@@ -58,7 +58,7 @@ def setup_logging(log_level='INFO', log_dir='logs'):
     root_logger.addHandler(file_handler)
     
     # File Handler - Errors only
-    error_logs_file = log_path / 'gap_trade_backend_errors.log'
+    error_logs_file = log_path / 'gap_trade_bot_errors.log'
     error_handler = logging.handlers.RotatingFileHandler(
         error_logs_file,
         maxBytes=5*1024*1024,  # 5MB
@@ -68,7 +68,7 @@ def setup_logging(log_level='INFO', log_dir='logs'):
     error_handler.setFormatter(detailed_formatter)
     root_logger.addHandler(error_handler)
     
-    print(f"✅ Backend logging configured - All logs: {all_logs_file}, Errors: {error_logs_file}")
+    print(f"✅ Bot logging configured - All logs: {all_logs_file}, Errors: {error_logs_file}")
 
 def get_logger(name):
     """
