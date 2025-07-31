@@ -1390,3 +1390,5 @@
 2025-07-31 02:57:15,352 | trading_bot | ERROR | trading_bot.py:275 | _check_positions() | ❌ Error checking positions: unhashable type: 'dict'
 2025-07-31 02:57:15,352 | trading_bot | ERROR | trading_bot.py:337 | _check_pending_orders() | ❌ Error checking pending orders: unsupported operand type(s) for +: 'NoneType' and 'NoneType'
 2025-07-31 02:59:40,538 | websocket_client | ERROR | websocket_client.py:61 | connect() | ❌ WebSocket connection failed: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+2025-07-31 03:56:31,319 | websocket_client | ERROR | websocket_client.py:61 | connect() | ❌ WebSocket connection failed: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+2025-07-31 04:03:10,420 | websocket_client | ERROR | websocket_client.py:61 | connect() | ❌ WebSocket connection failed: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
