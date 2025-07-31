@@ -23,6 +23,7 @@ def setup_logging(log_level='INFO', log_dir='logs'):
     
     # Configure root logger
     root_logger = logging.getLogger()
+    # Set log level
     root_logger.setLevel(getattr(logging, log_level.upper()))
     
     # Clear any existing handlers

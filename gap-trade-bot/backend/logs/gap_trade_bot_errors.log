@@ -1,0 +1,1 @@
+2025-07-30 19:08:05,542 | historical_data | ERROR | historical_data.py:680 | get_historical_gap_up_data() | ❌ No historical data found for TEST

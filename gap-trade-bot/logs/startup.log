@@ -1,0 +1,11 @@
+🎯 Trading Advisor Web Application
+========================================
+✅ All Python dependencies are available
+
+📋 Available options:
+1. Start backend server only
+2. Start frontend server only
+3. Start both servers (recommended)
+4. Exit
+
+Enter your choice (1-4): 

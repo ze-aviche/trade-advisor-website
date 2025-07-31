@@ -920,4 +920,4 @@ if __name__ == '__main__':
         print("⚠️ Real data not available - Using mock data only")
         print("💡 Install dependencies: pip install -r requirements.txt")
     
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000) 
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True) 

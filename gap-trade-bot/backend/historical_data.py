@@ -86,6 +86,8 @@ def get_premarket_high_low_data(ticker, polygon_client, date_str):
         start_timestamp_utc_ms = int(start_datetime_est.timestamp() * 1000)
         end_timestamp_utc_ms = int(end_datetime_est.timestamp() * 1000)
         
+        logger.debug(f"🔍 Fetching premarket data for {ticker} on {date_str} (4:00-9:30 AM EST)")
+        
         aggs_data = polygon_client.list_aggs(
             ticker=ticker,
             multiplier=1,
@@ -97,7 +99,10 @@ def get_premarket_high_low_data(ticker, polygon_client, date_str):
         aggs_list = list(aggs_data)
         
         if not aggs_list:
+            logger.debug(f"⚠️ No premarket data found for {ticker} on {date_str}")
             return None, None, None, None
+        
+        logger.debug(f"📊 Found {len(aggs_list)} premarket bars for {ticker} on {date_str}")
         
         max_high = -1
         high_timestamp = None
@@ -124,10 +129,11 @@ def get_premarket_high_low_data(ticker, polygon_client, date_str):
             low_datetime_est = low_datetime_utc.astimezone(est_timezone)
             low_timestamp_est = low_datetime_est.strftime('%H:%M')
         
+        logger.debug(f"✅ Premarket data for {ticker} on {date_str}: High={max_high}@{high_timestamp_est}, Low={min_low}@{low_timestamp_est}")
         return max_high, high_timestamp_est, min_low, low_timestamp_est
         
     except Exception as e:
-        print(f"Error fetching premarket data for {ticker} on {date_str}: {e}")
+        logger.error(f"❌ Error fetching premarket data for {ticker} on {date_str}: {e}")
         return None, None, None, None
 
 def get_daily_high_low_data(ticker, polygon_client, date_str):
@@ -209,13 +215,15 @@ def get_premarket_volume(polygon_client, ticker, date_str):
         aggs_list = list(aggs_data)
         
         if not aggs_list:
+            logger.debug(f"⚠️ No premarket volume data found for {ticker} on {date_str}")
             return 0.0
         
         premarket_total_volume = sum(bar.volume for bar in aggs_list)
+        logger.debug(f"📊 Premarket volume for {ticker} on {date_str}: {premarket_total_volume}")
         return premarket_total_volume
         
     except Exception as e:
-        print(f"Error fetching premarket volume for {ticker} on {date_str}: {e}")
+        logger.error(f"❌ Error fetching premarket volume for {ticker} on {date_str}: {e}")
         return 0.0
 
 def fetch_single_day_data(ticker, polygon_client, date_str):
@@ -377,21 +385,41 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
     try:
         major_gap_up_data = []
         
+        # Create a dictionary for quick lookup of previous trading days
+        daily_data_dict = {}
+        for agg in daily_data:
+            # Fix Polygon API date offset by adding 1 day to get correct trading date
+            date_str = (dt.fromtimestamp(agg.timestamp / 1000) + timedelta(days=1)).strftime('%Y-%m-%d')
+            daily_data_dict[date_str] = agg
+        
         for i, agg in enumerate(daily_data):
-            date_str = dt.fromtimestamp(agg.timestamp / 1000).strftime('%Y-%m-%d')
+            # Fix Polygon API date offset by adding 1 day to get correct trading date
+            date_str = (dt.fromtimestamp(agg.timestamp / 1000) + timedelta(days=1)).strftime('%Y-%m-%d')
             
-            # Get previous day close for gap calculation
+            # Get previous trading day close for gap calculation
             previous_day_close = None
-            if i > 0:
-                previous_day_close = daily_data[i-1].close
+            
+            # Find the actual previous trading day by looking back through the data
+            current_date = dt.strptime(date_str, '%Y-%m-%d').date()
+            for days_back in range(1, 10):  # Look back up to 10 days to find previous trading day
+                prev_date = current_date - timedelta(days=days_back)
+                prev_date_str = prev_date.strftime('%Y-%m-%d')
+                
+                if prev_date_str in daily_data_dict:
+                    previous_day_close = daily_data_dict[prev_date_str].close
+                    logger.debug(f"📊 Found previous trading day for {date_str}: {prev_date_str} (close: {previous_day_close})")
+                    break
             
             # Calculate gap percentage
             gap_percent = None
             if previous_day_close and agg.open:
                 gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
+                logger.debug(f"📈 Gap calculation for {date_str}: Open={agg.open}, PrevClose={previous_day_close}, Gap={gap_percent}%")
             
             # Only process if it's a major gap-up (25%+)
             if gap_percent and gap_percent >= 25:
+                logger.info(f"🚀 Found major gap-up for {ticker} on {date_str}: {gap_percent}%")
+                
                 # Calculate percentages
                 percent_gap_high = None
                 closing_percent = None
@@ -408,8 +436,15 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                 premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, date_str)
                 premarket_volume = get_premarket_volume(polygon_client, ticker, date_str)
                 
+                # Get daily high/low data for gap-up days
+                daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, date_str)
+                
+                # Get VWAP crosses for gap-up days
+                vwap_crosses = count_vwap_crosses(polygon_client, ticker, date_str)
+                
                 # Get daily summary for premarket open and afterhours close
                 try:
+                    logger.debug(f"🔍 Fetching daily summary for {ticker} on {date_str}")
                     daily_summary = polygon_client.get_daily_open_close_agg(
                         ticker=ticker,
                         date=date_str,
@@ -417,8 +452,9 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                     )
                     premarket_open = daily_summary.pre_market if daily_summary.pre_market else None
                     afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
+                    logger.debug(f"📊 Daily summary for {ticker} on {date_str}: Pre-market={premarket_open}, After-hours={afterhours_close}")
                 except Exception as e:
-                    logger.warning(f"Error fetching daily summary for {ticker} on {date_str}: {e}")
+                    logger.warning(f"❌ Error fetching daily summary for {ticker} on {date_str}: {e}")
                     premarket_open = None
                     afterhours_close = None
                 
@@ -431,14 +467,14 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                     'premarket volume': premarket_volume,
                     'open': round(agg.open, 2),
                     'gap up % at open': gap_percent,
-                    'day high': round(agg.high, 2),
-                    'day high time': None,  # Simplified for performance
+                    'day high': round(daily_high if daily_high else agg.high, 2),
+                    'day high time': daily_high_time,
                     'day high %': percent_gap_high,
                     'close price': round(agg.close, 2),
                     'closing percent': closing_percent,
                     'afterhours close': round(afterhours_close, 2) if afterhours_close else None,
                     'total volume': agg.volume,
-                    'VWAP Crosses': None,  # Removed for performance
+                    'VWAP Crosses': vwap_crosses,
                     'Runner/Fader': runner_fader,
                     'high': round(agg.high, 2),
                     'low': round(agg.low, 2),
@@ -535,15 +571,8 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                         logger.info(f"DEBUG: Found {len(missing_dates)} total missing dates for requested range")
                         
                         if missing_dates:
-                            logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
-                            polygon_client = get_polygon_client()
-                            
-                            delta_data = []
-                            for missing_date in missing_dates:
-                                data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
-                                gap_percent = data_point.get('gap up % at open') if data_point else None
-                                if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
-                                    delta_data.append(data_point)
+                            # Use optimized batch delta processing instead of individual day fetching
+                            delta_data = get_batch_delta_data(ticker, missing_dates)
                             
                             # Store new delta data in cache (even if empty)
                             if delta_data:
@@ -622,15 +651,8 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                             logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
                             
                             if missing_dates:
-                                logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
-                                polygon_client = get_polygon_client()
-                                
-                                delta_data = []
-                                for missing_date in missing_dates:
-                                    data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
-                                    gap_percent = data_point.get('gap up % at open') if data_point else None
-                                    if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
-                                        delta_data.append(data_point)
+                                # Use optimized batch delta processing instead of individual day fetching
+                                delta_data = get_batch_delta_data(ticker, missing_dates)
                                 
                                 # Store new delta data in cache (even if empty)
                                 if delta_data:
@@ -771,26 +793,151 @@ def fetch_multiple_stocks_parallel(tickers, days=365, use_cache=True):
         logger.error(f"❌ Error in parallel processing: {e}")
         return {}
 
-def get_batch_historical_data_for_tickers(tickers, days=365, use_cache=True):
+def get_batch_delta_data(ticker, missing_dates):
     """
-    Get historical data for multiple tickers using optimized batch processing.
-    Returns a dictionary with ticker as key and gap-up data as value.
+    Fetch delta data for missing dates using batch processing.
+    This is much faster than fetching day by day.
     """
     try:
-        logger.info(f"📊 Fetching batch historical data for {len(tickers)} tickers")
+        if not missing_dates:
+            return []
         
-        # Use parallel processing for multiple tickers
-        if len(tickers) > 1:
-            return fetch_multiple_stocks_parallel(tickers, days, use_cache)
-        else:
-            # Single ticker - use regular processing
-            ticker = tickers[0]
-            data = get_historical_gap_up_data(ticker, days, use_cache)
-            return {ticker: data}
-            
+        logger.info(f"🔄 Fetching batch delta data for {ticker}: {len(missing_dates)} missing dates")
+        
+        # Sort dates for efficient processing
+        missing_dates.sort()
+        start_date = missing_dates[0]
+        end_date = missing_dates[-1]
+        
+        # Get batch data for the entire missing range
+        polygon_client = get_polygon_client()
+        daily_data = get_batch_daily_data(ticker, start_date, end_date)
+        
+        if not daily_data:
+            return []
+        
+        # Process only the missing dates from the batch data
+        delta_data = []
+        daily_data_dict = {}
+        
+        # Create lookup dictionary for quick access
+        for agg in daily_data:
+            date_str = (dt.fromtimestamp(agg.timestamp / 1000) + timedelta(days=1)).strftime('%Y-%m-%d')
+            daily_data_dict[date_str] = agg
+        
+        # Process only the missing dates
+        for missing_date in missing_dates:
+            if missing_date in daily_data_dict:
+                agg = daily_data_dict[missing_date]
+                
+                # Get previous trading day close for gap calculation
+                previous_day_close = None
+                
+                # Find the actual previous trading day by looking back through the data
+                current_date = dt.strptime(missing_date, '%Y-%m-%d').date()
+                for days_back in range(1, 10):  # Look back up to 10 days to find previous trading day
+                    prev_date = current_date - timedelta(days=days_back)
+                    prev_date_str = prev_date.strftime('%Y-%m-%d')
+                    
+                    if prev_date_str in daily_data_dict:
+                        previous_day_close = daily_data_dict[prev_date_str].close
+                        logger.debug(f"📊 Found previous trading day for {missing_date}: {prev_date_str} (close: {previous_day_close})")
+                        break
+                
+                # Fallback: if not found in batch data, fetch individually
+                if previous_day_close is None:
+                    try:
+                        prev_date_str = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
+                        prev_aggs = polygon_client.get_aggs(
+                            ticker=ticker,
+                            multiplier=1,
+                            timespan="day",
+                            from_=prev_date_str,
+                            to=prev_date_str,
+                            adjusted="true"
+                        )
+                        if prev_aggs and len(prev_aggs) > 0:
+                            previous_day_close = prev_aggs[0].close
+                            logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
+                    except Exception as e:
+                        logger.warning(f"Could not fetch previous day data for {ticker} on {missing_date}: {e}")
+                
+                # Calculate gap percentage
+                gap_percent = None
+                if previous_day_close and agg.open:
+                    gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
+                
+                # Only process if it's a major gap-up (25%+)
+                if gap_percent and gap_percent >= 25:
+                    # Get premarket data for gap-up days only
+                    premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, missing_date)
+                    premarket_volume = get_premarket_volume(polygon_client, ticker, missing_date)
+                    
+                    # Get daily high/low data for gap-up days
+                    daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, missing_date)
+                    
+                    # Get VWAP crosses for gap-up days
+                    vwap_crosses = count_vwap_crosses(polygon_client, ticker, missing_date)
+                    
+                    # Get daily summary for premarket open and afterhours close
+                    try:
+                        logger.debug(f"🔍 Fetching daily summary for {ticker} on {missing_date}")
+                        daily_summary = polygon_client.get_daily_open_close_agg(
+                            ticker=ticker,
+                            date=missing_date,
+                            adjusted="true",
+                        )
+                        premarket_open = daily_summary.pre_market if daily_summary.pre_market else None
+                        afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
+                        logger.debug(f"📊 Daily summary for {ticker} on {missing_date}: Pre-market={premarket_open}, After-hours={afterhours_close}")
+                    except Exception as e:
+                        logger.warning(f"❌ Error fetching daily summary for {ticker} on {missing_date}: {e}")
+                        premarket_open = None
+                        afterhours_close = None
+                    
+                    # Calculate percentages
+                    percent_gap_high = None
+                    closing_percent = None
+                    if previous_day_close:
+                        percent_gap_high = round(((agg.high - previous_day_close) / previous_day_close) * 100, 2)
+                        closing_percent = round(((agg.close - previous_day_close) / previous_day_close) * 100, 2)
+                    
+                    # Determine Runner/Fader
+                    runner_fader = "Runner" if agg.close > agg.open else (
+                        "Fader" if agg.close < agg.open else "Neutral")
+                    
+                    data_point = {
+                        'date': missing_date,
+                        'pd close': round(previous_day_close, 2) if previous_day_close else None,
+                        'premarket open': round(premarket_open, 2) if premarket_open else None,
+                        'premarket high': round(premarket_high, 2) if premarket_high else None,
+                        'premarket high time': premarket_high_time,
+                        'premarket volume': premarket_volume,
+                        'open': round(agg.open, 2),
+                        'gap up % at open': gap_percent,
+                        'day high': round(daily_high if daily_high else agg.high, 2),
+                        'day high time': daily_high_time,
+                        'day high %': percent_gap_high,
+                        'close price': round(agg.close, 2),
+                        'closing percent': closing_percent,
+                        'afterhours close': round(afterhours_close, 2) if afterhours_close else None,
+                        'total volume': agg.volume,
+                        'VWAP Crosses': vwap_crosses,
+                        'Runner/Fader': runner_fader,
+                        'high': round(agg.high, 2),
+                        'low': round(agg.low, 2),
+                        'volume_millions': round(agg.volume / 1000000, 2),
+                        'dollar_volume_millions': round((agg.volume * agg.high) / 1000000, 2)
+                    }
+                    
+                    delta_data.append(data_point)
+        
+        logger.info(f"✅ Batch delta processing completed for {ticker}: {len(delta_data)} gap-up days found")
+        return delta_data
+        
     except Exception as e:
-        logger.error(f"❌ Error in batch historical data fetch: {e}")
-        return {}
+        logger.error(f"❌ Error in batch delta processing for {ticker}: {e}")
+        return []
 
 def get_cache_stats():
     """Get cache statistics"""

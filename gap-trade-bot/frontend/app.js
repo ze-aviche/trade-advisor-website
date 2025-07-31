@@ -395,7 +395,7 @@ console.log('✅ Vue.js loaded successfully');
                     console.log(`📊 Loading historical data for ${this.historicalTicker} (${this.getPeriodDescription()})...`);
                     
                     const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?days=${this.selectedPeriod}&cache=true`, {
+                    const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?days=${this.selectedPeriod}&cache=true&_t=${Date.now()}`, {
                         headers: {
                             'Authorization': `Bearer ${sessionToken}`
                         }
@@ -410,6 +410,7 @@ console.log('✅ Vue.js loaded successfully');
                         
                         this.historicalData = filteredData;
                         console.log(`✅ Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker} (filtered from ${data.data.length} total days over ${this.getPeriodDescription()})`);
+                        console.log('🔍 First 3 dates received:', filteredData.slice(0, 3).map(day => day.date));
                         this.showNotification(`Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker.toUpperCase()} (${this.getPeriodDescription()} analysis)`, 'success');
                     } else {
                         console.error(`❌ Failed to load historical data for ${this.historicalTicker}:`, data.error);
@@ -428,6 +429,8 @@ console.log('✅ Vue.js loaded successfully');
                 this.historicalTicker = '';
                 this.loading.historical = false;
             },
+            
+
             
             downloadExcel() {
                 if (this.historicalData.length === 0) {
@@ -1150,7 +1153,8 @@ console.log('✅ Vue.js loaded successfully');
             // Format date
             formatDate(dateString) {
                 if (!dateString) return 'N/A';
-                return new Date(dateString).toLocaleDateString();
+                // Return the date string as-is to avoid timezone issues
+                return dateString;
             },
             
             // Format time

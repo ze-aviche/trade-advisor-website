@@ -15,3 +15,361 @@
 2025-07-30 18:38:22,187 | historical_data | INFO | historical_data.py:498 | get_historical_gap_up_data() | 📊 Requested range: 2025-06-30 to 2025-07-30
 2025-07-30 18:38:22,188 | historical_data | INFO | historical_data.py:499 | get_historical_gap_up_data() | 📊 Found 4 gap-up days in requested range
 2025-07-30 18:38:22,205 | historical_data | INFO | historical_data.py:569 | get_historical_gap_up_data() | ✅ Returning 4 gap-up days from cache for requested range
+2025-07-30 18:59:01,765 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:59:01,767 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 18:59:01,767 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:59:01,767 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 18:59:30,118 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 18:59:30,119 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 18:59:30,120 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 18:59:30,120 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:00:13,290 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:00:13,290 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:00:13,290 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:00:13,290 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:07:40,463 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:07:40,463 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:07:40,464 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:07:40,466 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:07:40,477 | historical_data | INFO | historical_data.py:474 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for SONN from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:07:40,486 | historical_data | INFO | historical_data.py:481 | get_historical_gap_up_data() | Cache status for SONN: {'ticker': 'SONN', 'cached': True, 'total_records': 3, 'last_updated': '2025-07-31 00:02:54', 'data_range': {'start': '2025-01-31', 'end': '2025-07-30'}}
+2025-07-30 19:07:40,542 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 3 cached records for SONN
+2025-07-30 19:07:40,542 | historical_data | INFO | historical_data.py:485 | get_historical_gap_up_data() | DEBUG: Retrieved 3 cached records for SONN
+2025-07-30 19:07:40,543 | historical_data | INFO | historical_data.py:488 | get_historical_gap_up_data() | ✅ Found 3 cached gap-up records for SONN
+2025-07-30 19:07:40,543 | historical_data | INFO | historical_data.py:498 | get_historical_gap_up_data() | 📊 Requested range: 2024-07-30 to 2025-07-30
+2025-07-30 19:07:40,543 | historical_data | INFO | historical_data.py:499 | get_historical_gap_up_data() | 📊 Found 3 gap-up days in requested range
+2025-07-30 19:07:40,579 | historical_data | INFO | historical_data.py:519 | get_historical_gap_up_data() | 🔄 Requested range extends beyond cache (before: True, after: False)
+2025-07-30 19:07:40,586 | historical_cache | INFO | historical_cache.py:132 | get_cache_gaps() | 🔍 Found 185 missing dates for SONN
+2025-07-30 19:07:40,589 | historical_data | INFO | historical_data.py:527 | get_historical_gap_up_data() | DEBUG: Found 185 missing dates before cache
+2025-07-30 19:07:40,590 | historical_data | INFO | historical_data.py:535 | get_historical_gap_up_data() | DEBUG: Found 185 total missing dates for requested range
+2025-07-30 19:07:40,591 | historical_data | INFO | historical_data.py:769 | get_batch_delta_data() | 🔄 Fetching batch delta data for SONN: 185 missing dates
+2025-07-30 19:07:41,094 | performance | INFO | logging_config.py:153 | log_performance() | ⏱️ batch_daily_data | Duration: 0.488s | Details: {'ticker': 'SONN', 'start_date': '2024-07-30', 'end_date': '2025-01-30', 'data_points': 127}
+2025-07-30 19:07:41,095 | historical_data | INFO | historical_data.py:365 | get_batch_daily_data() | 📊 Retrieved 127 days of batch data for SONN
+2025-07-30 19:07:44,294 | historical_data | INFO | historical_data.py:882 | get_batch_delta_data() | ✅ Batch delta processing completed for SONN: 1 gap-up days found
+2025-07-30 19:07:44,303 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 1 records for SONN in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:07:44,304 | historical_data | INFO | historical_data.py:544 | get_historical_gap_up_data() | 💾 Cached 1 new gap-up days from delta for SONN
+2025-07-30 19:07:44,305 | historical_data | INFO | historical_data.py:553 | get_historical_gap_up_data() | ✅ Returning 4 gap-up days (cached: 3, delta: 1)
+2025-07-30 19:08:05,182 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:08:05,183 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:08:05,183 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:08:05,185 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:08:05,188 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for TEST
+2025-07-30 19:08:05,189 | historical_data | INFO | historical_data.py:474 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for TEST from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:08:05,190 | historical_data | INFO | historical_data.py:481 | get_historical_gap_up_data() | Cache status for TEST: {'ticker': 'TEST', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:08:05,191 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for TEST
+2025-07-30 19:08:05,192 | historical_data | INFO | historical_data.py:485 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for TEST
+2025-07-30 19:08:05,192 | historical_data | INFO | historical_data.py:671 | get_historical_gap_up_data() | DEBUG: No cached data found for TEST, will fetch from Polygon
+2025-07-30 19:08:05,193 | historical_data | INFO | historical_data.py:674 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for TEST
+2025-07-30 19:08:05,542 | historical_data | ERROR | historical_data.py:680 | get_historical_gap_up_data() | ❌ No historical data found for TEST
+2025-07-30 19:08:13,814 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:08:13,814 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:08:13,814 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:08:13,815 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:08:13,816 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for AAPL
+2025-07-30 19:08:13,817 | historical_data | INFO | historical_data.py:474 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for AAPL from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:08:13,817 | historical_data | INFO | historical_data.py:481 | get_historical_gap_up_data() | Cache status for AAPL: {'ticker': 'AAPL', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:08:13,820 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for AAPL
+2025-07-30 19:08:13,821 | historical_data | INFO | historical_data.py:485 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for AAPL
+2025-07-30 19:08:13,821 | historical_data | INFO | historical_data.py:671 | get_historical_gap_up_data() | DEBUG: No cached data found for AAPL, will fetch from Polygon
+2025-07-30 19:08:13,822 | historical_data | INFO | historical_data.py:674 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for AAPL
+2025-07-30 19:08:14,147 | performance | INFO | logging_config.py:153 | log_performance() | ⏱️ batch_daily_data | Duration: 0.324s | Details: {'ticker': 'AAPL', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:08:14,147 | historical_data | INFO | historical_data.py:365 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for AAPL
+2025-07-30 19:08:14,152 | historical_data | INFO | historical_data.py:451 | process_batch_data_to_gap_ups() | 📈 Found 0 major gap-up days (25%+) for AAPL
+2025-07-30 19:08:14,157 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 0 records for AAPL in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:08:14,158 | historical_data | INFO | historical_data.py:697 | get_historical_gap_up_data() | 💾 Cached empty result (no gap-ups) for AAPL in period 2024-07-30 to 2025-07-30
+2025-07-30 19:08:14,158 | performance | INFO | logging_config.py:153 | log_performance() | ⏱️ historical_gap_up_data | Duration: 0.342s | Details: {'ticker': 'AAPL', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 0}
+2025-07-30 19:08:14,159 | historical_data | INFO | historical_data.py:708 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for AAPL
+2025-07-30 19:08:14,159 | historical_data | INFO | historical_data.py:709 | get_historical_gap_up_data() | 📈 Found 0 major gap-up days (25%+) for AAPL
+2025-07-30 19:15:17,593 | startup | INFO | logging_config.py:115 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:15:17,595 | startup | INFO | logging_config.py:116 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:15:17,608 | startup | INFO | logging_config.py:117 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:15:17,608 | startup | INFO | logging_config.py:118 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:17:35,634 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:17:35,637 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:17:35,637 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:17:35,637 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:17:35,646 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for FTFT
+2025-07-30 19:17:35,694 | historical_data | INFO | historical_data.py:484 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for FTFT from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:17:35,695 | historical_data | INFO | historical_data.py:491 | get_historical_gap_up_data() | Cache status for FTFT: {'ticker': 'FTFT', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:17:35,726 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for FTFT
+2025-07-30 19:17:35,727 | historical_data | INFO | historical_data.py:495 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for FTFT
+2025-07-30 19:17:35,727 | historical_data | INFO | historical_data.py:681 | get_historical_gap_up_data() | DEBUG: No cached data found for FTFT, will fetch from Polygon
+2025-07-30 19:17:35,727 | historical_data | INFO | historical_data.py:684 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for FTFT
+2025-07-30 19:17:35,780 | urllib3.connectionpool | DEBUG | connectionpool.py:1049 | _new_conn() | Starting new HTTPS connection (1): api.polygon.io:443
+2025-07-30 19:17:36,113 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/day/2024-07-30/2025-07-30?adjusted=true HTTP/1.1" 200 None
+2025-07-30 19:17:36,115 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.388s | Details: {'ticker': 'FTFT', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:17:36,117 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for FTFT
+2025-07-30 19:17:36,179 | historical_data | DEBUG | historical_data.py:89 | get_premarket_high_low_data() | 🔍 Fetching premarket data for FTFT on 2025-03-02 (4:00-9:30 AM EST)
+2025-07-30 19:17:36,180 | urllib3.connectionpool | DEBUG | connectionpool.py:1049 | _new_conn() | Starting new HTTPS connection (1): api.polygon.io:443
+2025-07-30 19:17:36,404 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/minute/1740906000000/1740925800000?limit=50000 HTTP/1.1" 200 0
+2025-07-30 19:17:36,405 | historical_data | DEBUG | historical_data.py:102 | get_premarket_high_low_data() | ⚠️ No premarket data found for FTFT on 2025-03-02
+2025-07-30 19:17:36,468 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/minute/1740906000000/1740925800000?limit=50000 HTTP/1.1" 200 0
+2025-07-30 19:17:36,470 | historical_data | DEBUG | historical_data.py:218 | get_premarket_volume() | ⚠️ No premarket volume data found for FTFT on 2025-03-02
+2025-07-30 19:17:36,471 | historical_data | DEBUG | historical_data.py:421 | process_batch_data_to_gap_ups() | 🔍 Fetching daily summary for FTFT on 2025-03-02
+2025-07-30 19:17:36,541 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v1/open-close/FTFT/2025-03-02?adjusted=true HTTP/1.1" 404 0
+2025-07-30 19:17:36,541 | historical_data | WARNING | historical_data.py:431 | process_batch_data_to_gap_ups() | ❌ Error fetching daily summary for FTFT on 2025-03-02: {"status":"NOT_FOUND","request_id":"d18ad332b1b3fd8558849a8ce3fe190e","message":"Data not found."}
+2025-07-30 19:17:36,548 | historical_data | DEBUG | historical_data.py:89 | get_premarket_high_low_data() | 🔍 Fetching premarket data for FTFT on 2025-07-10 (4:00-9:30 AM EST)
+2025-07-30 19:17:36,548 | urllib3.connectionpool | DEBUG | connectionpool.py:1049 | _new_conn() | Starting new HTTPS connection (1): api.polygon.io:443
+2025-07-30 19:17:36,773 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/minute/1752134400000/1752154200000?limit=50000 HTTP/1.1" 200 0
+2025-07-30 19:17:36,774 | historical_data | DEBUG | historical_data.py:105 | get_premarket_high_low_data() | 📊 Found 6 premarket bars for FTFT on 2025-07-10
+2025-07-30 19:17:36,774 | historical_data | DEBUG | historical_data.py:132 | get_premarket_high_low_data() | ✅ Premarket data for FTFT on 2025-07-10: High=1.46@07:39, Low=1.37@08:00
+2025-07-30 19:17:36,846 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/minute/1752134400000/1752154200000?limit=50000 HTTP/1.1" 200 0
+2025-07-30 19:17:36,846 | historical_data | DEBUG | historical_data.py:222 | get_premarket_volume() | 📊 Premarket volume for FTFT on 2025-07-10: 2500
+2025-07-30 19:17:36,846 | historical_data | DEBUG | historical_data.py:421 | process_batch_data_to_gap_ups() | 🔍 Fetching daily summary for FTFT on 2025-07-10
+2025-07-30 19:17:36,917 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v1/open-close/FTFT/2025-07-10?adjusted=true HTTP/1.1" 200 0
+2025-07-30 19:17:36,917 | historical_data | DEBUG | historical_data.py:429 | process_batch_data_to_gap_ups() | 📊 Daily summary for FTFT on 2025-07-10: Pre-market=1.4, After-hours=1.5599
+2025-07-30 19:17:36,918 | historical_data | INFO | historical_data.py:461 | process_batch_data_to_gap_ups() | 📈 Found 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:17:36,940 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 2 records for FTFT in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:17:36,941 | historical_data | INFO | historical_data.py:703 | get_historical_gap_up_data() | 💾 Cached 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:17:36,941 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 1.248s | Details: {'ticker': 'FTFT', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 2}
+2025-07-30 19:17:36,942 | historical_data | INFO | historical_data.py:718 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for FTFT
+2025-07-30 19:17:36,942 | historical_data | INFO | historical_data.py:719 | get_historical_gap_up_data() | 📈 Found 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:18:52,244 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:18:52,247 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:18:52,248 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:18:52,249 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:18:52,462 | historical_data | DEBUG | historical_data.py:89 | get_premarket_high_low_data() | 🔍 Fetching premarket data for FTFT on 2025-07-11 (4:00-9:30 AM EST)
+2025-07-30 19:18:52,464 | urllib3.connectionpool | DEBUG | connectionpool.py:1049 | _new_conn() | Starting new HTTPS connection (1): api.polygon.io:443
+2025-07-30 19:18:52,787 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/minute/1752220800000/1752240600000?limit=50000 HTTP/1.1" 200 None
+2025-07-30 19:18:52,789 | historical_data | DEBUG | historical_data.py:105 | get_premarket_high_low_data() | 📊 Found 331 premarket bars for FTFT on 2025-07-11
+2025-07-30 19:18:52,791 | historical_data | DEBUG | historical_data.py:132 | get_premarket_high_low_data() | ✅ Premarket data for FTFT on 2025-07-11: High=4.8@04:22, Low=1.63@04:00
+2025-07-30 19:18:52,871 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v2/aggs/ticker/FTFT/range/1/minute/1752220800000/1752240600000?limit=50000 HTTP/1.1" 200 None
+2025-07-30 19:18:52,877 | historical_data | DEBUG | historical_data.py:222 | get_premarket_volume() | 📊 Premarket volume for FTFT on 2025-07-11: 36755478.0
+2025-07-30 19:19:00,308 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:19:00,308 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:19:00,309 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:19:00,310 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:19:00,320 | urllib3.connectionpool | DEBUG | connectionpool.py:1049 | _new_conn() | Starting new HTTPS connection (1): api.polygon.io:443
+2025-07-30 19:19:00,676 | urllib3.connectionpool | DEBUG | connectionpool.py:544 | _make_request() | https://api.polygon.io:443 "GET /v1/open-close/FTFT/2025-07-11?adjusted=true HTTP/1.1" 200 0
+2025-07-30 19:23:37,426 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:23:37,426 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:23:37,427 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:23:37,427 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:23:37,766 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.335s | Details: {'ticker': 'FTFT', 'start_date': '2025-03-01', 'end_date': '2025-03-05', 'data_points': 3}
+2025-07-30 19:23:37,767 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 3 days of batch data for FTFT
+2025-07-30 19:23:44,025 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:23:44,027 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:23:44,027 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:23:44,032 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:23:44,371 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.330s | Details: {'ticker': 'FTFT', 'start_date': '2025-03-01', 'end_date': '2025-03-05', 'data_points': 3}
+2025-07-30 19:23:44,372 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 3 days of batch data for FTFT
+2025-07-30 19:23:51,694 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:23:51,695 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:23:51,695 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:23:51,695 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:23:52,073 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.375s | Details: {'ticker': 'FTFT', 'start_date': '2025-07-09', 'end_date': '2025-07-12', 'data_points': 3}
+2025-07-30 19:23:52,075 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 3 days of batch data for FTFT
+2025-07-30 19:25:27,338 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:25:27,339 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:25:27,339 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:25:27,345 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:25:27,366 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for FTFT
+2025-07-30 19:25:27,387 | historical_data | INFO | historical_data.py:502 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for FTFT from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:25:27,388 | historical_data | INFO | historical_data.py:509 | get_historical_gap_up_data() | Cache status for FTFT: {'ticker': 'FTFT', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:25:27,402 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for FTFT
+2025-07-30 19:25:27,402 | historical_data | INFO | historical_data.py:513 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for FTFT
+2025-07-30 19:25:27,403 | historical_data | INFO | historical_data.py:699 | get_historical_gap_up_data() | DEBUG: No cached data found for FTFT, will fetch from Polygon
+2025-07-30 19:25:27,403 | historical_data | INFO | historical_data.py:702 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for FTFT
+2025-07-30 19:25:27,751 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.348s | Details: {'ticker': 'FTFT', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:25:27,752 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for FTFT
+2025-07-30 19:25:27,771 | historical_data | INFO | historical_data.py:419 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for FTFT on 2025-03-02: 85.94%
+2025-07-30 19:25:30,154 | historical_data | WARNING | historical_data.py:449 | process_batch_data_to_gap_ups() | ❌ Error fetching daily summary for FTFT on 2025-03-02: {"status":"NOT_FOUND","request_id":"564cbeb4e9bd7e337448dd19cea48af4","message":"Data not found."}
+2025-07-30 19:25:30,158 | historical_data | INFO | historical_data.py:419 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for FTFT on 2025-07-10: 54.3%
+2025-07-30 19:25:30,535 | historical_data | INFO | historical_data.py:479 | process_batch_data_to_gap_ups() | 📈 Found 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:25:30,546 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 2 records for FTFT in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:25:30,546 | historical_data | INFO | historical_data.py:721 | get_historical_gap_up_data() | 💾 Cached 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:25:30,546 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 3.160s | Details: {'ticker': 'FTFT', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 2}
+2025-07-30 19:25:30,555 | historical_data | INFO | historical_data.py:736 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for FTFT
+2025-07-30 19:25:30,556 | historical_data | INFO | historical_data.py:737 | get_historical_gap_up_data() | 📈 Found 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:25:52,548 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:25:52,549 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:25:52,549 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:25:52,549 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:25:52,807 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.255s | Details: {'ticker': 'FTFT', 'start_date': '2025-03-01', 'end_date': '2025-03-05', 'data_points': 3}
+2025-07-30 19:25:52,808 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 3 days of batch data for FTFT
+2025-07-30 19:25:53,086 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.272s | Details: {'ticker': 'FTFT', 'start_date': '2025-07-09', 'end_date': '2025-07-12', 'data_points': 3}
+2025-07-30 19:25:53,087 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 3 days of batch data for FTFT
+2025-07-30 19:26:24,054 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:26:24,055 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:26:24,055 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:26:24,056 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:26:43,634 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:26:43,635 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:26:43,635 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:26:43,635 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:26:43,643 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for FTFT
+2025-07-30 19:26:43,647 | historical_data | INFO | historical_data.py:504 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for FTFT from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:26:43,650 | historical_data | INFO | historical_data.py:511 | get_historical_gap_up_data() | Cache status for FTFT: {'ticker': 'FTFT', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:26:43,651 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for FTFT
+2025-07-30 19:26:43,652 | historical_data | INFO | historical_data.py:515 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for FTFT
+2025-07-30 19:26:43,653 | historical_data | INFO | historical_data.py:701 | get_historical_gap_up_data() | DEBUG: No cached data found for FTFT, will fetch from Polygon
+2025-07-30 19:26:43,655 | historical_data | INFO | historical_data.py:704 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for FTFT
+2025-07-30 19:26:44,054 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.397s | Details: {'ticker': 'FTFT', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:26:44,055 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for FTFT
+2025-07-30 19:26:44,077 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for FTFT on 2025-03-03: 85.94%
+2025-07-30 19:26:44,725 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for FTFT on 2025-07-11: 54.3%
+2025-07-30 19:26:45,340 | historical_data | INFO | historical_data.py:481 | process_batch_data_to_gap_ups() | 📈 Found 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:26:45,348 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 2 records for FTFT in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:26:45,379 | historical_data | INFO | historical_data.py:723 | get_historical_gap_up_data() | 💾 Cached 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:26:45,382 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 1.735s | Details: {'ticker': 'FTFT', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 2}
+2025-07-30 19:26:45,382 | historical_data | INFO | historical_data.py:738 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for FTFT
+2025-07-30 19:26:45,382 | historical_data | INFO | historical_data.py:739 | get_historical_gap_up_data() | 📈 Found 2 major gap-up days (25%+) for FTFT
+2025-07-30 19:29:01,741 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:29:01,743 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:29:01,743 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:29:01,743 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:29:01,757 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for HOLO
+2025-07-30 19:29:01,762 | historical_data | INFO | historical_data.py:504 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for HOLO from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:29:01,780 | historical_data | INFO | historical_data.py:511 | get_historical_gap_up_data() | Cache status for HOLO: {'ticker': 'HOLO', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:29:01,781 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for HOLO
+2025-07-30 19:29:01,782 | historical_data | INFO | historical_data.py:515 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for HOLO
+2025-07-30 19:29:01,782 | historical_data | INFO | historical_data.py:701 | get_historical_gap_up_data() | DEBUG: No cached data found for HOLO, will fetch from Polygon
+2025-07-30 19:29:01,783 | historical_data | INFO | historical_data.py:704 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for HOLO
+2025-07-30 19:29:02,140 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.358s | Details: {'ticker': 'HOLO', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:29:02,141 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for HOLO
+2025-07-30 19:29:02,152 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-08-20: 28.69%
+2025-07-30 19:29:02,633 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-12-30: 87.92%
+2025-07-30 19:29:03,037 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-02: 28.4%
+2025-07-30 19:29:03,453 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-10: 28.28%
+2025-07-30 19:29:03,862 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-27: 66.45%
+2025-07-30 19:29:04,287 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-03-03: 29.37%
+2025-07-30 19:29:04,698 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-04-22: 35.82%
+2025-07-30 19:29:05,108 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-05-27: 29.26%
+2025-07-30 19:29:05,517 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-07-11: 59.77%
+2025-07-30 19:29:05,917 | historical_data | INFO | historical_data.py:481 | process_batch_data_to_gap_ups() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:29:05,923 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 9 records for HOLO in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:29:05,925 | historical_data | INFO | historical_data.py:723 | get_historical_gap_up_data() | 💾 Cached 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:29:05,925 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 4.163s | Details: {'ticker': 'HOLO', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 9}
+2025-07-30 19:29:05,925 | historical_data | INFO | historical_data.py:738 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for HOLO
+2025-07-30 19:29:05,925 | historical_data | INFO | historical_data.py:739 | get_historical_gap_up_data() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:31:27,027 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:31:27,028 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:31:27,028 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:31:27,028 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:31:27,032 | historical_data | INFO | historical_data.py:504 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for HOLO from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:31:27,033 | historical_data | INFO | historical_data.py:511 | get_historical_gap_up_data() | Cache status for HOLO: {'ticker': 'HOLO', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:31:27,035 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for HOLO
+2025-07-30 19:31:27,039 | historical_data | INFO | historical_data.py:515 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for HOLO
+2025-07-30 19:31:27,042 | historical_data | INFO | historical_data.py:701 | get_historical_gap_up_data() | DEBUG: No cached data found for HOLO, will fetch from Polygon
+2025-07-30 19:31:27,042 | historical_data | INFO | historical_data.py:704 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for HOLO
+2025-07-30 19:31:27,437 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.395s | Details: {'ticker': 'HOLO', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:31:27,437 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for HOLO
+2025-07-30 19:31:27,451 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-08-20: 28.69%
+2025-07-30 19:31:27,953 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-12-30: 87.92%
+2025-07-30 19:31:28,390 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-02: 28.4%
+2025-07-30 19:31:28,855 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-10: 28.28%
+2025-07-30 19:31:29,285 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-27: 66.45%
+2025-07-30 19:31:29,678 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-03-03: 29.37%
+2025-07-30 19:31:30,111 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-04-22: 35.82%
+2025-07-30 19:31:30,576 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-05-27: 29.26%
+2025-07-30 19:31:31,019 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-07-11: 59.77%
+2025-07-30 19:31:31,478 | historical_data | INFO | historical_data.py:481 | process_batch_data_to_gap_ups() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:31:31,485 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 9 records for HOLO in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:31:31,485 | historical_data | INFO | historical_data.py:723 | get_historical_gap_up_data() | 💾 Cached 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:31:31,486 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 4.453s | Details: {'ticker': 'HOLO', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 9}
+2025-07-30 19:31:31,486 | historical_data | INFO | historical_data.py:738 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for HOLO
+2025-07-30 19:31:31,486 | historical_data | INFO | historical_data.py:739 | get_historical_gap_up_data() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:40:25,646 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:40:25,648 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:40:25,648 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:40:25,649 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:43:31,788 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:43:31,790 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:43:31,790 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:43:31,790 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:44:01,308 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:44:01,308 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:44:01,308 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:44:01,308 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:44:02,700 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:44:02,701 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:44:02,701 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:44:02,701 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:52:06,870 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:52:06,872 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:52:06,872 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:52:06,872 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:52:12,821 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:52:12,821 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:52:12,821 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:52:12,821 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:52:24,986 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:52:24,986 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:52:24,986 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:52:24,986 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:52:32,496 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:52:32,496 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:52:32,497 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:52:32,497 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:52:56,136 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:52:56,136 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:52:56,137 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:52:56,137 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:52:56,140 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for HOLO
+2025-07-30 19:52:56,146 | historical_data | INFO | historical_data.py:507 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for HOLO from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:52:56,147 | historical_data | INFO | historical_data.py:514 | get_historical_gap_up_data() | Cache status for HOLO: {'ticker': 'HOLO', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:52:56,148 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for HOLO
+2025-07-30 19:52:56,152 | historical_data | INFO | historical_data.py:518 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for HOLO
+2025-07-30 19:52:56,152 | historical_data | INFO | historical_data.py:704 | get_historical_gap_up_data() | DEBUG: No cached data found for HOLO, will fetch from Polygon
+2025-07-30 19:52:56,153 | historical_data | INFO | historical_data.py:707 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for HOLO
+2025-07-30 19:52:56,528 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.374s | Details: {'ticker': 'HOLO', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:52:56,530 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for HOLO
+2025-07-30 19:52:56,556 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-08-20: 28.69%
+2025-07-30 19:52:57,244 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-12-30: 87.92%
+2025-07-30 19:52:58,141 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-02: 28.4%
+2025-07-30 19:52:58,979 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-10: 28.28%
+2025-07-30 19:52:59,495 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-27: 66.45%
+2025-07-30 19:53:00,030 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-03-03: 29.37%
+2025-07-30 19:53:00,550 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-04-22: 35.82%
+2025-07-30 19:53:01,062 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-05-27: 29.26%
+2025-07-30 19:53:01,595 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-07-11: 59.77%
+2025-07-30 19:53:02,071 | historical_data | INFO | historical_data.py:484 | process_batch_data_to_gap_ups() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:53:02,080 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 9 records for HOLO in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:53:02,080 | historical_data | INFO | historical_data.py:726 | get_historical_gap_up_data() | 💾 Cached 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:53:02,081 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 5.935s | Details: {'ticker': 'HOLO', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 9}
+2025-07-30 19:53:02,081 | historical_data | INFO | historical_data.py:741 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for HOLO
+2025-07-30 19:53:02,081 | historical_data | INFO | historical_data.py:742 | get_historical_gap_up_data() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:55:23,954 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:55:23,955 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:55:23,955 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:55:23,955 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:55:30,492 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:55:30,493 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:55:30,493 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:55:30,493 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:55:39,945 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:55:39,945 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:55:39,946 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:55:39,946 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:55:46,484 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:55:46,484 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:55:46,484 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:55:46,484 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:56:18,070 | startup | INFO | logging_config.py:116 | setup_logging() | 🚀 Gap-Trade-Bot Logging System Initialized
+2025-07-30 19:56:18,071 | startup | INFO | logging_config.py:117 | setup_logging() | 📁 Log directory: /Users/avinashchennamadhav/Documents/Projects/trade-advisor-website/gap-trade-bot/backend/logs
+2025-07-30 19:56:18,073 | startup | INFO | logging_config.py:118 | setup_logging() | 🔧 Log level: INFO
+2025-07-30 19:56:18,074 | startup | INFO | logging_config.py:119 | setup_logging() | 📊 Log files: all.log, errors.log, api.log, performance.log, cache.log
+2025-07-30 19:56:18,084 | historical_cache | INFO | historical_cache.py:240 | clear_cache() | 🗑️ Cleared cache for HOLO
+2025-07-30 19:56:18,086 | historical_data | INFO | historical_data.py:510 | get_historical_gap_up_data() | 📊 Fetching historical gap-up data for HOLO from 2024-07-30 to 2025-07-30 (365 days)
+2025-07-30 19:56:18,089 | historical_data | INFO | historical_data.py:517 | get_historical_gap_up_data() | Cache status for HOLO: {'ticker': 'HOLO', 'cached': False, 'total_records': 0, 'last_updated': None, 'data_range': None}
+2025-07-30 19:56:18,094 | historical_cache | INFO | historical_cache.py:99 | get_cached_data() | 📊 Retrieved 0 cached records for HOLO
+2025-07-30 19:56:18,102 | historical_data | INFO | historical_data.py:521 | get_historical_gap_up_data() | DEBUG: Retrieved 0 cached records for HOLO
+2025-07-30 19:56:18,102 | historical_data | INFO | historical_data.py:707 | get_historical_gap_up_data() | DEBUG: No cached data found for HOLO, will fetch from Polygon
+2025-07-30 19:56:18,104 | historical_data | INFO | historical_data.py:710 | get_historical_gap_up_data() | 🔄 Fetching fresh batch data from Polygon for HOLO
+2025-07-30 19:56:18,546 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.442s | Details: {'ticker': 'HOLO', 'start_date': '2024-07-30', 'end_date': '2025-07-30', 'data_points': 251}
+2025-07-30 19:56:18,547 | historical_data | INFO | historical_data.py:373 | get_batch_daily_data() | 📊 Retrieved 251 days of batch data for HOLO
+2025-07-30 19:56:18,575 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-08-20: 28.69%
+2025-07-30 19:56:19,277 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2024-12-30: 87.92%
+2025-07-30 19:56:19,848 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-02: 28.4%
+2025-07-30 19:56:20,417 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-10: 28.28%
+2025-07-30 19:56:21,019 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-01-27: 66.45%
+2025-07-30 19:56:21,587 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-03-03: 29.37%
+2025-07-30 19:56:22,117 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-04-22: 35.82%
+2025-07-30 19:56:22,709 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-05-27: 29.26%
+2025-07-30 19:56:23,411 | historical_data | INFO | historical_data.py:421 | process_batch_data_to_gap_ups() | 🚀 Found major gap-up for HOLO on 2025-07-11: 59.77%
+2025-07-30 19:56:23,954 | historical_data | INFO | historical_data.py:487 | process_batch_data_to_gap_ups() | 📈 Found 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:56:23,968 | historical_cache | INFO | historical_cache.py:178 | store_historical_data() | 💾 Stored 9 records for HOLO in cache (query range: 2024-07-30 to 2025-07-30)
+2025-07-30 19:56:23,968 | historical_data | INFO | historical_data.py:729 | get_historical_gap_up_data() | 💾 Cached 9 major gap-up days (25%+) for HOLO
+2025-07-30 19:56:23,970 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_gap_up_data | Duration: 5.882s | Details: {'ticker': 'HOLO', 'days': 365, 'use_cache': True, 'total_days': 251, 'gap_up_days': 9}
+2025-07-30 19:56:23,973 | historical_data | INFO | historical_data.py:744 | get_historical_gap_up_data() | ✅ Retrieved 251 days of historical data for HOLO
+2025-07-30 19:56:23,973 | historical_data | INFO | historical_data.py:745 | get_historical_gap_up_data() | 📈 Found 9 major gap-up days (25%+) for HOLO
