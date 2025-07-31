@@ -1,0 +1,472 @@
+{
+  "timestamp": "20250730_214109",
+  "total_stocks": 77,
+  "successful": 19,
+  "failed": 58,
+  "total_gap_ups": 52,
+  "total_duration": 72.28228616714478,
+  "results": [
+    {
+      "ticker": "EXPR",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5786638259887695
+    },
+    {
+      "ticker": "MSTR",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.8647871017456055
+    },
+    {
+      "ticker": "NKLA",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.8779110908508301
+    },
+    {
+      "ticker": "BITF",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.8687741756439209
+    },
+    {
+      "ticker": "GNUS",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4326183795928955
+    },
+    {
+      "ticker": "CRON",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5185179710388184
+    },
+    {
+      "ticker": "VXRT",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.8148438930511475
+    },
+    {
+      "ticker": "RKT",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.7612967491149902
+    },
+    {
+      "ticker": "RIOT",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.8720529079437256
+    },
+    {
+      "ticker": "INO",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5012271404266357
+    },
+    {
+      "ticker": "GOEV",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.617163896560669
+    },
+    {
+      "ticker": "HEXO",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.43864989280700684
+    },
+    {
+      "ticker": "HIVE",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.511775016784668
+    },
+    {
+      "ticker": "NVAX",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4034550189971924
+    },
+    {
+      "ticker": "WKHS",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.34967875480651855
+    },
+    {
+      "ticker": "FTFT",
+      "success": true,
+      "gap_up_days": 2,
+      "duration": 2.440493106842041
+    },
+    {
+      "ticker": "HOOD",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.3868429660797119
+    },
+    {
+      "ticker": "HUT",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5105950832366943
+    },
+    {
+      "ticker": "LAZR",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.46373701095581055
+    },
+    {
+      "ticker": "TLRY",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.48369312286376953
+    },
+    {
+      "ticker": "MRNA",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4577789306640625
+    },
+    {
+      "ticker": "ZOM",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5854408740997314
+    },
+    {
+      "ticker": "SQ",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5019731521606445
+    },
+    {
+      "ticker": "LIDR",
+      "success": true,
+      "gap_up_days": 2,
+      "duration": 2.2133989334106445
+    },
+    {
+      "ticker": "CIDM",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4410099983215332
+    },
+    {
+      "ticker": "ATOS",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.47932004928588867
+    },
+    {
+      "ticker": "MARA",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4351480007171631
+    },
+    {
+      "ticker": "COIN",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4749770164489746
+    },
+    {
+      "ticker": "UWMC",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.3998260498046875
+    },
+    {
+      "ticker": "NAKD",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.3826780319213867
+    },
+    {
+      "ticker": "SNDL",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4715249538421631
+    },
+    {
+      "ticker": "SENS",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.3502802848815918
+    },
+    {
+      "ticker": "RIVN",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4425032138824463
+    },
+    {
+      "ticker": "XPEV",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.412492036819458
+    },
+    {
+      "ticker": "GME",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4224240779876709
+    },
+    {
+      "ticker": "KOSS",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4046039581298828
+    },
+    {
+      "ticker": "ARBK",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.63356614112854
+    },
+    {
+      "ticker": "MARK",
+      "success": true,
+      "gap_up_days": 5,
+      "duration": 4.12851881980896
+    },
+    {
+      "ticker": "UPST",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.1598210334777832
+    },
+    {
+      "ticker": "LC",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.1195471286773682
+    },
+    {
+      "ticker": "OCGN",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5164079666137695
+    },
+    {
+      "ticker": "CLSK",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.3486142158508301
+    },
+    {
+      "ticker": "SAVA",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.40178608894348145
+    },
+    {
+      "ticker": "CIFR",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.373032808303833
+    },
+    {
+      "ticker": "NOK",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.36644577980041504
+    },
+    {
+      "ticker": "CGC",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.35915207862854004
+    },
+    {
+      "ticker": "IDEX",
+      "success": true,
+      "gap_up_days": 5,
+      "duration": 4.1472461223602295
+    },
+    {
+      "ticker": "SONN",
+      "success": true,
+      "gap_up_days": 5,
+      "duration": 4.677741050720215
+    },
+    {
+      "ticker": "APHA",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.31531596183776855
+    },
+    {
+      "ticker": "SOLO",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.43423891067504883
+    },
+    {
+      "ticker": "AMC",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.3965790271759033
+    },
+    {
+      "ticker": "BB",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.44623374938964844
+    },
+    {
+      "ticker": "CAN",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4053170680999756
+    },
+    {
+      "ticker": "WINT",
+      "success": true,
+      "gap_up_days": 9,
+      "duration": 7.929225921630859
+    },
+    {
+      "ticker": "XBP",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.4020721912384033
+    },
+    {
+      "ticker": "ACB",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.558406114578247
+    },
+    {
+      "ticker": "AUR",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.366745948791504
+    },
+    {
+      "ticker": "PYPL",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.641942024230957
+    },
+    {
+      "ticker": "BBBY",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.44376277923583984
+    },
+    {
+      "ticker": "CTXR",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.263261079788208
+    },
+    {
+      "ticker": "VLDR",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.2486419677734375
+    },
+    {
+      "ticker": "QS",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.1777420043945312
+    },
+    {
+      "ticker": "BNGO",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.4183971881866455
+    },
+    {
+      "ticker": "HOLO",
+      "success": true,
+      "gap_up_days": 9,
+      "duration": 0.03238725662231445
+    },
+    {
+      "ticker": "RIDE",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4331979751586914
+    },
+    {
+      "ticker": "LI",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.47879791259765625
+    },
+    {
+      "ticker": "BTBT",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.453233003616333
+    },
+    {
+      "ticker": "BNTX",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.38461804389953613
+    },
+    {
+      "ticker": "SHIP",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.38269996643066406
+    },
+    {
+      "ticker": "CTRM",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4140470027923584
+    },
+    {
+      "ticker": "LCID",
+      "success": true,
+      "gap_up_days": 1,
+      "duration": 1.2216098308563232
+    },
+    {
+      "ticker": "SOFI",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.35997915267944336
+    },
+    {
+      "ticker": "WULF",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4893970489501953
+    },
+    {
+      "ticker": "NIO",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.5984020233154297
+    },
+    {
+      "ticker": "TOPS",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4491140842437744
+    },
+    {
+      "ticker": "AFRM",
+      "success": false,
+      "gap_up_days": 0,
+      "duration": 0.4688839912414551
+    },
+    {
+      "ticker": "MULN",
+      "success": true,
+      "gap_up_days": 4,
+      "duration": 3.8640010356903076
+    }
+  ]
+}

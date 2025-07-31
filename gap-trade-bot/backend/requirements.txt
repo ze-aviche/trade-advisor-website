@@ -6,4 +6,7 @@ python-engineio==4.7.1
 requests==2.31.0
 python-dotenv==1.0.0
 polygon-api-client==1.15.3
-pytz==2025.2 
+pytz==2025.2
+websockets==12.0
+asyncio-mqtt==0.16.1
+alpaca-py==0.13.1 

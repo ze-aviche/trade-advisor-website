@@ -76,3 +76,9 @@
 2025-07-30 20:03:13,724 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 6.447s | Details: {'ticker': 'CYN', 'days': 365, 'data_points': 8, 'cached': True}
 2025-07-30 20:03:21,003 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.374s | Details: {'ticker': 'CYN', 'start_date': '2022-07-31', 'end_date': '2024-07-29', 'data_points': 501}
 2025-07-30 20:03:25,745 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 5.125s | Details: {'ticker': 'CYN', 'days': 1095, 'data_points': 16, 'cached': True}
+2025-07-30 21:43:57,584 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 0.011s | Details: {'ticker': 'LCID', 'days': 365, 'data_points': 1, 'cached': True}
+2025-07-30 21:44:13,149 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 0.005s | Details: {'ticker': 'IDEX', 'days': 365, 'data_points': 5, 'cached': True}
+2025-07-30 21:44:19,124 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.285s | Details: {'ticker': 'IDEX', 'start_date': '2023-07-31', 'end_date': '2024-07-29', 'data_points': 251}
+2025-07-30 21:44:19,468 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 0.641s | Details: {'ticker': 'IDEX', 'days': 730, 'data_points': 5, 'cached': True}
+2025-07-30 21:44:25,349 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ batch_daily_data | Duration: 0.257s | Details: {'ticker': 'IDEX', 'start_date': '2022-07-31', 'end_date': '2024-07-29', 'data_points': 501}
+2025-07-30 21:44:26,037 | performance | INFO | logging_config.py:154 | log_performance() | ⏱️ historical_data_real | Duration: 0.957s | Details: {'ticker': 'IDEX', 'days': 1095, 'data_points': 6, 'cached': True}

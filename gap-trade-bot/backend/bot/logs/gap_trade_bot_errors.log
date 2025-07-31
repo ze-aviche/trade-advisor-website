@@ -1,0 +1,2 @@
+2025-07-30 23:21:53,329 | broker_factory | ERROR | broker_factory.py:42 | get_broker_client() | ❌ Error importing broker client: No module named 'alpaca'
+2025-07-30 23:22:09,274 | broker_factory | ERROR | broker_factory.py:42 | get_broker_client() | ❌ Error importing broker client: No module named 'alpaca'
