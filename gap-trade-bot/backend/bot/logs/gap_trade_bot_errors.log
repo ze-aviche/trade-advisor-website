@@ -1,2 +1,13 @@
-2025-07-31 19:18:12 | data_manager | ERROR | ❌ Error calculating VWAP for NEGG: HTTPSConnectionPool(host='api.polygon.io', port=443): Max retries exceeded with url: /v2/aggs/ticker/NEGG/range/1/minute/2025-07-31/2025-07-31?adjusted=true (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x11ed55090>: Failed to resolve 'api.polygon.io' ([Errno 8] nodename nor servname provided, or not known)"))
-2025-07-31 19:18:12 | data_manager | ERROR | ❌ Error calculating average volume for NEGG: HTTPSConnectionPool(host='api.polygon.io', port=443): Max retries exceeded with url: /v2/aggs/ticker/NEGG/range/1/day/2025-07-03/2025-07-31?adjusted=true (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x11ed56990>: Failed to resolve 'api.polygon.io' ([Errno 8] nodename nor servname provided, or not known)"))
+2025-08-01 11:21:39 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for MGRT: name 'is_market_open' is not defined
+2025-08-01 11:46:06 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FGF: name 'is_market_open' is not defined
+2025-08-01 12:26:58 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FGF: name 'is_market_open' is not defined
+2025-08-01 12:35:50 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FDMT: name 'is_market_open' is not defined
+2025-08-01 12:40:58 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FGF: name 'is_market_open' is not defined
+2025-08-01 12:41:18 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for WK: name 'is_market_open' is not defined
+2025-08-01 12:43:30 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FGF: name 'is_market_open' is not defined
+2025-08-01 12:43:37 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FDMT: name 'is_market_open' is not defined
+2025-08-01 12:54:59 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FDMT: name 'is_market_open' is not defined
+2025-08-01 13:28:50 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for WK: name 'is_market_open' is not defined
+2025-08-01 13:39:28 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FDMT: name 'is_market_open' is not defined
+2025-08-01 13:45:45 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for WK: name 'is_market_open' is not defined
+2025-08-01 13:52:46 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for WK: name 'is_market_open' is not defined

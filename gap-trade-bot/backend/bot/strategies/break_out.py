@@ -1,6 +1,42 @@
 """
 Break Out Strategy
 Buy when price breaks above the day's high with volume confirmation
+
+STRATEGY CRITERIA:
+==================
+
+ENTRY CONDITIONS:
+1. Gap up above 25%
+2. Price breaks above day high (HOD)
+3. Market must be open
+4. Price above VWAP (Volume Weighted Average Price)
+5. Sufficient volume (minimum 500,000 shares)
+6. Volume >= 2x average volume for breakout confirmation
+
+RISK MANAGEMENT:
+- 50% profit target (long position)
+- 15% stop loss (long position)
+- 60% minimum confidence threshold
+
+VOLUME REQUIREMENTS:
+- Minimum volume: 500,000 shares
+- High volume threshold: 2,000,000 shares (for +20 confidence)
+- Volume multiplier: 2.0x average volume for breakout
+- Volume forecast analysis for confidence scoring
+
+CONFIDENCE SCORING:
+- Gap percentage (0-25 points)
+- Volume ratio vs average (0-25 points)
+- Distance from VWAP (0-20 points)
+- Market conditions (0-15 points)
+- Time of day factor (0-15 points)
+- Total: 0-100 points
+
+BREAKOUT LOGIC:
+- Waits for price to break above the day's high
+- Requires volume confirmation (2x average volume)
+- Uses VWAP as additional support/resistance level
+- Implements dynamic volume multipliers based on market conditions
 """
 
 import sys
@@ -27,7 +63,7 @@ class BreakOutStrategy:
             'target_multiplier': 1.5,  # 50% profit target
             'stop_loss_multiplier': 0.85,  # 15% stop loss
             'min_gap_percentage': 25,  # Minimum gap percentage
-            'volume_threshold': 500000,  # Minimum volume
+            'volume_threshold': 4000000,  # Minimum volume (4 million)
             'confidence_threshold': 60  # Minimum confidence
         }
         
@@ -40,7 +76,7 @@ class BreakOutStrategy:
         self.position_size = 1000  # Default position size
         
         # Volume thresholds
-        self.min_volume = 500000  # Minimum volume for consideration
+        self.min_volume = 4000000  # Minimum volume for consideration (4 million)
         self.high_volume_threshold = 2000000  # Volume threshold for +20 confidence
         self.volume_multiplier = 2.0  # Volume should be 2x average for breakout
         
@@ -64,7 +100,7 @@ class BreakOutStrategy:
             # Entry conditions
             is_gap_up = gap_percent >= self.config['min_gap_percentage']
             is_above_hod = current_price > day_high
-            is_market_open = market_status == 'open'
+            is_market_active = market_status in ['open', 'pre_market', 'after_hours']
             is_above_vwap = current_price > vwap if vwap > 0 else True
             has_sufficient_volume = forecasted_volume >= self.min_volume
             has_breakout_volume = forecasted_volume >= (avg_volume * self.volume_multiplier)
@@ -97,8 +133,8 @@ class BreakOutStrategy:
             else:
                 conditions_failed.append(f"Above HOD (${current_price:.2f} <= ${day_high:.2f})")
             
-            if is_market_open:
-                conditions_met.append("Market Open")
+            if is_market_active:
+                conditions_met.append(f"Market Active ({market_status})")
             else:
                 conditions_failed.append(f"Market Closed ({market_status})")
             
@@ -131,14 +167,14 @@ class BreakOutStrategy:
                 'conditions_met': {
                     'is_gap_up': is_gap_up,
                     'is_above_hod': is_above_hod,
-                    'is_market_open': is_market_open,
+                    'is_market_active': is_market_active,
                     'is_above_vwap': is_above_vwap,
                     'has_sufficient_volume': has_sufficient_volume,
                     'has_breakout_volume': has_breakout_volume,
                     'all_conditions_met': (
                         is_gap_up and 
                         is_above_hod and 
-                        is_market_open and 
+                        is_market_active and 
                         is_above_vwap and 
                         has_sufficient_volume and 
                         has_breakout_volume
@@ -356,7 +392,7 @@ class BreakOutStrategy:
             
             # Market status factor
             market_status = current_data.get('market_status', 'closed')
-            if market_status == 'open':
+            if market_status in ['open', 'pre_market', 'after_hours']:
                 confidence += 10
             
             # Time-based factor (more confidence earlier in the day)

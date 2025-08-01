@@ -41,11 +41,72 @@ class OrderManager:
             logger.info(f"✅ Using {self.broker_info['name']} for order execution")
         else:
             logger.info("⚠️ Using mock mode for order execution (no broker credentials)")
+        
+        # Import data manager for market status
+        from data_manager import data_manager
+        self.data_manager = data_manager
+    
+    def get_appropriate_order_type(self, ticker: str, action: str = 'buy') -> str:
+        """Determine appropriate order type based on market status"""
+        try:
+            market_status = self.data_manager.get_market_status()
+            
+            print(f"🔍 ORDER TYPE ANALYSIS for {ticker} ({action.upper()}):")
+            print(f"   📊 Current Market Status: {market_status}")
+            print(f"   📊 Action: {action.upper()}")
+            
+            # During regular market hours, use market orders for better execution
+            if market_status == 'open':
+                print(f"   ✅ Market is OPEN - Using MARKET orders for better execution")
+                print(f"   📋 Order Type Decision: MARKET")
+                logger.info(f"📊 Market is open - using market orders for {ticker}")
+                return 'market'
+            
+            # During pre-market and after-hours, use limit orders (required by most brokers)
+            elif market_status in ['pre_market', 'after_hours']:
+                print(f"   ⚠️ Market is {market_status.upper()} - Using LIMIT orders (broker requirement)")
+                print(f"   📋 Order Type Decision: LIMIT")
+                logger.info(f"📊 Market is {market_status} - using limit orders for {ticker}")
+                return 'limit'
+            
+            # Market is closed, but still use limit orders if somehow we get here
+            else:
+                print(f"   ❌ Market is {market_status.upper()} - Using LIMIT orders (safety default)")
+                print(f"   📋 Order Type Decision: LIMIT")
+                logger.warning(f"📊 Market is {market_status} - using limit orders for {ticker}")
+                return 'limit'
+                
+        except Exception as e:
+            print(f"   ❌ Error determining order type: {e}")
+            print(f"   📋 Order Type Decision: LIMIT (safety default)")
+            logger.error(f"❌ Error determining order type for {ticker}: {e}")
+            return 'limit'  # Default to limit for safety
+    
+    def get_market_status(self) -> str:
+        """Get current market status for logging"""
+        try:
+            return self.data_manager.get_market_status()
+        except Exception as e:
+            logger.error(f"❌ Error getting market status: {e}")
+            return 'closed'
     
     def place_buy_order(self, ticker: str, quantity: int, price: float, 
-                       order_type: str = 'market') -> Dict[str, Any]:
+                       order_type: str = None) -> Dict[str, Any]:
         """Place a buy order using broker client"""
         try:
+            print(f"🚀 PLACING BUY ORDER for {ticker}:")
+            print(f"   📊 Quantity: {quantity:,} shares")
+            print(f"   💰 Price: ${price:.2f}")
+            print(f"   📋 Requested Order Type: {order_type if order_type else 'AUTO'}")
+            
+            # Determine appropriate order type based on market status
+            if order_type is None:
+                order_type = self.get_appropriate_order_type(ticker, 'buy')
+            
+            print(f"   📋 Final Order Type: {order_type.upper()}")
+            print(f"   🔧 Broker: {self.broker_info['name'] if self.use_real_trading else 'MOCK'}")
+            print(f"   📊 Trading Mode: {'REAL' if self.use_real_trading else 'MOCK'}")
+            
             if self.use_real_trading and self.broker_client:
                 # Use broker client for order execution
                 if order_type == 'market':
@@ -57,6 +118,10 @@ class OrderManager:
                     return {'error': f'Unsupported order type: {order_type}'}
                 
                 if order:
+                    print(f"   ✅ Order EXECUTED successfully!")
+                    print(f"   📋 Order ID: {order.get('order_id', 'N/A')}")
+                    print(f"   📊 Status: {order.get('status', 'executed')}")
+                    
                     # Store order in database
                     order_data = {
                         'order_id': order.get('order_id', f"BUY_{ticker}_{int(time.time())}"),
@@ -80,6 +145,7 @@ class OrderManager:
                     return {'error': f'Failed to place {self.broker_info["name"]} order'}
             
             else:
+                print(f"   🎭 Using MOCK order execution")
                 # Mock order execution
                 order_id = f"BUY_{ticker}_{int(time.time())}"
                 order = {
@@ -121,9 +187,22 @@ class OrderManager:
             return {'error': str(e)}
     
     def place_sell_order(self, ticker: str, quantity: int, price: float, 
-                        order_type: str = 'market') -> Dict[str, Any]:
+                        order_type: str = None) -> Dict[str, Any]:
         """Place a sell order using broker client"""
         try:
+            print(f"🚀 PLACING SELL ORDER for {ticker}:")
+            print(f"   📊 Quantity: {quantity:,} shares")
+            print(f"   💰 Price: ${price:.2f}")
+            print(f"   📋 Requested Order Type: {order_type if order_type else 'AUTO'}")
+            
+            # Determine appropriate order type based on market status
+            if order_type is None:
+                order_type = self.get_appropriate_order_type(ticker, 'sell')
+            
+            print(f"   📋 Final Order Type: {order_type.upper()}")
+            print(f"   🔧 Broker: {self.broker_info['name'] if self.use_real_trading else 'MOCK'}")
+            print(f"   📊 Trading Mode: {'REAL' if self.use_real_trading else 'MOCK'}")
+            
             if self.use_real_trading and self.broker_client:
                 # Use broker client for order execution
                 if order_type == 'market':
@@ -135,6 +214,10 @@ class OrderManager:
                     return {'error': f'Unsupported order type: {order_type}'}
                 
                 if order:
+                    print(f"   ✅ Order EXECUTED successfully!")
+                    print(f"   📋 Order ID: {order.get('order_id', 'N/A')}")
+                    print(f"   📊 Status: {order.get('status', 'executed')}")
+                    
                     # Store order in database
                     order_data = {
                         'order_id': order.get('order_id', f"SELL_{ticker}_{int(time.time())}"),
@@ -158,6 +241,7 @@ class OrderManager:
                     return {'error': f'Failed to place {self.broker_info["name"]} order'}
             
             else:
+                print(f"   🎭 Using MOCK order execution")
                 # Mock order execution
                 order_id = f"SELL_{ticker}_{int(time.time())}"
                 order = {

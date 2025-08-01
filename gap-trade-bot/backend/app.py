@@ -9,7 +9,7 @@ import json
 import random
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as time_class
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -149,32 +149,52 @@ MOCK_TRADES = [
     {
         'id': 1,
         'ticker': 'AAPL',
-        'side': 'buy',
+        'direction': 'long',
         'quantity': 100,
         'price': 148.50,
-        'timestamp': (datetime.now() - timedelta(hours=2)).isoformat(),
+        'submitted_at': (datetime.now() - timedelta(hours=2)).isoformat(),
         'status': 'filled',
         'pnl': 175.00
     },
     {
         'id': 2,
         'ticker': 'TSLA',
-        'side': 'sell',
+        'direction': 'short',
         'quantity': 50,
         'price': 240.00,
-        'timestamp': (datetime.now() - timedelta(hours=4)).isoformat(),
+        'submitted_at': (datetime.now() - timedelta(hours=4)).isoformat(),
         'status': 'filled',
         'pnl': -250.00
     },
     {
         'id': 3,
         'ticker': 'NVDA',
-        'side': 'buy',
+        'direction': 'long',
         'quantity': 75,
         'price': 470.00,
-        'timestamp': (datetime.now() - timedelta(hours=6)).isoformat(),
+        'submitted_at': (datetime.now() - timedelta(hours=6)).isoformat(),
         'status': 'filled',
         'pnl': 1162.50
+    },
+    {
+        'id': 4,
+        'ticker': 'MSFT',
+        'direction': 'long',
+        'quantity': 200,
+        'price': 320.00,
+        'submitted_at': (datetime.now() - timedelta(days=1)).isoformat(),
+        'status': 'filled',
+        'pnl': 450.00
+    },
+    {
+        'id': 5,
+        'ticker': 'GOOGL',
+        'direction': 'short',
+        'quantity': 25,
+        'price': 140.00,
+        'submitted_at': (datetime.now() - timedelta(days=2)).isoformat(),
+        'status': 'filled',
+        'pnl': -125.00
     }
 ]
 
@@ -563,12 +583,52 @@ def analyze_stocks():
 
 @app.route('/api/trades')
 def get_trades():
-    """Get trade history"""
+    """Get trade history with optional period filtering"""
     try:
+        # Get period parameter (default to 365 days)
+        period = request.args.get('period', '365')
+        try:
+            period_days = int(period)
+        except ValueError:
+            period_days = 365
+        
+        # Calculate the start date based on period
+        start_date = datetime.now() - timedelta(days=period_days)
+        
+        # Filter trades based on period (for testing different scenarios)
+        # In a real implementation, you would filter from database
+        if period_days <= 1:
+            # Return no trades for very short periods (to test "no trades" message)
+            filtered_trades = []
+        elif period_days <= 7:
+            # Return only first 2 trades for short periods
+            filtered_trades = MOCK_TRADES[:2]
+        elif period_days <= 30:
+            # Return first 3 trades for medium periods
+            filtered_trades = MOCK_TRADES[:3]
+        else:
+            # Return all trades for longer periods
+            filtered_trades = MOCK_TRADES
+        
+        # Calculate summary based on filtered trades
+        total_trades = len(filtered_trades)
+        total_pnl = sum(trade.get('pnl', 0) for trade in filtered_trades)
+        winning_trades = len([t for t in filtered_trades if t.get('pnl', 0) > 0])
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        
+        summary = {
+            'total_trades': total_trades,
+            'total_pnl': total_pnl,
+            'win_rate': round(win_rate, 2),
+            'period_days': period_days,
+            'start_date': start_date.isoformat(),
+            'end_date': datetime.now().isoformat()
+        }
+        
         return jsonify({
             'success': True,
-            'trades': MOCK_TRADES,
-            'summary': MOCK_TRADE_SUMMARY,
+            'trades': filtered_trades,
+            'summary': summary,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -900,6 +960,7 @@ def get_batch_historical_data_endpoint():
 @app.route('/api/bot/status')
 def get_bot_status():
     """Get comprehensive bot status including subscribed stocks, analysis results, and positions"""
+    app_logger.info("🔍 API: /api/bot/status called")
     try:
         # Check if bot is running
         is_running = check_bot_status()
@@ -910,64 +971,210 @@ def get_bot_status():
         try:
             # Import bot modules to get real data
             sys.path.append(os.path.join(os.path.dirname(__file__), 'bot'))
-            from trading_bot import trading_bot
-            from position_manager import position_manager
-            from data_manager import data_manager
             
-            # Get subscribed stocks
+            # Get subscribed stocks from the actual trading bot (if running) or gap-up detector
             subscribed_stocks = []
-            if hasattr(trading_bot, 'tracked_symbols'):
-                for ticker in trading_bot.tracked_symbols:
-                    try:
-                        stock_data = data_manager.get_real_time_data(ticker)
-                        if stock_data:
-                            subscribed_stocks.append({
-                                'ticker': ticker,
-                                'currentPrice': stock_data.get('current_price'),
-                                'gapPercent': stock_data.get('gap_percent'),
-                                'volume': stock_data.get('current_volume')
-                            })
-                    except Exception as e:
-                        app_logger.warning(f"Error getting data for {ticker}: {e}")
-                        continue
-            
-            # Get analysis results (simplified for now)
-            analysis_results = []
-            if hasattr(trading_bot, 'last_analysis'):
-                for ticker, analysis in trading_bot.last_analysis.items():
-                    if analysis:
-                        analysis_results.append({
-                            'ticker': ticker,
-                            'entrySignal': analysis.get('entry_signal', False),
-                            'confidence': analysis.get('confidence', 0),
-                            'conditionsMet': analysis.get('conditions_met', []),
-                            'conditionsFailed': analysis.get('conditions_failed', [])
-                        })
-            
-            # Get positions
-            positions = []
             try:
-                all_positions = position_manager.get_all_positions()
-                for position in all_positions:
-                    ticker = position['ticker']
-                    entry_price = position.get('entry_price', 0)
-                    quantity = position.get('quantity', 0)
-                    current_price = position.get('current_price', entry_price)
+                # Try to get actual bot subscription state first
+                from bot.trading_bot import trading_bot
+                if trading_bot.is_running and trading_bot.tracked_symbols:
+                    app_logger.info("🔍 Getting actual bot subscription state...")
+                    app_logger.info(f"📊 Bot tracked symbols: {trading_bot.tracked_symbols}")
                     
-                    pnl = (current_price - entry_price) * quantity if current_price and entry_price else 0
-                    pnl_percent = ((current_price - entry_price) / entry_price * 100) if entry_price else 0
+                    # Get gap-up data for the tracked symbols
+                    from gap_up_detector import get_gap_up_stocks
+                    gap_up_stocks = get_gap_up_stocks()
+                    gap_up_dict = {stock['ticker']: stock for stock in gap_up_stocks}
                     
-                    positions.append({
-                        'ticker': ticker,
-                        'entryPrice': entry_price,
-                        'currentPrice': current_price,
-                        'quantity': quantity,
-                        'pnl': pnl,
-                        'pnlPercent': pnl_percent,
-                        'entryTime': position.get('entry_time')
-                    })
+                    for ticker in trading_bot.tracked_symbols:
+                        stock_data = gap_up_dict.get(ticker, {})
+                        subscribed_stocks.append({
+                            'ticker': ticker,
+                            'currentPrice': stock_data.get('price'),
+                            'gapPercent': stock_data.get('gap_percent'),
+                            'volume': stock_data.get('volume'),
+                            'subscribed': True
+                        })
+                        app_logger.info(f"✅ Added {ticker} from bot tracked symbols")
+                    
+                    app_logger.info(f"📊 Total subscribed stocks from bot: {len(subscribed_stocks)}")
+                else:
+                    # Fallback to gap-up detector if bot not running or no tracked symbols
+                    app_logger.info("🔍 Getting gap-up stocks for subscribed stocks...")
+                    from gap_up_detector import get_gap_up_stocks
+                    gap_up_stocks = get_gap_up_stocks()
+                    app_logger.info(f"📊 Found {len(gap_up_stocks)} gap-up stocks")
+                    
+                    for stock in gap_up_stocks:
+                        ticker = stock['ticker']
+                        app_logger.info(f"📈 Processing {ticker}...")
+                        
+                        # Use data from gap-up detector directly (avoid data_manager issues)
+                        subscribed_stocks.append({
+                            'ticker': ticker,
+                            'currentPrice': stock.get('price'),
+                            'gapPercent': stock.get('gap_percent'),
+                            'volume': stock.get('volume'),
+                            'subscribed': False  # Not actually subscribed by bot
+                        })
+                        app_logger.info(f"✅ Added {ticker} with gap-up data")
+                    app_logger.info(f"📊 Total gap-up stocks: {len(subscribed_stocks)}")
             except Exception as e:
-                app_logger.warning(f"Error getting positions: {e}")
+                app_logger.warning(f"Error getting subscribed stocks: {e}")
+                # Return empty list if both methods fail
+                subscribed_stocks = []
+            
+            # Get analysis results with detailed strategy conditions
+            analysis_results = []
+            try:
+                # Import strategies for detailed analysis
+                sys.path.append(os.path.join(os.path.dirname(__file__), 'bot', 'strategies'))
+                from break_out import BreakOutStrategy
+                from gap_up_short import GapUpShortStrategy
+                
+                break_out_strategy = BreakOutStrategy()
+                gap_up_short_strategy = GapUpShortStrategy()
+                
+                for stock in subscribed_stocks:
+                    ticker = stock['ticker']
+                    gap_percent = stock.get('gapPercent', 0)
+                    current_price = stock.get('currentPrice', 0)
+                    volume = stock.get('volume', 0)
+                    
+                    # Create mock data for analysis (since we don't have real-time data)
+                    # In a real implementation, this would come from data_manager
+                    mock_data = {
+                        'current_price': current_price,
+                        'day_high': current_price * 1.02,  # Assume 2% above current price
+                        'day_low': current_price * 0.98,  # Assume 2% below current price
+                        'gap_percent': gap_percent,
+                        'market_status': 'open',  # Assume market is open
+                        'current_volume': volume or 1000000,
+                        'vwap': current_price * 0.98,  # Assume VWAP is 2% below current price
+                        'avg_volume': 2000000,  # Assume average volume
+                        'premarket_high': current_price * 1.01,  # Assume 1% above current price
+                        'current_time': datetime.now().time(),  # Current time
+                        'volume_analysis': {
+                            'forecasted_volume': volume or 1000000,
+                            'current_time': '10:30 AM',
+                            'trading_hours_remaining': 6.5
+                        }
+                    }
+                    
+                    # Get detailed analysis from both strategies
+                    break_out_analysis = break_out_strategy.analyze_entry_conditions(ticker, mock_data)
+                    gap_up_short_analysis = gap_up_short_strategy.analyze_entry_conditions(ticker, mock_data)
+                    
+                    # Determine which strategy is more suitable based on gap percentage
+                    if gap_percent >= 40:
+                        # Use gap-up short strategy for high gap stocks
+                        analysis = gap_up_short_analysis
+                        strategy_name = "Gap Up Short"
+                        
+                        # Extract conditions from gap-up short analysis
+                        conditions_met = []
+                        conditions_failed = []
+                        
+                        if analysis.get('conditions_met', {}).get('gap_up_above_40'):
+                            conditions_met.append('Gap Up Above 40%')
+                        else:
+                            conditions_failed.append('Gap Up Above 40%')
+                        
+                        if analysis.get('conditions_met', {}).get('volume_in_range'):
+                            conditions_met.append('Volume in Range')
+                        else:
+                            conditions_failed.append('Volume in Range')
+                        
+                        if analysis.get('conditions_met', {}).get('after_10am'):
+                            conditions_met.append('After 10AM')
+                        else:
+                            conditions_failed.append('After 10AM')
+                        
+                        if analysis.get('conditions_met', {}).get('below_premarket_high'):
+                            conditions_met.append('Below Premarket High')
+                        else:
+                            conditions_failed.append('Below Premarket High')
+                        
+                        if analysis.get('conditions_met', {}).get('below_day_high_by_10_percent'):
+                            conditions_met.append('Below Day High by 10%')
+                        else:
+                            conditions_failed.append('Below Day High by 10%')
+                        
+                        if analysis.get('conditions_met', {}).get('market_open'):
+                            conditions_met.append('Market Open')
+                        else:
+                            conditions_failed.append('Market Closed')
+                    else:
+                        # Use break-out strategy for moderate gap stocks
+                        analysis = break_out_analysis
+                        strategy_name = "Break Out"
+                        
+                        # Extract conditions from break-out analysis
+                        conditions_met = []
+                        conditions_failed = []
+                        
+                        if analysis.get('conditions_met', {}).get('is_gap_up'):
+                            conditions_met.append('Gap Up')
+                        else:
+                            conditions_failed.append('Gap Up')
+                        
+                        if analysis.get('conditions_met', {}).get('is_above_hod'):
+                            conditions_met.append('Above HOD')
+                        else:
+                            conditions_failed.append('Above HOD')
+                        
+                        if analysis.get('conditions_met', {}).get('is_market_active'):
+                            conditions_met.append('Market Active')
+                        else:
+                            conditions_failed.append('Market Closed')
+                        
+                        if analysis.get('conditions_met', {}).get('is_above_vwap'):
+                            conditions_met.append('Above VWAP')
+                        else:
+                            conditions_failed.append('Below VWAP')
+                        
+                        if analysis.get('conditions_met', {}).get('has_sufficient_volume'):
+                            conditions_met.append('Sufficient Volume')
+                        else:
+                            conditions_failed.append('Insufficient Volume')
+                        
+                        if analysis.get('conditions_met', {}).get('has_breakout_volume'):
+                            conditions_met.append('Breakout Volume')
+                        else:
+                            conditions_failed.append('Weak Volume')
+                    
+                    analysis_results.append({
+                        'ticker': ticker,
+                        'strategy': strategy_name,
+                        'entrySignal': analysis.get('entry_signal', False),
+                        'confidence': analysis.get('confidence', 0),
+                        'conditionsMet': conditions_met,
+                        'conditionsFailed': conditions_failed
+                    })
+                    
+            except Exception as e:
+                app_logger.warning(f"Error getting detailed analysis: {e}")
+                # Fallback to basic analysis
+                for stock in subscribed_stocks:
+                    ticker = stock['ticker']
+                    gap_percent = stock.get('gapPercent', 0)
+                    
+                    entry_signal = gap_percent >= 25
+                    confidence = min(95, gap_percent * 2)
+                    
+                    analysis_results.append({
+                        'ticker': ticker,
+                        'strategy': 'Basic',
+                        'entrySignal': entry_signal,
+                        'confidence': confidence,
+                        'conditionsMet': ['Gap Up'] if gap_percent >= 25 else [],
+                        'conditionsFailed': ['Gap Up'] if gap_percent < 25 else []
+                    })
+            
+            # Get positions (simplified for now)
+            positions = []
+            # For now, return empty positions as the bot is in paper trading mode
+            # In a real implementation, this would connect to the position manager
             
             bot_status_data = {
                 'subscribed_stocks': subscribed_stocks,

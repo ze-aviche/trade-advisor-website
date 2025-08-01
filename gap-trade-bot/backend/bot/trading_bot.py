@@ -7,6 +7,8 @@ import asyncio
 import time
 import sys
 import os
+import json
+import pickle
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 import threading
@@ -51,8 +53,14 @@ class TradingBot:
         self.market_close_time = "20:00"  # 8 PM ET (after-hours included)
         self.subscribed_today = set()  # Track stocks subscribed today
         
+        # Subscription persistence
+        self.persistence_file = os.path.join(os.path.dirname(__file__), 'subscription_state.pkl')
+        
         # Initialize components
         self._init_components()
+        
+        # Load persisted subscription state
+        self._load_subscription_state()
     
     def _init_components(self):
         """Initialize all trading bot components"""
@@ -68,6 +76,80 @@ class TradingBot:
         except Exception as e:
             logger.error(f"❌ Error initializing components: {e}")
             return False
+    
+    def _save_subscription_state(self):
+        """Save current subscription state to file"""
+        try:
+            subscription_state = {
+                'tracked_symbols': list(self.tracked_symbols),
+                'subscribed_today': list(self.subscribed_today),
+                'last_market_close_check': self.last_market_close_check.isoformat() if self.last_market_close_check else None,
+                'saved_at': datetime.now().isoformat()
+            }
+            
+            with open(self.persistence_file, 'wb') as f:
+                pickle.dump(subscription_state, f)
+            
+            logger.info(f"💾 Saved subscription state: {len(self.tracked_symbols)} tracked symbols")
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving subscription state: {e}")
+    
+    def _load_subscription_state(self):
+        """Load subscription state from file"""
+        try:
+            if not os.path.exists(self.persistence_file):
+                logger.info("📁 No previous subscription state found - starting fresh")
+                return
+            
+            with open(self.persistence_file, 'rb') as f:
+                subscription_state = pickle.load(f)
+            
+            # Check if the saved state is from today
+            saved_at = datetime.fromisoformat(subscription_state.get('saved_at', '2000-01-01T00:00:00'))
+            today = datetime.now().date()
+            
+            if saved_at.date() == today:
+                # Load today's state
+                self.tracked_symbols = set(subscription_state.get('tracked_symbols', []))
+                self.subscribed_today = set(subscription_state.get('subscribed_today', []))
+                
+                # Load last market close check
+                last_check_str = subscription_state.get('last_market_close_check')
+                if last_check_str:
+                    self.last_market_close_check = datetime.fromisoformat(last_check_str).date()
+                else:
+                    self.last_market_close_check = None
+                
+                logger.info(f"📁 Loaded subscription state: {len(self.tracked_symbols)} tracked symbols")
+                logger.info(f"📊 Tracked symbols: {', '.join(sorted(self.tracked_symbols))}")
+            else:
+                logger.info("📁 Previous subscription state is from a different day - starting fresh")
+                # Clear old state for new day
+                self.tracked_symbols.clear()
+                self.subscribed_today.clear()
+                self.last_market_close_check = None
+                
+        except Exception as e:
+            logger.error(f"❌ Error loading subscription state: {e}")
+            # Start fresh if loading fails
+            self.tracked_symbols.clear()
+            self.subscribed_today.clear()
+            self.last_market_close_check = None
+    
+    def clear_subscription_state(self):
+        """Clear persisted subscription state (for testing or manual reset)"""
+        try:
+            if os.path.exists(self.persistence_file):
+                os.remove(self.persistence_file)
+                logger.info("🗑️ Cleared persisted subscription state")
+            
+            self.tracked_symbols.clear()
+            self.subscribed_today.clear()
+            self.last_market_close_check = None
+            
+        except Exception as e:
+            logger.error(f"❌ Error clearing subscription state: {e}")
     
     async def start(self):
         """Start the trading bot"""
@@ -85,23 +167,40 @@ class TradingBot:
             
             # Initialize market status tracking
             self.last_market_status = data_manager.get_market_status()
-            self.last_market_close_check = datetime.now().date()
+            if self.last_market_close_check is None:
+                self.last_market_close_check = datetime.now().date()
             logger.info(f"📊 Initial market status: {self.last_market_status}")
             
-            # Get gap-up stocks
-            gap_up_stocks = data_manager.get_gap_up_stocks()
-            logger.info(f"📊 Found {len(gap_up_stocks)} gap-up stocks")
-            
-            # Subscribe to real-time data only if market is open, pre-market, or after-hours
-            if (self.last_market_status in ['open', 'pre_market', 'after_hours']) and gap_up_stocks:
-                await websocket_client.subscribe_to_symbols(gap_up_stocks)
-                self.tracked_symbols.update(gap_up_stocks)
-                self.subscribed_today.update(gap_up_stocks)  # Track today's subscriptions
-                logger.info(f"📡 Subscribed to {len(gap_up_stocks)} new gap-up stocks: {', '.join(gap_up_stocks)}")
-            elif self.last_market_status == 'closed':
-                logger.info("🛑 Market is closed - not subscribing to any stocks")
+            # Check if we have persisted subscriptions to restore
+            if self.tracked_symbols:
+                logger.info(f"📁 Restoring {len(self.tracked_symbols)} persisted subscriptions")
+                logger.info(f"📊 Persisted symbols: {', '.join(sorted(self.tracked_symbols))}")
+                
+                # Re-subscribe to persisted symbols if market is active
+                if self.last_market_status in ['open', 'pre_market', 'after_hours']:
+                    await websocket_client.subscribe_to_symbols(list(self.tracked_symbols))
+                    logger.info(f"📡 Re-subscribed to {len(self.tracked_symbols)} persisted symbols")
+                    # Save the restored state
+                    self._save_subscription_state()
+                else:
+                    logger.info("🛑 Market is closed - keeping persisted subscriptions but not re-subscribing")
             else:
-                logger.info("📊 No gap-up stocks found to subscribe")
+                # No persisted subscriptions - get new gap-up stocks
+                gap_up_stocks = data_manager.get_gap_up_stocks()
+                logger.info(f"📊 Found {len(gap_up_stocks)} gap-up stocks")
+                
+                # Subscribe to real-time data only if market is open, pre-market, or after-hours
+                if (self.last_market_status in ['open', 'pre_market', 'after_hours']) and gap_up_stocks:
+                    await websocket_client.subscribe_to_symbols(gap_up_stocks)
+                    self.tracked_symbols.update(gap_up_stocks)
+                    self.subscribed_today.update(gap_up_stocks)  # Track today's subscriptions
+                    logger.info(f"📡 Subscribed to {len(gap_up_stocks)} new gap-up stocks: {', '.join(gap_up_stocks)}")
+                    # Save the new subscription state
+                    self._save_subscription_state()
+                elif self.last_market_status == 'closed':
+                    logger.info("🛑 Market is closed - not subscribing to any stocks")
+                else:
+                    logger.info("📊 No gap-up stocks found to subscribe")
             
             # Add data callback
             websocket_client.add_data_callback(self._on_market_data)
@@ -595,6 +694,8 @@ class TradingBot:
                             for stock in stocks_to_unsubscribe:
                                 self.tracked_symbols.discard(stock)
                             logger.info(f"✅ Unsubscribed from: {', '.join(stocks_to_unsubscribe)}")
+                            # Save the updated subscription state
+                            self._save_subscription_state()
                         else:
                             logger.info("📊 All subscribed stocks have open positions - keeping all subscriptions")
                     else:
@@ -604,6 +705,8 @@ class TradingBot:
                             await websocket_client.unsubscribe_from_symbols(list(self.tracked_symbols))
                             logger.info(f"✅ Unsubscribed from: {', '.join(self.tracked_symbols)}")
                             self.tracked_symbols.clear()
+                            # Save the updated subscription state
+                            self._save_subscription_state()
                         else:
                             logger.info("📊 No active subscriptions to unsubscribe")
                     
@@ -627,6 +730,8 @@ class TradingBot:
                     self.tracked_symbols.update(gap_up_stocks)
                     self.subscribed_today.update(gap_up_stocks)
                     logger.info(f"📡 Subscribed to new gap-up stocks: {', '.join(gap_up_stocks)}")
+                    # Save the updated subscription state
+                    self._save_subscription_state()
                 else:
                     logger.info("📊 No new gap-up stocks found for today")
             

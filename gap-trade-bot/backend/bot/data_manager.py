@@ -18,6 +18,7 @@ from logging_config import get_logger
 from config import config
 from historical_data import get_historical_gap_up_data, get_polygon_client
 from websocket_client import websocket_client
+from strategies.break_out import BreakOutStrategy
 
 # Import the existing gap-up detector
 from gap_up_detector import get_gap_up_stocks as get_real_gap_ups
@@ -90,11 +91,15 @@ class DataManager:
                 
                 # Validate ticker exists and has data
                 if self._validate_ticker(ticker):
-                    if gap_percent >= config.MIN_GAP_PERCENTAGE:
+                    # Use break_out strategy's minimum gap percentage
+                    break_out_strategy = BreakOutStrategy()
+                    min_gap_percentage = break_out_strategy.config['min_gap_percentage']
+                    
+                    if gap_percent >= min_gap_percentage:
                         gap_up_stocks.append(ticker)
                         logger.info(f"📈 Found gap-up: {ticker} (+{gap_percent:.1f}%)")
                     else:
-                        logger.debug(f"📊 {ticker} gap too small: {gap_percent:.1f}% < {config.MIN_GAP_PERCENTAGE}%")
+                        logger.debug(f"📊 {ticker} gap too small: {gap_percent:.1f}% < {min_gap_percentage}%")
                 else:
                     invalid_tickers.append(ticker)
                     logger.warning(f"⚠️ Invalid ticker found: {ticker} - skipping")
@@ -127,15 +132,18 @@ class DataManager:
                     logger.debug(f"📊 Using cached data for {ticker}")
                     return cached_data
             
+            # Get gap percentage from gap-up detector (already calculated correctly)
+            gap_percent = self._get_gap_percentage_from_detector(ticker)
+            
             # Try to get data from WebSocket first
-            websocket_data = self._get_websocket_data(ticker)
+            websocket_data = self._get_websocket_data(ticker, gap_percent)
             if websocket_data:
                 self.real_time_cache[ticker] = websocket_data
                 self.last_update[ticker] = current_time
                 return websocket_data
             
             # Fallback to REST API
-            rest_data = self._get_rest_data(ticker)
+            rest_data = self._get_rest_data(ticker, gap_percent)
             if rest_data:
                 self.real_time_cache[ticker] = rest_data
                 self.last_update[ticker] = current_time
@@ -147,7 +155,25 @@ class DataManager:
             logger.error(f"❌ Error getting real-time data for {ticker}: {e}")
             return None
     
-    def _get_websocket_data(self, ticker: str) -> Optional[Dict[str, Any]]:
+    def _get_gap_percentage_from_detector(self, ticker: str) -> float:
+        """Get gap percentage from gap-up detector (already calculated correctly)"""
+        try:
+            # Get gap-up stocks from detector
+            gap_up_data = get_real_gap_ups()
+            
+            # Find this ticker in the gap-up data
+            for stock in gap_up_data:
+                if stock.get('ticker') == ticker:
+                    return stock.get('gap_percent', 0)
+            
+            # If not found in gap-up data, return 0
+            return 0
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting gap percentage from detector for {ticker}: {e}")
+            return 0
+    
+    def _get_websocket_data(self, ticker: str, gap_percent: float = 0) -> Optional[Dict[str, Any]]:
         """Get real-time data from WebSocket"""
         try:
             if not self.websocket_client.is_connected:
@@ -171,7 +197,7 @@ class DataManager:
             day_high = daily_data.get('high', current_price)
             day_low = daily_data.get('low', current_price)
             day_open = daily_data.get('open', current_price)
-            gap_percent = daily_data.get('gap_percent', 0)
+            # Use gap_percent parameter instead of recalculating
             
             # Calculate average volume (cached)
             avg_volume = self._get_cached_average_volume(ticker)
@@ -180,6 +206,7 @@ class DataManager:
                 'ticker': ticker,
                 'current_price': current_price,
                 'current_volume': current_volume,
+                'volume': current_volume,  # Add this for compatibility
                 'day_high': day_high,
                 'day_low': day_low,
                 'day_open': day_open,
@@ -198,7 +225,7 @@ class DataManager:
             logger.error(f"❌ Error getting WebSocket data for {ticker}: {e}")
             return None
     
-    def _get_rest_data(self, ticker: str) -> Optional[Dict[str, Any]]:
+    def _get_rest_data(self, ticker: str, gap_percent: float = 0) -> Optional[Dict[str, Any]]:
         """Get real-time data from REST API (fallback)"""
         try:
             # Get current price and volume
@@ -236,15 +263,13 @@ class DataManager:
             # Calculate average volume (20-day average)
             avg_volume = self._calculate_average_volume(ticker)
             
-            # Calculate gap percentage
-            gap_percent = None
-            if day_open and daily.close:  # Use previous close as reference
-                gap_percent = round(((day_open - daily.close) / daily.close) * 100, 2)
+            # Use gap_percent parameter instead of recalculating
             
             real_time_data = {
                 'ticker': ticker,
                 'current_price': current_price,
                 'current_volume': current_volume,
+                'volume': current_volume,  # Add this for compatibility
                 'day_high': day_high,
                 'day_low': day_low,
                 'day_open': day_open,
@@ -273,7 +298,11 @@ class DataManager:
             if hasattr(self, '_daily_cache') and cache_key in self._daily_cache:
                 return self._daily_cache[cache_key]
             
-            # Get daily data from REST API
+            # Check market status
+            market_status = self.get_market_status()
+            logger.debug(f"📊 Market status for {ticker}: {market_status}")
+            
+            # Get daily data from REST API for today
             daily_data = self.polygon_client.get_aggs(
                 ticker=ticker,
                 multiplier=1,
@@ -284,21 +313,58 @@ class DataManager:
             )
             
             if not daily_data:
-                return None
+                logger.warning(f"⚠️ No daily data found for {ticker} today ({today})")
+                
+                # Try to get the most recent available data
+                try:
+                    # Get data from the last 5 days
+                    from_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
+                    recent_data = self.polygon_client.get_aggs(
+                        ticker=ticker,
+                        multiplier=1,
+                        timespan="day",
+                        from_=from_date,
+                        to=today,
+                        adjusted="true"
+                    )
+                    
+                    if recent_data:
+                        # Use the most recent data
+                        most_recent = recent_data[-1]
+                        logger.info(f"📊 Using most recent data for {ticker}: {most_recent.timestamp}")
+                        
+                        data = {
+                            'volume': most_recent.volume or 0,
+                            'high': most_recent.high or most_recent.open,
+                            'low': most_recent.low or most_recent.open,
+                            'open': most_recent.open,
+                            'gap_percent': 0  # Can't calculate gap without previous day
+                        }
+                        
+                        # Cache the data
+                        if not hasattr(self, '_daily_cache'):
+                            self._daily_cache = {}
+                        self._daily_cache[cache_key] = data
+                        
+                        return data
+                    else:
+                        logger.error(f"❌ No recent data available for {ticker}")
+                        return None
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error getting recent data for {ticker}: {e}")
+                    return None
             
             daily = daily_data[0]
             
-            # Calculate gap percentage
-            gap_percent = None
-            if daily.open and daily.close:
-                gap_percent = round(((daily.open - daily.close) / daily.close) * 100, 2)
+            # Log the raw data for debugging
+            logger.debug(f"📊 Raw daily data for {ticker}: Volume={daily.volume}, Open={daily.open}, High={daily.high}, Low={daily.low}")
             
             data = {
-                'volume': daily.volume,
-                'high': daily.high,
-                'low': daily.low,
-                'open': daily.open,
-                'gap_percent': gap_percent
+                'volume': daily.volume or 0,
+                'high': daily.high or daily.open,
+                'low': daily.low or daily.open,
+                'open': daily.open
             }
             
             # Cache the data
@@ -306,6 +372,7 @@ class DataManager:
                 self._daily_cache = {}
             self._daily_cache[cache_key] = data
             
+            logger.debug(f"📊 Processed daily data for {ticker}: {data}")
             return data
             
         except Exception as e:
@@ -567,7 +634,9 @@ class DataManager:
             gap_percent = current_data.get('gap_percent', 0)
             
             # Strategy conditions
-            is_gap_up = gap_percent >= config.MIN_GAP_PERCENTAGE
+            break_out_strategy = BreakOutStrategy()
+            min_gap_percentage = break_out_strategy.config['min_gap_percentage']
+            is_gap_up = gap_percent >= min_gap_percentage
             is_above_hod = current_price > day_high
             is_market_open = self.get_market_status() == 'open'
             

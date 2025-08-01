@@ -5,6 +5,7 @@ Based on the trading-advisor project implementation
 """
 import os
 import datetime
+import sqlite3
 from datetime import datetime as dt, timedelta
 import pytz
 from polygon import RESTClient
@@ -179,6 +180,11 @@ def get_gap_up_stocks():
         print(f"📊 Tickers with price < $1: {below_1_count}")
         print(f"✅ Final gap-up stocks found: {len(gap_up_stocks)}")
         
+        # Store gap-up stocks in database
+        if gap_up_stocks:
+            print("💾 Storing gap-up stocks in database...")
+            store_daily_gap_ups(gap_up_stocks)
+        
         return gap_up_stocks
         
     except Exception as e:
@@ -260,10 +266,115 @@ def get_market_data(ticker):
         print(f"❌ Error getting market data for {ticker}: {e}")
         return None
 
+def store_daily_gap_ups(gap_up_stocks):
+    """
+    Store daily gap-up stocks in the database
+    """
+    try:
+        # Connect to database in strategies folder
+        db_path = os.path.join(os.path.dirname(__file__), 'bot', 'strategies', 'gap_up_history.db')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get today's date
+        today = dt.now().strftime('%Y-%m-%d')
+        
+        # First, check if we already have data for today
+        cursor.execute("SELECT COUNT(*) FROM DAILY_GAP_UPS WHERE date = ?", (today,))
+        existing_count = cursor.fetchone()[0]
+        
+        if existing_count > 0:
+            print(f"⚠️ Already have {existing_count} gap-up records for {today}, skipping...")
+            conn.close()
+            return
+        
+        # Insert new gap-up stocks
+        inserted_count = 0
+        for stock in gap_up_stocks:
+            try:
+                cursor.execute("""
+                    INSERT INTO DAILY_GAP_UPS 
+                    (date, ticker, prev_close, open_price, gap_percent, volume, market_cap, sector)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    today,
+                    stock['ticker'],
+                    stock.get('previous_close', 0),
+                    stock.get('price', 0),
+                    stock.get('gap_percent', 0),
+                    stock.get('volume', 0),
+                    stock.get('market_cap', 0),
+                    stock.get('sector', '')
+                ))
+                inserted_count += 1
+                print(f"✅ Stored {stock['ticker']} in database")
+                
+            except Exception as e:
+                print(f"❌ Error storing {stock['ticker']}: {e}")
+                continue
+        
+        # Commit changes
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Successfully stored {inserted_count} gap-up stocks for {today}")
+        
+    except Exception as e:
+        print(f"❌ Error storing daily gap-ups: {e}")
+
+def get_daily_gap_ups_from_db(date=None):
+    """
+    Retrieve daily gap-up stocks from database
+    """
+    try:
+        # Connect to database in strategies folder
+        db_path = os.path.join(os.path.dirname(__file__), 'bot', 'strategies', 'gap_up_history.db')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get today's date if not specified
+        if date is None:
+            date = dt.now().strftime('%Y-%m-%d')
+        
+        # Query gap-up stocks for the specified date
+        cursor.execute("""
+            SELECT ticker, prev_close, open_price, gap_percent, volume, market_cap, sector
+            FROM DAILY_GAP_UPS 
+            WHERE date = ?
+            ORDER BY gap_percent DESC
+        """, (date,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        # Convert to list of dictionaries
+        gap_ups = []
+        for row in results:
+            gap_ups.append({
+                'ticker': row[0],
+                'previous_close': row[1],
+                'price': row[2],
+                'gap_percent': row[3],
+                'volume': row[4],
+                'market_cap': row[5],
+                'sector': row[6]
+            })
+        
+        print(f"📊 Retrieved {len(gap_ups)} gap-up stocks for {date}")
+        return gap_ups
+        
+    except Exception as e:
+        print(f"❌ Error retrieving daily gap-ups: {e}")
+        return []
+
 if __name__ == "__main__":
     # Test the functions
     print("🧪 Testing gap-up detection...")
     gap_ups = get_gap_up_stocks()
     print(f"Found {len(gap_ups)} gap-up stocks")
     for stock in gap_ups[:5]:  # Show first 5
-        print(f"{stock['ticker']}: {stock['gap_percent']}% gap") 
+        print(f"{stock['ticker']}: {stock['gap_percent']}% gap")
+    
+    # Store in database
+    print("\n💾 Storing gap-ups in database...")
+    store_daily_gap_ups(gap_ups) 
