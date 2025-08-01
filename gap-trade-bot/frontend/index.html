@@ -83,22 +83,7 @@
         <div class="bg-gray-900 border-b border-gray-700 px-6 py-4">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-4">
-                    <h1 class="text-2xl font-bold text-white">Trading Advisor</h1>
-                    <div class="flex items-center space-x-2">
-                        <div class="w-2 h-2 rounded-full" :class="systemStatus.connected ? 'bg-green-400' : 'bg-red-400'"></div>
-                        <span class="text-sm text-gray-400">{{ systemStatus.connected ? 'Connected' : 'Disconnected' }}</span>
-                    </div>
-                    <div v-if="systemStatus.websocketConnected" class="flex items-center space-x-2">
-                        <div class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
-                        <span class="text-sm text-blue-400">Live Data</span>
-                    </div>
-                    <!-- Bot Status Indicator -->
-                    <div class="flex items-center space-x-2">
-                        <div class="w-2 h-2 rounded-full" :class="systemStatus.botRunning ? 'bg-green-400 animate-pulse' : 'bg-red-400'"></div>
-                        <span class="text-sm" :class="systemStatus.botRunning ? 'text-green-400' : 'text-red-400'">
-                            {{ systemStatus.botRunning ? 'Bot Running' : 'Bot Stopped' }}
-                        </span>
-                    </div>
+                    <h1 class="text-2xl font-bold text-white">Accentor Trading Bot</h1>
                 </div>
                 <div class="flex items-center space-x-4">
                     <div class="flex items-center space-x-2 text-gray-400">
