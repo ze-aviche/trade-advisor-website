@@ -6,7 +6,10 @@ const { createApp } = Vue;
 
 console.log('✅ Vue.js loaded successfully');
 
-    const app = createApp({
+// Configure axios base URL
+axios.defaults.baseURL = 'http://localhost:5000';
+
+const app = createApp({
         data() {
             return {
                 // Dashboard data
@@ -56,6 +59,15 @@ console.log('✅ Vue.js loaded successfully');
                     botRunning: false
                 },
                 
+                // Bot status
+                botStatus: {
+                    running: false,
+                    subscribedStocks: [],
+                    analysisResults: [],
+                    positions: [],
+                    activePositions: 0
+                },
+                
                 // User data
                 user: null,
                 
@@ -101,37 +113,37 @@ console.log('✅ Vue.js loaded successfully');
                 this.validateSession();
             },
             
+            // Handle tab changes
+            onTabChange(tabName) {
+                console.log(`🔄 Tab changed to: ${tabName}`);
+                if (tabName === 'bot') {
+                    console.log('🤖 Bot tab selected - loading bot status...');
+                    this.loadBotStatus();
+                }
+            },
+            
             async validateSession() {
                 try {
-                    const sessionToken = localStorage.getItem('session_token');
-                    
-                    // For testing, skip validation if it's a mock session
-                    if (sessionToken === 'mock-session-token') {
-                        console.log('Using mock session, skipping validation');
-                        this.initializeApp();
-                        return;
-                    }
-                    
                     const response = await fetch('http://localhost:5000/api/auth/profile', {
                         headers: {
-                            'Authorization': `Bearer ${sessionToken}`
+                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
                         }
                     });
                     
                     if (response.ok) {
-                        const data = await response.json();
-                        if (data.success) {
-                            this.user = data.data;
-                            this.initializeApp();
-                        } else {
-                            this.logout();
-                        }
+                        const userData = await response.json();
+                        this.user = userData;
+                        return true;
                     } else {
-                        this.logout();
+                        // Session invalid, redirect to login
+                        localStorage.removeItem('session_token');
+                        localStorage.removeItem('user');
+                        window.location.href = '/login.html';
+                        return false;
                     }
                 } catch (error) {
                     console.error('Session validation error:', error);
-                    this.logout();
+                    return false;
                 }
             },
             
@@ -142,37 +154,43 @@ console.log('✅ Vue.js loaded successfully');
             },
             
             async initializeApp() {
-                try {
-                    await this.checkSystemStatus();
-                    await this.loadDashboardData();
-                    this.setupCharts();
-                    this.startPeriodicUpdates();
-                    this.connectWebSocket();
-                } catch (error) {
-                    console.error('Error in initializeApp:', error);
-                    // Don't let initialization errors crash the app
-                    this.systemStatus.connected = false;
-                }
+                console.log('🚀 Initializing Trading Advisor Dashboard...');
+                
+                await this.checkSystemStatus();
+                await this.loadDashboardData();
+                await this.loadBotStatus(); // Load bot status
+                
+                this.connectWebSocket();
+                this.startPeriodicUpdates();
+                this.startPeriodicBotUpdates(); // Start bot updates
+                
+                console.log('✅ Dashboard initialized successfully');
             },
             
             async checkSystemStatus() {
                 try {
-                    const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch('http://localhost:5000/api/health', {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                        }
-                    });
+                    console.log('🔍 Checking system status...');
+                    const response = await fetch('http://localhost:5000/api/health');
                     const data = await response.json();
-                    this.systemStatus = {
-                        connected: true,
-                        realDataAvailable: data.real_data_available,
-                        websocketConnected: data.websocket_connected,
-                        botRunning: data.bot_running
-                    };
+                    console.log('📊 System status response:', data);
+                    
+                    // Get bot status from the new API
+                    const botResponse = await fetch('http://localhost:5000/api/bot/status');
+                    const botData = await botResponse.json();
+                    console.log('🤖 Bot status response:', botData);
+                    
+                    // Update individual properties to ensure Vue reactivity
+                    this.systemStatus.connected = data.status === 'healthy';
+                    this.systemStatus.realDataAvailable = data.real_data_available;
+                    this.systemStatus.websocketConnected = data.websocket_connected;
+                    this.systemStatus.botRunning = botData.is_running;
+                    
+                    console.log('✅ System status updated:', this.systemStatus);
+                    console.log('🔍 Current systemStatus object:', JSON.stringify(this.systemStatus, null, 2));
                 } catch (error) {
-                    console.error('Error checking system status:', error);
+                    console.error('❌ Error checking system status:', error);
                     this.systemStatus.connected = false;
+                    console.log('❌ System status set to disconnected due to error');
                 }
             },
             
@@ -187,6 +205,58 @@ console.log('✅ Vue.js loaded successfully');
                     console.error('Error loading dashboard data:', error);
                     // Continue with the app even if some data fails to load
                 }
+            },
+            
+            async loadBotStatus() {
+                try {
+                    console.log('🔍 Loading bot status...');
+                    const response = await axios.get('/api/bot/status');
+                    console.log('📊 Bot status response:', response.data);
+                    this.botStatus = {
+                        running: response.data.is_running || false,
+                        subscribedStocks: response.data.subscribed_stocks || [],
+                        analysisResults: response.data.analysis_results || [],
+                        positions: response.data.positions || [],
+                        activePositions: response.data.positions ? response.data.positions.length : 0
+                    };
+                    console.log('✅ Bot status loaded:', this.botStatus);
+                } catch (error) {
+                    console.error('❌ Error loading bot status:', error);
+                    this.showNotification('Failed to load bot status', 'error');
+                }
+            },
+            
+            async toggleBot() {
+                try {
+                    if (this.botStatus.running) {
+                        // Stop bot
+                        await axios.post('/api/bot/stop');
+                        this.showNotification('Bot stopped successfully', 'success');
+                    } else {
+                        // Start bot
+                        await axios.post('/api/bot/start');
+                        this.showNotification('Bot started successfully', 'success');
+                    }
+                    
+                    // Refresh bot status
+                    await this.loadBotStatus();
+                } catch (error) {
+                    console.error('Error toggling bot:', error);
+                    this.showNotification('Failed to toggle bot', 'error');
+                }
+            },
+            
+            async refreshBotData() {
+                await this.loadBotStatus();
+            },
+            
+            startPeriodicBotUpdates() {
+                // Update bot data every 5 seconds when bot tab is active
+                setInterval(() => {
+                    if (this.activeTab === 'bot') {
+                        this.refreshBotData();
+                    }
+                }, 5000);
             },
             
             async loadStats() {
@@ -224,32 +294,16 @@ console.log('✅ Vue.js loaded successfully');
             },
             
             async loadGapUps() {
-                this.loading.gapUps = true;
                 try {
-                    const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch('http://localhost:5000/api/gap-ups', {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                        }
-                    });
+                    this.loading.gapUps = true;
+                    const response = await fetch('http://localhost:5000/api/gap-ups');
                     const data = await response.json();
                     
                     if (data.success) {
-                        // Filter out stocks less than $1
-                        const filteredGapUps = data.data.filter(stock => 
-                            stock.price && stock.price >= 1.0
-                        );
-                        
-                        this.gapUps = filteredGapUps;
-                        this.stats.gapUps = filteredGapUps.length;
-                        
-                        console.log(`📊 Filtered gap-ups: ${data.data.length} total, ${filteredGapUps.length} above $1`);
-                        
-                        // Subscribe to real-time updates for gap-up stocks
-                        if (this.socketConnected && filteredGapUps.length > 0) {
-                            const tickers = filteredGapUps.map(stock => stock.ticker);
-                            this.subscribeToStocks(tickers);
-                        }
+                        this.gapUps = data.data || [];
+                        this.stats.gapUps = this.gapUps.length;
+                    } else {
+                        console.error('Failed to load gap-ups:', data.message);
                     }
                 } catch (error) {
                     console.error('Error loading gap-ups:', error);
@@ -259,78 +313,35 @@ console.log('✅ Vue.js loaded successfully');
             },
             
             async loadGapUpsBackground() {
-                // Background update - no UI impact
                 try {
-                    const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch('http://localhost:5000/api/gap-ups', {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                        }
-                    });
+                    const response = await fetch('http://localhost:5000/api/gap-ups');
                     const data = await response.json();
                     
                     if (data.success) {
-                        // Filter out stocks less than $1
-                        const filteredData = data.data.filter(stock => 
-                            stock.price && stock.price >= 1.0
-                        );
+                        this.gapUps = data.data || [];
+                        this.stats.gapUps = this.gapUps.length;
                         
-                        // Only update if there are new stocks or significant changes
-                        const newStocks = filteredData.filter(newStock => 
-                            !this.gapUps.some(existingStock => 
-                                existingStock.ticker === newStock.ticker
-                            )
-                        );
-                        
-                        if (newStocks.length > 0) {
-                            console.log(`🔄 Background update: Found ${newStocks.length} new gap-up stocks (filtered from ${data.data.length} total)`);
-                            // Add new stocks to the beginning
-                            this.gapUps.unshift(...newStocks);
-                            this.stats.gapUps = this.gapUps.length;
-                            
-                            // Show subtle notification for new stocks
-                            this.showNotification(`📈 ${newStocks.length} new gap-up stock(s) detected (≥$1)`, 'success');
-                            
-                            // Subscribe to new stocks
-                            if (this.socketConnected && newStocks.length > 0) {
-                                const tickers = newStocks.map(stock => stock.ticker);
-                                this.subscribeToStocks(tickers);
-                            }
+                        // Subscribe to real-time updates for gap-up stocks
+                        if (this.socketConnected && this.gapUps.length > 0) {
+                            const tickers = this.gapUps.map(stock => stock.ticker);
+                            this.subscribeToStocks(tickers);
                         }
-                        
-                        // Update existing stocks with new data (price changes, etc.)
-                        data.data.forEach(newStock => {
-                            const existingIndex = this.gapUps.findIndex(
-                                existing => existing.ticker === newStock.ticker
-                            );
-                            if (existingIndex !== -1) {
-                                // Update with new data but preserve position
-                                this.gapUps[existingIndex] = {
-                                    ...this.gapUps[existingIndex],
-                                    ...newStock
-                                };
-                            }
-                        });
                     }
                 } catch (error) {
-                    console.error('Error in background gap-ups update:', error);
+                    console.error('Error loading gap-ups in background:', error);
                 }
             },
             
             async loadTrades() {
-                this.loading.trades = true;
                 try {
-                    const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch('http://localhost:5000/api/trades', {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                        }
-                    });
+                    this.loading.trades = true;
+                    const response = await fetch('http://localhost:5000/api/trades');
                     const data = await response.json();
                     
                     if (data.success) {
-                        this.trades = data.trades;
-                        this.updateTradeChart();
+                        this.trades = data.trades || [];
+                    } else {
+                        console.error('Failed to load trades:', data.message);
                     }
                 } catch (error) {
                     console.error('Error loading trades:', error);
@@ -387,40 +398,27 @@ console.log('✅ Vue.js loaded successfully');
             },
             
             async loadHistoricalData() {
-                if (!this.historicalTicker.trim()) {
+                if (!this.historicalTicker) {
                     this.showNotification('Please enter a ticker symbol', 'warning');
                     return;
                 }
                 
                 try {
                     this.loading.historical = true;
-                    console.log(`📊 Loading historical data for ${this.historicalTicker} (${this.getPeriodDescription()})...`);
+                    this.historicalData = [];
                     
-                    const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?days=${this.selectedPeriod}&cache=true&_t=${Date.now()}`, {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                        }
-                    });
-                    
+                    const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?days=${this.selectedPeriod}&cache=true&_t=${Date.now()}`);
                     const data = await response.json();
+                    
                     if (data.success) {
-                        // Filter for gap-ups >= 25%
-                        const filteredData = data.data.filter(day => 
-                            day['gap up % at open'] && day['gap up % at open'] >= 25
-                        );
-                        
-                        this.historicalData = filteredData;
-                        console.log(`✅ Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker} (filtered from ${data.data.length} total days over ${this.getPeriodDescription()})`);
-                        console.log('🔍 First 3 dates received:', filteredData.slice(0, 3).map(day => day.date));
-                        this.showNotification(`Loaded ${filteredData.length} days of 25%+ gap-up data for ${this.historicalTicker.toUpperCase()} (${this.getPeriodDescription()} analysis)`, 'success');
+                        this.historicalData = data.data || [];
+                        console.log(`📊 Loaded ${this.historicalData.length} historical data points for ${this.historicalTicker.toUpperCase()}`);
                     } else {
-                        console.error(`❌ Failed to load historical data for ${this.historicalTicker}:`, data.error);
-                        this.showNotification(`Failed to load historical data for ${this.historicalTicker.toUpperCase()}`, 'error');
+                        this.showNotification(data.message || 'Failed to load historical data', 'error');
                     }
                 } catch (error) {
-                    console.error(`❌ Error loading historical data for ${this.historicalTicker}:`, error);
-                    this.showNotification(`Error loading historical data for ${this.historicalTicker.toUpperCase()}`, 'error');
+                    console.error('Error loading historical data:', error);
+                    this.showNotification('Error loading historical data', 'error');
                 } finally {
                     this.loading.historical = false;
                 }
@@ -686,7 +684,7 @@ console.log('✅ Vue.js loaded successfully');
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            user_id: 'web_user'
+                            user_id: this.user ? this.user.id : 'anonymous'
                         })
                     });
                     
@@ -694,13 +692,10 @@ console.log('✅ Vue.js loaded successfully');
                     
                     if (data.success) {
                         this.chatSession = data.session_id;
-                        this.chatMessages = [{
-                            id: 1,
-                            type: 'system',
-                            message: 'Trading session started. How can I help you today?',
-                            timestamp: new Date().toISOString()
-                        }];
+                        this.chatMessages = [];
                         this.showNotification('Chat session started', 'success');
+                    } else {
+                        this.showNotification('Failed to start chat session', 'error');
                     }
                 } catch (error) {
                     console.error('Error starting chat session:', error);

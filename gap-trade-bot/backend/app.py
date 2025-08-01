@@ -44,7 +44,7 @@ except ImportError as e:
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'trading-advisor-web-2024'
-CORS(app)
+CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Global variables for real-time data
@@ -896,6 +896,173 @@ def get_batch_historical_data_endpoint():
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/bot/status')
+def get_bot_status():
+    """Get comprehensive bot status including subscribed stocks, analysis results, and positions"""
+    try:
+        # Check if bot is running
+        is_running = check_bot_status()
+        
+        # Get bot status data from the trading bot
+        bot_status_data = {}
+        
+        try:
+            # Import bot modules to get real data
+            sys.path.append(os.path.join(os.path.dirname(__file__), 'bot'))
+            from trading_bot import trading_bot
+            from position_manager import position_manager
+            from data_manager import data_manager
+            
+            # Get subscribed stocks
+            subscribed_stocks = []
+            if hasattr(trading_bot, 'tracked_symbols'):
+                for ticker in trading_bot.tracked_symbols:
+                    try:
+                        stock_data = data_manager.get_real_time_data(ticker)
+                        if stock_data:
+                            subscribed_stocks.append({
+                                'ticker': ticker,
+                                'currentPrice': stock_data.get('current_price'),
+                                'gapPercent': stock_data.get('gap_percent'),
+                                'volume': stock_data.get('current_volume')
+                            })
+                    except Exception as e:
+                        app_logger.warning(f"Error getting data for {ticker}: {e}")
+                        continue
+            
+            # Get analysis results (simplified for now)
+            analysis_results = []
+            if hasattr(trading_bot, 'last_analysis'):
+                for ticker, analysis in trading_bot.last_analysis.items():
+                    if analysis:
+                        analysis_results.append({
+                            'ticker': ticker,
+                            'entrySignal': analysis.get('entry_signal', False),
+                            'confidence': analysis.get('confidence', 0),
+                            'conditionsMet': analysis.get('conditions_met', []),
+                            'conditionsFailed': analysis.get('conditions_failed', [])
+                        })
+            
+            # Get positions
+            positions = []
+            try:
+                all_positions = position_manager.get_all_positions()
+                for position in all_positions:
+                    ticker = position['ticker']
+                    entry_price = position.get('entry_price', 0)
+                    quantity = position.get('quantity', 0)
+                    current_price = position.get('current_price', entry_price)
+                    
+                    pnl = (current_price - entry_price) * quantity if current_price and entry_price else 0
+                    pnl_percent = ((current_price - entry_price) / entry_price * 100) if entry_price else 0
+                    
+                    positions.append({
+                        'ticker': ticker,
+                        'entryPrice': entry_price,
+                        'currentPrice': current_price,
+                        'quantity': quantity,
+                        'pnl': pnl,
+                        'pnlPercent': pnl_percent,
+                        'entryTime': position.get('entry_time')
+                    })
+            except Exception as e:
+                app_logger.warning(f"Error getting positions: {e}")
+            
+            bot_status_data = {
+                'subscribed_stocks': subscribed_stocks,
+                'analysis_results': analysis_results,
+                'positions': positions
+            }
+            
+        except ImportError as e:
+            app_logger.warning(f"Could not import bot modules: {e}")
+            # Return empty data if bot modules not available
+            bot_status_data = {
+                'subscribed_stocks': [],
+                'analysis_results': [],
+                'positions': []
+            }
+        except Exception as e:
+            app_logger.error(f"Error accessing bot data: {e}")
+            # Return empty data on any error
+            bot_status_data = {
+                'subscribed_stocks': [],
+                'analysis_results': [],
+                'positions': []
+            }
+        
+        return jsonify({
+            'is_running': is_running,
+            'subscribed_stocks': bot_status_data.get('subscribed_stocks', []),
+            'analysis_results': bot_status_data.get('analysis_results', []),
+            'positions': bot_status_data.get('positions', [])
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error getting bot status: {e}")
+        return jsonify({
+            'is_running': False,
+            'subscribed_stocks': [],
+            'analysis_results': [],
+            'positions': []
+        }), 500
+
+@app.route('/api/bot/start', methods=['POST'])
+def start_bot():
+    """Start the trading bot"""
+    try:
+        # Check if bot is already running
+        if check_bot_status():
+            return jsonify({'message': 'Bot is already running'}), 400
+        
+        # Start the bot using the start script
+        import subprocess
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'start_bot.sh')
+        
+        if os.path.exists(script_path):
+            result = subprocess.run([script_path], capture_output=True, text=True)
+            if result.returncode == 0:
+                app_logger.info("Bot started successfully")
+                return jsonify({'message': 'Bot started successfully'})
+            else:
+                app_logger.error(f"Failed to start bot: {result.stderr}")
+                return jsonify({'error': 'Failed to start bot'}), 500
+        else:
+            app_logger.error(f"Start script not found: {script_path}")
+            return jsonify({'error': 'Start script not found'}), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error starting bot: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/bot/stop', methods=['POST'])
+def stop_bot():
+    """Stop the trading bot"""
+    try:
+        # Check if bot is running
+        if not check_bot_status():
+            return jsonify({'message': 'Bot is not running'}), 400
+        
+        # Stop the bot using the stop script
+        import subprocess
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'stop_bot.sh')
+        
+        if os.path.exists(script_path):
+            result = subprocess.run([script_path], capture_output=True, text=True)
+            if result.returncode == 0:
+                app_logger.info("Bot stopped successfully")
+                return jsonify({'message': 'Bot stopped successfully'})
+            else:
+                app_logger.error(f"Failed to stop bot: {result.stderr}")
+                return jsonify({'error': 'Failed to stop bot'}), 500
+        else:
+            app_logger.error(f"Stop script not found: {script_path}")
+            return jsonify({'error': 'Stop script not found'}), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error stopping bot: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/cache/stats')
 def get_cache_stats():

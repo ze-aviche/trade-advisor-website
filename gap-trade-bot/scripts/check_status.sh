@@ -75,7 +75,7 @@ if [ "$BACKEND_RUNNING" = true ]; then
         echo "✅ Backend API is responding"
         
         # Get bot status from API
-        BOT_STATUS=$(curl -s http://localhost:5000/api/health | grep -o '"bot_running":[^,]*' | cut -d':' -f2)
+        BOT_STATUS=$(curl -s http://localhost:5000/api/bot/status | grep -o '"is_running":[^,]*' | cut -d':' -f2)
         if [ "$BOT_STATUS" = "true" ]; then
             echo "✅ Bot status: Running"
         else

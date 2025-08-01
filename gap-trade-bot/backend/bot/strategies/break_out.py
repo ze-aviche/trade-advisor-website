@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Tuple, Any
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from logging_config import get_logger
-from config import config
 
 logger = get_logger(__name__)
 
@@ -22,7 +21,15 @@ class BreakOutStrategy:
     def __init__(self):
         self.name = "break_out"
         self.description = "Buy when price breaks above day high with volume confirmation"
-        self.config = config.get_strategy_config(self.name)
+        
+        # Strategy configuration - self-contained
+        self.config = {
+            'target_multiplier': 1.5,  # 50% profit target
+            'stop_loss_multiplier': 0.85,  # 15% stop loss
+            'min_gap_percentage': 25,  # Minimum gap percentage
+            'volume_threshold': 500000,  # Minimum volume
+            'confidence_threshold': 60  # Minimum confidence
+        }
         
         # Strategy state
         self.entry_price = None
@@ -30,7 +37,7 @@ class BreakOutStrategy:
         self.day_high_at_entry = None
         self.target_price = None
         self.stop_loss_price = None
-        self.position_size = config.DEFAULT_VOLUME
+        self.position_size = 1000  # Default position size
         
         # Volume thresholds
         self.min_volume = 500000  # Minimum volume for consideration
@@ -55,7 +62,7 @@ class BreakOutStrategy:
             hours_remaining = volume_analysis.get('trading_hours_remaining', 6.5)
             
             # Entry conditions
-            is_gap_up = gap_percent >= config.MIN_GAP_PERCENTAGE
+            is_gap_up = gap_percent >= self.config['min_gap_percentage']
             is_above_hod = current_price > day_high
             is_market_open = market_status == 'open'
             is_above_vwap = current_price > vwap if vwap > 0 else True
@@ -71,7 +78,7 @@ class BreakOutStrategy:
             logger.info(f"🔍 {ticker} - Break Out Strategy Analysis:")
             logger.info(f"   📊 Current Price: ${current_price:.2f}")
             logger.info(f"   📈 Day High: ${day_high:.2f}")
-            logger.info(f"   📊 Gap %: {gap_percent:.2f}% (Min: {config.MIN_GAP_PERCENTAGE}%)")
+            logger.info(f"   📊 Gap %: {gap_percent:.2f}% (Min: {self.config['min_gap_percentage']}%)")
             logger.info(f"   📊 VWAP: ${vwap:.2f}")
             logger.info(f"   📊 Volume: {current_volume:,} (Forecasted: {forecasted_volume:,})")
             logger.info(f"   📊 Avg Volume: {avg_volume:,} (Ratio: {volume_ratio:.2f}x)")
@@ -81,9 +88,9 @@ class BreakOutStrategy:
             conditions_failed = []
             
             if is_gap_up:
-                conditions_met.append(f"Gap Up ({gap_percent:.2f}% >= {config.MIN_GAP_PERCENTAGE}%)")
+                conditions_met.append(f"Gap Up ({gap_percent:.2f}% >= {self.config['min_gap_percentage']}%)")
             else:
-                conditions_failed.append(f"Gap Up ({gap_percent:.2f}% < {config.MIN_GAP_PERCENTAGE}%)")
+                conditions_failed.append(f"Gap Up ({gap_percent:.2f}% < {self.config['min_gap_percentage']}%)")
             
             if is_above_hod:
                 conditions_met.append(f"Above HOD (${current_price:.2f} > ${day_high:.2f})")

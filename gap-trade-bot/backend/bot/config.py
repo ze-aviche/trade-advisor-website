@@ -3,8 +3,11 @@ Trading Bot Configuration
 """
 
 import os
+import logging
 from typing import Dict, Any
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
@@ -17,16 +20,6 @@ class TradingBotConfig:
     STOP_LOSS_PERCENTAGE = 15.0  # Stop loss percentage
     MAX_POSITIONS = 10  # Maximum concurrent positions
     
-    # Strategy Parameters
-    BUY_OVER_HOD = {
-        'name': 'buy_over_hod',
-        'description': 'Buy when price breaks above day high',
-        'entry_condition': 'price > day_high',
-        'exit_condition': 'price < entry_price * 0.85 or price > target_price',
-        'target_multiplier': 1.5,  # 50% profit target
-        'stop_loss_multiplier': 0.85,  # 15% stop loss
-    }
-    
     # Data Parameters
     PREMARKET_START = "04:00"
     MARKET_OPEN = "09:30"
@@ -35,7 +28,6 @@ class TradingBotConfig:
     
     # Historical Data Parameters
     HISTORICAL_DAYS = 730  # Days of historical data to analyze
-    MIN_GAP_PERCENTAGE = 25.0  # Minimum gap percentage to consider
     
     # WebSocket Parameters
     WEBSOCKET_RECONNECT_DELAY = 5  # seconds
@@ -73,17 +65,9 @@ class TradingBotConfig:
     LOG_FILE = 'trading_bot.log'
     
     def get_strategy_config(self, strategy_name: str) -> Dict[str, Any]:
-        """Get configuration for a specific strategy"""
-        strategies = {
-            'break_out': {
-                'target_multiplier': 1.5,  # 50% profit target
-                'stop_loss_multiplier': 0.85,  # 15% stop loss
-                'min_gap_percentage': 25,  # Minimum gap percentage
-                'volume_threshold': 500000,  # Minimum volume
-                'confidence_threshold': 60  # Minimum confidence
-            }
-        }
-        return strategies.get(strategy_name, {})
+        """Get configuration for a specific strategy - deprecated, use strategy-specific config"""
+        logger.warning(f"⚠️ get_strategy_config is deprecated. Configure {strategy_name} strategy directly.")
+        return {}
     
     @classmethod
     def validate_config(cls) -> bool:
