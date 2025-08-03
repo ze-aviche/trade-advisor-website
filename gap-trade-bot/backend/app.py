@@ -1287,6 +1287,148 @@ def get_cache_stats():
             'error': str(e)
         }), 500
 
+# AI Agent Endpoints
+@app.route('/api/ai-agent/status')
+def get_ai_agent_status():
+    """Get AI Agent status and configuration"""
+    try:
+        # Check if Google API key is available
+        google_api_key = os.environ.get("GOOGLE_API_KEY")
+        status = {
+            'available': google_api_key is not None and google_api_key != "YOUR_GOOGLE_API_KEY",
+            'configured': google_api_key is not None and google_api_key != "YOUR_GOOGLE_API_KEY",
+            'message': 'AI Agent is ready' if google_api_key and google_api_key != "YOUR_GOOGLE_API_KEY" else 'Google API key not configured'
+        }
+        return jsonify({
+            'success': True,
+            'data': status
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/ai-agent/chat', methods=['POST'])
+def ai_agent_chat():
+    """Send a message to the AI Agent and get response"""
+    try:
+        data = request.get_json()
+        if not data or 'message' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Message is required'
+            }), 400
+        
+        user_message = data['message']
+        
+        # Check if Google API key is available
+        google_api_key = os.environ.get("GOOGLE_API_KEY")
+        if not google_api_key or google_api_key == "YOUR_GOOGLE_API_KEY":
+            return jsonify({
+                'success': False,
+                'error': 'Google API key not configured. Please set GOOGLE_API_KEY environment variable.'
+            }), 500
+        
+        # Import and run the AI agent
+        try:
+            import asyncio
+            from google.adk.sessions import InMemorySessionService
+            from google.adk import Runner
+            from google.genai.types import Content
+            from agents.agent import trading_advisor_agent
+            
+            # Create session service
+            session_service = InMemorySessionService()
+            
+            # Create runner
+            runner = Runner(
+                app_name="trading_advisor",
+                agent=trading_advisor_agent,
+                session_service=session_service
+            )
+            
+            # Create session
+            session = asyncio.run(session_service.create_session(
+                app_name="trading_advisor",
+                user_id="user",
+                session_id="trading_session"
+            ))
+            
+            # Create content object for the message
+            new_message = Content(parts=[{"text": user_message}])
+            
+            # Run the agent
+            response_parts = []
+            async def run_agent():
+                async for event in runner.run_async(
+                    user_id="user",
+                    session_id="trading_session",
+                    new_message=new_message
+                ):
+                    if hasattr(event, 'content'):
+                        response_parts.append(event.content)
+                    else:
+                        response_parts.append(str(event))
+            
+            # Run the async function
+            asyncio.run(run_agent())
+            
+            # Combine all response parts
+            full_response = '\n'.join(response_parts)
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'response': full_response,
+                    'timestamp': datetime.now().isoformat()
+                }
+            })
+            
+        except ImportError as e:
+            return jsonify({
+                'success': False,
+                'error': f'AI Agent dependencies not available: {str(e)}'
+            }), 500
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'AI Agent error: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/ai-agent/start-session', methods=['POST'])
+def ai_agent_start_session():
+    """Start a new AI Agent session"""
+    try:
+        # Check if Google API key is available
+        google_api_key = os.environ.get("GOOGLE_API_KEY")
+        if not google_api_key or google_api_key == "YOUR_GOOGLE_API_KEY":
+            return jsonify({
+                'success': False,
+                'error': 'Google API key not configured. Please set GOOGLE_API_KEY environment variable.'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'session_id': f"session_{int(time.time())}",
+                'message': 'AI Agent session started successfully',
+                'timestamp': datetime.now().isoformat()
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/cache/clear', methods=['POST'])
 def clear_cache_endpoint():
     """Clear cache for a specific ticker or all tickers"""

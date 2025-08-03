@@ -976,11 +976,11 @@
                     
                     <!-- Chat Input -->
                     <div class="flex space-x-2">
-                        <input v-model="chatInput" @keyup.enter="sendChatMessage" 
+                        <input v-model="newMessage" @keyup.enter="sendChatMessage" 
                                type="text" placeholder="Ask the AI about trading strategies..."
                                class="flex-1 bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <button @click="sendChatMessage" 
-                                :disabled="!chatInput.trim() || chatLoading"
+                                :disabled="!newMessage.trim() || chatLoading"
                                 class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-lg text-sm font-medium">
                             <i class="fas fa-paper-plane"></i>
                         </button>

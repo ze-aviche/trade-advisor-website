@@ -10,4 +10,23 @@ pytz==2025.2
 websockets>=11.0.3,<12.0.0
 asyncio-mqtt==0.16.1
 alpaca-py==0.13.1
-psutil==5.9.5 
+psutil==5.9.5
+
+# Google LLM Dependencies
+google-adk==1.8.0
+google-genai==1.27.0
+google-api-core==2.25.1
+google-auth==2.40.3
+google-auth-httplib2==0.2.0
+google-cloud-aiplatform==1.105.0
+google-cloud-core==2.4.3
+google-cloud-logging==3.12.1
+google-cloud-storage==2.19.0
+googleapis-common-protos==1.70.0
+grpcio==1.74.0
+grpcio-status==1.74.0
+protobuf==6.31.1
+pydantic==2.11.7
+pydantic-settings==2.10.1
+fastapi==0.116.1
+uvicorn==0.35.0 

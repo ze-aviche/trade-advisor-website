@@ -11,3 +11,11 @@
 2025-08-01 13:39:28 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for FDMT: name 'is_market_open' is not defined
 2025-08-01 13:45:45 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for WK: name 'is_market_open' is not defined
 2025-08-01 13:52:46 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for WK: name 'is_market_open' is not defined
+2025-08-01 15:24:57 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:25:42 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:26:29 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:29:33 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:31:05 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:31:52 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:37:17 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined
+2025-08-01 15:38:02 | strategies.break_out | ERROR | ❌ Error analyzing entry conditions for SNSE: name 'is_market_open' is not defined

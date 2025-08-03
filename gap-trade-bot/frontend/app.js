@@ -53,6 +53,7 @@ const app = createApp({
                 chatSession: null,
                 chatMessages: [],
                 newMessage: '',
+                chatLoading: false,
                 
                 // System status
                 systemStatus: {
@@ -836,38 +837,43 @@ const app = createApp({
             
             async startChatSession() {
                 try {
-                    const response = await fetch('http://localhost:5000/api/start-session', {
+                    const response = await fetch('http://localhost:5000/api/ai-agent/start-session', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            user_id: this.user ? this.user.id : 'anonymous'
-                        })
+                        }
                     });
                     
                     const data = await response.json();
                     
                     if (data.success) {
-                        this.chatSession = data.session_id;
+                        this.chatSession = data.data.session_id;
                         this.chatMessages = [];
-                        this.showNotification('Chat session started', 'success');
+                        this.showNotification('AI Agent session started', 'success');
+                        
+                        // Add welcome message
+                        this.chatMessages.push({
+                            id: Date.now(),
+                            type: 'assistant',
+                            content: 'Hello! I\'m your AI Trading Assistant. I can help you with gap-up trading strategies, market analysis, and trade planning. What would you like to know?',
+                            timestamp: new Date().toISOString()
+                        });
                     } else {
-                        this.showNotification('Failed to start chat session', 'error');
+                        this.showNotification(data.error || 'Failed to start AI Agent session', 'error');
                     }
                 } catch (error) {
-                    console.error('Error starting chat session:', error);
-                    this.showNotification('Error starting chat session', 'error');
+                    console.error('Error starting AI Agent session:', error);
+                    this.showNotification('Error starting AI Agent session', 'error');
                 }
             },
             
             async sendChatMessage() {
-                if (!this.newMessage.trim() || !this.chatSession) return;
+                if (!this.newMessage.trim()) return;
                 
                 const userMessage = {
                     id: Date.now(),
                     type: 'user',
-                    message: this.newMessage,
+                    content: this.newMessage,
                     timestamp: new Date().toISOString()
                 };
                 
@@ -875,14 +881,15 @@ const app = createApp({
                 const messageToSend = this.newMessage;
                 this.newMessage = '';
                 
+                this.chatLoading = true;
+                
                 try {
-                    const response = await fetch('http://localhost:5000/api/send-message', {
+                    const response = await fetch('http://localhost:5000/api/ai-agent/chat', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            session_id: this.chatSession,
                             message: messageToSend
                         })
                     });
@@ -893,13 +900,28 @@ const app = createApp({
                         this.chatMessages.push({
                             id: Date.now() + 1,
                             type: 'assistant',
-                            message: data.response,
+                            content: data.data.response,
+                            timestamp: new Date().toISOString()
+                        });
+                    } else {
+                        this.chatMessages.push({
+                            id: Date.now() + 1,
+                            type: 'assistant',
+                            content: `Error: ${data.error || 'Failed to get response from AI Agent'}`,
                             timestamp: new Date().toISOString()
                         });
                     }
                 } catch (error) {
-                    console.error('Error sending message:', error);
-                    this.showNotification('Error sending message', 'error');
+                    console.error('Error sending message to AI Agent:', error);
+                    
+                    this.chatMessages.push({
+                        id: Date.now() + 1,
+                        type: 'assistant',
+                        content: 'Sorry, I encountered an error. Please try again.',
+                        timestamp: new Date().toISOString()
+                    });
+                } finally {
+                    this.chatLoading = false;
                 }
             },
             
