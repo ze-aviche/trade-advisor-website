@@ -155,11 +155,11 @@ async def main():
     await runner.run()
 
 if __name__ == "__main__":
-    print("🤖 Gap Trade Bot")
-    print("=" * 50)
-    print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📝 PID file: {Path(__file__).parent / 'bot.pid'}")
-    print("🛑 To stop: kill $(cat bot.pid) or use stop_bot.sh")
-    print("=" * 50)
+    logger.info("🤖 Gap Trade Bot")
+    logger.info("=" * 50)
+    logger.info(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"📝 PID file: {Path(__file__).parent / 'bot.pid'}")
+    logger.info("🛑 To stop: kill $(cat bot.pid) or use stop_bot.sh")
+    logger.info("=" * 50)
     
     asyncio.run(main()) 

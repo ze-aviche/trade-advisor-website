@@ -3,11 +3,11 @@ Trading Bot Configuration
 """
 
 import os
-import logging
 from typing import Dict, Any
 from dotenv import load_dotenv
+from logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
@@ -76,7 +76,7 @@ class TradingBotConfig:
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
         
         if missing_vars:
-            print(f"❌ Missing required environment variables: {missing_vars}")
+            logger.error(f"❌ Missing required environment variables: {missing_vars}")
             return False
         
         # Check broker configuration
@@ -84,18 +84,18 @@ class TradingBotConfig:
         
         if broker_type == 'alpaca':
             if cls.BROKER_API_KEY and cls.BROKER_SECRET:
-                print("✅ Alpaca credentials found - will use Alpaca trading")
+                logger.info("✅ Alpaca credentials found - will use Alpaca trading")
             else:
-                print("⚠️ No Alpaca credentials found - will use mock mode")
+                logger.warning("⚠️ No Alpaca credentials found - will use mock mode")
         
         elif broker_type == 'das':
             if cls.DAS_API_KEY and cls.DAS_SECRET_KEY:
-                print("✅ DAS credentials found - will use DAS trading")
+                logger.info("✅ DAS credentials found - will use DAS trading")
             else:
-                print("⚠️ No DAS credentials found - will use mock mode")
+                logger.warning("⚠️ No DAS credentials found - will use mock mode")
         
         else:
-            print(f"⚠️ Unknown broker type: {broker_type} - will use mock mode")
+            logger.warning(f"⚠️ Unknown broker type: {broker_type} - will use mock mode")
         
         return True
 

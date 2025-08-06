@@ -34,7 +34,9 @@ const app = createApp({
                     historical: false,
                     bot: false,
                     dashboardTrades: false,
-                    dashboardPnL: false
+                    dashboardPnL: false,
+                    syncTrades: false,
+                unsubscribe: false
                 },
                 
                 // Charts
@@ -84,18 +86,90 @@ const app = createApp({
                 
                 // Trade History
                 tradeHistoryPeriod: '365', // Default to 1 year
+                tradeHistoryTicker: '', // Ticker search filter
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
                 
-                // Dashboard P&L Period
-                dashboardPnLPeriod: '365', // Default to 1 year
+                // Dashboard P&L Date Range
+                dashboardPnLFromDate: '',
+                dashboardPnLToDate: '',
+                
+                // Dashboard Trade Date Range
+                dashboardTradeFromDate: '',
+                dashboardTradeToDate: '',
                 
                 // Dashboard chart data
                 dashboardTrades: [],
                 dashboardPnL: [],
                 
+                // Stock selection for unsubscribe
+                selectedStocks: [],
+                
+                // Strategy configuration
+                strategiesLoaded: null
 
+            }
+        },
+        
+        computed: {
+            availableStrategies() {
+                // Try to load from backend first, then fallback to local config
+                if (this.strategiesLoaded) {
+                    return this.strategiesLoaded;
+                }
+                
+                // Use external configuration if available
+                if (window.STRATEGY_CONFIG) {
+                    return window.STRATEGY_CONFIG.strategies;
+                }
+                
+                // Fallback configuration
+                return [
+                    {
+                        key: 'breakOut',
+                        name: 'Break Out',
+                        direction: 'LONG',
+                        directionColor: 'text-green-400',
+                        color: 'text-blue-400',
+                        badgeClass: 'bg-blue-100 text-blue-800',
+                        minGap: 25,
+                        target: 25, // Default to min gap value
+                        stopLoss: 15,
+                        availability: 'Always',
+                        availabilityColor: 'text-green-400',
+                        conditions: [
+                            'Gap up above 25%',
+                            'Price breaks above day high',
+                            'Above VWAP',
+                            'Sufficient volume'
+                        ]
+                    },
+                    {
+                        key: 'gapUpShort',
+                        name: 'Gap Up Short',
+                        direction: 'SHORT',
+                        directionColor: 'text-red-400',
+                        color: 'text-purple-400',
+                        badgeClass: 'bg-purple-100 text-purple-800',
+                        minGap: 40,
+                        target: 15, // Default to 15% for short
+                        stopLoss: 15,
+                        availability: 'After 10 AM',
+                        availabilityColor: 'text-yellow-400',
+                        conditions: [
+                            'Gap up above 40%',
+                            'After 10 AM',
+                            'Below premarket high',
+                            'Volume in range'
+                        ]
+                    }
+                ];
+            },
+            
+            allStocksSelected() {
+                return this.botStatus.subscribedStocks.length > 0 && 
+                       this.selectedStocks.length === this.botStatus.subscribedStocks.length;
             }
         },
         
@@ -104,6 +178,18 @@ const app = createApp({
         mounted() {
             console.log('🎯 Vue.js app mounted successfully');
             this.checkAuth();
+            
+            // Add page load event listener for automatic refresh
+            window.addEventListener('load', () => {
+                console.log('📄 Page loaded, ensuring dashboard data is fresh...');
+                // Small delay to ensure Vue is fully initialized
+                setTimeout(() => {
+                    if (this.user) {
+                        console.log('🔄 Page load refresh triggered...');
+                        this.forceRefreshDashboard();
+                    }
+                }, 1000);
+            });
         },
         
         methods: {
@@ -176,15 +262,90 @@ const app = createApp({
             async initializeApp() {
                 console.log('🚀 Initializing Trading Advisor Dashboard...');
                 
-                await this.checkSystemStatus();
-                await this.loadDashboardData();
-                await this.loadBotStatus(); // Load bot status
-                
-                this.connectWebSocket();
-                this.startPeriodicUpdates();
-                this.startPeriodicBotUpdates(); // Start bot updates
-                
-                console.log('✅ Dashboard initialized successfully');
+                try {
+                    // Show overall loading state
+                    this.showOverallLoadingState();
+                    
+                    // Wait for backend to be fully ready
+                    console.log('⏳ Waiting for backend to be ready...');
+                    const backendReady = await this.waitForBackendReady();
+                    if (!backendReady) {
+                        console.error('❌ Backend not ready, stopping initialization');
+                        this.hideOverallLoadingState();
+                        this.showNotification('Backend is not ready. Please try again in a moment.', 'error');
+                        return;
+                    }
+                    
+                    // Check backend connectivity first with retries
+                    console.log('🔍 Checking backend connectivity...');
+                    const backendAccessible = await this.checkBackendConnectivity();
+                    if (!backendAccessible) {
+                        console.error('❌ Backend not accessible, stopping initialization');
+                        this.hideOverallLoadingState();
+                        return;
+                    }
+                    
+                    // Start loading data immediately after backend is accessible
+                    console.log('📊 Starting progressive data loading...');
+                    
+                    // Load strategies from backend first
+                    console.log('📊 Loading strategies from backend...');
+                    this.loadStrategiesFromBackend().catch(error => {
+                        console.error('❌ Failed to load strategies:', error);
+                    });
+                    
+                    // Initialize default date ranges
+                    console.log('📅 Initializing date ranges...');
+                    this.initializeDateRanges();
+                    
+                    // Load saved strategy settings first
+                    console.log('⚙️ Loading strategy settings...');
+                    this.loadStrategySettings();
+                    
+                    // Initialize strategy parameters with proper defaults
+                    console.log('🔧 Initializing strategy parameters...');
+                    this.initializeStrategyParameters();
+                    
+                    // Start loading dashboard data in parallel
+                    console.log('📊 Starting dashboard data loading...');
+                    this.loadDashboardData().catch(error => {
+                        console.error('❌ Failed to load dashboard data:', error);
+                    });
+                    
+                    // Load bot status in parallel
+                    console.log('🤖 Loading bot status...');
+                    this.loadBotStatus().catch(error => {
+                        console.error('❌ Failed to load bot status:', error);
+                    });
+                    
+                    // Setup charts after a short delay to allow data to start loading
+                    console.log('📈 Setting up charts...');
+                    setTimeout(() => {
+                        this.$nextTick(() => {
+                            this.setupCharts();
+                        });
+                    }, 500);
+                    
+                    console.log('🔌 Connecting WebSocket...');
+                    this.connectWebSocket();
+                    
+                    console.log('⏰ Starting periodic updates...');
+                    this.startPeriodicUpdates();
+                    this.startPeriodicBotUpdates(); // Start bot updates
+                    
+                    console.log('✅ Dashboard initialization started successfully');
+                    
+                    // Hide overall loading state after a delay
+                    setTimeout(() => {
+                        this.hideOverallLoadingState();
+                        this.showNotification('Dashboard initialization started', 'success');
+                    }, 2000);
+                    
+                } catch (error) {
+                    console.error('❌ Error during app initialization:', error);
+                    this.hideOverallLoadingState();
+                    this.showNotification('Failed to initialize dashboard: ' + error.message, 'error');
+                }
             },
             
             async checkSystemStatus() {
@@ -215,36 +376,60 @@ const app = createApp({
             },
             
             async loadDashboardData() {
+                console.log('📊 Starting dashboard data load...');
                 try {
-                    await Promise.all([
-                        this.loadStats(),
-                        this.loadGapUps(),
-                        this.loadDashboardTrades(),
-                        this.loadDashboardPnL()
-                    ]);
+                    const promises = [
+                        this.loadStats().then(() => console.log('✅ Stats loaded')),
+                        this.loadGapUps().then(() => console.log('✅ Gap-ups loaded')),
+                        this.loadDashboardTrades().then(() => console.log('✅ Dashboard trades loaded')),
+                        this.loadDashboardPnL().then(() => console.log('✅ Dashboard PnL loaded'))
+                    ];
+                    
+                    await Promise.allSettled(promises);
+                    console.log('✅ Dashboard data load completed');
                 } catch (error) {
-                    console.error('Error loading dashboard data:', error);
-                    // Continue with the app even if some data fails to load
+                    console.error('❌ Error loading dashboard data:', error);
+                    this.showNotification('Failed to load dashboard data: ' + error.message, 'error');
                 }
             },
             
             async loadBotStatus() {
-                try {
-                    console.log('🔍 Loading bot status...');
-                    const response = await axios.get('/api/bot/status');
-                    console.log('📊 Bot status response:', response.data);
-                    this.botStatus = {
-                        running: response.data.is_running || false,
-                        subscribedStocks: response.data.subscribed_stocks || [],
-                        analysisResults: response.data.analysis_results || [],
-                        positions: response.data.positions || [],
-                        activePositions: response.data.positions ? response.data.positions.length : 0
-                    };
-                    console.log('✅ Bot status loaded:', this.botStatus);
-                } catch (error) {
-                    console.error('❌ Error loading bot status:', error);
-                    this.showNotification('Failed to load bot status', 'error');
+                console.log('🤖 Loading bot status...');
+                this.updateLoadingProgress('bot', 'loading');
+                
+                const maxRetries = 3;
+                const retryDelay = 1000; // 1 second
+                
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`🤖 Bot status loading attempt ${attempt}/${maxRetries}...`);
+                        const response = await axios.get('/api/bot/status', {
+                            timeout: 10000 // 10 second timeout
+                        });
+                        
+                        console.log('📊 Bot status response:', response.data);
+                        this.botStatus = {
+                            running: response.data.is_running || false,
+                            subscribedStocks: response.data.subscribed_stocks || [],
+                            analysisResults: response.data.analysis_results || [],
+                            positions: response.data.positions || [],
+                            activePositions: response.data.positions ? response.data.positions.length : 0
+                        };
+                        console.log('✅ Bot status loaded:', this.botStatus);
+                        this.updateLoadingProgress('bot', 'success');
+                        return; // Success, exit retry loop
+                    } catch (error) {
+                        console.error(`❌ Error loading bot status (attempt ${attempt}):`, error);
+                        if (attempt === maxRetries) {
+                            this.updateLoadingProgress('bot', 'error');
+                        } else {
+                            console.log(`⏳ Retrying bot status load in ${retryDelay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        }
+                    }
                 }
+                
+                this.updateLoadingProgress('bot', 'error');
             },
             
             async toggleBot() {
@@ -288,59 +473,143 @@ const app = createApp({
                         this.refreshBotData();
                     }
                 }, 5000);
+                
+                // AUTOMATIC BACKGROUND SYNC: Sync trades from Alpaca every 30 seconds
+                setInterval(() => {
+                    this.autoSyncTradesFromAlpaca();
+                }, 30000); // 30 seconds
+            },
+            
+            async autoSyncTradesFromAlpaca() {
+                try {
+                    console.log('🔄 Automatic background sync: Syncing trades from Alpaca...');
+                    const response = await axios.post('/api/bot/sync-trades');
+                    
+                    if (response.data.success) {
+                        console.log('✅ Automatic sync completed:', response.data.data);
+                        // Reload trade history and bot status to show latest data
+                        await this.loadTradeHistory();
+                        await this.loadBotStatus();
+                    } else {
+                        console.warn('⚠️ Automatic sync failed:', response.data.error);
+                    }
+                } catch (error) {
+                    console.error('❌ Error in automatic sync:', error);
+                }
             },
             
             async loadStats() {
-                this.loading.stats = true;
-                try {
-                    const sessionToken = localStorage.getItem('session_token');
-                    const response = await fetch('http://localhost:5000/api/trades', {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                        }
-                    });
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.trades = data.trades;
-                        this.stats = {
-                            totalTrades: data.summary.total_trades,
-                            winRate: data.summary.win_rate,
-                            totalPnl: data.summary.total_pnl,
-                            pnl: data.summary.total_pnl,
-                            activePositions: this.trades.filter(t => t.status === 'filled').length,
-                            gapUps: this.gapUps.length
-                        };
+                console.log('📊 Loading stats...');
+                this.updateLoadingProgress('stats', 'loading');
+                
+                const maxRetries = 3;
+                const retryDelay = 1000; // 1 second
+                
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`📊 Stats loading attempt ${attempt}/${maxRetries}...`);
+                        const sessionToken = localStorage.getItem('session_token');
+                        console.log('🔑 Using session token:', sessionToken ? 'Present' : 'Missing');
                         
-                        // Update charts after data is loaded
-                        setTimeout(() => {
-                            this.updatePnlChart();
-                        }, 100);
+                        const response = await fetch('http://localhost:5000/api/trades', {
+                            headers: {
+                                'Authorization': `Bearer ${sessionToken}`
+                            },
+                            signal: AbortSignal.timeout(10000) // 10 second timeout
+                        });
+                        
+                        console.log('📡 Stats API response status:', response.status);
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('📊 Stats API response data:', data);
+                        
+                        if (data.success) {
+                            this.trades = data.trades;
+                            this.stats = {
+                                totalTrades: data.summary.total_trades,
+                                winRate: data.summary.win_rate,
+                                totalPnl: data.summary.total_pnl,
+                                pnl: data.summary.total_pnl,
+                                activePositions: this.trades.filter(t => t.status === 'filled').length,
+                                gapUps: this.gapUps.length
+                            };
+                            
+                            console.log('✅ Stats loaded successfully:', this.stats);
+                            this.updateLoadingProgress('stats', 'success');
+                            
+                            // Update charts after data is loaded
+                            setTimeout(() => {
+                                this.updatePnlChart();
+                            }, 100);
+                            
+                            return; // Success, exit retry loop
+                        } else {
+                            console.error('❌ Stats API returned error:', data.message);
+                            throw new Error(data.message || 'Failed to load stats');
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error loading stats (attempt ${attempt}):`, error);
+                        if (attempt === maxRetries) {
+                            this.updateLoadingProgress('stats', 'error');
+                        } else {
+                            console.log(`⏳ Retrying stats load in ${retryDelay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        }
                     }
-                } catch (error) {
-                    console.error('Error loading stats:', error);
-                } finally {
-                    this.loading.stats = false;
                 }
+                
+                this.updateLoadingProgress('stats', 'error');
             },
             
             async loadGapUps() {
-                try {
-                    this.loading.gapUps = true;
-                    const response = await fetch('http://localhost:5000/api/gap-ups');
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.gapUps = data.data || [];
-                        this.stats.gapUps = this.gapUps.length;
-                    } else {
-                        console.error('Failed to load gap-ups:', data.message);
+                console.log('📈 Loading gap-ups...');
+                this.updateLoadingProgress('gapUps', 'loading');
+                
+                const maxRetries = 3;
+                const retryDelay = 1000; // 1 second
+                
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`📈 Gap-ups loading attempt ${attempt}/${maxRetries}...`);
+                        const response = await fetch('http://localhost:5000/api/gap-ups', {
+                            signal: AbortSignal.timeout(10000) // 10 second timeout
+                        });
+                        
+                        console.log('📡 Gap-ups API response status:', response.status);
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('📈 Gap-ups API response data:', data);
+                        
+                        if (data.success) {
+                            this.gapUps = data.data || [];
+                            this.stats.gapUps = this.gapUps.length;
+                            console.log('✅ Gap-ups loaded successfully:', this.gapUps.length, 'stocks');
+                            this.updateLoadingProgress('gapUps', 'success');
+                            return; // Success, exit retry loop
+                        } else {
+                            console.error('❌ Gap-ups API returned error:', data.message);
+                            throw new Error(data.message || 'Failed to load gap-ups');
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error loading gap-ups (attempt ${attempt}):`, error);
+                        if (attempt === maxRetries) {
+                            this.updateLoadingProgress('gapUps', 'error');
+                        } else {
+                            console.log(`⏳ Retrying gap-ups load in ${retryDelay}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        }
                     }
-                } catch (error) {
-                    console.error('Error loading gap-ups:', error);
-                } finally {
-                    this.loading.gapUps = false;
                 }
+                
+                this.updateLoadingProgress('gapUps', 'error');
             },
             
             async loadGapUpsBackground() {
@@ -381,11 +650,33 @@ const app = createApp({
                 }
             },
             
+            initializeDateRanges() {
+                // Set default date ranges (last 7 days to include recent activity)
+                const today = new Date();
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(today.getDate() - 7);
+                
+                // Format dates for input fields (YYYY-MM-DD)
+                this.dashboardPnLFromDate = sevenDaysAgo.toISOString().split('T')[0];
+                this.dashboardPnLToDate = today.toISOString().split('T')[0];
+                this.dashboardTradeFromDate = sevenDaysAgo.toISOString().split('T')[0];
+                this.dashboardTradeToDate = today.toISOString().split('T')[0];
+                
+                console.log('📅 Date ranges initialized:', {
+                    pnl: `${this.dashboardPnLFromDate} to ${this.dashboardPnLToDate}`,
+                    trades: `${this.dashboardTradeFromDate} to ${this.dashboardTradeToDate}`
+                });
+            },
+            
             async loadDashboardTrades() {
                 try {
-                    console.log('🔄 Loading dashboard trades for period:', this.dashboardTradePeriod);
+                    // Use date range instead of period
+                    const fromDate = this.dashboardTradeFromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const toDate = this.dashboardTradeToDate || new Date().toISOString().split('T')[0];
+                    
+                    console.log('🔄 Loading dashboard trades for date range:', fromDate, 'to', toDate);
                     this.loading.dashboardTrades = true;
-                    const response = await fetch(`http://localhost:5000/api/trades?period=${this.dashboardTradePeriod}`);
+                    const response = await fetch(`http://localhost:5000/api/trades?from=${fromDate}&to=${toDate}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -408,9 +699,13 @@ const app = createApp({
             
             async loadDashboardPnL() {
                 try {
-                    console.log('🔄 Loading dashboard P&L for period:', this.dashboardPnLPeriod);
+                    // Use date range instead of period
+                    const fromDate = this.dashboardPnLFromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    const toDate = this.dashboardPnLToDate || new Date().toISOString().split('T')[0];
+                    
+                    console.log('🔄 Loading dashboard P&L for date range:', fromDate, 'to', toDate);
                     this.loading.dashboardPnL = true;
-                    const response = await fetch(`http://localhost:5000/api/trades?period=${this.dashboardPnLPeriod}`);
+                    const response = await fetch(`http://localhost:5000/api/trades?from=${fromDate}&to=${toDate}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -434,11 +729,21 @@ const app = createApp({
             async loadTradeHistory() {
                 try {
                     this.loading.trades = true;
-                    const response = await fetch(`http://localhost:5000/api/trades?period=${this.tradeHistoryPeriod}`);
+                    
+                    // Build query parameters
+                    const params = new URLSearchParams();
+                    params.append('period', this.tradeHistoryPeriod);
+                    
+                    if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim()) {
+                        params.append('ticker', this.tradeHistoryTicker.trim().toUpperCase());
+                    }
+                    
+                    const response = await fetch(`http://localhost:5000/api/trades?${params.toString()}`);
                     const data = await response.json();
                     
                     if (data.success) {
                         this.trades = data.trades || [];
+                        console.log(`📊 Loaded ${this.trades.length} trades${this.tradeHistoryTicker ? ` for ${this.tradeHistoryTicker}` : ''}`);
                     } else {
                         console.error('Failed to load trade history:', data.message);
                     }
@@ -1124,8 +1429,14 @@ const app = createApp({
             
             setupCharts() {
                 try {
-                    this.setupPnlChart();
+                    console.log('🔄 Setting up charts...');
+                    // Only setup trade chart - PnL chart is created dynamically
                     this.setupTradeChart();
+                    
+                    console.log('📊 Charts initialized:', {
+                        pnl: !!this.charts.pnl,
+                        trades: !!this.charts.trades
+                    });
                     
                     // Handle window resize to prevent chart issues
                     window.addEventListener('resize', () => {
@@ -1137,95 +1448,33 @@ const app = createApp({
                         }
                     });
                 } catch (error) {
-                    console.error('Error setting up charts:', error);
+                    console.error('❌ Error setting up charts:', error);
                     // Continue without charts if they fail to load
                 }
             },
             
-            setupPnlChart() {
-                const ctx = document.getElementById('pnlChart');
-                if (!ctx) return;
-                
-                this.charts.pnl = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                        datasets: [{
-                            label: 'P&L',
-                            data: [1200, 1900, 3000, 5000, 2000, 3000],
-                            borderColor: '#10B981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            tension: 0.4,
-                            fill: true,
-                            pointBackgroundColor: '#10B981',
-                            pointBorderColor: '#ffffff',
-                            pointBorderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                            intersect: false,
-                            mode: 'index'
-                        },
-                        plugins: {
-                            legend: {
-                                labels: {
-                                    color: '#D1D5DB',
-                                    usePointStyle: true
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                titleColor: '#ffffff',
-                                bodyColor: '#ffffff',
-                                borderColor: '#10B981',
-                                borderWidth: 1
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    color: '#D1D5DB',
-                                    callback: function(value) {
-                                        return '$' + value.toLocaleString();
-                                    }
-                                },
-                                grid: {
-                                    color: '#374151',
-                                    drawBorder: false
-                                },
-                                border: {
-                                    color: '#374151'
-                                }
-                            },
-                            x: {
-                                ticks: {
-                                    color: '#D1D5DB'
-                                },
-                                grid: {
-                                    color: '#374151',
-                                    drawBorder: false
-                                },
-                                border: {
-                                    color: '#374151'
-                                }
-                            }
-                        },
-                        animation: {
-                            duration: 750,
-                            easing: 'easeInOutQuart'
-                        }
-                    }
-                });
+                        setupPnlChart() {
+                // This function is now deprecated - charts are created directly in updatePnlChart
+                console.log('🔄 setupPnlChart called - this function is deprecated');
             },
             
             updatePnlChart() {
-                if (!this.charts.pnl) return;
+                console.log('🔄 Updating PnL chart...');
+                console.log('📊 Chart object exists:', !!this.charts.pnl);
+                console.log('📊 Dashboard PnL data:', this.dashboardPnL.length, 'trades');
+                
+                // Safely destroy existing chart if it exists
+                if (this.charts.pnl) {
+                    try {
+                        this.charts.pnl.destroy();
+                        console.log('🗑️ Destroyed existing PnL chart');
+                    } catch (error) {
+                        console.warn('⚠️ Error destroying existing chart:', error);
+                    }
+                    this.charts.pnl = null;
+                }
+                
+                // Create chart directly - no need to call setupPnlChart since it's deprecated
                 
                 // Calculate cumulative P&L from trades
                 const pnlData = [];
@@ -1237,30 +1486,121 @@ const app = createApp({
                     new Date(a.submitted_at) - new Date(b.submitted_at)
                 );
                 
+                console.log('📊 Sorted trades:', sortedTrades.length);
+                
                 sortedTrades.forEach((trade, index) => {
-                    cumulativePnl += (trade.pnl || 0);
+                    const tradePnl = trade.pnl || 0;
+                    cumulativePnl += tradePnl;
                     pnlData.push(cumulativePnl);
                     labels.push(new Date(trade.submitted_at).toLocaleDateString());
+                    console.log(`📈 Trade ${index + 1}: ${trade.ticker} - PnL: $${tradePnl}, Cumulative: $${cumulativePnl}`);
                 });
                 
                 // If no trades, use default data
                 if (pnlData.length === 0) {
                     pnlData.push(0);
                     labels.push('No trades');
+                    console.log('⚠️ No trades found, using default data');
                 }
                 
-                this.charts.pnl.data.labels = labels;
-                this.charts.pnl.data.datasets[0].data = pnlData;
+                console.log('📊 Final PnL data:', pnlData);
+                console.log('📊 Final labels:', labels);
                 
-                // Update y-axis range based on data
-                const minPnl = Math.min(...pnlData);
-                const maxPnl = Math.max(...pnlData);
-                const range = maxPnl - minPnl;
+                // Create new chart with data directly
+                const ctx = document.getElementById('pnlChart');
+                if (!ctx) {
+                    console.error('❌ PnL chart canvas not found');
+                    return;
+                }
                 
-                this.charts.pnl.options.scales.y.min = minPnl - (range * 0.1);
-                this.charts.pnl.options.scales.y.max = maxPnl + (range * 0.1);
+                // Check if canvas is visible and has dimensions
+                const canvasRect = ctx.getBoundingClientRect();
+                console.log('📊 Canvas dimensions:', {
+                    width: canvasRect.width,
+                    height: canvasRect.height,
+                    visible: canvasRect.width > 0 && canvasRect.height > 0
+                });
                 
-                this.charts.pnl.update('none'); // Update without animation to prevent weird behavior
+                try {
+                    console.log('🔄 Creating PnL chart with data:', {
+                        labels: labels,
+                        data: pnlData,
+                        canvas: ctx
+                    });
+                    
+                    this.charts.pnl = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'P&L',
+                                data: pnlData,
+                                borderColor: '#10B981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                pointBackgroundColor: '#10B981',
+                                pointBorderColor: '#ffffff',
+                                pointBorderWidth: 2,
+                                pointRadius: 4,
+                                pointHoverRadius: 6
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    labels: {
+                                        color: '#D1D5DB'
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    titleColor: '#ffffff',
+                                    bodyColor: '#ffffff'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        color: '#D1D5DB',
+                                        callback: function(value) {
+                                            return '$' + value.toLocaleString();
+                                        }
+                                    },
+                                    grid: {
+                                        color: '#374151'
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        color: '#D1D5DB'
+                                    },
+                                    grid: {
+                                        color: '#374151'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    console.log('✅ PnL chart created successfully');
+                    console.log('📊 Chart object:', this.charts.pnl);
+                    console.log('📊 Chart data:', this.charts.pnl.data);
+                    console.log('📊 Chart options:', this.charts.pnl.options);
+                    
+                    // Force a resize to ensure the chart renders properly
+                    setTimeout(() => {
+                        if (this.charts.pnl && this.charts.pnl.resize) {
+                            this.charts.pnl.resize();
+                            console.log('📊 Chart resized');
+                        }
+                    }, 100);
+                } catch (error) {
+                    console.error('❌ Error creating PnL chart:', error);
+                    this.charts.pnl = null;
+                }
             },
             
             setupTradeChart() {
@@ -1296,7 +1636,14 @@ const app = createApp({
             
             // Update trade chart
             updateTradeChart() {
-                if (!this.charts.trades) return;
+                if (!this.charts.trades) {
+                    console.warn('⚠️ Trade chart not initialized, attempting to setup...');
+                    this.setupTradeChart();
+                    if (!this.charts.trades) {
+                        console.error('❌ Failed to initialize Trade chart');
+                        return;
+                    }
+                }
                 
                 const winning = this.dashboardTrades.filter(t => (t.pnl || 0) > 0).length;
                 const losing = this.dashboardTrades.filter(t => (t.pnl || 0) < 0).length;
@@ -1308,9 +1655,8 @@ const app = createApp({
             
             // Refresh all data
             async refreshData() {
-                this.showNotification('Refreshing data...', 'warning');
-                await this.loadDashboardData();
-                this.showNotification('Data refreshed', 'success');
+                console.log('🔄 Manual refresh requested...');
+                await this.forceRefreshDashboard();
             },
             
             // Get status color
@@ -1408,7 +1754,19 @@ const app = createApp({
             },
             
             getPeriodDays() {
-                return parseInt(this.selectedPeriod) || 365;
+                return parseInt(this.selectedPeriod);
+            },
+            
+            // Strategy-related functions
+            getAvailableStrategies() {
+                // Return the computed property for backward compatibility
+                return this.availableStrategies;
+            },
+            
+            getStrategyColor(strategyName) {
+                const strategies = this.getAvailableStrategies();
+                const strategy = strategies.find(s => s.name === strategyName);
+                return strategy ? strategy.badgeClass : 'bg-gray-100 text-gray-800';
             },
             
             getDateRange() {
@@ -1478,33 +1836,600 @@ const app = createApp({
             
             // Start periodic updates
             startPeriodicUpdates() {
-                console.log('⏰ Starting periodic updates...');
-                // Update system status every 30 seconds
+                // Update gap-ups every 30 seconds
                 setInterval(() => {
-                    try {
-                        this.checkSystemStatus();
-                    } catch (error) {
-                        console.error('Error in periodic system status check:', error);
-                    }
+                    this.loadGapUpsBackground();
                 }, 30000);
                 
-                // Update dashboard data every 5 minutes
+                // Update bot status every 5 seconds when bot tab is active
                 setInterval(() => {
-                    try {
-                        this.loadDashboardData();
-                    } catch (error) {
-                        console.error('Error in periodic dashboard update:', error);
+                    if (this.activeTab === 'bot') {
+                        this.loadBotStatus();
                     }
-                }, 300000);
+                }, 5000);
                 
-                // Enhanced polling for gap-ups every 30 seconds (background only)
+                // Auto-refresh dashboard data every 2 minutes
                 setInterval(() => {
-                    try {
-                        this.loadGapUpsBackground();
-                    } catch (error) {
-                        console.error('Error in periodic gap-ups update:', error);
+                    console.log('⏰ Periodic dashboard refresh...');
+                    this.loadDashboardData();
+                }, 120000); // 2 minutes
+                
+                // AUTOMATIC BACKGROUND SYNC: Sync trades from Alpaca every 30 seconds
+                setInterval(() => {
+                    this.autoSyncTradesFromAlpaca();
+                }, 30000); // 30 seconds
+            },
+            
+            // Strategy settings management
+            async saveStrategySettings() {
+                try {
+                    console.log('💾 Saving strategy settings...');
+                    
+                    // Validate all strategy parameters before saving
+                    const validationErrors = [];
+                    
+                    this.availableStrategies.forEach((strategy, index) => {
+                        const strategyName = strategy.name;
+                        
+                        // Check for empty or invalid values
+                        if (!strategy.minGap || strategy.minGap === '' || isNaN(strategy.minGap)) {
+                            validationErrors.push(`${strategyName}: Min Gap % is required and must be a number`);
+                        }
+                        
+                        if (!strategy.target || strategy.target === '' || isNaN(strategy.target)) {
+                            validationErrors.push(`${strategyName}: Target is required and must be a number`);
+                        }
+                        
+                        if (!strategy.stopLoss || strategy.stopLoss === '' || isNaN(strategy.stopLoss)) {
+                            validationErrors.push(`${strategyName}: Stop Loss is required and must be a number`);
+                        }
+                        
+                        // Check for reasonable value ranges
+                        if (strategy.minGap < 0 || strategy.minGap > 200) {
+                            validationErrors.push(`${strategyName}: Min Gap % must be between 0-200%`);
+                        }
+                        
+                        if (strategy.target < 0 || strategy.target > 200) {
+                            validationErrors.push(`${strategyName}: Target must be between 0-200%`);
+                        }
+                        
+                        if (strategy.stopLoss < 0 || strategy.stopLoss > 100) {
+                            validationErrors.push(`${strategyName}: Stop Loss must be between 0-100%`);
+                        }
+                    });
+                    
+                    // If there are validation errors, show them and stop saving
+                    if (validationErrors.length > 0) {
+                        const errorMessage = 'Please fix the following errors:\n' + validationErrors.join('\n');
+                        this.showNotification(errorMessage, 'error');
+                        console.error('❌ Strategy validation failed:', validationErrors);
+                        return;
                     }
-                }, 30000);
+                    
+                    // Save to localStorage for persistence
+                    localStorage.setItem('strategySettings', JSON.stringify(this.availableStrategies));
+                    
+                    // Send to backend API to update bot configuration
+                    const response = await axios.post('/api/bot/update-strategies', {
+                        strategies: this.availableStrategies
+                    });
+                    
+                    if (response.data.success) {
+                        this.showNotification('Strategy settings saved successfully!', 'success');
+                        console.log('✅ Strategy settings saved');
+                    } else {
+                        this.showNotification('Failed to save strategy settings', 'error');
+                    }
+                } catch (error) {
+                    console.error('❌ Error saving strategy settings:', error);
+                    this.showNotification('Error saving strategy settings', 'error');
+                }
+            },
+            
+            loadStrategySettings() {
+                try {
+                    // Load saved settings from localStorage
+                    const savedSettings = localStorage.getItem('strategySettings');
+                    if (savedSettings) {
+                        const parsedSettings = JSON.parse(savedSettings);
+                        console.log('📋 Loading saved strategy settings:', parsedSettings);
+                        
+                        // Check if the saved settings contain old string values
+                        const hasOldStringValues = parsedSettings.some(strategy => 
+                            typeof strategy.target === 'string' || 
+                            typeof strategy.stopLoss === 'string' ||
+                            strategy.target?.includes('%') ||
+                            strategy.stopLoss?.includes('%')
+                        );
+                        
+                        if (hasOldStringValues) {
+                            console.warn('⚠️ Found old string values in saved settings, clearing...');
+                            localStorage.removeItem('strategySettings');
+                            this.showNotification('Old settings format detected and cleared. Using default values.', 'warning');
+                            return;
+                        }
+                        
+                        // Update the computed property with saved settings
+                        // Note: We need to update the window.STRATEGY_CONFIG for this to work
+                        if (window.STRATEGY_CONFIG) {
+                            window.STRATEGY_CONFIG.strategies = parsedSettings;
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading strategy settings:', error);
+                }
+            },
+            
+            async syncTradesFromAlpaca() {
+                try {
+                    console.log('🔄 Syncing trades from Alpaca...');
+                    this.loading.syncTrades = true;
+                    
+                    const response = await axios.post('/api/bot/sync-trades');
+                    
+                    if (response.data.success) {
+                        this.showNotification(`✅ ${response.data.message}`, 'success');
+                        console.log('✅ Trades synced successfully:', response.data.data);
+                        
+                        // Reload trade history after sync
+                        await this.loadTradeHistory();
+                    } else {
+                        this.showNotification(`❌ Failed to sync trades: ${response.data.error}`, 'error');
+                        console.error('❌ Trade sync failed:', response.data.error);
+                    }
+                } catch (error) {
+                    console.error('❌ Error syncing trades:', error);
+                    this.showNotification('❌ Error syncing trades from Alpaca', 'error');
+                } finally {
+                    this.loading.syncTrades = false;
+                }
+            },
+            
+            // Unsubscribe functionality
+            async unsubscribeSelectedStocks() {
+                if (this.selectedStocks.length === 0) {
+                    this.showNotification('Please select stocks to unsubscribe', 'warning');
+                    return;
+                }
+                
+                try {
+                    console.log('🔄 Unsubscribing from stocks:', this.selectedStocks);
+                    this.loading.unsubscribe = true;
+                    
+                    const response = await axios.post('/api/bot/unsubscribe-stocks', {
+                        stocks: this.selectedStocks
+                    });
+                    
+                    if (response.data.success) {
+                        this.showNotification(`✅ ${response.data.message}`, 'success');
+                        console.log('✅ Unsubscribed successfully:', response.data.data);
+                        
+                        // Clear selection and reload bot status
+                        this.selectedStocks = [];
+                        await this.loadBotStatus();
+                    } else {
+                        // Handle position check error
+                        if (response.data.error === 'Cannot unsubscribe from stocks with active positions') {
+                            const stocksWithPositions = response.data.data?.stocks_with_positions || [];
+                            const stockList = stocksWithPositions.map(s => `${s.ticker} (${s.quantity} ${s.side})`).join(', ');
+                            this.showNotification(`⚠️ Cannot unsubscribe: ${stockList} have active positions. Please close positions first.`, 'warning');
+                            console.warn('⚠️ Stocks with active positions:', stocksWithPositions);
+                        } else {
+                            this.showNotification(`❌ Failed to unsubscribe: ${response.data.error}`, 'error');
+                            console.error('❌ Unsubscribe failed:', response.data.error);
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error unsubscribing from stocks:', error);
+                    this.showNotification('❌ Error unsubscribing from stocks', 'error');
+                } finally {
+                    this.loading.unsubscribe = false;
+                }
+            },
+            
+            async unsubscribeSingleStock(ticker) {
+                try {
+                    console.log('🔄 Unsubscribing from single stock:', ticker);
+                    this.loading.unsubscribe = true;
+                    
+                    const response = await axios.post('/api/bot/unsubscribe-stocks', {
+                        stocks: [ticker]
+                    });
+                    
+                    if (response.data.success) {
+                        this.showNotification(`✅ Unsubscribed from ${ticker}`, 'success');
+                        console.log('✅ Single stock unsubscribed successfully:', response.data.data);
+                        
+                        // Reload bot status
+                        await this.loadBotStatus();
+                    } else {
+                        // Handle position check error
+                        if (response.data.error === 'Cannot unsubscribe from stocks with active positions') {
+                            const stocksWithPositions = response.data.data?.stocks_with_positions || [];
+                            const stockList = stocksWithPositions.map(s => `${s.ticker} (${s.quantity} ${s.side})`).join(', ');
+                            this.showNotification(`⚠️ Cannot unsubscribe from ${ticker}: Has active position. Please close position first.`, 'warning');
+                            console.warn('⚠️ Stock with active position:', stocksWithPositions);
+                        } else {
+                            this.showNotification(`❌ Failed to unsubscribe from ${ticker}: ${response.data.error}`, 'error');
+                            console.error('❌ Single stock unsubscribe failed:', response.data.error);
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Error unsubscribing from single stock:', error);
+                    this.showNotification('❌ Error unsubscribing from stock', 'error');
+                } finally {
+                    this.loading.unsubscribe = false;
+                }
+            },
+            
+            selectAllStocks() {
+                this.selectedStocks = this.botStatus.subscribedStocks.map(stock => stock.ticker);
+                console.log('✅ All stocks selected:', this.selectedStocks);
+            },
+            
+            clearStockSelection() {
+                this.selectedStocks = [];
+                console.log('✅ Stock selection cleared');
+            },
+            
+            toggleAllStocks() {
+                if (this.allStocksSelected) {
+                    this.clearStockSelection();
+                } else {
+                    this.selectAllStocks();
+                }
+            },
+            
+            hasActivePosition(ticker) {
+                // Check if the stock has an active position in the bot status
+                return this.botStatus.positions.some(position => position.ticker === ticker);
+            },
+            
+            // Trade History Ticker Search Methods
+            onTradeHistoryTickerChange() {
+                // Debounce the search to avoid too many API calls
+                clearTimeout(this.tickerSearchTimeout);
+                this.tickerSearchTimeout = setTimeout(() => {
+                    this.loadTradeHistory();
+                }, 500);
+            },
+            
+            clearTradeHistoryTicker() {
+                this.tradeHistoryTicker = '';
+                this.loadTradeHistory();
+            },
+            
+            // Strategy Parameter Validation
+            validateStrategyParameter(strategy, parameter) {
+                const value = strategy[parameter];
+                
+                // Ensure value is a number and not null/undefined
+                if (isNaN(value) || value === null || value === undefined || value === '') {
+                    // Set default values based on parameter
+                    if (parameter === 'minGap') {
+                        strategy[parameter] = 25; // Default min gap
+                    } else if (parameter === 'target') {
+                        strategy[parameter] = strategy.minGap || 25; // Default to min gap
+                    } else if (parameter === 'stopLoss') {
+                        strategy[parameter] = 15; // Default stop loss
+                    }
+                    this.showNotification(`Invalid ${parameter} value. Set to default.`, 'warning');
+                    return;
+                }
+                
+                // Validate ranges
+                if (parameter === 'minGap') {
+                    if (value < 0 || value > 200) {
+                        strategy[parameter] = Math.max(0, Math.min(200, value));
+                        this.showNotification(`Min Gap % must be between 0-200%. Set to ${strategy[parameter]}.`, 'warning');
+                    }
+                    // Auto-update target to match min gap if target is empty or 0
+                    if (!strategy.target || strategy.target === 0) {
+                        strategy.target = value;
+                    }
+                } else if (parameter === 'target') {
+                    if (value < 0 || value > 200) {
+                        strategy[parameter] = Math.max(0, Math.min(200, value));
+                        this.showNotification(`Target must be between 0-200%. Set to ${strategy[parameter]}.`, 'warning');
+                    }
+                } else if (parameter === 'stopLoss') {
+                    if (value < 0 || value > 100) {
+                        strategy[parameter] = Math.max(0, Math.min(100, value));
+                        this.showNotification(`Stop Loss must be between 0-100%. Set to ${strategy[parameter]}.`, 'warning');
+                    }
+                }
+            },
+            
+            // Initialize strategy parameters with proper defaults
+            initializeStrategyParameters() {
+                this.availableStrategies.forEach(strategy => {
+                    // Ensure all parameters are numbers with proper defaults
+                    strategy.minGap = Number(strategy.minGap) || 25;
+                    strategy.target = Number(strategy.target) || strategy.minGap; // Default to min gap
+                    strategy.stopLoss = Number(strategy.stopLoss) || 15;
+                    
+                    // Validate initial values
+                    this.validateStrategyParameter(strategy, 'minGap');
+                    this.validateStrategyParameter(strategy, 'target');
+                    this.validateStrategyParameter(strategy, 'stopLoss');
+                });
+            },
+            
+            // Save individual strategy
+            async saveIndividualStrategy(strategy) {
+                try {
+                    console.log(`💾 Saving individual strategy: ${strategy.name}`);
+                    
+                    // Validate the specific strategy
+                    const validationErrors = [];
+                    const strategyName = strategy.name;
+                    
+                    // Check for empty or invalid values
+                    if (!strategy.minGap || strategy.minGap === '' || isNaN(strategy.minGap)) {
+                        validationErrors.push(`Min Gap % is required and must be a number`);
+                    }
+                    
+                    if (!strategy.target || strategy.target === '' || isNaN(strategy.target)) {
+                        validationErrors.push(`Target is required and must be a number`);
+                    }
+                    
+                    if (!strategy.stopLoss || strategy.stopLoss === '' || isNaN(strategy.stopLoss)) {
+                        validationErrors.push(`Stop Loss is required and must be a number`);
+                    }
+                    
+                    // Check for reasonable value ranges
+                    if (strategy.minGap < 0 || strategy.minGap > 200) {
+                        validationErrors.push(`Min Gap % must be between 0-200%`);
+                    }
+                    
+                    if (strategy.target < 0 || strategy.target > 200) {
+                        validationErrors.push(`Target must be between 0-200%`);
+                    }
+                    
+                    if (strategy.stopLoss < 0 || strategy.stopLoss > 100) {
+                        validationErrors.push(`Stop Loss must be between 0-100%`);
+                    }
+                    
+                    // If there are validation errors, show them and stop saving
+                    if (validationErrors.length > 0) {
+                        const errorMessage = `${strategyName} - Please fix the following errors:\n` + validationErrors.join('\n');
+                        this.showNotification(errorMessage, 'error');
+                        console.error(`❌ ${strategyName} validation failed:`, validationErrors);
+                        return;
+                    }
+                    
+                    // Save to localStorage for persistence
+                    localStorage.setItem('strategySettings', JSON.stringify(this.availableStrategies));
+                    
+                    // Send to backend API to update bot configuration
+                    const response = await axios.post('/api/bot/update-strategies', {
+                        strategies: this.availableStrategies
+                    });
+                    
+                    if (response.data.success) {
+                        this.showNotification(`${strategyName} settings saved successfully!`, 'success');
+                        console.log(`✅ ${strategyName} settings saved`);
+                    } else {
+                        this.showNotification(`Failed to save ${strategyName} settings`, 'error');
+                    }
+                } catch (error) {
+                    console.error(`❌ Error saving ${strategy.name} settings:`, error);
+                    this.showNotification(`Error saving ${strategy.name} settings`, 'error');
+                }
+            },
+            
+            // View current settings
+            viewCurrentSettings() {
+                console.log('📋 Current strategy settings:');
+                
+                // Ensure all values are properly formatted as numbers
+                const settingsSummary = this.availableStrategies.map(strategy => {
+                    // Ensure values are numbers and format them properly
+                    const minGap = Number(strategy.minGap) || 0;
+                    const target = Number(strategy.target) || 0;
+                    const stopLoss = Number(strategy.stopLoss) || 0;
+                    
+                    return `${strategy.name} Strategy:
+  • Min Gap %: ${minGap}%
+  • Target: ${target}%
+  • Stop Loss: ${stopLoss}%
+  • Direction: ${strategy.direction}
+  • Availability: ${strategy.availability}`;
+                }).join('\n\n');
+                
+                // Create a modal or alert to show the settings
+                const message = `Current Strategy Settings:\n\n${settingsSummary}`;
+                
+                // Use browser alert for now (can be enhanced with a modal later)
+                alert(message);
+                
+                // Also log to console for debugging
+                console.log('📊 Strategy Settings Summary:', this.availableStrategies);
+            },
+            
+            // Clear old strategy settings to fix the display issue
+            clearOldStrategySettings() {
+                try {
+                    localStorage.removeItem('strategySettings');
+                    console.log('🗑️ Cleared old strategy settings from localStorage');
+                    this.showNotification('Old settings cleared. Please refresh the page.', 'info');
+                } catch (error) {
+                    console.error('❌ Error clearing old settings:', error);
+                }
+            },
+            
+            async loadStrategiesFromBackend() {
+                try {
+                    console.log('🔄 Loading strategies from backend...');
+                    this.loading.strategies = true;
+                    
+                    const response = await axios.get('/api/strategies/get');
+                    
+                    if (response.data.success) {
+                        this.strategiesLoaded = response.data.strategies;
+                        console.log('✅ Strategies loaded from backend:', this.strategiesLoaded);
+                    } else {
+                        console.warn('⚠️ Failed to load strategies from backend, using fallback');
+                        this.strategiesLoaded = null;
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Error loading strategies from backend, using fallback:', error);
+                    this.strategiesLoaded = null;
+                } finally {
+                    this.loading.strategies = false;
+                }
+            },
+            
+            async checkBackendConnectivity() {
+                console.log('🔍 Checking backend connectivity...');
+                const maxRetries = 5;
+                const retryDelay = 2000; // 2 seconds
+                
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`🔍 Backend connectivity attempt ${attempt}/${maxRetries}...`);
+                        const response = await fetch('http://localhost:5000/api/health', {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            // Add timeout to prevent hanging
+                            signal: AbortSignal.timeout(5000) // 5 second timeout
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('✅ Backend is accessible:', data);
+                            this.showNotification('Backend connected successfully', 'success');
+                            return true;
+                        } else {
+                            console.error(`❌ Backend returned error status: ${response.status}`);
+                            if (attempt === maxRetries) {
+                                this.showNotification('Backend is not responding properly', 'error');
+                                return false;
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`❌ Backend connectivity attempt ${attempt} failed:`, error);
+                        if (attempt === maxRetries) {
+                            this.showNotification('Cannot connect to backend server. Please ensure the backend is running.', 'error');
+                            return false;
+                        }
+                        // Wait before retrying
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    }
+                }
+                return false;
+            },
+            
+            async forceRefreshDashboard() {
+                console.log('🔄 Force refreshing dashboard data...');
+                this.loading.stats = true;
+                this.loading.gapUps = true;
+                this.loading.dashboardTrades = true;
+                this.loading.dashboardPnL = true;
+                
+                try {
+                    // Clear existing data
+                    this.stats = {
+                        totalTrades: 0,
+                        winRate: 0,
+                        totalPnl: 0,
+                        pnl: 0,
+                        activePositions: 0,
+                        gapUps: 0
+                    };
+                    this.gapUps = [];
+                    this.trades = [];
+                    
+                    // Reload all data
+                    await this.loadDashboardData();
+                    await this.loadBotStatus();
+                    
+                    // Update charts
+                    this.$nextTick(() => {
+                        this.updatePnlChart();
+                        this.updateTradeChart();
+                    });
+                    
+                    this.showNotification('Dashboard refreshed successfully', 'success');
+                } catch (error) {
+                    console.error('❌ Error force refreshing dashboard:', error);
+                    this.showNotification('Failed to refresh dashboard: ' + error.message, 'error');
+                } finally {
+                    this.loading.stats = false;
+                    this.loading.gapUps = false;
+                    this.loading.dashboardTrades = false;
+                    this.loading.dashboardPnL = false;
+                }
+            },
+            
+            updateLoadingProgress(component, status) {
+                console.log(`📊 Loading progress - ${component}: ${status}`);
+                
+                // Update loading states
+                if (this.loading[component] !== undefined) {
+                    this.loading[component] = status === 'loading';
+                }
+                
+                // Show notifications for important milestones
+                if (status === 'success') {
+                    this.showNotification(`${component} loaded successfully`, 'success');
+                } else if (status === 'error') {
+                    this.showNotification(`Failed to load ${component}`, 'error');
+                }
+            },
+            
+            showOverallLoadingState() {
+                // Show a loading overlay or indicator
+                this.showNotification('Loading dashboard data...', 'info');
+                
+                // Update loading states for all components
+                this.loading.stats = true;
+                this.loading.gapUps = true;
+                this.loading.bot = true;
+                this.loading.dashboardTrades = true;
+                this.loading.dashboardPnL = true;
+            },
+            
+            hideOverallLoadingState() {
+                // Hide loading indicators after a delay
+                setTimeout(() => {
+                    this.loading.stats = false;
+                    this.loading.gapUps = false;
+                    this.loading.bot = false;
+                    this.loading.dashboardTrades = false;
+                    this.loading.dashboardPnL = false;
+                }, 2000);
+            },
+            
+            async waitForBackendReady() {
+                console.log('⏳ Waiting for backend to be fully ready...');
+                const maxAttempts = 10;
+                const delay = 1000; // 1 second between attempts
+                
+                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                    try {
+                        console.log(`🔍 Backend readiness check ${attempt}/${maxAttempts}...`);
+                        const response = await fetch('http://localhost:5000/api/health', {
+                            signal: AbortSignal.timeout(3000) // 3 second timeout
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('✅ Backend is ready:', data);
+                            return true;
+                        }
+                    } catch (error) {
+                        console.log(`⏳ Backend not ready yet (attempt ${attempt}):`, error.message);
+                    }
+                    
+                    // Wait before next attempt
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+                
+                console.error('❌ Backend did not become ready within expected time');
+                return false;
             }
         }
     });

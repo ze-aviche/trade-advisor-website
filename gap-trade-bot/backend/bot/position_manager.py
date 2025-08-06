@@ -12,7 +12,8 @@ from typing import Dict, List, Optional, Any
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from trading_database import trading_db
+from bot.config import config as bot_config
+from bot.trading_database import trading_db
 
 logger = get_logger(__name__)
 

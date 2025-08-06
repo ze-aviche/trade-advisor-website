@@ -297,11 +297,11 @@ def main():
     
     # Test evaluation
     result = manager.evaluate_stock_for_all_strategies('TEST', test_data)
-    print("Multi-Strategy Evaluation:", result)
+    logger.info(f"Multi-Strategy Evaluation: {result}")
     
     # Test status
     status = manager.get_strategy_status()
-    print("Strategy Status:", status)
+    logger.info(f"Strategy Status: {status}")
 
 if __name__ == "__main__":
     main() 

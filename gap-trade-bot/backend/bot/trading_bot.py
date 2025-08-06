@@ -17,13 +17,14 @@ import threading
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
-from data_manager import data_manager
-from websocket_client import websocket_client
-from position_manager import position_manager
-from risk_manager import risk_manager
-from order_manager import order_manager
-from strategies import BreakOutStrategy
+from bot.config import config as bot_config
+from bot.data_manager import data_manager
+from bot.websocket_client import websocket_client
+from bot.position_manager import position_manager
+from bot.risk_manager import risk_manager
+from bot.order_manager import order_manager
+from bot.strategies import BreakOutStrategy
+from bot.strategies import GapUpShortStrategy
 
 logger = get_logger(__name__)
 
@@ -66,7 +67,7 @@ class TradingBot:
         """Initialize all trading bot components"""
         try:
             # Validate configuration
-            if not config.validate_config():
+            if not bot_config.validate_config():
                 logger.error("❌ Configuration validation failed")
                 return False
             
@@ -319,7 +320,7 @@ class TradingBot:
                 return
             
             gap_up_stocks = data_manager.get_gap_up_stocks()
-            logger.info(f"🔍 Analyzing {len(gap_up_stocks)} gap-up stocks for trading opportunities...")
+            logger.info(f"🔍 Analyzing {len(gap_up_stocks)} gap-up stocks for BOTH strategies...")
             
             for ticker in gap_up_stocks:
                 # Get real-time data
@@ -334,75 +335,72 @@ class TradingBot:
                 
                 logger.info(f"📊 Analyzing {ticker} - Price: ${current_data.get('current_price', 0):.2f}, Volume: {current_data.get('volume', 0):,}")
                 
-                # Analyze with break out strategy
-                strategy = BreakOutStrategy()
-                analysis = strategy.analyze_entry_conditions(ticker, current_data)
+                # Analyze for BOTH strategies simultaneously
+                gap_percent = current_data.get('gap_percent', 0)
+                current_time = current_data.get('current_time', datetime.now().time())
                 
-                # Log detailed analysis results
-                confidence = analysis.get('confidence', 0)
-                entry_signal = analysis.get('entry_signal', False)
-                conditions_met = analysis.get('conditions_met', {})
-                conditions_failed = analysis.get('conditions_failed', [])
+                # Strategy 1: Break Out Strategy (always available)
+                break_out_strategy = BreakOutStrategy()
+                break_out_analysis = break_out_strategy.analyze_entry_conditions(ticker, current_data)
                 
+                # Strategy 2: Gap Up Short Strategy (available after 10 AM for high gaps)
+                gap_up_short_analysis = None
+                from datetime import time
+                ten_am = time(10, 0)
+                
+                if current_time >= ten_am and gap_percent >= 40:
+                    gap_up_short_strategy = GapUpShortStrategy()
+                    gap_up_short_analysis = gap_up_short_strategy.analyze_entry_conditions(ticker, current_data)
+                
+                # Log analysis results for both strategies
                 logger.info(f"🎯 {ticker} Analysis Results:")
-                logger.info(f"   📈 Entry Signal: {'✅ YES' if entry_signal else '❌ NO'}")
-                logger.info(f"   📊 Confidence: {confidence:.1f}%")
                 
-                # Log conditions met as actual condition names
-                met_conditions = []
-                failed_conditions = []
+                # Break Out Analysis
+                bo_confidence = break_out_analysis.get('confidence', 0)
+                bo_should_enter = break_out_strategy.should_enter_position(break_out_analysis)
+                logger.info(f"   📈 Break Out Strategy:")
+                logger.info(f"      📊 Entry Signal: {'✅ YES' if bo_should_enter else '❌ NO'}")
+                logger.info(f"      📊 Confidence: {bo_confidence:.1f}%")
                 
-                if conditions_met.get('is_gap_up'):
-                    met_conditions.append('is_gap_up')
+                # Gap Up Short Analysis (if applicable)
+                if gap_up_short_analysis:
+                    gus_confidence = gap_up_short_analysis.get('confidence', 0)
+                    gus_should_enter = gap_up_short_strategy.should_enter_position(gap_up_short_analysis)
+                    logger.info(f"   📉 Gap Up Short Strategy:")
+                    logger.info(f"      📊 Entry Signal: {'✅ YES' if gus_should_enter else '❌ NO'}")
+                    logger.info(f"      📊 Confidence: {gus_confidence:.1f}%")
                 else:
-                    failed_conditions.append('is_gap_up')
+                    logger.info(f"   📉 Gap Up Short Strategy: Not applicable (Time: {current_time.strftime('%H:%M')}, Gap: {gap_percent:.2f}%)")
                 
-                if conditions_met.get('is_above_hod'):
-                    met_conditions.append('is_above_hod')
+                # Execute the BEST strategy (highest confidence with entry signal)
+                best_strategy = None
+                best_analysis = None
+                best_confidence = 0
+                
+                if bo_should_enter and bo_confidence > best_confidence:
+                    best_strategy = break_out_strategy
+                    best_analysis = break_out_analysis
+                    best_confidence = bo_confidence
+                    logger.info(f"🎯 Selected Break Out strategy for {ticker} (Confidence: {bo_confidence:.1f}%)")
+                
+                if gap_up_short_analysis and gap_up_short_strategy.should_enter_position(gap_up_short_analysis):
+                    gus_conf = gap_up_short_analysis.get('confidence', 0)
+                    if gus_conf > best_confidence:
+                        best_strategy = gap_up_short_strategy
+                        best_analysis = gap_up_short_analysis
+                        best_confidence = gus_conf
+                        logger.info(f"🎯 Selected Gap Up Short strategy for {ticker} (Confidence: {gus_conf:.1f}%)")
+                
+                # Execute the best strategy if found
+                if best_strategy and best_analysis:
+                    await self._execute_strategy_entry(ticker, best_strategy, current_data)
                 else:
-                    failed_conditions.append('is_above_hod')
-                
-                if conditions_met.get('is_market_open'):
-                    met_conditions.append('is_market_open')
-                else:
-                    failed_conditions.append('is_market_open')
-                
-                if conditions_met.get('is_above_vwap'):
-                    met_conditions.append('is_above_vwap')
-                else:
-                    failed_conditions.append('is_above_vwap')
-                
-                if conditions_met.get('has_sufficient_volume'):
-                    met_conditions.append('has_sufficient_volume')
-                else:
-                    failed_conditions.append('has_sufficient_volume')
-                
-                if conditions_met.get('has_breakout_volume'):
-                    met_conditions.append('has_breakout_volume')
-                else:
-                    failed_conditions.append('has_breakout_volume')
-                
-                logger.info(f"   ✅ Conditions Met: {', '.join(met_conditions) if met_conditions else 'None'}")
-                logger.info(f"   ❌ Conditions Failed: {', '.join(failed_conditions) if failed_conditions else 'None'}")
-                
-                if entry_signal:
-                    logger.info(f"🎯 Break out signal detected for {ticker}")
-                    logger.info(f"📊 Confidence: {confidence:.1f}%")
-                    
-                    # Check if we should enter position
-                    if strategy.should_enter_position(analysis):
-                        logger.info(f"🚀 Executing entry for {ticker} - Confidence: {confidence:.1f}%")
-                        await self._execute_strategy_entry(ticker, strategy, current_data)
-                    else:
-                        logger.info(f"⏸️ Entry conditions not fully met for {ticker} - Skipping entry")
-                else:
-                    logger.debug(f"📊 {ticker} - No entry signal (Confidence: {confidence:.1f}%)")
+                    logger.info(f"📊 No entry signals for {ticker} from either strategy")
                 
         except Exception as e:
-            logger.error(f"❌ Error analyzing trading opportunities: {e}")
-                
-        except Exception as e:
-            logger.error(f"❌ Error analyzing trading opportunities: {e}")
+            logger.error(f"❌ Error in trading analysis: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     async def _execute_strategy_entry(self, ticker: str, strategy: Any, current_data: Dict[str, Any]):
         """Execute strategy entry"""
@@ -414,10 +412,11 @@ class TradingBot:
             logger.info(f"   📊 Entry Price: ${current_price:.2f}")
             logger.info(f"   📈 Day High: ${day_high:.2f}")
             
-            # Calculate position size
+            # Calculate position size using real account capital
             stop_loss_price = risk_manager.calculate_stop_loss_price(current_price)
+            available_capital = risk_manager.get_available_capital()
             position_size = risk_manager.calculate_position_size(
-                current_price, stop_loss_price, 100000  # $100k available capital
+                current_price, stop_loss_price, available_capital, ticker
             )
             
             logger.info(f"   💰 Position Size: {position_size:,} shares")

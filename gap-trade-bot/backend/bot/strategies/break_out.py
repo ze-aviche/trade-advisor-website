@@ -58,14 +58,42 @@ class BreakOutStrategy:
         self.name = "break_out"
         self.description = "Buy when price breaks above day high with volume confirmation"
         
-        # Strategy configuration - self-contained
-        self.config = {
-            'target_multiplier': 1.5,  # 50% profit target
-            'stop_loss_multiplier': 0.85,  # 15% stop loss
-            'min_gap_percentage': 25,  # Minimum gap percentage
-            'volume_threshold': 4000000,  # Minimum volume (4 million)
-            'confidence_threshold': 60  # Minimum confidence
-        }
+        # Load configuration from unified config
+        try:
+            import sys
+            import os
+            # Add the backend directory to the path
+            # Strategy file is at: backend/bot/strategies/break_out.py
+            # Need to go up 2 levels to reach backend directory
+            backend_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+            if backend_dir not in sys.path:
+                sys.path.insert(0, backend_dir)
+            
+            from config.strategy_manager import strategy_manager
+            backend_config = strategy_manager.get_backend_config('breakOut')
+            if backend_config:
+                self.config = backend_config
+                logger.info(f"✅ Loaded unified config for {self.name}: {self.config}")
+            else:
+                # Fallback to default config
+                self.config = {
+                    'target_multiplier': 1.25,  # 25% profit target
+                    'stop_loss_multiplier': 0.85,  # 15% stop loss
+                    'min_gap_percentage': 25,  # Minimum gap percentage
+                    'volume_threshold': 4000000,  # Minimum volume (4 million)
+                    'confidence_threshold': 60  # Minimum confidence
+                }
+                logger.warning(f"⚠️ Using fallback config for {self.name}")
+        except Exception as e:
+            logger.error(f"❌ Error loading unified config for {self.name}: {e}")
+            # Fallback to default config
+            self.config = {
+                'target_multiplier': 1.25,  # 25% profit target
+                'stop_loss_multiplier': 0.85,  # 15% stop loss
+                'min_gap_percentage': 25,  # Minimum gap percentage
+                'volume_threshold': 4000000,  # Minimum volume (4 million)
+                'confidence_threshold': 60  # Minimum confidence
+            }
         
         # Strategy state
         self.entry_price = None
@@ -85,6 +113,7 @@ class BreakOutStrategy:
         try:
             current_price = current_data.get('current_price', 0)
             day_high = current_data.get('day_high', 0)
+            premarket_high = current_data.get('premarket_high', 0)
             gap_percent = current_data.get('gap_percent', 0)
             market_status = current_data.get('market_status', 'closed')
             current_volume = current_data.get('current_volume', 0)
@@ -97,23 +126,35 @@ class BreakOutStrategy:
             current_time = volume_analysis.get('current_time', 'Unknown')
             hours_remaining = volume_analysis.get('trading_hours_remaining', 6.5)
             
+            # Determine the appropriate high to use for breakout logic
+            if market_status == 'pre_market':
+                # During pre-market, use pre-market high as the breakout level
+                breakout_high = premarket_high
+                high_type = "Pre-market High"
+                logger.info(f"📈 Pre-market session - using pre-market high: ${premarket_high:.2f}")
+            else:
+                # During regular market hours, use day high
+                breakout_high = day_high
+                high_type = "Day High"
+                logger.info(f"📈 Regular market session - using day high: ${day_high:.2f}")
+            
             # Entry conditions
             is_gap_up = gap_percent >= self.config['min_gap_percentage']
-            is_above_hod = current_price > day_high
+            is_above_breakout_high = current_price > breakout_high if breakout_high > 0 else False
             is_market_active = market_status in ['open', 'pre_market', 'after_hours']
             is_above_vwap = current_price > vwap if vwap > 0 else True
             has_sufficient_volume = forecasted_volume >= self.min_volume
             has_breakout_volume = forecasted_volume >= (avg_volume * self.volume_multiplier)
             
             # Calculate distances
-            distance_from_hod = round(((current_price - day_high) / day_high) * 100, 2) if day_high > 0 else 0
+            distance_from_breakout_high = round(((current_price - breakout_high) / breakout_high) * 100, 2) if breakout_high > 0 else 0
             distance_from_vwap = round(((current_price - vwap) / vwap) * 100, 2) if vwap > 0 else 0
             volume_ratio = round(forecasted_volume / avg_volume, 2) if avg_volume > 0 else 0
             
             # Log detailed condition analysis
             logger.info(f"🔍 {ticker} - Break Out Strategy Analysis:")
             logger.info(f"   📊 Current Price: ${current_price:.2f}")
-            logger.info(f"   📈 Day High: ${day_high:.2f}")
+            logger.info(f"   📈 {high_type}: ${breakout_high:.2f}")
             logger.info(f"   📊 Gap %: {gap_percent:.2f}% (Min: {self.config['min_gap_percentage']}%)")
             logger.info(f"   📊 VWAP: ${vwap:.2f}")
             logger.info(f"   📊 Volume: {current_volume:,} (Forecasted: {forecasted_volume:,})")
@@ -128,10 +169,10 @@ class BreakOutStrategy:
             else:
                 conditions_failed.append(f"Gap Up ({gap_percent:.2f}% < {self.config['min_gap_percentage']}%)")
             
-            if is_above_hod:
-                conditions_met.append(f"Above HOD (${current_price:.2f} > ${day_high:.2f})")
+            if is_above_breakout_high:
+                conditions_met.append(f"Above {high_type} (${current_price:.2f} > ${breakout_high:.2f})")
             else:
-                conditions_failed.append(f"Above HOD (${current_price:.2f} <= ${day_high:.2f})")
+                conditions_failed.append(f"Below {high_type} (${current_price:.2f} <= ${breakout_high:.2f})")
             
             if is_market_active:
                 conditions_met.append(f"Market Active ({market_status})")
@@ -166,78 +207,86 @@ class BreakOutStrategy:
                 'strategy': self.name,
                 'conditions_met': {
                     'is_gap_up': is_gap_up,
-                    'is_above_hod': is_above_hod,
+                    'is_above_breakout_high': is_above_breakout_high,
                     'is_market_active': is_market_active,
                     'is_above_vwap': is_above_vwap,
                     'has_sufficient_volume': has_sufficient_volume,
-                    'has_breakout_volume': has_breakout_volume,
-                    'all_conditions_met': (
-                        is_gap_up and 
-                        is_above_hod and 
-                        is_market_active and 
-                        is_above_vwap and 
-                        has_sufficient_volume and 
-                        has_breakout_volume
-                    )
+                    'has_breakout_volume': has_breakout_volume
                 },
-                'current_metrics': {
-                    'current_price': current_price,
-                    'day_high': day_high,
+                'condition_details': {
                     'gap_percent': gap_percent,
-                    'distance_from_hod': distance_from_hod,
+                    'current_price': current_price,
+                    'breakout_high': breakout_high,
+                    'high_type': high_type,
+                    'distance_from_breakout_high': distance_from_breakout_high,
                     'distance_from_vwap': distance_from_vwap,
-                    'market_status': market_status,
-                    'current_volume': current_volume,
-                    'forecasted_volume': forecasted_volume,
-                    'avg_volume': avg_volume,
                     'volume_ratio': volume_ratio,
-                    'vwap': vwap,
-                    'current_time': current_time,
-                    'hours_remaining': hours_remaining
+                    'forecasted_volume': forecasted_volume,
+                    'market_status': market_status,
+                    'vwap': vwap
                 },
-                'entry_signal': (
-                    is_gap_up and 
-                    is_above_hod and 
-                    is_market_open and 
-                    is_above_vwap and 
-                    has_sufficient_volume and 
-                    has_breakout_volume
-                ),
                 'confidence': self._calculate_confidence(current_data)
             }
             
             return analysis
             
         except Exception as e:
-            logger.error(f"❌ Error analyzing entry conditions for {ticker}: {e}")
-            return {'error': str(e)}
+            logger.error(f"❌ Error analyzing {ticker}: {e}")
+            return None
     
-    def calculate_entry_price(self, current_price: float, day_high: float) -> float:
-        """Calculate optimal entry price"""
-        # Enter at current price when breaking above HOD
-        return current_price
+    def calculate_entry_price(self, current_price: float, breakout_high: float) -> float:
+        """Calculate entry price based on current price and breakout high"""
+        # Use current price as entry price (market order) and round to nearest cent
+        entry_price = round(current_price, 2)
+        logger.info(f"📊 Entry Price: ${entry_price:.2f} (Current Price)")
+        return entry_price
     
     def calculate_target_price(self, entry_price: float) -> float:
         """Calculate target price for profit taking"""
         target_multiplier = self.config.get('target_multiplier', 1.5)
-        return entry_price * target_multiplier
+        target_price = entry_price * target_multiplier
+        return round(target_price, 2)
     
     def calculate_stop_loss_price(self, entry_price: float) -> float:
         """Calculate stop loss price"""
         stop_loss_multiplier = self.config.get('stop_loss_multiplier', 0.85)
-        return entry_price * stop_loss_multiplier
+        stop_loss_price = entry_price * stop_loss_multiplier
+        return round(stop_loss_price, 2)
     
     def should_enter_position(self, analysis: Dict[str, Any]) -> bool:
-        """Determine if we should enter a position"""
+        """Determine if we should enter a position based on analysis"""
         try:
+            if not analysis:
+                return False
+            
             conditions_met = analysis.get('conditions_met', {})
             confidence = analysis.get('confidence', 0)
             
-            # All conditions must be met and confidence above threshold
-            all_conditions = conditions_met.get('all_conditions_met', False)
-            min_confidence = 60  # 60% confidence threshold
+            # Check all required conditions
+            is_gap_up = conditions_met.get('is_gap_up', False)
+            is_above_breakout_high = conditions_met.get('is_above_breakout_high', False)
+            is_market_active = conditions_met.get('is_market_active', False)
+            is_above_vwap = conditions_met.get('is_above_vwap', False)
+            has_sufficient_volume = conditions_met.get('has_sufficient_volume', False)
+            has_breakout_volume = conditions_met.get('has_breakout_volume', False)
             
-            return all_conditions and confidence >= min_confidence
+            # All conditions must be met and confidence above threshold
+            all_conditions_met = (
+                is_gap_up and 
+                is_above_breakout_high and 
+                is_market_active and 
+                is_above_vwap and 
+                has_sufficient_volume and 
+                has_breakout_volume
+            )
+            
+            min_confidence = self.config.get('confidence_threshold', 60)  # Get from config or default to 60%
+            
+            should_enter = all_conditions_met and confidence >= min_confidence
+            
+            logger.info(f"📊 Entry Decision: {'YES' if should_enter else 'NO'} (Confidence: {confidence:.1f}% >= {min_confidence}%)")
+            
+            return should_enter
             
         except Exception as e:
             logger.error(f"❌ Error determining entry: {e}")
@@ -268,18 +317,18 @@ class BreakOutStrategy:
             logger.error(f"❌ Error determining exit: {e}")
             return False, "error"
     
-    def execute_entry(self, ticker: str, current_price: float, day_high: float) -> Dict[str, Any]:
+    def execute_entry(self, ticker: str, current_price: float, breakout_high: float) -> Dict[str, Any]:
         """Execute entry order"""
         try:
             # Calculate prices
-            entry_price = self.calculate_entry_price(current_price, day_high)
+            entry_price = self.calculate_entry_price(current_price, breakout_high)
             target_price = self.calculate_target_price(entry_price)
             stop_loss_price = self.calculate_stop_loss_price(entry_price)
             
             # Store entry details
             self.entry_price = entry_price
             self.entry_time = datetime.now()
-            self.day_high_at_entry = day_high
+            self.day_high_at_entry = breakout_high  # Store the breakout high used
             self.target_price = target_price
             self.stop_loss_price = stop_loss_price
             
@@ -296,12 +345,13 @@ class BreakOutStrategy:
                 'stop_loss_price': stop_loss_price,
                 'entry_time': self.entry_time.isoformat(),
                 'position_value': position_value,
-                'day_high_at_entry': day_high,
+                'breakout_high_at_entry': breakout_high,
                 'risk_reward_ratio': (target_price - entry_price) / (entry_price - stop_loss_price)
             }
             
             logger.info(f"🚀 Executing BUY order for {ticker}: {self.position_size} shares @ ${entry_price:.2f}")
             logger.info(f"📊 Target: ${target_price:.2f} | Stop: ${stop_loss_price:.2f}")
+            logger.info(f"📈 Breakout High: ${breakout_high:.2f}")
             
             return entry_order
             

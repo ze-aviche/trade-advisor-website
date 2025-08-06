@@ -20,7 +20,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
+from bot.config import config as bot_config
 
 logger = get_logger(__name__)
 
@@ -50,9 +50,9 @@ class BrokerWebSocketClient:
         """Initialize broker-specific configuration"""
         if self.broker_type == 'alpaca':
             # Alpaca WebSocket URL for trade updates (not order placement)
-            self.ws_url = "wss://paper-api.alpaca.markets/v2/iex" if config.ALPACA_PAPER else "wss://api.alpaca.markets/v2/iex"
-            self.api_key = config.BROKER_API_KEY
-            self.secret_key = config.BROKER_SECRET
+            self.ws_url = "wss://paper-api.alpaca.markets/v2/iex" if bot_config.ALPACA_PAPER else "wss://api.alpaca.markets/v2/iex"
+            self.api_key = bot_config.BROKER_API_KEY
+            self.secret_key = bot_config.BROKER_SECRET
         elif self.broker_type == 'das':
             # DAS doesn't support WebSocket order placement
             logger.warning("⚠️ DAS doesn't support WebSocket order placement - using REST API only")
@@ -267,11 +267,11 @@ class BrokerWebSocketClient:
             logger.warning("⚠️ DAS doesn't support WebSocket - no reconnection needed")
             return
         
-        if self.reconnect_count < config.WEBSOCKET_MAX_RECONNECTS:
+        if self.reconnect_count < bot_config.WEBSOCKET_MAX_RECONNECTS:
             self.reconnect_count += 1
-            logger.info(f"🔄 Attempting to reconnect to {self.broker_type.upper()} ({self.reconnect_count}/{config.WEBSOCKET_MAX_RECONNECTS})")
+            logger.info(f"🔄 Attempting to reconnect to {self.broker_type.upper()} ({self.reconnect_count}/{bot_config.WEBSOCKET_MAX_RECONNECTS})")
             
-            await asyncio.sleep(config.WEBSOCKET_RECONNECT_DELAY)
+            await asyncio.sleep(bot_config.WEBSOCKET_RECONNECT_DELAY)
             await self.connect()
             
         else:

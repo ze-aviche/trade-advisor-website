@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple, Any
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
+from bot.config import config as bot_config
 
 logger = get_logger(__name__)
 
@@ -20,19 +20,23 @@ class RiskManager:
     """Manages risk and position sizing for trading bot"""
     
     def __init__(self):
-        self.max_daily_loss = config.MAX_DAILY_LOSS
-        self.max_portfolio_risk = config.MAX_PORTFOLIO_RISK
-        self.stop_loss_percentage = config.STOP_LOSS_PERCENTAGE
-        self.default_volume = config.DEFAULT_VOLUME
+        self.max_daily_loss = bot_config.MAX_DAILY_LOSS
+        self.max_portfolio_risk = bot_config.MAX_PORTFOLIO_RISK
+        self.stop_loss_percentage = bot_config.STOP_LOSS_PERCENTAGE
+        self.default_volume = bot_config.DEFAULT_VOLUME
         
         # Risk tracking
         self.daily_loss = 0.0
         self.total_portfolio_value = 0.0
         self.max_position_size = 0.0
         
+        # Account-based limits
+        self.max_position_value = 10000  # Maximum $10k per position
+        self.max_portfolio_concentration = 0.05  # Maximum 5% in single position
+        
     def calculate_position_size(self, entry_price: float, stop_loss_price: float, 
-                              available_capital: float) -> int:
-        """Calculate optimal position size based on risk"""
+                              available_capital: float, ticker: str = None) -> int:
+        """Calculate optimal position size based on risk with dynamic limits"""
         try:
             # Calculate risk per share
             risk_per_share = abs(entry_price - stop_loss_price)
@@ -41,28 +45,88 @@ class RiskManager:
                 logger.warning("⚠️ Invalid stop loss price")
                 return self.default_volume
             
-            # Calculate maximum risk amount
+            # Calculate maximum risk amount (2% of portfolio)
             max_risk_amount = available_capital * self.max_portfolio_risk
             
             # Calculate position size based on risk
-            max_shares = int(max_risk_amount / risk_per_share)
+            max_shares_by_risk = int(max_risk_amount / risk_per_share)
             
-            # Use the smaller of calculated size or default volume
-            position_size = min(max_shares, self.default_volume)
+            # Calculate position size based on percentage of portfolio (2%)
+            max_position_value = available_capital * 0.02  # 2% of portfolio
+            max_shares_by_value = int(max_position_value / entry_price)
             
-            # Ensure minimum position size
-            if position_size < 100:
-                position_size = 100
+            # Apply price-based position limits
+            max_shares_by_price = self._get_price_based_limit(entry_price)
             
-            logger.info(f"📊 Position size calculated: {position_size} shares")
+            # For small accounts, use more conservative sizing
+            if available_capital < 10000:  # Small account
+                max_position_value = available_capital * 0.01  # 1% of portfolio
+                max_shares_by_value = int(max_position_value / entry_price)
+                max_shares_by_price = min(max_shares_by_price, 500)  # Lower limits for small accounts
+            
+            # Use the smallest of all limits (but don't limit by default_volume for small accounts)
+            if available_capital < 10000:  # Small account
+                position_size = min(max_shares_by_risk, max_shares_by_value, max_shares_by_price)
+            else:
+                position_size = min(max_shares_by_risk, max_shares_by_value, max_shares_by_price, self.default_volume)
+            
+            # Ensure minimum position size (lower for small accounts)
+            if available_capital < 10000:  # Small account
+                min_position_size = 10  # Lower minimum for small accounts
+            else:
+                min_position_size = 100  # Standard minimum
+                
+            if position_size < min_position_size:
+                position_size = min_position_size
+            
+            # Ensure maximum position size and value limits
+            if position_size > 1000:
+                position_size = 1000
+            
+            # Additional check for very expensive stocks
+            position_value = entry_price * position_size
+            if position_value > self.max_position_value:  # Max $10k per position
+                position_size = int(self.max_position_value / entry_price)
+                if position_size < 1:
+                    position_size = 1  # Minimum 1 share
+            
+            # For very expensive stocks (>$100), be more conservative
+            if entry_price > 100 and position_value > (available_capital * 0.1):  # Max 10% of capital for expensive stocks
+                max_shares_for_expensive = int((available_capital * 0.1) / entry_price)
+                if max_shares_for_expensive < position_size:
+                    position_size = max_shares_for_expensive
+                    if position_size < 1:
+                        position_size = 1
+            
+            logger.info(f"📊 Position size calculated for {ticker or 'Unknown'}: {position_size} shares")
+            logger.info(f"📊 Entry Price: ${entry_price:.2f}")
             logger.info(f"📊 Risk per share: ${risk_per_share:.2f}")
             logger.info(f"📊 Max risk amount: ${max_risk_amount:.2f}")
+            logger.info(f"📊 Max position value: ${max_position_value:.2f}")
+            logger.info(f"📊 Price-based limit: {max_shares_by_price} shares")
             
             return position_size
             
         except Exception as e:
             logger.error(f"❌ Error calculating position size: {e}")
             return self.default_volume
+    
+    def _get_price_based_limit(self, entry_price: float) -> int:
+        """Get position size limit based on stock price"""
+        try:
+            if entry_price < 1:
+                return 1000  # Very low-priced stocks: max 1000 shares
+            elif entry_price < 5:
+                return 500   # Low-priced stocks: max 500 shares
+            elif entry_price < 20:
+                return 200   # Mid-priced stocks: max 200 shares
+            elif entry_price < 100:
+                return 100   # High-priced stocks: max 100 shares
+            else:
+                return 50    # Very expensive stocks: max 50 shares
+        except Exception as e:
+            logger.error(f"❌ Error calculating price-based limit: {e}")
+            return 200
     
     def calculate_stop_loss_price(self, entry_price: float, direction: str = 'long') -> float:
         """Calculate stop loss price"""
@@ -189,8 +253,19 @@ class RiskManager:
             
             # Check if position size is reasonable
             position_value = entry_price * quantity
-            if position_value > 50000:  # Max $50k per position
+            if position_value > self.max_position_value:  # Max $10k per position
                 return False, f"Position value too large: ${position_value:.0f}"
+            
+            # Check portfolio concentration
+            if self.total_portfolio_value > 0:
+                concentration = position_value / self.total_portfolio_value
+                if concentration > self.max_portfolio_concentration:  # Max 5% concentration
+                    return False, f"Portfolio concentration too high: {concentration:.1%}"
+            
+            # Check if we have enough buying power
+            available_capital = self.get_available_capital()
+            if position_value > available_capital * 0.5:  # Max 50% of buying power
+                return False, f"Position too large for available capital: ${position_value:.0f}"
             
             return True, "Trade risk validated"
             
@@ -232,6 +307,29 @@ class RiskManager:
         except Exception as e:
             logger.error(f"❌ Error checking if should stop trading: {e}")
             return False
+
+    def get_available_capital(self) -> float:
+        """Get real available capital from account"""
+        try:
+            from bot.alpaca_client import AlpacaClient
+            client = AlpacaClient()
+            account_info = client.get_account_info()
+            
+            # Use buying power as available capital
+            available_capital = account_info.get('buying_power', 100000)
+            portfolio_value = account_info.get('portfolio_value', 100000)
+            
+            # Update portfolio value for tracking
+            self.total_portfolio_value = portfolio_value
+            
+            logger.info(f"📊 Available capital: ${available_capital:.2f}")
+            logger.info(f"📊 Portfolio value: ${portfolio_value:.2f}")
+            
+            return available_capital
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting available capital: {e}")
+            return 100000  # Fallback to $100k
 
 # Global risk manager instance
 risk_manager = RiskManager() 

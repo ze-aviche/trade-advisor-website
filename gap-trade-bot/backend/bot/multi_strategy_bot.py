@@ -333,11 +333,11 @@ def main():
     
     # Test bot status
     status = bot.get_bot_status()
-    print("Bot Status:", status)
+    logger.info(f"Bot Status: {status}")
     
     # Test strategy manager
     manager_status = bot.strategy_manager.get_strategy_status()
-    print("Strategy Manager Status:", manager_status)
+    logger.info(f"Strategy Manager Status: {manager_status}")
 
 if __name__ == "__main__":
     main() 

@@ -19,7 +19,7 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from logging_config import get_logger
-from config import config
+from bot.config import config as bot_config
 
 logger = get_logger(__name__)
 
@@ -27,8 +27,8 @@ class AlpacaClient:
     """Alpaca Trading Client for order execution and account management"""
     
     def __init__(self):
-        self.api_key = config.BROKER_API_KEY
-        self.secret_key = config.BROKER_SECRET
+        self.api_key = bot_config.BROKER_API_KEY
+        self.secret_key = bot_config.BROKER_SECRET
         self.paper = True  # Use paper trading by default
         self.base_url = "https://paper-api.alpaca.markets" if self.paper else "https://api.alpaca.markets"
         
@@ -163,13 +163,16 @@ class AlpacaClient:
     def place_limit_order(self, symbol: str, quantity: int, side: str, limit_price: float) -> Optional[Dict[str, Any]]:
         """Place a limit order"""
         try:
+            # Round limit price to nearest cent to prevent sub-penny errors
+            rounded_limit_price = round(limit_price, 2)
+            
             # Create order request
             order_data = LimitOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL,
                 time_in_force=TimeInForce.DAY,
-                limit_price=limit_price
+                limit_price=rounded_limit_price
             )
             
             # Submit order
@@ -186,7 +189,7 @@ class AlpacaClient:
                 'created_at': order.created_at.isoformat()
             }
             
-            logger.info(f"📋 Limit order placed: {symbol} {quantity} shares {side} @ ${limit_price}")
+            logger.info(f"📋 Limit order placed: {symbol} {quantity} shares {side} @ ${rounded_limit_price:.2f}")
             
             return order_info
             
@@ -197,13 +200,16 @@ class AlpacaClient:
     def place_stop_order(self, symbol: str, quantity: int, stop_price: float) -> Optional[Dict[str, Any]]:
         """Place a stop order"""
         try:
+            # Round stop price to nearest cent to prevent sub-penny errors
+            rounded_stop_price = round(stop_price, 2)
+            
             # Create order request
             order_data = StopOrderRequest(
                 symbol=symbol,
                 qty=quantity,
                 side=OrderSide.SELL,  # Stop orders are typically sell orders
                 time_in_force=TimeInForce.DAY,
-                stop_price=stop_price
+                stop_price=rounded_stop_price
             )
             
             # Submit order
@@ -220,7 +226,7 @@ class AlpacaClient:
                 'created_at': order.created_at.isoformat()
             }
             
-            logger.info(f"📋 Stop order placed: {symbol} {quantity} shares @ ${stop_price}")
+            logger.info(f"📋 Stop order placed: {symbol} {quantity} shares @ ${rounded_stop_price:.2f}")
             
             return order_info
             

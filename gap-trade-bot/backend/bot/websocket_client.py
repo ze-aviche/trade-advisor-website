@@ -17,7 +17,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
+
+# Import bot config specifically
+from bot.config import config as bot_config
 
 logger = get_logger(__name__)
 
@@ -30,7 +32,7 @@ class WebSocketClient:
         self.reconnect_count = 0
         self.subscribed_symbols = set()
         self.data_callbacks = []
-        self.polygon_api_key = config.POLYGON_API_KEY
+        self.polygon_api_key = bot_config.POLYGON_API_KEY
         
         # Real-time data storage
         self.price_data = {}
@@ -217,11 +219,11 @@ class WebSocketClient:
     async def _reconnect(self):
         """Reconnect to WebSocket"""
         try:
-            if self.reconnect_count < config.WEBSOCKET_MAX_RECONNECTS:
+            if self.reconnect_count < bot_config.WEBSOCKET_MAX_RECONNECTS:
                 self.reconnect_count += 1
-                logger.info(f"🔄 Attempting to reconnect ({self.reconnect_count}/{config.WEBSOCKET_MAX_RECONNECTS})")
+                logger.info(f"🔄 Attempting to reconnect ({self.reconnect_count}/{bot_config.WEBSOCKET_MAX_RECONNECTS})")
                 
-                await asyncio.sleep(config.WEBSOCKET_RECONNECT_DELAY)
+                await asyncio.sleep(bot_config.WEBSOCKET_RECONNECT_DELAY)
                 await self.connect()
                 
                 # Resubscribe to symbols

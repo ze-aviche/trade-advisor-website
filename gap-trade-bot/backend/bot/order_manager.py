@@ -15,9 +15,9 @@ import json
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
-from broker_factory import broker_factory
-from trading_database import trading_db
+from bot.config import config as bot_config
+from bot.broker_factory import broker_factory
+from bot.trading_database import trading_db
 
 logger = get_logger(__name__)
 
@@ -43,7 +43,7 @@ class OrderManager:
             logger.info("⚠️ Using mock mode for order execution (no broker credentials)")
         
         # Import data manager for market status
-        from data_manager import data_manager
+        from bot.data_manager import data_manager
         self.data_manager = data_manager
     
     def get_appropriate_order_type(self, ticker: str, action: str = 'buy') -> str:
@@ -51,34 +51,34 @@ class OrderManager:
         try:
             market_status = self.data_manager.get_market_status()
             
-            print(f"🔍 ORDER TYPE ANALYSIS for {ticker} ({action.upper()}):")
-            print(f"   📊 Current Market Status: {market_status}")
-            print(f"   📊 Action: {action.upper()}")
+            logger.info(f"🔍 ORDER TYPE ANALYSIS for {ticker} ({action.upper()}):")
+            logger.info(f"   📊 Current Market Status: {market_status}")
+            logger.info(f"   📊 Action: {action.upper()}")
             
             # During regular market hours, use market orders for better execution
             if market_status == 'open':
-                print(f"   ✅ Market is OPEN - Using MARKET orders for better execution")
-                print(f"   📋 Order Type Decision: MARKET")
+                logger.info(f"   ✅ Market is OPEN - Using MARKET orders for better execution")
+                logger.info(f"   📋 Order Type Decision: MARKET")
                 logger.info(f"📊 Market is open - using market orders for {ticker}")
                 return 'market'
             
             # During pre-market and after-hours, use limit orders (required by most brokers)
             elif market_status in ['pre_market', 'after_hours']:
-                print(f"   ⚠️ Market is {market_status.upper()} - Using LIMIT orders (broker requirement)")
-                print(f"   📋 Order Type Decision: LIMIT")
+                logger.info(f"   ⚠️ Market is {market_status.upper()} - Using LIMIT orders (broker requirement)")
+                logger.info(f"   📋 Order Type Decision: LIMIT")
                 logger.info(f"📊 Market is {market_status} - using limit orders for {ticker}")
                 return 'limit'
             
             # Market is closed, but still use limit orders if somehow we get here
             else:
-                print(f"   ❌ Market is {market_status.upper()} - Using LIMIT orders (safety default)")
-                print(f"   📋 Order Type Decision: LIMIT")
+                logger.warning(f"   ❌ Market is {market_status.upper()} - Using LIMIT orders (safety default)")
+                logger.warning(f"   📋 Order Type Decision: LIMIT")
                 logger.warning(f"📊 Market is {market_status} - using limit orders for {ticker}")
                 return 'limit'
                 
         except Exception as e:
-            print(f"   ❌ Error determining order type: {e}")
-            print(f"   📋 Order Type Decision: LIMIT (safety default)")
+            logger.error(f"   ❌ Error determining order type: {e}")
+            logger.error(f"   📋 Order Type Decision: LIMIT (safety default)")
             logger.error(f"❌ Error determining order type for {ticker}: {e}")
             return 'limit'  # Default to limit for safety
     
@@ -94,33 +94,36 @@ class OrderManager:
                        order_type: str = None) -> Dict[str, Any]:
         """Place a buy order using broker client"""
         try:
-            print(f"🚀 PLACING BUY ORDER for {ticker}:")
-            print(f"   📊 Quantity: {quantity:,} shares")
-            print(f"   💰 Price: ${price:.2f}")
-            print(f"   📋 Requested Order Type: {order_type if order_type else 'AUTO'}")
+            # Round price to nearest cent to prevent sub-penny errors
+            rounded_price = round(price, 2)
+            
+            logger.info(f"🚀 PLACING BUY ORDER for {ticker}:")
+            logger.info(f"   📊 Quantity: {quantity:,} shares")
+            logger.info(f"   💰 Price: ${rounded_price:.2f}")
+            logger.info(f"   📋 Requested Order Type: {order_type if order_type else 'AUTO'}")
             
             # Determine appropriate order type based on market status
             if order_type is None:
                 order_type = self.get_appropriate_order_type(ticker, 'buy')
             
-            print(f"   📋 Final Order Type: {order_type.upper()}")
-            print(f"   🔧 Broker: {self.broker_info['name'] if self.use_real_trading else 'MOCK'}")
-            print(f"   📊 Trading Mode: {'REAL' if self.use_real_trading else 'MOCK'}")
+            logger.info(f"   📋 Final Order Type: {order_type.upper()}")
+            logger.info(f"   🔧 Broker: {self.broker_info['name'] if self.use_real_trading else 'MOCK'}")
+            logger.info(f"   📊 Trading Mode: {'REAL' if self.use_real_trading else 'MOCK'}")
             
             if self.use_real_trading and self.broker_client:
                 # Use broker client for order execution
                 if order_type == 'market':
                     order = self.broker_client.place_market_order(ticker, quantity, 'buy')
                 elif order_type == 'limit':
-                    order = self.broker_client.place_limit_order(ticker, quantity, 'buy', price)
+                    order = self.broker_client.place_limit_order(ticker, quantity, 'buy', rounded_price)
                 else:
                     logger.error(f"❌ Unsupported order type: {order_type}")
                     return {'error': f'Unsupported order type: {order_type}'}
                 
                 if order:
-                    print(f"   ✅ Order EXECUTED successfully!")
-                    print(f"   📋 Order ID: {order.get('order_id', 'N/A')}")
-                    print(f"   📊 Status: {order.get('status', 'executed')}")
+                    logger.info(f"   ✅ Order EXECUTED successfully!")
+                    logger.info(f"   📋 Order ID: {order.get('order_id', 'N/A')}")
+                    logger.info(f"   📊 Status: {order.get('status', 'executed')}")
                     
                     # Store order in database
                     order_data = {
@@ -130,8 +133,8 @@ class OrderManager:
                         'side': 'buy',
                         'order_type': order_type,
                         'status': 'submitted',
-                        'price': price if order_type == 'limit' else None,
-                        'limit_price': price if order_type == 'limit' else None,
+                        'price': rounded_price if order_type == 'limit' else None,
+                        'limit_price': rounded_price if order_type == 'limit' else None,
                         'broker': self.broker_info['name'],
                         'strategy': 'break_out',
                         'notes': f"Buy order placed via {self.broker_info['name']}"
@@ -145,7 +148,7 @@ class OrderManager:
                     return {'error': f'Failed to place {self.broker_info["name"]} order'}
             
             else:
-                print(f"   🎭 Using MOCK order execution")
+                logger.info(f"   🎭 Using MOCK order execution")
                 # Mock order execution
                 order_id = f"BUY_{ticker}_{int(time.time())}"
                 order = {
@@ -153,13 +156,13 @@ class OrderManager:
                     'ticker': ticker,
                     'action': 'buy',
                     'quantity': quantity,
-                    'price': price,
+                    'price': rounded_price,
                     'order_type': order_type,
                     'status': 'executed',
                     'created_at': datetime.now().isoformat(),
                     'executed_at': datetime.now().isoformat(),
-                    'executed_price': price,
-                    'commission': self._calculate_commission(quantity, price)
+                    'executed_price': rounded_price,
+                    'commission': self._calculate_commission(quantity, rounded_price)
                 }
                 
                 # Store mock order in database
@@ -170,7 +173,7 @@ class OrderManager:
                     'side': 'buy',
                     'order_type': order_type,
                     'status': 'executed',
-                    'price': price,
+                    'price': rounded_price,
                     'broker': 'mock',
                     'strategy': 'break_out',
                     'notes': 'Mock order execution'
@@ -178,7 +181,7 @@ class OrderManager:
                 
                 trading_db.store_order(order_data)
                 self.executed_orders.append(order)
-                logger.info(f"✅ Mock BUY order executed: {ticker} {quantity} shares @ ${price:.2f}")
+                logger.info(f"✅ Mock BUY order executed: {ticker} {quantity} shares @ ${rounded_price:.2f}")
                 
                 return order
             
@@ -190,33 +193,36 @@ class OrderManager:
                         order_type: str = None) -> Dict[str, Any]:
         """Place a sell order using broker client"""
         try:
-            print(f"🚀 PLACING SELL ORDER for {ticker}:")
-            print(f"   📊 Quantity: {quantity:,} shares")
-            print(f"   💰 Price: ${price:.2f}")
-            print(f"   📋 Requested Order Type: {order_type if order_type else 'AUTO'}")
+            # Round price to nearest cent to prevent sub-penny errors
+            rounded_price = round(price, 2)
+            
+            logger.info(f"🚀 PLACING SELL ORDER for {ticker}:")
+            logger.info(f"   📊 Quantity: {quantity:,} shares")
+            logger.info(f"   💰 Price: ${rounded_price:.2f}")
+            logger.info(f"   📋 Requested Order Type: {order_type if order_type else 'AUTO'}")
             
             # Determine appropriate order type based on market status
             if order_type is None:
                 order_type = self.get_appropriate_order_type(ticker, 'sell')
             
-            print(f"   📋 Final Order Type: {order_type.upper()}")
-            print(f"   🔧 Broker: {self.broker_info['name'] if self.use_real_trading else 'MOCK'}")
-            print(f"   📊 Trading Mode: {'REAL' if self.use_real_trading else 'MOCK'}")
+            logger.info(f"   📋 Final Order Type: {order_type.upper()}")
+            logger.info(f"   🔧 Broker: {self.broker_info['name'] if self.use_real_trading else 'MOCK'}")
+            logger.info(f"   📊 Trading Mode: {'REAL' if self.use_real_trading else 'MOCK'}")
             
             if self.use_real_trading and self.broker_client:
                 # Use broker client for order execution
                 if order_type == 'market':
                     order = self.broker_client.place_market_order(ticker, quantity, 'sell')
                 elif order_type == 'limit':
-                    order = self.broker_client.place_limit_order(ticker, quantity, 'sell', price)
+                    order = self.broker_client.place_limit_order(ticker, quantity, 'sell', rounded_price)
                 else:
                     logger.error(f"❌ Unsupported order type: {order_type}")
                     return {'error': f'Unsupported order type: {order_type}'}
                 
                 if order:
-                    print(f"   ✅ Order EXECUTED successfully!")
-                    print(f"   📋 Order ID: {order.get('order_id', 'N/A')}")
-                    print(f"   📊 Status: {order.get('status', 'executed')}")
+                    logger.info(f"   ✅ Order EXECUTED successfully!")
+                    logger.info(f"   📋 Order ID: {order.get('order_id', 'N/A')}")
+                    logger.info(f"   📊 Status: {order.get('status', 'executed')}")
                     
                     # Store order in database
                     order_data = {
@@ -226,8 +232,8 @@ class OrderManager:
                         'side': 'sell',
                         'order_type': order_type,
                         'status': 'submitted',
-                        'price': price if order_type == 'limit' else None,
-                        'limit_price': price if order_type == 'limit' else None,
+                        'price': rounded_price if order_type == 'limit' else None,
+                        'limit_price': rounded_price if order_type == 'limit' else None,
                         'broker': self.broker_info['name'],
                         'strategy': 'break_out',
                         'notes': f"Sell order placed via {self.broker_info['name']}"
@@ -241,7 +247,7 @@ class OrderManager:
                     return {'error': f'Failed to place {self.broker_info["name"]} order'}
             
             else:
-                print(f"   🎭 Using MOCK order execution")
+                logger.info(f"   🎭 Using MOCK order execution")
                 # Mock order execution
                 order_id = f"SELL_{ticker}_{int(time.time())}"
                 order = {
@@ -249,13 +255,13 @@ class OrderManager:
                     'ticker': ticker,
                     'action': 'sell',
                     'quantity': quantity,
-                    'price': price,
+                    'price': rounded_price,
                     'order_type': order_type,
                     'status': 'executed',
                     'created_at': datetime.now().isoformat(),
                     'executed_at': datetime.now().isoformat(),
-                    'executed_price': price,
-                    'commission': self._calculate_commission(quantity, price)
+                    'executed_price': rounded_price,
+                    'commission': self._calculate_commission(quantity, rounded_price)
                 }
                 
                 # Store mock order in database
@@ -266,7 +272,7 @@ class OrderManager:
                     'side': 'sell',
                     'order_type': order_type,
                     'status': 'executed',
-                    'price': price,
+                    'price': rounded_price,
                     'broker': 'mock',
                     'strategy': 'break_out',
                     'notes': 'Mock order execution'
@@ -274,7 +280,7 @@ class OrderManager:
                 
                 trading_db.store_order(order_data)
                 self.executed_orders.append(order)
-                logger.info(f"✅ Mock SELL order executed: {ticker} {quantity} shares @ ${price:.2f}")
+                logger.info(f"✅ Mock SELL order executed: {ticker} {quantity} shares @ ${rounded_price:.2f}")
                 
                 return order
             
@@ -285,9 +291,12 @@ class OrderManager:
     def place_stop_order(self, ticker: str, quantity: int, stop_price: float) -> Dict[str, Any]:
         """Place a stop order using broker client"""
         try:
+            # Round stop price to nearest cent to prevent sub-penny errors
+            rounded_stop_price = round(stop_price, 2)
+            
             if self.use_real_trading and self.broker_client:
                 # Use broker client for stop order
-                order = self.broker_client.place_stop_order(ticker, quantity, stop_price)
+                order = self.broker_client.place_stop_order(ticker, quantity, rounded_stop_price)
                 
                 if order:
                     # Store order in database
@@ -298,7 +307,7 @@ class OrderManager:
                         'side': 'sell',
                         'order_type': 'stop',
                         'status': 'submitted',
-                        'stop_price': stop_price,
+                        'stop_price': rounded_stop_price,
                         'broker': self.broker_info['name'],
                         'strategy': 'break_out',
                         'notes': f"Stop order placed via {self.broker_info['name']}"
@@ -308,12 +317,12 @@ class OrderManager:
                     self.pending_orders[order.get('order_id', f"STOP_{ticker}")] = {
                         'ticker': ticker,
                         'type': 'stop',
-                        'stop_price': stop_price,
+                        'stop_price': rounded_stop_price,
                         'quantity': quantity,
                         'created_at': datetime.now().isoformat()
                     }
                     
-                    logger.info(f"✅ {self.broker_info['name']} STOP order placed: {ticker} {quantity} shares @ ${stop_price:.2f}")
+                    logger.info(f"✅ {self.broker_info['name']} STOP order placed: {ticker} {quantity} shares @ ${rounded_stop_price:.2f}")
                     return order
                 else:
                     return {'error': f'Failed to place {self.broker_info["name"]} stop order'}
@@ -326,7 +335,7 @@ class OrderManager:
                     'ticker': ticker,
                     'action': 'sell',
                     'quantity': quantity,
-                    'stop_price': stop_price,
+                    'stop_price': rounded_stop_price,
                     'order_type': 'stop',
                     'status': 'pending',
                     'created_at': datetime.now().isoformat()
@@ -340,7 +349,7 @@ class OrderManager:
                     'side': 'sell',
                     'order_type': 'stop',
                     'status': 'pending',
-                    'stop_price': stop_price,
+                    'stop_price': rounded_stop_price,
                     'broker': 'mock',
                     'strategy': 'break_out',
                     'notes': 'Mock stop order'
@@ -350,12 +359,12 @@ class OrderManager:
                 self.pending_orders[order_id] = {
                     'ticker': ticker,
                     'type': 'stop',
-                    'stop_price': stop_price,
+                    'stop_price': rounded_stop_price,
                     'quantity': quantity,
                     'created_at': datetime.now().isoformat()
                 }
                 
-                logger.info(f"✅ Mock STOP order placed: {ticker} {quantity} shares @ ${stop_price:.2f}")
+                logger.info(f"✅ Mock STOP order placed: {ticker} {quantity} shares @ ${rounded_stop_price:.2f}")
                 return order
             
         except Exception as e:
@@ -366,9 +375,12 @@ class OrderManager:
                          action: str = 'buy') -> Dict[str, Any]:
         """Place a limit order using broker client"""
         try:
+            # Round limit price to nearest cent to prevent sub-penny errors
+            rounded_limit_price = round(limit_price, 2)
+            
             if self.use_real_trading and self.broker_client:
                 # Use broker client for limit order
-                order = self.broker_client.place_limit_order(ticker, quantity, action, limit_price)
+                order = self.broker_client.place_limit_order(ticker, quantity, action, rounded_limit_price)
                 
                 if order:
                     # Store order in database
@@ -379,7 +391,7 @@ class OrderManager:
                         'side': action,
                         'order_type': 'limit',
                         'status': 'submitted',
-                        'limit_price': limit_price,
+                        'limit_price': rounded_limit_price,
                         'broker': self.broker_info['name'],
                         'strategy': 'break_out',
                         'notes': f"Limit order placed via {self.broker_info['name']}"
@@ -389,13 +401,13 @@ class OrderManager:
                     self.pending_orders[order.get('order_id', f"LIMIT_{ticker}")] = {
                         'ticker': ticker,
                         'type': 'limit',
-                        'limit_price': limit_price,
+                        'limit_price': rounded_limit_price,
                         'action': action,
                         'quantity': quantity,
                         'created_at': datetime.now().isoformat()
                     }
                     
-                    logger.info(f"✅ {self.broker_info['name']} LIMIT order placed: {ticker} {quantity} shares {action} @ ${limit_price:.2f}")
+                    logger.info(f"✅ {self.broker_info['name']} LIMIT order placed: {ticker} {quantity} shares {action} @ ${rounded_limit_price:.2f}")
                     return order
                 else:
                     return {'error': f'Failed to place {self.broker_info["name"]} limit order'}
@@ -408,7 +420,7 @@ class OrderManager:
                     'ticker': ticker,
                     'action': action,
                     'quantity': quantity,
-                    'limit_price': limit_price,
+                    'limit_price': rounded_limit_price,
                     'order_type': 'limit',
                     'status': 'pending',
                     'created_at': datetime.now().isoformat()
@@ -422,7 +434,7 @@ class OrderManager:
                     'side': action,
                     'order_type': 'limit',
                     'status': 'pending',
-                    'limit_price': limit_price,
+                    'limit_price': rounded_limit_price,
                     'broker': 'mock',
                     'strategy': 'break_out',
                     'notes': 'Mock limit order'
@@ -432,13 +444,13 @@ class OrderManager:
                 self.pending_orders[order_id] = {
                     'ticker': ticker,
                     'type': 'limit',
-                    'limit_price': limit_price,
+                    'limit_price': rounded_limit_price,
                     'action': action,
                     'quantity': quantity,
                     'created_at': datetime.now().isoformat()
                 }
                 
-                logger.info(f"✅ Mock LIMIT order placed: {ticker} {quantity} shares {action} @ ${limit_price:.2f}")
+                logger.info(f"✅ Mock LIMIT order placed: {ticker} {quantity} shares {action} @ ${rounded_limit_price:.2f}")
                 return order
             
         except Exception as e:

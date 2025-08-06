@@ -67,3 +67,6 @@ config = {
     'production': ProductionConfig,
     'default': DevelopmentConfig
 } 
+
+# Clear alias for main backend config
+web_config = config 

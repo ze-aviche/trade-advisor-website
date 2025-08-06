@@ -18,11 +18,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from abc import ABC, abstractmethod
 
-# Add parent directories to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+# Add parent directories to path for backend imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from logging_config import get_logger
-from config import config
+from bot.config import config as bot_config
 from historical_data import get_polygon_client, get_historical_gap_up_data
 
 logger = get_logger(__name__)

@@ -11,14 +11,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 import sqlite3
 
-# Add parent directories to path for backend imports
+# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
+from bot.config import config as bot_config
 from historical_data import get_historical_gap_up_data, get_polygon_client
-from websocket_client import websocket_client
-from strategies.break_out import BreakOutStrategy
+from bot.websocket_client import websocket_client
+from bot.strategies.break_out import BreakOutStrategy
 
 # Import the existing gap-up detector
 from gap_up_detector import get_gap_up_stocks as get_real_gap_ups
@@ -202,6 +202,21 @@ class DataManager:
             # Calculate average volume (cached)
             avg_volume = self._get_cached_average_volume(ticker)
             
+            # Calculate volume analysis for strategies
+            current_time = datetime.now()
+            forecasted_volume = self._forecast_full_day_volume(current_volume, current_time)
+            hours_remaining = self._get_trading_hours_remaining(current_time)
+            
+            # Get real premarket high from historical data
+            premarket_high = self._get_real_premarket_high(ticker)
+            
+            # Create volume analysis object
+            volume_analysis = {
+                'forecasted_volume': forecasted_volume,
+                'current_time': current_time.strftime('%I:%M %p'),
+                'trading_hours_remaining': hours_remaining
+            }
+            
             real_time_data = {
                 'ticker': ticker,
                 'current_price': current_price,
@@ -213,12 +228,15 @@ class DataManager:
                 'gap_percent': gap_percent,
                 'vwap': vwap or 0,
                 'avg_volume': avg_volume,
+                'premarket_high': premarket_high,  # Real premarket high from historical data
                 'timestamp': datetime.now().isoformat(),
                 'market_status': self.get_market_status(),
-                'data_source': 'websocket'
+                'data_source': 'websocket',
+                'volume_analysis': volume_analysis,
+                'current_time': current_time.time()  # Add current time for strategies
             }
             
-            logger.debug(f"📊 WebSocket data for {ticker}: ${current_price:.2f}")
+            logger.debug(f"📊 WebSocket data for {ticker}: ${current_price:.2f}, Pre-market High: ${premarket_high:.2f}")
             return real_time_data
             
         except Exception as e:
@@ -265,6 +283,21 @@ class DataManager:
             
             # Use gap_percent parameter instead of recalculating
             
+            # Calculate volume analysis for strategies
+            current_time = datetime.now()
+            forecasted_volume = self._forecast_full_day_volume(current_volume, current_time)
+            hours_remaining = self._get_trading_hours_remaining(current_time)
+            
+            # Get real premarket high from historical data
+            premarket_high = self._get_real_premarket_high(ticker)
+            
+            # Create volume analysis object
+            volume_analysis = {
+                'forecasted_volume': forecasted_volume,
+                'current_time': current_time.strftime('%I:%M %p'),
+                'trading_hours_remaining': hours_remaining
+            }
+            
             real_time_data = {
                 'ticker': ticker,
                 'current_price': current_price,
@@ -276,12 +309,15 @@ class DataManager:
                 'gap_percent': gap_percent,
                 'vwap': vwap,
                 'avg_volume': avg_volume,
+                'premarket_high': premarket_high,  # Real premarket high from historical data
                 'timestamp': datetime.now().isoformat(),
                 'market_status': self.get_market_status(),
-                'data_source': 'rest_api'
+                'data_source': 'rest_api',
+                'volume_analysis': volume_analysis,
+                'current_time': current_time.time()  # Add current time for strategies
             }
             
-            logger.debug(f"📊 REST API data for {ticker}: ${current_price:.2f}")
+            logger.debug(f"📊 REST API data for {ticker}: ${current_price:.2f}, Pre-market High: ${premarket_high:.2f}")
             return real_time_data
             
         except Exception as e:
@@ -755,6 +791,50 @@ class DataManager:
     def get_all_real_time_data(self) -> Dict[str, Dict[str, Any]]:
         """Get real-time data for all tracked stocks"""
         return self.real_time_cache.copy()
+
+    def _get_real_premarket_high(self, ticker: str) -> float:
+        """Get real premarket high from historical data"""
+        try:
+            # Get today's date
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            # Import the premarket data function
+            try:
+                from historical_data import get_premarket_high_low_data
+            except ImportError:
+                try:
+                    from api_helper.historical_data import get_premarket_high_low_data
+                except ImportError:
+                    try:
+                        from api_helper.all_functions import get_premarket_high_low_data
+                    except ImportError:
+                        logger.error(f"❌ Could not import get_premarket_high_low_data for {ticker}")
+                        return 0.0
+            
+            # Get premarket high/low data for today
+            premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, self.polygon_client, today)
+            
+            if premarket_high and premarket_high > 0:
+                logger.info(f"📈 {ticker} - Real premarket high: ${premarket_high:.2f} at {premarket_high_time}")
+                return premarket_high
+            else:
+                logger.warning(f"⚠️ {ticker} - No premarket data available, using day high as fallback")
+                # Fallback to day high if no premarket data
+                daily_data = self._get_daily_data_once(ticker)
+                if daily_data:
+                    return daily_data.get('high', 0.0)
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting real premarket high for {ticker}: {e}")
+            # Fallback to day high
+            try:
+                daily_data = self._get_daily_data_once(ticker)
+                if daily_data:
+                    return daily_data.get('high', 0.0)
+            except:
+                pass
+            return 0.0
 
 # Global data manager instance
 data_manager = DataManager() 

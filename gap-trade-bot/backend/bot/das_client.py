@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Any
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logging_config import get_logger
-from config import config
+from bot.config import config as bot_config
 
 logger = get_logger(__name__)
 

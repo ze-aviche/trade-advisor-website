@@ -109,9 +109,25 @@ class TradingDatabase:
                     commission REAL DEFAULT 0.0,
                     strategy TEXT,
                     broker TEXT NOT NULL,
+                    alpaca_id TEXT,
+                    status TEXT,
                     notes TEXT
                 )
             ''')
+            
+            # Add alpaca_id column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE trades ADD COLUMN alpaca_id TEXT')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+            
+            # Add status column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE trades ADD COLUMN status TEXT')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
             
             # Create performance_metrics table
             cursor.execute('''
@@ -421,8 +437,9 @@ class TradingDatabase:
                 cursor.execute('''
                     INSERT INTO trades 
                     (trade_id, ticker, quantity, side, entry_price, exit_price, 
-                     entry_time, exit_time, pnl, commission, strategy, broker, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     entry_time, exit_time, pnl, commission, strategy, broker, 
+                     alpaca_id, status, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data.get('trade_id'),
                     trade_data.get('ticker'),
@@ -436,6 +453,8 @@ class TradingDatabase:
                     trade_data.get('commission', 0.0),
                     trade_data.get('strategy'),
                     trade_data.get('broker', 'alpaca'),
+                    trade_data.get('alpaca_id'),
+                    trade_data.get('status'),
                     trade_data.get('notes')
                 ))
                 
@@ -476,6 +495,42 @@ class TradingDatabase:
         except Exception as e:
             logger.error(f"❌ Error getting trade history: {e}")
             return []
+    
+    def update_trade(self, trade_id: str, updates: Dict[str, Any]) -> bool:
+        """Update an existing trade record"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Build dynamic UPDATE query
+                set_clauses = []
+                values = []
+                
+                for key, value in updates.items():
+                    if key in ['pnl', 'exit_price', 'exit_time', 'status', 'notes']:
+                        set_clauses.append(f"{key} = ?")
+                        values.append(value)
+                
+                if not set_clauses:
+                    logger.warning(f"⚠️ No valid fields to update for trade {trade_id}")
+                    return False
+                
+                values.append(trade_id)
+                query = f"UPDATE trades SET {', '.join(set_clauses)} WHERE trade_id = ?"
+                
+                cursor.execute(query, values)
+                conn.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"✅ Updated trade: {trade_id}")
+                    return True
+                else:
+                    logger.warning(f"⚠️ No trade found to update: {trade_id}")
+                    return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error updating trade {trade_id}: {e}")
+            return False
     
     # Performance Metrics
     def update_performance_metrics(self, date: str, metrics: Dict[str, Any]) -> bool:
@@ -615,6 +670,217 @@ class TradingDatabase:
         except Exception as e:
             logger.error(f"❌ Error getting database stats: {e}")
             return {}
+    
+    def sync_trades_from_alpaca(self, alpaca_client) -> Dict[str, Any]:
+        """Sync trades from Alpaca to local database"""
+        try:
+            logger.info("🔄 Syncing trades from Alpaca...")
+            
+            synced_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            # First, sync current orders
+            try:
+                orders = alpaca_client.trading_client.get_orders()
+                logger.info(f"📋 Found {len(orders)} current orders")
+            except Exception as e:
+                logger.error(f"❌ Error fetching orders from Alpaca: {e}")
+                orders = []
+            
+            for order in orders:
+                try:
+                    # Check if trade already exists in database
+                    existing_trade = self.get_trade_by_alpaca_id(order.id)
+                    
+                    if not existing_trade:
+                        # Create trade record for all orders (not just filled ones)
+                        trade_data = {
+                            'trade_id': f"ALPACA_{order.id}",
+                            'ticker': order.symbol,
+                            'quantity': abs(int(order.qty)),
+                            'side': 'buy' if order.side == 'buy' else 'sell',
+                            'entry_price': float(order.filled_avg_price) if order.filled_avg_price and order.status == 'filled' else 0.0,
+                            'exit_price': None,  # Will be set when position is closed
+                            'entry_time': order.filled_at.isoformat() if order.filled_at else order.created_at.isoformat(),
+                            'exit_time': None,
+                            'pnl': 0.0,  # Will be calculated when position is closed
+                            'commission': float(order.commission) if order.commission else 0.0,
+                            'strategy': 'alpaca_sync',
+                            'broker': 'alpaca',
+                            'alpaca_id': order.id,
+                            'status': order.status,  # Include order status
+                            'notes': f"Synced from Alpaca: {order.type} order - {order.status}"
+                        }
+                        
+                        if self.record_trade(trade_data):
+                            synced_count += 1
+                            logger.info(f"✅ Synced order: {order.symbol} {order.qty} @ ${order.filled_avg_price or 'N/A'} (Status: {order.status})")
+                        else:
+                            error_count += 1
+                            logger.error(f"❌ Failed to sync order: {order.symbol}")
+                    else:
+                        # If trade exists, update it with new data
+                        updates = {
+                            'exit_price': float(order.filled_avg_price) if order.filled_avg_price and order.status == 'filled' else None,
+                            'exit_time': order.filled_at.isoformat() if order.filled_at else None,
+                            'status': order.status,
+                            'notes': f"Synced from Alpaca: {order.type} order - {order.status}"
+                        }
+                        if self.update_trade(existing_trade['trade_id'], updates):
+                            synced_count += 1
+                            logger.info(f"✅ Updated existing order: {order.symbol} {order.qty} @ ${order.filled_avg_price or 'N/A'} (Status: {order.status})")
+                        else:
+                            error_count += 1
+                            logger.error(f"❌ Failed to update existing order: {order.symbol}")
+                        skipped_count += 1
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"❌ Error processing order {getattr(order, 'symbol', 'UNKNOWN')}: {e}")
+            
+            # Then, sync current positions (these represent filled orders)
+            try:
+                positions = alpaca_client.get_positions()
+                logger.info(f"📈 Found {len(positions)} current positions")
+            except Exception as e:
+                logger.error(f"❌ Error fetching positions from Alpaca: {e}")
+                positions = {}
+            
+            for ticker, position in positions.items():
+                try:
+                    # Check if position already exists by ticker and side
+                    existing_position = self.get_position(ticker, 'buy' if position.get('quantity', 0) > 0 else 'sell')
+                    
+                    if not existing_position:
+                        # Create a unique ID for the position using ticker and quantity
+                        # This is more stable than using price which can fluctuate
+                        quantity = abs(int(position.get('quantity', 0)))
+                        position_id = f"POS_{ticker}_{quantity}_{datetime.now().strftime('%Y%m%d')}"
+                        
+                        # Check if a trade with this ticker already exists (regardless of ID format)
+                        existing_trades = [t for t in self.get_trade_history() if t['ticker'] == ticker and t['status'] == 'open']
+                        
+                        if existing_trades:
+                            # Update existing trade instead of creating new one
+                            existing_trade = existing_trades[0]
+                            updates = {
+                                'pnl': float(position.get('unrealized_pl', 0)),
+                                'notes': f"Synced from Alpaca: Current position - {position.get('quantity', 0)} shares (updated)"
+                            }
+                            if self.update_trade(existing_trade['trade_id'], updates):
+                                synced_count += 1
+                                logger.info(f"✅ Updated existing position: {ticker} {position.get('quantity', 0)} shares @ ${position.get('avg_entry_price', 0)}")
+                            else:
+                                error_count += 1
+                                logger.error(f"❌ Failed to update existing position: {ticker}")
+                        else:
+                            # Create new trade record for position
+                            trade_data = {
+                                'trade_id': position_id,
+                                'ticker': ticker,
+                                'quantity': quantity,
+                                'side': 'buy' if position.get('quantity', 0) > 0 else 'sell',
+                                'entry_price': float(position.get('avg_entry_price', 0)),
+                                'exit_price': None,  # Position is still open
+                                'entry_time': datetime.now().isoformat(),  # Approximate entry time
+                                'exit_time': None,
+                                'pnl': float(position.get('unrealized_pl', 0)),
+                                'commission': 0.0,  # Commission not available for positions
+                                'strategy': 'alpaca_position_sync',
+                                'broker': 'alpaca',
+                                'alpaca_id': position_id,
+                                'status': 'open',
+                                'notes': f"Synced from Alpaca: Current position - {position.get('quantity', 0)} shares"
+                            }
+                            
+                            if self.record_trade(trade_data):
+                                synced_count += 1
+                                logger.info(f"✅ Synced position: {ticker} {position.get('quantity', 0)} shares @ ${position.get('avg_entry_price', 0)}")
+                            else:
+                                error_count += 1
+                                logger.error(f"❌ Failed to sync position: {ticker}")
+                    else:
+                        # Update existing position with latest data
+                        self.update_position_price(ticker, float(position.get('avg_entry_price', 0)))
+                        
+                        # Also update the corresponding trade record
+                        existing_trade = self.get_trade_by_alpaca_id(existing_position.get('alpaca_id', ''))
+                        if existing_trade:
+                            updates = {
+                                'pnl': float(position.get('unrealized_pl', 0)),
+                                'notes': f"Synced from Alpaca: Current position - {position.get('quantity', 0)} shares (updated)"
+                            }
+                            if self.update_trade(existing_trade['trade_id'], updates):
+                                synced_count += 1
+                                logger.info(f"✅ Updated existing position: {ticker} {position.get('quantity', 0)} shares @ ${position.get('avg_entry_price', 0)}")
+                            else:
+                                error_count += 1
+                                logger.error(f"❌ Failed to update existing position: {ticker}")
+                        else:
+                            skipped_count += 1
+                            logger.debug(f"⏭️ Position exists but no trade record found: {ticker}")
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"❌ Error processing position {ticker}: {e}")
+            
+            logger.info(f"🔄 Sync complete: {synced_count} new trades/positions, {skipped_count} already exist, {error_count} errors")
+            return {
+                'success': True,
+                'synced_count': synced_count,
+                'skipped_count': skipped_count,
+                'error_count': error_count,
+                'total_orders': len(orders),
+                'total_positions': len(positions)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error syncing trades from Alpaca: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_trade_by_alpaca_id(self, alpaca_id: str) -> Optional[Dict[str, Any]]:
+        """Get trade by Alpaca activity ID"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM trades WHERE alpaca_id = ?', (alpaca_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"❌ Error getting trade by Alpaca ID: {e}")
+            return None
+
+    def cleanup_duplicate_trades(self) -> bool:
+        """Clean up duplicate trade entries"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Find and remove duplicate trades based on ticker and side
+                cursor.execute('''
+                    DELETE FROM trades 
+                    WHERE id NOT IN (
+                        SELECT MIN(id) 
+                        FROM trades 
+                        GROUP BY ticker, side, status
+                    )
+                ''')
+                
+                deleted_count = cursor.rowcount
+                conn.commit()
+                
+                if deleted_count > 0:
+                    logger.info(f"🧹 Cleaned up {deleted_count} duplicate trade entries")
+                else:
+                    logger.info("✅ No duplicate trades found")
+                
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error cleaning up duplicate trades: {e}")
+            return False
 
 # Global trading database instance
 trading_db = TradingDatabase() 

@@ -51,16 +51,54 @@ class GapUpShortStrategy:
         self.description = "Short stocks with gap up above 40% with volume and price conditions"
         
         # Strategy configuration
-        self.config = {
-            'min_gap_percentage': 40,  # Minimum gap percentage
-            'volume_min_multiplier': 2.0,  # Minimum volume multiplier (2x of 2*avg_volume = 4x avg_volume)
-            'volume_max_multiplier': 10.0,  # Maximum volume multiplier (10x of 2*avg_volume = 20x avg_volume)
-            'min_time': time(10, 0),  # Minimum time (10:00 AM)
-            'max_distance_from_day_high': 10.0,  # Maximum 10% below day high
-            'target_multiplier': 0.85,  # 15% profit target (short)
-            'stop_loss_multiplier': 1.15,  # 15% stop loss (short)
-            'confidence_threshold': 70  # Minimum confidence
-        }
+        # Load configuration from unified config
+        try:
+            import sys
+            import os
+            # Add the backend directory to the path
+            # Strategy file is at: backend/bot/strategies/gap_up_short.py
+            # Need to go up 2 levels to reach backend directory
+            backend_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+            if backend_dir not in sys.path:
+                sys.path.insert(0, backend_dir)
+            
+            from config.strategy_manager import strategy_manager
+            backend_config = strategy_manager.get_backend_config('gapUpShort')
+            if backend_config:
+                # Convert string time to time object
+                if 'min_time' in backend_config and isinstance(backend_config['min_time'], str):
+                    from datetime import datetime
+                    time_obj = datetime.strptime(backend_config['min_time'], '%H:%M').time()
+                    backend_config['min_time'] = time_obj
+                
+                self.config = backend_config
+                logger.info(f"✅ Loaded unified config for {self.name}: {self.config}")
+            else:
+                # Fallback to default config
+                self.config = {
+                    'min_gap_percentage': 40,  # Minimum gap percentage
+                    'volume_min_multiplier': 2.0,  # Minimum volume multiplier
+                    'volume_max_multiplier': 10.0,  # Maximum volume multiplier
+                    'min_time': time(10, 0),  # Minimum time (10:00 AM)
+                    'max_distance_from_day_high': 10.0,  # Maximum 10% below day high
+                    'target_multiplier': 0.85,  # 15% profit target (short)
+                    'stop_loss_multiplier': 1.15,  # 15% stop loss (short)
+                    'confidence_threshold': 70  # Minimum confidence
+                }
+                logger.warning(f"⚠️ Using fallback config for {self.name}")
+        except Exception as e:
+            logger.error(f"❌ Error loading unified config for {self.name}: {e}")
+            # Fallback to default config
+            self.config = {
+                'min_gap_percentage': 40,  # Minimum gap percentage
+                'volume_min_multiplier': 2.0,  # Minimum volume multiplier
+                'volume_max_multiplier': 10.0,  # Maximum volume multiplier
+                'min_time': time(10, 0),  # Minimum time (10:00 AM)
+                'max_distance_from_day_high': 10.0,  # Maximum 10% below day high
+                'target_multiplier': 0.85,  # 15% profit target (short)
+                'stop_loss_multiplier': 1.15,  # 15% stop loss (short)
+                'confidence_threshold': 70  # Minimum confidence
+            }
         
         # Strategy state
         self.entry_price = None
@@ -193,7 +231,6 @@ class GapUpShortStrategy:
                     'current_volume': current_volume,
                     'avg_volume': avg_volume
                 },
-                'entry_signal': all_conditions_met and confidence >= self.config['confidence_threshold'],
                 'confidence': confidence,
                 'conditions_met_list': conditions_met,
                 'conditions_failed_list': conditions_failed
@@ -265,15 +302,29 @@ class GapUpShortStrategy:
             conditions_met = analysis.get('conditions_met', {})
             confidence = analysis.get('confidence', 0)
             
-            all_conditions = conditions_met.get('all_conditions_met', False)
-            min_confidence = self.config['confidence_threshold']
+            # Check all required conditions individually
+            is_gap_up_above_40 = conditions_met.get('gap_up_above_40', False)
+            is_volume_in_range = conditions_met.get('volume_in_range', False)
+            is_after_10am = conditions_met.get('after_10am', False)
+            is_below_premarket_high = conditions_met.get('below_premarket_high', False)
+            is_below_day_high_by_10_percent = conditions_met.get('below_day_high_by_10_percent', False)
+            is_market_open = conditions_met.get('market_open', False)
             
-            should_enter = all_conditions and confidence >= min_confidence
+            # All conditions must be met and confidence above threshold
+            all_conditions_met = (
+                is_gap_up_above_40 and 
+                is_volume_in_range and 
+                is_after_10am and 
+                is_below_premarket_high and 
+                is_below_day_high_by_10_percent and 
+                is_market_open
+            )
             
-            if should_enter:
-                logger.info(f"✅ Entry signal generated - Confidence: {confidence:.1f}%")
-            else:
-                logger.info(f"❌ Entry signal rejected - Confidence: {confidence:.1f}% (Min: {min_confidence}%)")
+            min_confidence = self.config.get('confidence_threshold', 60)  # Get from config or default to 60%
+            
+            should_enter = all_conditions_met and confidence >= min_confidence
+            
+            logger.info(f"📊 Gap Up Short Entry Decision: {'YES' if should_enter else 'NO'} (Confidence: {confidence:.1f}% >= {min_confidence}%)")
             
             return should_enter
             
@@ -299,16 +350,19 @@ class GapUpShortStrategy:
     
     def calculate_entry_price(self, current_price: float, day_high: float) -> float:
         """Calculate optimal entry price for short position"""
-        # Enter at current market price for short
-        return current_price
+        # Enter at current market price for short and round to nearest cent
+        entry_price = round(current_price, 2)
+        return entry_price
     
     def calculate_target_price(self, entry_price: float) -> float:
         """Calculate target price for profit taking (short)"""
-        return entry_price * self.config['target_multiplier']
+        target_price = entry_price * self.config['target_multiplier']
+        return round(target_price, 2)
     
     def calculate_stop_loss_price(self, entry_price: float) -> float:
         """Calculate stop loss price (short)"""
-        return entry_price * self.config['stop_loss_multiplier']
+        stop_loss_price = entry_price * self.config['stop_loss_multiplier']
+        return round(stop_loss_price, 2)
     
     def execute_entry(self, ticker: str, current_price: float, day_high: float) -> Dict[str, Any]:
         """Execute short position entry"""
@@ -420,11 +474,11 @@ def main():
     
     # Test analysis
     analysis = strategy.analyze_entry_conditions('TEST', test_data)
-    print("Strategy Analysis:", analysis)
+    logger.info(f"Strategy Analysis: {analysis}")
     
     # Test entry decision
     should_enter = strategy.should_enter_position(analysis)
-    print("Should Enter:", should_enter)
+    logger.info(f"Should Enter: {should_enter}")
 
 if __name__ == "__main__":
     main() 
