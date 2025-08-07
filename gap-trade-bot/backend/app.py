@@ -25,7 +25,7 @@ app_logger = get_logger('app')
 
 # Import real gap-up detection functions
 try:
-    from gap_up_detector import get_gap_up_stocks, get_stock_analysis, get_market_data
+    from gap_up_detector import get_gap_up_stocks, get_gap_up_stocks_for_frontend
     from historical_data import get_historical_gap_up_data
     from real_time_detector import real_time_detector
     REAL_DATA_AVAILABLE = True
@@ -265,6 +265,27 @@ def handle_real_time_gap_up(gap_up_data):
     
     app_logger.info(f"🚨 Real-time gap-up broadcast: {gap_up_data['ticker']} - {gap_up_data['gap_percent']}%")
 
+def handle_trading_opportunity(gap_up_data):
+    """Handle real-time trading opportunities (25%+ gap-ups)"""
+    try:
+        ticker = gap_up_data['ticker']
+        gap_percent = gap_up_data['gap_percent']
+        
+        # Send SMS and Email notifications
+        from notification_service import notification_service
+        notification_service.notify_gap_up_detection(gap_up_data)
+        
+        # Notify the trading bot for subscription
+        if trading_bot.is_running:
+            import asyncio
+            asyncio.create_task(trading_bot.auto_subscribe_real_time_gap_up(ticker, gap_percent))
+            app_logger.warning(f"🎯 TRADING OPPORTUNITY: Notifying bot to subscribe to {ticker} ({gap_percent:.1f}%)")
+        else:
+            app_logger.info(f"⏸️ Bot not running, skipping trading opportunity for {ticker}")
+            
+    except Exception as e:
+        app_logger.error(f"❌ Error handling trading opportunity for {gap_up_data.get('ticker', 'unknown')}: {e}")
+
 def start_price_update_thread():
     """Start background thread for price updates"""
     def price_update_worker():
@@ -470,8 +491,8 @@ def get_gap_ups():
     try:
         if REAL_DATA_AVAILABLE:
             app_logger.info("🔍 Attempting to fetch real gap-up data...")
-            # Use real data from Polygon API
-            gap_ups = get_gap_up_stocks()
+            # Use real data from Polygon API - show all gap-ups for frontend
+            gap_ups = get_gap_up_stocks_for_frontend()
             if gap_ups and len(gap_ups) > 0:
                 app_logger.info(f"✅ Successfully fetched {len(gap_ups)} real gap-up stocks")
                 
@@ -1043,352 +1064,142 @@ def get_bot_status():
         # Check if bot is running
         is_running = check_bot_status()
         
-        # Get bot status data from the trading bot
-        bot_status_data = {}
+        # Get bot status from file
+        bot_status_file = 'bot/bot_status.json'
+        if os.path.exists(bot_status_file):
+            with open(bot_status_file, 'r') as f:
+                bot_status = json.load(f)
+                is_running = bot_status.get('status') == 'running'
+        else:
+            is_running = False
         
-        try:
-            # Import bot modules to get real data
-            sys.path.append(os.path.join(os.path.dirname(__file__), 'bot'))
-            
-            # Get subscribed stocks from the actual trading bot (if running) or gap-up detector
-            subscribed_stocks = []
+        # Get tracked symbols from bot
+        tracked_symbols = []
+        subscribed_stocks = []
+        if is_running:
             try:
-                # Try to get actual bot subscription state first
+                # Import the trading bot to get tracked symbols
                 from bot.trading_bot import trading_bot
-                if trading_bot.is_running and trading_bot.tracked_symbols:
-                    app_logger.info("🔍 Getting actual bot subscription state...")
-                    app_logger.info(f"📊 Bot tracked symbols: {trading_bot.tracked_symbols}")
-                    
-                    # Get gap-up data for the tracked symbols
-                    from gap_up_detector import get_gap_up_stocks
-                    gap_up_stocks = get_gap_up_stocks()
-                    gap_up_dict = {stock['ticker']: stock for stock in gap_up_stocks}
-                    
-                    for ticker in trading_bot.tracked_symbols:
-                        stock_data = gap_up_dict.get(ticker, {})
-                        subscribed_stocks.append({
-                            'ticker': ticker,
-                            'currentPrice': stock_data.get('price'),
-                            'gapPercent': stock_data.get('gap_percent'),
-                            'volume': stock_data.get('volume'),
-                            'subscribed': True
-                        })
-                        app_logger.info(f"✅ Added {ticker} from bot tracked symbols")
-                    
-                    app_logger.info(f"📊 Total subscribed stocks from bot: {len(subscribed_stocks)}")
-                else:
-                    # Fallback to gap-up detector if bot not running or no tracked symbols
-                    app_logger.info("🔍 Getting gap-up stocks for subscribed stocks...")
-                    from gap_up_detector import get_gap_up_stocks
-                    gap_up_stocks = get_gap_up_stocks()
-                    app_logger.info(f"📊 Found {len(gap_up_stocks)} gap-up stocks")
-                    
-                    for stock in gap_up_stocks:
-                        ticker = stock['ticker']
-                        app_logger.info(f"📈 Processing {ticker}...")
-                        
-                        # Use data from gap-up detector directly (avoid data_manager issues)
-                        subscribed_stocks.append({
-                            'ticker': ticker,
-                            'currentPrice': stock.get('price'),
-                            'gapPercent': stock.get('gap_percent'),
-                            'volume': stock.get('volume'),
-                            'subscribed': False  # Not actually subscribed by bot
-                        })
-                        app_logger.info(f"✅ Added {ticker} with gap-up data")
-                    app_logger.info(f"📊 Total gap-up stocks: {len(subscribed_stocks)}")
-            except Exception as e:
-                app_logger.warning(f"Error getting subscribed stocks: {e}")
-                # Return empty list if both methods fail
-                subscribed_stocks = []
-            
-            # Get analysis results with detailed strategy conditions
-            analysis_results = []
-            try:
-                # Import strategies for detailed analysis
-                sys.path.append(os.path.join(os.path.dirname(__file__), 'bot', 'strategies'))
-                from break_out import BreakOutStrategy
-                from gap_up_short import GapUpShortStrategy
+                tracked_symbols = list(trading_bot.tracked_symbols)
+                app_logger.info(f"📊 Retrieved {len(tracked_symbols)} tracked symbols from bot")
                 
-                break_out_strategy = BreakOutStrategy()
-                gap_up_short_strategy = GapUpShortStrategy()
+                # Get gap-up data for subscribed stocks
+                from gap_up_detector import get_gap_up_stocks_for_frontend
+                gap_up_stocks = get_gap_up_stocks_for_frontend()
+                gap_up_dict = {stock['ticker']: stock for stock in gap_up_stocks}
                 
-                for stock in subscribed_stocks:
-                    ticker = stock['ticker']
-                    gap_percent = stock.get('gapPercent', 0)
-                    current_price = stock.get('currentPrice', 0)
-                    volume = stock.get('volume', 0)
-                    
-                    # Get REAL data from data_manager instead of using mock data
-                    try:
-                        from bot.data_manager import data_manager
-                        real_data = data_manager.get_real_time_data(ticker)
-                        
-                        if real_data:
-                            # Use real data from data_manager
-                            analysis_data = real_data
-                            app_logger.info(f"✅ Using real data for {ticker} analysis")
-                            app_logger.info(f"📊 {ticker} real data: Price=${real_data.get('current_price', 0):.2f}, Gap={real_data.get('gap_percent', 0):.2f}%, Volume={real_data.get('current_volume', 0):,}")
-                        else:
-                            # Fallback to mock data if real data not available
-                            app_logger.warning(f"⚠️ No real data for {ticker}, using mock data")
-                            analysis_data = {
-                                'current_price': current_price,
-                                'day_high': current_price * 1.02,  # Assume 2% above current price
-                                'day_low': current_price * 0.98,  # Assume 2% below current price
-                                'gap_percent': gap_percent,
-                                'market_status': 'open',  # Assume market is open
-                                'current_volume': volume or 1000000,
-                                'vwap': current_price * 0.98,  # Assume VWAP is 2% below current price
-                                'avg_volume': 2000000,  # Assume average volume
-                                'premarket_high': current_price * 1.01,  # Assume 1% above current price
-                                'current_time': datetime.now().time(),  # Current time
-                                'volume_analysis': {
-                                    'forecasted_volume': volume or 1000000,
-                                    'current_time': '10:30 AM',
-                                    'trading_hours_remaining': 6.5
-                                }
-                            }
-                    except Exception as e:
-                        app_logger.error(f"❌ Error getting real data for {ticker}: {e}")
-                        # Fallback to mock data
-                        analysis_data = {
-                            'current_price': current_price,
-                            'day_high': current_price * 1.02,
-                            'day_low': current_price * 0.98,
-                            'gap_percent': gap_percent,
-                            'market_status': 'open',
-                            'current_volume': volume or 1000000,
-                            'vwap': current_price * 0.98,
-                            'avg_volume': 2000000,
-                            'premarket_high': current_price * 1.01,
-                            'current_time': datetime.now().time(),
-                            'volume_analysis': {
-                                'forecasted_volume': volume or 1000000,
-                                'current_time': '10:30 AM',
-                                'trading_hours_remaining': 6.5
-                            }
-                        }
-                    
-                    # Get detailed analysis from both strategies using REAL data
-                    break_out_analysis = break_out_strategy.analyze_entry_conditions(ticker, analysis_data)
-                    gap_up_short_analysis = gap_up_short_strategy.analyze_entry_conditions(ticker, analysis_data)
-                    
-                    # Log analysis results for debugging
-                    app_logger.info(f"📊 {ticker} analysis results:")
-                    app_logger.info(f"   Break Out: Entry={break_out_analysis.get('entry_signal', False)}, Confidence={break_out_analysis.get('confidence', 0)}")
-                    app_logger.info(f"   Gap Up Short: Entry={gap_up_short_analysis.get('entry_signal', False)}, Confidence={gap_up_short_analysis.get('confidence', 0)}")
-                    
-                    # Analyze BOTH strategies for each stock
-                    # Show results for both strategies instead of choosing one
-                    
-                    from datetime import time
-                    ten_am = time(10, 0)
-                    current_time = analysis_data.get('current_time', datetime.now().time())
-                    
-                    # Break Out Strategy Analysis (always available)
-                    bo_confidence = break_out_analysis.get('confidence', 0)
-                    bo_entry_signal = break_out_analysis.get('entry_signal', False)
-                    bo_conditions_met = []
-                    bo_conditions_failed = []
-                    
-                    if break_out_analysis.get('conditions_met', {}).get('is_gap_up'):
-                        bo_conditions_met.append('Gap Up')
-                    else:
-                        bo_conditions_failed.append('Gap Up')
-                    
-                    if break_out_analysis.get('conditions_met', {}).get('is_above_hod'):
-                        bo_conditions_met.append('Above HOD')
-                    else:
-                        bo_conditions_failed.append('Above HOD')
-                    
-                    if break_out_analysis.get('conditions_met', {}).get('is_market_active'):
-                        bo_conditions_met.append('Market Active')
-                    else:
-                        bo_conditions_failed.append('Market Closed')
-                    
-                    if break_out_analysis.get('conditions_met', {}).get('is_above_vwap'):
-                        bo_conditions_met.append('Above VWAP')
-                    else:
-                        bo_conditions_failed.append('Below VWAP')
-                    
-                    if break_out_analysis.get('conditions_met', {}).get('has_sufficient_volume'):
-                        bo_conditions_met.append('Sufficient Volume')
-                    else:
-                        bo_conditions_failed.append('Insufficient Volume')
-                    
-                    if break_out_analysis.get('conditions_met', {}).get('has_breakout_volume'):
-                        bo_conditions_met.append('Breakout Volume')
-                    else:
-                        bo_conditions_failed.append('Weak Volume')
-                    
-                    # Gap Up Short Strategy Analysis (available after 10 AM for high gaps)
-                    gus_confidence = 0
-                    gus_entry_signal = False
-                    gus_conditions_met = []
-                    gus_conditions_failed = []
-                    gus_applicable = False
-                    
-                    if current_time >= ten_am and gap_percent >= 40:
-                        gus_applicable = True
-                        gus_confidence = gap_up_short_analysis.get('confidence', 0)
-                        gus_entry_signal = gap_up_short_analysis.get('entry_signal', False)
-                        
-                        if gap_up_short_analysis.get('conditions_met', {}).get('gap_up_above_40'):
-                            gus_conditions_met.append('Gap Up Above 40%')
-                        else:
-                            gus_conditions_failed.append('Gap Up Above 40%')
-                        
-                        if gap_up_short_analysis.get('conditions_met', {}).get('is_after_10am'):
-                            gus_conditions_met.append('After 10 AM')
-                        else:
-                            gus_conditions_failed.append('Before 10 AM')
-                        
-                        if gap_up_short_analysis.get('conditions_met', {}).get('is_below_vwap'):
-                            gus_conditions_met.append('Below VWAP')
-                        else:
-                            gus_conditions_failed.append('Above VWAP')
-                        
-                        if gap_up_short_analysis.get('conditions_met', {}).get('has_short_volume'):
-                            gus_conditions_met.append('Short Volume')
-                        else:
-                            gus_conditions_failed.append('Insufficient Short Volume')
-                    else:
-                        if current_time < ten_am:
-                            gus_conditions_failed.append('Before 10 AM')
-                        if gap_percent < 40:
-                            gus_conditions_failed.append('Gap Below 40%')
-                    
-                    # Create analysis result with both strategies
-                    analysis_result = {
+                # Create subscribed stocks with full details
+                for ticker in tracked_symbols:
+                    stock_data = gap_up_dict.get(ticker, {})
+                    subscribed_stock = {
                         'ticker': ticker,
-                        'currentPrice': analysis_data.get('current_price', current_price),
-                        'gapPercent': gap_percent,
-                        'volume': analysis_data.get('current_volume', volume),
-                        'currentTime': current_time.strftime('%H:%M') if hasattr(current_time, 'strftime') else str(current_time),
-                        'strategies': {
-                            'breakOut': {
-                                'entrySignal': bo_entry_signal,
-                                'confidence': bo_confidence,
-                                'conditionsMet': bo_conditions_met,
-                                'conditionsFailed': bo_conditions_failed,
-                                'applicable': True  # Always applicable
-                            },
-                            'gapUpShort': {
-                                'entrySignal': gus_entry_signal,
-                                'confidence': gus_confidence,
-                                'conditionsMet': gus_conditions_met,
-                                'conditionsFailed': gus_conditions_failed,
-                                'applicable': gus_applicable
-                            }
-                        }
+                        'currentPrice': stock_data.get('price', 0),
+                        'gapPercent': stock_data.get('gap_percent', 0),
+                        'volume': stock_data.get('volume', 0),
+                        'subscribed': True
                     }
-                    
-                    analysis_results.append(analysis_result)
-                    app_logger.info(f"✅ Added analysis for {ticker}")
-                    
+                    subscribed_stocks.append(subscribed_stock)
+                    app_logger.info(f"✅ Added subscribed stock: {ticker}")
+                
             except Exception as e:
-                app_logger.error(f"❌ Error in analysis: {e}")
-                # Fallback to basic analysis
-                for stock in subscribed_stocks:
-                    ticker = stock['ticker']
-                    gap_percent = stock.get('gapPercent', 0)
-                    entry_signal = gap_percent >= 25
-                    confidence = min(gap_percent / 50 * 100, 100) if gap_percent > 0 else 0
-                    
-                    analysis_results.append({
-                        'ticker': ticker,
-                        'strategy': 'Basic',
-                        'entrySignal': entry_signal,
-                        'confidence': confidence,
-                        'conditionsMet': ['Gap Up'] if gap_percent >= 25 else [],
-                        'conditionsFailed': ['Gap Up'] if gap_percent < 25 else []
-                    })
-            
-            # AUTOMATIC BACKGROUND SYNC: Get real positions from Alpaca with automatic sync
-            positions = []
+                app_logger.warning(f"⚠️ Error getting tracked symbols from bot: {e}")
+                tracked_symbols = []
+                subscribed_stocks = []
+        
+        # Get positions directly from Alpaca (real-time)
+        positions = []
+        if is_running:
             try:
                 from bot.alpaca_client import AlpacaClient
-                from bot.trading_database import TradingDatabase
-                
                 alpaca_client = AlpacaClient()
-                trading_db = TradingDatabase()
                 
-                if alpaca_client.trading_client:
-                    # AUTOMATIC SYNC: Always sync latest data from Alpaca
-                    app_logger.info("🔄 Automatic background sync: Syncing latest positions from Alpaca...")
-                    sync_result = trading_db.sync_trades_from_alpaca(alpaca_client)
+                # Get current positions directly from Alpaca
+                alpaca_positions = alpaca_client.get_positions()
+                app_logger.info(f"📊 Retrieved {len(alpaca_positions)} positions from Alpaca")
+                
+                for ticker, position in alpaca_positions.items():
+                    # Get strategy information for this position
+                    strategy_info = None
+                    try:
+                        # Since database doesn't have actual strategy info, use default strategy
+                        strategy_key = 'breakOut'  # Default strategy for all positions
+                        
+                        # Load strategy configuration
+                        from config.strategy_manager import StrategyConfigManager
+                        strategy_manager = StrategyConfigManager()
+                        strategy_config = strategy_manager.get_strategy_by_key(strategy_key)
+                        
+                        if strategy_config:
+                            backend_config = strategy_config.get('backend_config', {})
+                            position_sizing = strategy_config.get('position_sizing', {})
+                            
+                            # Calculate position sizing and stop loss based on entry price
+                            entry_price = float(position.get('avg_entry_price', 0))
+                            quantity = int(position.get('quantity', 0))
+                            
+                            # Calculate target and stop loss prices
+                            target_multiplier = backend_config.get('target_multiplier', 1.25)
+                            stop_loss_multiplier = backend_config.get('stop_loss_multiplier', 0.85)
+                            
+                            target_price = round(entry_price * target_multiplier, 2)
+                            stop_loss_price = round(entry_price * stop_loss_multiplier, 2)
+                            
+                            # Calculate position value and sizing info
+                            position_value = entry_price * quantity
+                            max_position_value = position_sizing.get('max_position_value', 10000)
+                            max_concentration = position_sizing.get('max_portfolio_concentration', 0.05)
+                            
+                            strategy_info = {
+                                'strategy': strategy_key,
+                                'targetPrice': target_price,
+                                'stopLossPrice': stop_loss_price,
+                                'positionValue': position_value,
+                                'maxPositionValue': max_position_value,
+                                'maxConcentration': max_concentration,
+                                'targetMultiplier': target_multiplier,
+                                'stopLossMultiplier': stop_loss_multiplier
+                            }
+                            app_logger.info(f"✅ Strategy info for {ticker}: {strategy_key} - Target: ${target_price}, Stop: ${stop_loss_price}")
+                        else:
+                            app_logger.warning(f"⚠️ No strategy config found for {strategy_key}")
+                    except Exception as e:
+                        app_logger.warning(f"⚠️ Error getting strategy info for {ticker}: {e}")
                     
-                    if sync_result['success']:
-                        app_logger.info(f"✅ Automatic sync completed: {sync_result['synced_count']} new trades/positions")
-                    else:
-                        app_logger.warning(f"⚠️ Automatic sync failed: {sync_result.get('error', 'Unknown error')}")
-                    
-                    # Get real positions from Alpaca (now with latest data)
-                    alpaca_positions = alpaca_client.get_positions()
-                    app_logger.info(f"📈 Found {len(alpaca_positions)} positions from Alpaca")
-                    
-                    for ticker, position in alpaca_positions.items():
-                        # Format position data for frontend
-                        formatted_position = {
-                            'ticker': ticker,
-                            'entryPrice': float(position.get('avg_entry_price', 0)),
-                            'currentPrice': float(position.get('current_price', position.get('avg_entry_price', 0))),
-                            'quantity': int(position.get('quantity', 0)),
-                            'pnl': float(position.get('unrealized_pl', 0)),
-                            'pnlPercent': float(position.get('unrealized_plpc', 0)) * 100 if position.get('unrealized_plpc') else 0,
-                            'entryTime': datetime.now().isoformat(),  # Approximate entry time
-                            'side': 'buy' if position.get('quantity', 0) > 0 else 'sell',
-                            'marketValue': float(position.get('market_value', 0)),
-                            'costBasis': float(position.get('cost_basis', 0))
-                        }
-                        positions.append(formatted_position)
-                        app_logger.info(f"✅ Added position: {ticker} {position.get('quantity')} shares @ ${position.get('avg_entry_price')}")
-                else:
-                    app_logger.warning("⚠️ Alpaca client not available, using empty positions")
-                    
+                    # Format position data for frontend
+                    formatted_position = {
+                        'ticker': ticker,
+                        'entryPrice': float(position.get('avg_entry_price', 0)),
+                        'currentPrice': float(position.get('current_price', position.get('avg_entry_price', 0))),
+                        'quantity': int(position.get('quantity', 0)),
+                        'pnl': float(position.get('unrealized_pl', 0)),
+                        'pnlPercent': float(position.get('unrealized_plpc', 0)) * 100 if position.get('unrealized_plpc') else 0,
+                        'entryTime': datetime.now().isoformat(),  # Approximate entry time
+                        'side': 'buy' if position.get('quantity', 0) > 0 else 'sell',
+                        'marketValue': float(position.get('market_value', 0)),
+                        'costBasis': float(position.get('avg_entry_price', 0)) * int(position.get('quantity', 0)),
+                        'strategyInfo': strategy_info
+                    }
+                    positions.append(formatted_position)
+                    app_logger.info(f"✅ Added position from Alpaca: {ticker} {position.get('quantity')} shares @ ${position.get('avg_entry_price')}")
+            
             except Exception as e:
                 app_logger.error(f"❌ Error getting positions from Alpaca: {e}")
-                positions = []
-            
-            bot_status_data = {
-                'subscribed_stocks': subscribed_stocks,
-                'analysis_results': analysis_results,
-                'positions': positions
-            }
-            
-        except ImportError as e:
-            app_logger.warning(f"Could not import bot modules: {e}")
-            # Return empty data if bot modules not available
-            bot_status_data = {
-                'subscribed_stocks': [],
-                'analysis_results': [],
-                'positions': []
-            }
-        except Exception as e:
-            app_logger.error(f"Error accessing bot data: {e}")
-            # Return empty data on any error
-            bot_status_data = {
-                'subscribed_stocks': [],
-                'analysis_results': [],
-                'positions': []
-            }
         
-        return jsonify({
+        # Format response
+        response = {
             'is_running': is_running,
-            'subscribed_stocks': bot_status_data.get('subscribed_stocks', []),
-            'analysis_results': bot_status_data.get('analysis_results', []),
-            'positions': bot_status_data.get('positions', [])
-        })
+            'tracked_symbols': tracked_symbols,
+            'positions': positions,
+            'subscribed_stocks': subscribed_stocks,  # Show tracked symbols as subscribed stocks
+            'analysis_results': []  # Simplified for now
+        }
+        
+        app_logger.info(f"📊 Bot status: running={is_running}, tracked_symbols={len(tracked_symbols)}, positions={len(positions)}")
+        return jsonify(response)
         
     except Exception as e:
-        app_logger.error(f"Error getting bot status: {e}")
-        return jsonify({
-            'is_running': False,
-            'subscribed_stocks': [],
-            'analysis_results': [],
-            'positions': []
-        }), 500
+        app_logger.error(f"❌ Error getting bot status: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/bot/start', methods=['POST'])
 def start_bot():
@@ -1742,21 +1553,7 @@ def unsubscribe_stocks():
             'error': str(e)
         }), 500
 
-@app.route('/api/cache/stats')
-def get_cache_stats():
-    """Get cache statistics"""
-    try:
-        from historical_data import get_cache_stats
-        stats = get_cache_stats()
-        return jsonify({
-            'success': True,
-            'data': stats
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+
 
 # AI Agent Endpoints
 @app.route('/api/ai-agent/status')
@@ -1938,6 +1735,81 @@ def get_cache_status_endpoint(ticker):
             'error': str(e)
         }), 500
 
+@app.route('/api/real-time-detector/stats')
+def get_real_time_detector_stats():
+    """Get real-time detector performance statistics with hybrid approach"""
+    try:
+        if not REAL_DATA_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Real-time detector not available'
+            }), 400
+        
+        stats = real_time_detector.get_stats()
+        
+        # Add hybrid approach information
+        hybrid_info = {
+            'alert_threshold': stats.get('alert_threshold', 5.0),
+            'trading_threshold': stats.get('trading_threshold', 25.0),
+            'trading_opportunities': stats.get('trading_opportunities', 0),
+            'total_gaps_found': stats.get('gaps_found', 0),
+            'trading_opportunity_rate': round((stats.get('trading_opportunities', 0) / max(stats.get('gaps_found', 1), 1)) * 100, 1)
+        }
+        
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'hybrid_info': hybrid_info,
+            'status': 'active' if real_time_detector.running else 'inactive'
+        })
+        
+    except Exception as e:
+        app_logger.error(f"❌ Error getting real-time detector stats: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/stats')
+def get_cache_stats():
+    """Get cache performance statistics"""
+    try:
+        from gap_up_cache import get_cache_stats
+        stats = get_cache_stats()
+        
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app_logger.error(f"❌ Error getting cache stats: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear all cache entries"""
+    try:
+        from gap_up_cache import invalidate_gap_up_cache
+        invalidate_gap_up_cache()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cache cleared successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app_logger.error(f"❌ Error clearing cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
     app_logger.info("🚀 Starting Trading Advisor Web API...")
     app_logger.info("📊 API available at: http://localhost:5000")
@@ -1954,10 +1826,13 @@ if __name__ == '__main__':
         else:
             app_logger.warning("⚠️ Using default Polygon API key from trading-advisor project")
         
-        # Start real-time gap-up monitoring
+        # Start real-time gap-up monitoring with hybrid approach
         try:
-            real_time_detector.start_monitoring(handle_real_time_gap_up)
-            app_logger.info("✅ Real-time gap-up monitoring started (25%+ threshold)")
+            real_time_detector.start_monitoring(
+                callback=handle_real_time_gap_up,
+                trading_callback=handle_trading_opportunity
+            )
+            app_logger.info("✅ Real-time gap-up monitoring started with hybrid approach (5% alerts, 25% trading)")
         except Exception as e:
             app_logger.error(f"⚠️ Could not start real-time monitoring: {e}")
     else:

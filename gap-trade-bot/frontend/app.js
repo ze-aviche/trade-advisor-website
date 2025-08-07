@@ -466,6 +466,33 @@ const app = createApp({
                 }
             },
             
+            async refreshAllBotComponents() {
+                try {
+                    console.log('🔄 Refreshing all bot components...');
+                    this.loading.bot = true;
+                    
+                    // Show loading notification
+                    this.showNotification('Refreshing all bot components...', 'info');
+                    
+                    // Refresh all bot-related data in parallel
+                    const refreshTasks = [
+                        this.loadBotStatus(),
+                        this.loadStrategiesFromBackend(),
+                        this.syncTradesFromAlpaca()
+                    ];
+                    
+                    await Promise.all(refreshTasks);
+                    
+                    console.log('✅ All bot components refreshed successfully');
+                    this.showNotification('All bot components refreshed successfully', 'success');
+                } catch (error) {
+                    console.error('❌ Error refreshing all bot components:', error);
+                    this.showNotification('Failed to refresh all bot components', 'error');
+                } finally {
+                    this.loading.bot = false;
+                }
+            },
+            
             startPeriodicBotUpdates() {
                 // Update bot data every 5 seconds when bot tab is active
                 setInterval(() => {

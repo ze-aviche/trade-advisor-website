@@ -25,6 +25,7 @@ from bot.risk_manager import risk_manager
 from bot.order_manager import order_manager
 from bot.strategies import BreakOutStrategy
 from bot.strategies import GapUpShortStrategy
+from bot.gap_up_detection_service import gap_up_detection_service
 
 logger = get_logger(__name__)
 
@@ -64,19 +65,25 @@ class TradingBot:
         self._load_subscription_state()
     
     def _init_components(self):
-        """Initialize all trading bot components"""
+        """Initialize bot components"""
         try:
-            # Validate configuration
-            if not bot_config.validate_config():
-                logger.error("❌ Configuration validation failed")
-                return False
+            # Initialize components
+            global data_manager, position_manager, order_manager, risk_manager, websocket_client
             
-            logger.info("✅ Trading bot components initialized")
-            return True
+            from bot.data_manager import data_manager
+            from bot.position_manager import position_manager
+            from bot.order_manager import order_manager
+            from bot.risk_manager import risk_manager
+            from bot.websocket_client import websocket_client
+            from bot.gap_up_detection_service import gap_up_detection_service
+            
+            # Start gap-up detection service as separate process
+            gap_up_detection_service.start_background_process()
+            
+            logger.info("✅ Bot components initialized")
             
         except Exception as e:
             logger.error(f"❌ Error initializing components: {e}")
-            return False
     
     def _save_subscription_state(self):
         """Save current subscription state to file"""
@@ -186,25 +193,16 @@ class TradingBot:
                 else:
                     logger.info("🛑 Market is closed - keeping persisted subscriptions but not re-subscribing")
             else:
-                # No persisted subscriptions - get new gap-up stocks
-                gap_up_stocks = data_manager.get_gap_up_stocks()
-                logger.info(f"📊 Found {len(gap_up_stocks)} gap-up stocks")
-                
-                # Subscribe to real-time data only if market is open, pre-market, or after-hours
-                if (self.last_market_status in ['open', 'pre_market', 'after_hours']) and gap_up_stocks:
-                    await websocket_client.subscribe_to_symbols(gap_up_stocks)
-                    self.tracked_symbols.update(gap_up_stocks)
-                    self.subscribed_today.update(gap_up_stocks)  # Track today's subscriptions
-                    logger.info(f"📡 Subscribed to {len(gap_up_stocks)} new gap-up stocks: {', '.join(gap_up_stocks)}")
-                    # Save the new subscription state
-                    self._save_subscription_state()
-                elif self.last_market_status == 'closed':
-                    logger.info("🛑 Market is closed - not subscribing to any stocks")
-                else:
-                    logger.info("📊 No gap-up stocks found to subscribe")
+                # No persisted subscriptions - start with empty list and let main loop handle gap-up detection
+                logger.info("📊 No persisted subscriptions - main loop will handle gap-up detection")
+                self.tracked_symbols = set()
+                self.subscribed_today = set()
             
             # Add data callback
             websocket_client.add_data_callback(self._on_market_data)
+            
+            # Auto-subscribe to stocks with active positions
+            await self._auto_subscribe_positions()
             
             # Start main trading loop
             await self._trading_loop()
@@ -218,6 +216,10 @@ class TradingBot:
         try:
             logger.info("🛑 Stopping trading bot...")
             self.is_running = False
+            
+            # Stop gap-up detection service
+            from bot.gap_up_detection_service import gap_up_detection_service
+            gap_up_detection_service.stop_background_process()
             
             # Disconnect WebSocket
             await websocket_client.disconnect()
@@ -279,8 +281,14 @@ class TradingBot:
                     # Check existing positions
                     await self._check_positions()
                     
+                    # Auto-subscribe to stocks with active positions
+                    await self._auto_subscribe_positions()
+                    
                     # Check pending orders
                     await self._check_pending_orders()
+                    
+                    # Auto-subscribe to new gap-up stocks
+                    await self._auto_subscribe_new_gap_ups()
                     
                     # Wait before next iteration
                     await asyncio.sleep(1)  # 1 second delay
@@ -311,18 +319,23 @@ class TradingBot:
             logger.error(f"❌ Error updating market data: {e}")
     
     async def _analyze_trading_opportunities(self):
-        """Analyze current market for trading opportunities"""
+        """Analyze trading opportunities for tracked symbols"""
         try:
-            # Check if market is open before analyzing
+            # Check market status
             current_market_status = data_manager.get_market_status()
             if current_market_status not in ['open', 'pre_market', 'after_hours']:
                 logger.debug(f"📊 Market is {current_market_status} - skipping trading analysis")
                 return
             
-            gap_up_stocks = data_manager.get_gap_up_stocks()
-            logger.info(f"🔍 Analyzing {len(gap_up_stocks)} gap-up stocks for BOTH strategies...")
+            # Only analyze tracked symbols, don't call gap-up detection
+            tracked_symbols = list(self.tracked_symbols)
+            if not tracked_symbols:
+                logger.debug("📊 No tracked symbols to analyze")
+                return
             
-            for ticker in gap_up_stocks:
+            logger.info(f"🔍 Analyzing {len(tracked_symbols)} tracked symbols for trading opportunities...")
+            
+            for ticker in tracked_symbols:
                 # Get real-time data
                 try:
                     current_data = data_manager.get_real_time_data(ticker)
@@ -393,80 +406,99 @@ class TradingBot:
                 
                 # Execute the best strategy if found
                 if best_strategy and best_analysis:
+                    logger.info(f"🚀 Executing {best_strategy.__class__.__name__} for {ticker}")
                     await self._execute_strategy_entry(ticker, best_strategy, current_data)
                 else:
-                    logger.info(f"📊 No entry signals for {ticker} from either strategy")
-                
+                    logger.debug(f"📊 No entry signal for {ticker}")
+                    
         except Exception as e:
-            logger.error(f"❌ Error in trading analysis: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"❌ Error analyzing trading opportunities: {e}")
     
     async def _execute_strategy_entry(self, ticker: str, strategy: Any, current_data: Dict[str, Any]):
-        """Execute strategy entry"""
+        """Execute strategy entry for a ticker"""
         try:
-            current_price = current_data.get('current_price', 0)
-            day_high = current_data.get('day_high', 0)
+            # Only enter positions for subscribed stocks
+            if ticker not in self.tracked_symbols:
+                logger.warning(f"⚠️ Skipping {ticker} - not subscribed to this stock")
+                return
             
-            logger.info(f"🚀 EXECUTING ENTRY FOR {ticker}")
-            logger.info(f"   📊 Entry Price: ${current_price:.2f}")
-            logger.info(f"   📈 Day High: ${day_high:.2f}")
+            # Check if we already have a position for this ticker
+            existing_position = position_manager.get_position(ticker)
+            if existing_position:
+                logger.debug(f"📊 Skipping {ticker} - already have a position")
+                return
             
-            # Calculate position size using real account capital
-            stop_loss_price = risk_manager.calculate_stop_loss_price(current_price)
-            available_capital = risk_manager.get_available_capital()
-            position_size = risk_manager.calculate_position_size(
-                current_price, stop_loss_price, available_capital, ticker
-            )
+            # Check if we can open a position
+            if not position_manager.can_open_position(ticker, 'buy'):
+                logger.warning(f"⚠️ Cannot open position for {ticker}")
+                return
             
-            logger.info(f"   💰 Position Size: {position_size:,} shares")
-            logger.info(f"   🛑 Stop Loss: ${stop_loss_price:.2f}")
+            # Get strategy configuration
+            strategy_config = strategy.config
+            min_gap_percentage = strategy_config.get('min_gap_percentage', 25)
+            volume_threshold = strategy_config.get('volume_threshold', 4000000)
+            
+            # Validate entry conditions
+            gap_percent = current_data.get('gap_percent', 0)
+            volume = current_data.get('volume', 0)
+            
+            if gap_percent < min_gap_percentage:
+                logger.debug(f"📊 {ticker} gap {gap_percent:.1f}% < {min_gap_percentage}% threshold")
+                return
+            
+            if volume < volume_threshold:
+                logger.debug(f"📊 {ticker} volume {volume:,} < {volume_threshold:,} threshold")
+                return
+            
+            # Calculate position size
+            position_size = risk_manager.calculate_position_size(ticker, current_data)
+            if position_size <= 0:
+                logger.warning(f"⚠️ Invalid position size for {ticker}: {position_size}")
+                return
             
             # Validate trade risk
-            risk_valid, risk_message = risk_manager.validate_trade_risk(
-                ticker, current_price, position_size, stop_loss_price
-            )
-            
-            if not risk_valid:
-                logger.warning(f"⚠️ Risk validation failed for {ticker}: {risk_message}")
+            if not risk_manager.validate_trade_risk(ticker, position_size, current_data):
+                logger.warning(f"⚠️ Trade risk validation failed for {ticker}")
                 return
             
-            logger.info(f"   ✅ Risk validation passed")
-            
-            # Execute entry order
-            entry_order = strategy.execute_entry(ticker, current_price, day_high)
-            if 'error' in entry_order:
-                logger.error(f"❌ Entry execution failed for {ticker}: {entry_order['error']}")
-                return
-            
-            logger.info(f"   📋 Strategy entry executed")
+            logger.info(f"🚀 EXECUTING ENTRY FOR {ticker}")
+            logger.info(f"   📊 Strategy: {strategy.__class__.__name__}")
+            logger.info(f"   📊 Gap: {gap_percent:.1f}%")
+            logger.info(f"   📊 Volume: {volume:,}")
+            logger.info(f"   📦 Position Size: {position_size:,} shares")
             
             # Place buy order
-            order = order_manager.place_buy_order(ticker, position_size, current_price)
+            order = order_manager.place_buy_order(ticker, position_size, current_data.get('current_price', 0))
             if 'error' in order:
-                logger.error(f"❌ Order placement failed for {ticker}: {order['error']}")
+                logger.error(f"❌ Entry order failed for {ticker}: {order['error']}")
                 return
             
-            logger.info(f"   📈 Buy order placed: {position_size:,} shares @ ${current_price:.2f}")
+            logger.info(f"   📈 Buy order placed: {position_size:,} shares @ ${current_data.get('current_price', 0):.2f}")
             
             # Open position
-            if position_manager.open_position(ticker, position_size, 'buy', current_price):
-                logger.info(f"📈 Position opened: {ticker} @ ${current_price:.2f}")
-                
-                # Place stop-loss order
-                stop_order = order_manager.place_stop_order(ticker, position_size, stop_loss_price)
-                logger.info(f"   🛑 Stop-loss order placed @ ${stop_loss_price:.2f}")
-                
-                # Place target order (optional)
-                target_price = strategy.calculate_target_price(current_price)
-                target_order = order_manager.place_limit_order(ticker, position_size, target_price, 'sell')
-                logger.info(f"   🎯 Target order placed @ ${target_price:.2f}")
-                
-                self.total_trades += 1
-                logger.info(f"   ✅ Trade #{self.total_trades} executed successfully")
-            else:
-                logger.warning(f"⚠️ Failed to open position for {ticker}")
+            entry_data = {
+                'ticker': ticker,
+                'quantity': position_size,
+                'side': 'buy',
+                'entry_price': current_data.get('current_price', 0),
+                'strategy': strategy.__class__.__name__,
+                'gap_percent': gap_percent,
+                'volume': volume
+            }
             
+            if position_manager.open_position(**entry_data):
+                self.total_trades += 1
+                logger.info(f"📈 Position opened: {ticker} | Shares: {position_size:,} | Strategy: {strategy.__class__.__name__}")
+                
+                # Send notification for bot entry
+                try:
+                    from notification_service import notification_service
+                    notification_service.notify_bot_entry(entry_data)
+                except Exception as e:
+                    logger.error(f"❌ Error sending bot entry notification: {e}")
+            else:
+                logger.error(f"❌ Failed to open position for {ticker}")
+                
         except Exception as e:
             logger.error(f"❌ Error executing strategy entry: {e}")
     
@@ -484,8 +516,10 @@ class TradingBot:
             # Get current prices for all positions
             for position in positions:
                 ticker = position['ticker']
-                price = websocket_client.get_current_price(ticker)
-                if price:
+                # Use data manager instead of WebSocket client
+                current_data = data_manager.get_real_time_data(ticker)
+                if current_data and current_data.get('current_price'):
+                    price = current_data.get('current_price')
                     current_prices[ticker] = price
                     logger.info(f"📊 {ticker} - Current Price: ${price:.2f}")
                 else:
@@ -579,6 +613,22 @@ class TradingBot:
                 
                 # Update risk manager
                 risk_manager.update_daily_loss(abs(pnl) if pnl < 0 else 0)
+                
+                # Send notification for bot exit
+                try:
+                    from notification_service import notification_service
+                    exit_data = {
+                        'ticker': ticker,
+                        'quantity': quantity,
+                        'exit_price': current_price,
+                        'entry_price': entry_price,
+                        'pnl': pnl,
+                        'pnl_percent': pnl_percent,
+                        'exit_reason': exit_reason
+                    }
+                    notification_service.notify_bot_exit(exit_data)
+                except Exception as e:
+                    logger.error(f"❌ Error sending bot exit notification: {e}")
                 
                 logger.info(f"📉 Position closed: {ticker} | P&L: ${pnl:.2f} | Win Rate: {self.winning_trades}/{self.total_trades}")
             
@@ -844,6 +894,115 @@ class TradingBot:
         except Exception as e:
             logger.error(f"❌ Error getting bot status: {e}")
             return {}
+
+    async def _auto_subscribe_new_gap_ups(self):
+        """Auto-subscribe to new gap-up stocks"""
+        try:
+            # Don't check for new gap-ups during the first 5 minutes of startup
+            current_time = datetime.now()
+            if not hasattr(self, '_last_gap_up_check'):
+                self._last_gap_up_check = current_time
+            
+            # Wait at least 5 minutes after startup before checking for new gap-ups
+            startup_wait = 300  # 5 minutes
+            if (current_time - self._last_gap_up_check).total_seconds() < startup_wait:
+                logger.debug("⏳ Skipping gap-up check during startup period")
+                return
+            
+            # Check every 5 minutes after startup
+            check_interval = 300  # 5 minutes
+            if (current_time - self._last_gap_up_check).total_seconds() < check_interval:
+                return
+            
+            self._last_gap_up_check = current_time
+            
+            logger.info("🔍 Checking for new gap-up stocks to subscribe...")
+            
+            # Get gap-up stocks from database
+            from gap_up_detection_service import gap_up_detection_service
+            gap_up_stocks = gap_up_detection_service.get_gap_up_stocks(min_gap_percent=25.0)
+            
+            # AUTO-SUBSCRIBE: Add new gap-up stocks to tracked symbols
+            new_subscriptions = []
+            for ticker in gap_up_stocks:
+                if ticker not in self.tracked_symbols:
+                    # Check if this stock meets our criteria for subscription
+                    try:
+                        current_data = data_manager.get_real_time_data(ticker)
+                        if current_data:
+                            gap_percent = current_data.get('gap_percent', 0)
+                            # Subscribe to stocks with significant gaps (≥25%)
+                            if gap_percent >= 25:
+                                self.tracked_symbols.add(ticker)
+                                new_subscriptions.append(ticker)
+                                logger.info(f"🎯 AUTO-SUBSCRIBE: Added {ticker} ({gap_percent:.1f}% gap) to tracked symbols")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error checking {ticker} for subscription: {e}")
+            
+            # Save updated subscription state if we added new stocks
+            if new_subscriptions:
+                self._save_subscription_state()
+                logger.info(f"💾 Saved updated subscription state with {len(new_subscriptions)} new stocks")
+                
+        except Exception as e:
+            logger.error(f"❌ Error in auto-subscribe: {e}")
+
+    async def _auto_subscribe_positions(self):
+        """Auto-subscribe to stocks with active positions"""
+        try:
+            # Get all active positions
+            positions = position_manager.get_all_positions()
+            if not positions:
+                logger.debug("📊 No active positions to subscribe")
+                return
+            
+            new_subscriptions = []
+            for position in positions:
+                ticker = position.get('ticker')
+                if ticker and ticker not in self.tracked_symbols:
+                    self.tracked_symbols.add(ticker)
+                    new_subscriptions.append(ticker)
+                    logger.info(f"🎯 AUTO-SUBSCRIBE POSITION: Added {ticker} to tracked symbols (has active position)")
+            
+            # Save updated subscription state if we added new stocks
+            if new_subscriptions:
+                self._save_subscription_state()
+                logger.info(f"💾 Saved updated subscription state with {len(new_subscriptions)} position-based stocks")
+                
+        except Exception as e:
+            logger.error(f"❌ Error in position auto-subscribe: {e}")
+
+    async def auto_subscribe_real_time_gap_up(self, ticker: str, gap_percent: float):
+        """Subscribe to real-time detected 25%+ gap-up stock for trading"""
+        try:
+            if not self.is_running:
+                logger.debug(f"⏸️ Bot not running, skipping real-time subscription for {ticker}")
+                return
+            
+            if ticker not in self.tracked_symbols:
+                # Add to tracked symbols
+                self.tracked_symbols.add(ticker)
+                
+                # Subscribe to WebSocket for real-time data
+                await websocket_client.subscribe_to_symbols([ticker])
+                
+                # Update subscription tracking
+                self.subscribed_today.add(ticker)
+                
+                # Save updated subscription state
+                self._save_subscription_state()
+                
+                logger.warning(f"🚨 REAL-TIME SUBSCRIPTION: Added {ticker} ({gap_percent:.1f}% gap) to tracked symbols")
+                logger.info(f"📡 Now subscribed to {len(self.tracked_symbols)} stocks for trading")
+                
+                # Log trading opportunity
+                logger.info(f"🎯 TRADING OPPORTUNITY DETECTED: {ticker} with {gap_percent:.1f}% gap-up")
+                
+            else:
+                logger.debug(f"📊 {ticker} already subscribed, skipping real-time subscription")
+                
+        except Exception as e:
+            logger.error(f"❌ Error in real-time gap-up subscription for {ticker}: {e}")
 
 # Global trading bot instance
 trading_bot = TradingBot()

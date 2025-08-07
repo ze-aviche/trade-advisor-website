@@ -1,0 +1,27 @@
+# Notification Service Environment Variables
+# Add these to your .env file to enable SMS and Email notifications
+
+# Email Configuration (Gmail recommended)
+EMAIL_USERNAME=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+RECIPIENT_EMAIL=your_email@gmail.com
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+
+# SMS Configuration (Twilio)
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_PHONE_NUMBER=+1234567890
+RECIPIENT_PHONE=+1234567890
+
+# Notification Settings
+NOTIFY_GAP_UPS=true
+NOTIFY_BOT_ENTRIES=true
+NOTIFY_BOT_EXITS=true
+MIN_GAP_PERCENT=25.0
+
+# Instructions:
+# 1. For Gmail: Use App Password (not regular password)
+# 2. For Twilio: Sign up at twilio.com and get credentials
+# 3. Phone numbers should be in international format (+1234567890)
+# 4. Set MIN_GAP_PERCENT to control which gap-ups trigger notifications 

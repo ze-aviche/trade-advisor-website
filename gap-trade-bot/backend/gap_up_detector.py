@@ -12,6 +12,7 @@ import pytz
 from polygon import RESTClient
 from dotenv import load_dotenv
 from logging_config import get_logger
+from gap_up_cache import cached_gap_up_detection, cached_real_time_detection, get_cached_gap_up_stocks, set_cached_gap_up_stocks, get_cached_frontend_gap_ups, set_cached_frontend_gap_ups, invalidate_gap_up_cache
 
 # Load environment variables
 load_dotenv()
@@ -193,6 +194,7 @@ def check_market_timing():
         logger.info("📈 Outside market hours - historical data only")
         return "closed"
 
+@cached_gap_up_detection(cache_type="default")
 def get_gap_up_stocks():
     """
     Get real gap-up stocks using Polygon API with peak tracking
@@ -372,6 +374,149 @@ def get_gap_up_stocks():
         
     except Exception as e:
         logger.error(f"❌ Error in get_gap_up_stocks: {e}")
+        return []
+
+@cached_gap_up_detection(cache_type="default")
+def get_gap_up_stocks_for_frontend():
+    """
+    Get all gap-up stocks for frontend display (not just new peaks)
+    This shows all stocks with significant gaps for the frontend
+    """
+    try:
+        polygon_client = get_polygon_client()
+        logger.info("✅ Polygon API client initialized successfully")
+        
+        # Check market timing
+        market_status = check_market_timing()
+        
+        # Get gainers from Polygon
+        logger.info("Fetching gainers from Polygon API...")
+        tickers = polygon_client.get_snapshot_direction(
+            "stocks",
+            direction="gainers",
+        )
+        
+        gap_up_stocks = []
+        total_tickers = 0
+        cs_type_count = 0
+        no_previous_close = 0
+        no_current_price = 0
+        gap_too_small = 0
+        below_075_count = 0
+        
+        if not tickers or not isinstance(tickers, list):
+            logger.warning("❌ No tickers returned from Polygon API")
+            return []
+            
+        logger.info(f"✅ Processing {len(tickers)} gainers from Polygon API")
+        
+        for item in tickers:
+            ticker = None
+            if isinstance(item, dict):
+                ticker = item.get("ticker") or item.get("symbol")
+            elif hasattr(item, "ticker"):
+                ticker = getattr(item, "ticker", None)
+            elif hasattr(item, "symbol"):
+                ticker = getattr(item, "symbol", None)
+                
+            if not ticker:
+                continue
+                
+            total_tickers += 1
+            logger.info(f"\n🔍 Processing ticker {total_tickers}: {ticker}")
+            
+            try:
+                # Get ticker details
+                details = polygon_client.get_ticker_details(ticker)
+                issue_type = details.type
+                
+                if issue_type == "CS":  # Common Stock
+                    cs_type_count += 1
+                    previous_close = get_previous_close_price(ticker, polygon_client)
+                    current_price = get_current_price(ticker, polygon_client)
+                    
+                    # Debug information
+                    if previous_close is None:
+                        no_previous_close += 1
+                        logger.warning(f"❌ {ticker}: No previous close available")
+                        continue
+                        
+                    if current_price is None:
+                        no_current_price += 1
+                        logger.warning(f"❌ {ticker}: No current price available")
+                        continue
+                        
+                    if current_price < 0.75:
+                        below_075_count += 1
+                        logger.warning(f"❌ {ticker}: Current price ${current_price} < $0.75")
+                        continue
+                    
+                    # Calculate gap percentage
+                    gap_percent = ((current_price - previous_close) / previous_close) * 100
+                    logger.info(f"📊 {ticker}: Previous=${previous_close}, Current=${current_price}, Gap={gap_percent:.2f}%")
+                    
+                    # Show all stocks with significant gap-up (2% or more) for frontend
+                    if gap_percent >= 2.0:
+                        # Use gap tracker if available to add peak information
+                        if GAP_TRACKER_AVAILABLE:
+                            # Update gap tracker (but don't filter based on it)
+                            is_new_peak, peak_data = gap_tracker.update_gap(ticker, gap_percent, current_price)
+                            
+                            stock_info = {
+                                'ticker': ticker,
+                                'company_name': details.name,
+                                'price': round(current_price, 2),
+                                'previous_close': round(previous_close, 2),
+                                'change': round(current_price - previous_close, 2),
+                                'change_percent': round(gap_percent, 2),
+                                'gap_percent': round(gap_percent, 2),
+                                'volume': getattr(details, 'share_class_shares_outstanding', 0),
+                                'market_cap': getattr(details, 'market_cap', 0),
+                                'sector': getattr(details, 'sic_description', 'Unknown'),
+                                'list_date': getattr(details, 'list_date', None),
+                                'is_new_peak': is_new_peak,
+                                'peak_data': peak_data
+                            }
+                        else:
+                            # Basic detection without peak tracking
+                            stock_info = {
+                                'ticker': ticker,
+                                'company_name': details.name,
+                                'price': round(current_price, 2),
+                                'previous_close': round(previous_close, 2),
+                                'change': round(current_price - previous_close, 2),
+                                'change_percent': round(gap_percent, 2),
+                                'gap_percent': round(gap_percent, 2),
+                                'volume': getattr(details, 'share_class_shares_outstanding', 0),
+                                'market_cap': getattr(details, 'market_cap', 0),
+                                'sector': getattr(details, 'sic_description', 'Unknown'),
+                                'list_date': getattr(details, 'list_date', None)
+                            }
+                        
+                        gap_up_stocks.append(stock_info)
+                        logger.info(f"✅ Gap-up found: {ticker} - {gap_percent:.2f}% gap")
+                    else:
+                        gap_too_small += 1
+                        logger.warning(f"❌ {ticker}: Gap {gap_percent:.2f}% < 2.0% threshold")
+                        
+            except Exception as e:
+                logger.error(f"❌ Error processing {ticker}: {e}")
+                continue
+                
+        logger.info(f"\n📊 SUMMARY:")
+        logger.info(f"📊 Market status: {market_status}")
+        logger.info(f"📊 Total tickers processed: {total_tickers}")
+        logger.info(f"📊 Common stock tickers: {cs_type_count}")
+        logger.info(f"📊 Tickers with price < $0.75: {below_075_count}")
+        logger.info(f"📊 Tickers with no previous close: {no_previous_close}")
+        logger.info(f"📊 Tickers with no current price: {no_current_price}")
+        logger.info(f"📊 Tickers with gap < 2%: {gap_too_small}")
+        logger.info(f"✅ Final gap-up stocks found: {len(gap_up_stocks)}")
+        
+        return gap_up_stocks
+        
+    except Exception as e:
+        logger.error(f"❌ Error in get_gap_up_stocks_for_frontend: {e}")
         return []
 
 def get_drop_candidates_for_shorting():

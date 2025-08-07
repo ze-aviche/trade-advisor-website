@@ -67,51 +67,38 @@ class DataManager:
             return 'closed'
     
     def get_gap_up_stocks(self) -> List[str]:
-        """Get stocks that actually gapped up today (real-time)"""
+        """Get stocks that actually gapped up today (from database)"""
         try:
-            logger.info("🔍 Scanning for real-time gap-ups using gap_up_detector...")
+            logger.info("🔍 Getting gap-up stocks from database...")
             
-            # Use the existing gap-up detector
-            gap_up_data = get_real_gap_ups()
+            # Import the gap-up detection service
+            from gap_up_detection_service import gap_up_detection_service
             
-            if not gap_up_data:
-                logger.warning("⚠️ No gap-up stocks found")
+            # Get gap-up stocks from database
+            gap_up_stocks = gap_up_detection_service.get_gap_up_stocks(min_gap_percent=25.0)
+            
+            if not gap_up_stocks:
+                logger.warning("⚠️ No gap-up stocks found in database")
                 return []
             
-            # Extract ticker symbols from the gap-up data and validate them
-            gap_up_stocks = []
+            # Validate tickers
+            valid_stocks = []
             invalid_tickers = []
             
-            for stock in gap_up_data:
-                ticker = stock.get('ticker')
-                gap_percent = stock.get('gap_percent', 0)
-                
-                if not ticker:
-                    continue
-                
-                # Validate ticker exists and has data
+            for ticker in gap_up_stocks:
                 if self._validate_ticker(ticker):
-                    # Use break_out strategy's minimum gap percentage
-                    break_out_strategy = BreakOutStrategy()
-                    min_gap_percentage = break_out_strategy.config['min_gap_percentage']
-                    
-                    if gap_percent >= min_gap_percentage:
-                        gap_up_stocks.append(ticker)
-                        logger.info(f"📈 Found gap-up: {ticker} (+{gap_percent:.1f}%)")
-                    else:
-                        logger.debug(f"📊 {ticker} gap too small: {gap_percent:.1f}% < {min_gap_percentage}%")
+                    valid_stocks.append(ticker)
                 else:
                     invalid_tickers.append(ticker)
-                    logger.warning(f"⚠️ Invalid ticker found: {ticker} - skipping")
             
             if invalid_tickers:
-                logger.warning(f"⚠️ Filtered out {len(invalid_tickers)} invalid tickers: {', '.join(invalid_tickers)}")
+                logger.warning(f"⚠️ Invalid tickers: {invalid_tickers}")
             
-            logger.info(f"📊 Found {len(gap_up_stocks)} valid stocks with real-time gap-ups today")
-            return gap_up_stocks
+            logger.info(f"📊 Found {len(valid_stocks)} valid stocks with gap-ups today")
+            return valid_stocks
             
         except Exception as e:
-            logger.error(f"❌ Error getting gap-up stocks: {e}")
+            logger.error(f"❌ Error getting gap-up stocks from database: {e}")
             return []
     
     def get_real_time_data(self, ticker: str) -> Optional[Dict[str, Any]]:

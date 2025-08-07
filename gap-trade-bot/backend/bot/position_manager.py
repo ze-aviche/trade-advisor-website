@@ -153,8 +153,8 @@ class PositionManager:
             logger.error(f"❌ Error getting all positions: {e}")
             return []
     
-    def update_position_prices(self, current_prices: Dict[str, float]) -> bool:
-        """Update position prices and calculate unrealized P&L"""
+    def update_position_prices(self, current_prices: Dict[str, float]) -> Optional[Dict[str, Any]]:
+        """Update position prices and check for exit conditions"""
         try:
             updated_count = 0
             
@@ -179,15 +179,97 @@ class PositionManager:
                         
                         position['pnl'] = pnl
                         updated_count += 1
+                        
+                        # Check for exit conditions
+                        exit_signal = self._check_exit_conditions(ticker, position, current_price)
+                        if exit_signal:
+                            return exit_signal
             
             if updated_count > 0:
                 logger.info(f"📊 Updated prices for {updated_count} positions")
             
-            return True
+            return None  # No exit signal
             
         except Exception as e:
             logger.error(f"❌ Error updating position prices: {e}")
-            return False
+            return None
+    
+    def _check_exit_conditions(self, ticker: str, position: Dict[str, Any], current_price: float) -> Optional[Dict[str, Any]]:
+        """Check if position should be exited based on stop loss or target"""
+        try:
+            entry_price = position['entry_price']
+            quantity = position['quantity']
+            side = position['side']
+            
+            # Get strategy configuration for exit conditions
+            from config.strategy_manager import StrategyConfigManager
+            strategy_manager = StrategyConfigManager()
+            
+            # Default to breakOut strategy
+            strategy_config = strategy_manager.get_strategy_by_key('breakOut')
+            if not strategy_config:
+                logger.warning(f"⚠️ No strategy config found for {ticker}")
+                return None
+            
+            backend_config = strategy_config.get('backend_config', {})
+            target_multiplier = backend_config.get('target_multiplier', 1.25)
+            stop_loss_multiplier = backend_config.get('stop_loss_multiplier', 0.85)
+            
+            # Calculate target and stop loss prices
+            target_price = entry_price * target_multiplier
+            stop_loss_price = entry_price * stop_loss_multiplier
+            
+            # Check exit conditions
+            if side == 'buy':
+                # Long position exit conditions
+                if current_price <= stop_loss_price:
+                    logger.warning(f"🚨 STOP LOSS TRIGGERED: {ticker} - Current: ${current_price:.2f} <= Stop: ${stop_loss_price:.2f}")
+                    return {
+                        'exit_signal': True,
+                        'exit_reason': 'stop_loss',
+                        'ticker': ticker,
+                        'current_price': current_price,
+                        'target_price': target_price,
+                        'stop_loss_price': stop_loss_price
+                    }
+                elif current_price >= target_price:
+                    logger.info(f"🎯 TARGET REACHED: {ticker} - Current: ${current_price:.2f} >= Target: ${target_price:.2f}")
+                    return {
+                        'exit_signal': True,
+                        'exit_reason': 'target_reached',
+                        'ticker': ticker,
+                        'current_price': current_price,
+                        'target_price': target_price,
+                        'stop_loss_price': stop_loss_price
+                    }
+            else:
+                # Short position exit conditions (reverse logic)
+                if current_price >= stop_loss_price:
+                    logger.warning(f"🚨 STOP LOSS TRIGGERED: {ticker} - Current: ${current_price:.2f} >= Stop: ${stop_loss_price:.2f}")
+                    return {
+                        'exit_signal': True,
+                        'exit_reason': 'stop_loss',
+                        'ticker': ticker,
+                        'current_price': current_price,
+                        'target_price': target_price,
+                        'stop_loss_price': stop_loss_price
+                    }
+                elif current_price <= target_price:
+                    logger.info(f"🎯 TARGET REACHED: {ticker} - Current: ${current_price:.2f} <= Target: ${target_price:.2f}")
+                    return {
+                        'exit_signal': True,
+                        'exit_reason': 'target_reached',
+                        'ticker': ticker,
+                        'current_price': current_price,
+                        'target_price': target_price,
+                        'stop_loss_price': stop_loss_price
+                    }
+            
+            return None  # No exit condition met
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking exit conditions for {ticker}: {e}")
+            return None
     
     def can_open_position(self, ticker: str, side: str) -> bool:
         """Check if we can open a position for this ticker/side"""
