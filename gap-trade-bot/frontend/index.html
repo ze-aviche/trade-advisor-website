@@ -204,7 +204,7 @@
                             <div class="flex items-center space-x-2">
                                 <label class="text-sm text-gray-400">From:</label>
                                 <input type="date" v-model="dashboardPnLFromDate" @change="loadDashboardPnL"
-                                       class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
                                 <label class="text-sm text-gray-400">To:</label>
                                 <input type="date" v-model="dashboardPnLToDate" @change="loadDashboardPnL"
                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
@@ -233,7 +233,7 @@
                             <div class="flex items-center space-x-2">
                                 <label class="text-sm text-gray-400">From:</label>
                                 <input type="date" v-model="dashboardTradeFromDate" @change="loadDashboardTrades"
-                                       class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
                                 <label class="text-sm text-gray-400">To:</label>
                                 <input type="date" v-model="dashboardTradeToDate" @change="loadDashboardTrades"
                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
@@ -684,7 +684,7 @@
                                     :disabled="loading.syncTrades"
                                     class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-purple-500">
                                 <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-download-alt'" class="mr-2"></i>
-                                {{ loading.syncTrades ? 'Syncing...' : 'Sync from Alpaca' }}
+                                {{ loading.syncTrades ? 'Syncing...' : 'Sync Trades & Positions from Alpaca' }}
                             </button>
                             
                             <!-- Ticker Search -->
@@ -707,12 +707,12 @@
                                 <label class="text-sm text-gray-400">Period:</label>
                                 <select v-model="tradeHistoryPeriod" @change="loadTradeHistory" 
                                         class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
-                                    <option value="30">30 Days</option>
+                                    <option value="1">1 Day</option>
+                                    <option value="7">1 Week</option>
+                                    <option value="30">1 Month</option>
                                     <option value="90">3 Months</option>
                                     <option value="180">6 Months</option>
                                     <option value="365">1 Year</option>
-                                    <option value="730">2 Years</option>
-                                    <option value="1095">3 Years</option>
                                 </select>
                             </div>
                             
@@ -803,7 +803,7 @@
                                     :disabled="loading.syncTrades"
                                     class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-purple-500">
                                 <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-download-alt'" class="mr-2"></i>
-                                {{ loading.syncTrades ? 'Syncing...' : 'Sync from Alpaca' }}
+                                {{ loading.syncTrades ? 'Syncing...' : 'Sync Trades & Positions from Alpaca' }}
                             </button>
                             <!-- Toggle Bot Button -->
                             <button @click="toggleBot" 
@@ -997,9 +997,9 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ stock.volume ? formatNumber(stock.volume) : 'N/A' }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         <div class="flex items-center space-x-2">
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                Subscribed
-                                            </span>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            Subscribed
+                                        </span>
                                             <!-- Position indicator -->
                                             <span v-if="hasActivePosition(stock.ticker)" 
                                                   class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
@@ -1067,8 +1067,8 @@
                                                 <span class="text-xs text-gray-400">Status:</span>
                                                 <span :class="analysis.strategies[strategy.key].entrySignal ? 'text-green-400' : 'text-red-400'" class="text-xs font-medium">
                                                     {{ analysis.strategies[strategy.key].entrySignal ? 'ENTRY SIGNAL' : 'NO SIGNAL' }}
-                                                </span>
-                                            </div>
+                                            </span>
+                                        </div>
                                             <div class="flex items-center justify-between">
                                                 <span class="text-xs text-gray-400">Confidence:</span>
                                                 <span class="text-xs text-gray-300">{{ analysis.strategies[strategy.key].confidence ? analysis.strategies[strategy.key].confidence.toFixed(1) + '%' : 'N/A' }}</span>
@@ -1077,8 +1077,8 @@
                                                 <span class="text-xs text-gray-400">Applicable:</span>
                                                 <span :class="analysis.strategies[strategy.key].applicable ? 'text-green-400' : 'text-gray-400'" class="text-xs">
                                                     {{ analysis.strategies[strategy.key].applicable ? 'YES' : 'NO' }}
-                                                </span>
-                                            </div>
+                                            </span>
+                                        </div>
                                         </div>
                                         <div v-else class="text-gray-400 text-xs">N/A</div>
                                     </td>

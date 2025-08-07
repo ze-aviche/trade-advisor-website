@@ -646,8 +646,13 @@ def get_trades():
             # Get real trade history from database
             real_trades = trading_db.get_trade_history(limit=1000)  # Get more trades to filter
             
+            # Get open positions from database
+            open_positions = trading_db.get_all_positions()
+            
             # Filter trades based on date range and ticker
             filtered_trades = []
+            
+            # Process completed trades
             for trade in real_trades:
                 try:
                     trade_date = datetime.fromisoformat(trade.get('entry_time', '').replace('Z', '+00:00'))
@@ -662,6 +667,15 @@ def get_trades():
                         ticker_match = trade_ticker == ticker_filter
                     
                     if date_match and ticker_match:
+                        # Format datetime to remove microseconds
+                        entry_time = trade.get('entry_time')
+                        if entry_time and '.' in entry_time:
+                            entry_time = entry_time.split('.')[0] + 'Z'
+                        
+                        exit_time = trade.get('exit_time')
+                        if exit_time and '.' in exit_time:
+                            exit_time = exit_time.split('.')[0] + 'Z'
+                        
                         # Format trade data for frontend
                         formatted_trade = {
                             'id': trade.get('id'),
@@ -669,17 +683,57 @@ def get_trades():
                             'direction': trade.get('side', 'long'),
                             'quantity': trade.get('quantity', 0),
                             'price': trade.get('entry_price', 0),
-                            'submitted_at': trade.get('entry_time'),
+                            'submitted_at': entry_time,
                             'status': trade.get('status', 'filled'),
                             'pnl': trade.get('pnl', 0),
                             'exit_price': trade.get('exit_price'),
-                            'exit_time': trade.get('exit_time'),
+                            'exit_time': exit_time,
                             'strategy': trade.get('strategy', 'Unknown'),
                             'broker': trade.get('broker', 'alpaca')
                         }
                         filtered_trades.append(formatted_trade)
                 except (ValueError, TypeError) as e:
                     app_logger.warning(f"Invalid trade date format: {trade.get('entry_time')} - {e}")
+                    continue
+            
+            # Process open positions
+            for position in open_positions:
+                try:
+                    position_date = datetime.fromisoformat(position.get('entry_time', '').replace('Z', '+00:00'))
+                    position_ticker = position.get('ticker', '').upper()
+                    
+                    # Check date range
+                    date_match = start_date <= position_date <= end_date
+                    
+                    # Check ticker filter (if specified)
+                    ticker_match = True
+                    if ticker_filter:
+                        ticker_match = position_ticker == ticker_filter
+                    
+                    if date_match and ticker_match:
+                        # Format datetime to remove microseconds
+                        entry_time = position.get('entry_time')
+                        if entry_time and '.' in entry_time:
+                            entry_time = entry_time.split('.')[0] + 'Z'
+                        
+                        # Format position data for frontend
+                        formatted_position = {
+                            'id': f"pos_{position.get('id')}",
+                            'ticker': position.get('ticker'),
+                            'direction': position.get('side', 'long'),
+                            'quantity': position.get('quantity', 0),
+                            'price': position.get('entry_price', 0),
+                            'submitted_at': entry_time,
+                            'status': 'open',
+                            'pnl': position.get('pnl', 0),
+                            'exit_price': None,
+                            'exit_time': None,
+                            'strategy': 'Active Position',
+                            'broker': position.get('broker', 'alpaca')
+                        }
+                        filtered_trades.append(formatted_position)
+                except (ValueError, TypeError) as e:
+                    app_logger.warning(f"Invalid position date format: {position.get('entry_time')} - {e}")
                     continue
             
             # If no real trades found, fall back to mock data for demonstration
@@ -1395,14 +1449,23 @@ def sync_trades_from_alpaca():
                 'error': 'Alpaca client not initialized'
             }), 500
         
+        # First, validate database consistency
+        app_logger.info("🔧 Validating database consistency before sync...")
+        validation_result = trading_db.validate_database_consistency()
+        if validation_result['success']:
+            app_logger.info(f"✅ Database validation completed: {validation_result['fixed_count']} issues fixed")
+        else:
+            app_logger.warning(f"⚠️ Database validation issues: {validation_result.get('error', 'Unknown')}")
+        
         # Sync trades from Alpaca
         sync_result = trading_db.sync_trades_from_alpaca(alpaca_client)
         
         if sync_result['success']:
-            app_logger.info(f"✅ Trade sync completed: {sync_result['synced_count']} new trades")
+            cleaned_count = sync_result.get('cleaned_count', 0)
+            app_logger.info(f"✅ Trade sync completed: {sync_result['synced_count']} new trades, {cleaned_count} positions cleaned")
             return jsonify({
                 'success': True,
-                'message': f"Synced {sync_result['synced_count']} new trades from Alpaca",
+                'message': f"Synced {sync_result['synced_count']} new trades from Alpaca, cleaned {cleaned_count} positions",
                 'data': sync_result
             })
         else:
@@ -1414,6 +1477,46 @@ def sync_trades_from_alpaca():
             
     except Exception as e:
         app_logger.error(f"❌ Error syncing trades: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/bot/validate-database', methods=['POST'])
+def validate_database():
+    """Validate and fix database consistency issues"""
+    try:
+        app_logger.info("🔧 Starting database validation...")
+        
+        # Import required modules
+        from bot.trading_database import TradingDatabase
+        
+        # Initialize database
+        trading_db = TradingDatabase()
+        
+        # Validate database consistency
+        validation_result = trading_db.validate_database_consistency()
+        
+        if validation_result['success']:
+            fixed_count = validation_result['fixed_count']
+            missing_open = validation_result['missing_open_trades']
+            missing_closed = validation_result['missing_closed_trades']
+            
+            app_logger.info(f"✅ Database validation completed: {fixed_count} issues fixed")
+            return jsonify({
+                'success': True,
+                'message': f"Database validation completed: {fixed_count} issues fixed",
+                'data': validation_result
+            })
+        else:
+            app_logger.error(f"❌ Database validation failed: {validation_result.get('error', 'Unknown error')}")
+            return jsonify({
+                'success': False,
+                'error': validation_result.get('error', 'Unknown error')
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"❌ Error validating database: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -1810,6 +1913,32 @@ def clear_cache():
             'error': str(e)
         }), 500
 
+@app.route('/api/trades/convert-positions', methods=['POST'])
+def convert_positions_to_trades():
+    """Convert closed positions to trade records"""
+    try:
+        from bot.trading_database import trading_db
+        success = trading_db.convert_closed_positions_to_trades()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Closed positions converted to trades successfully',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to convert positions to trades'
+            }), 500
+        
+    except Exception as e:
+        app_logger.error(f"❌ Error converting positions to trades: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
     app_logger.info("🚀 Starting Trading Advisor Web API...")
     app_logger.info("📊 API available at: http://localhost:5000")
@@ -1835,6 +1964,25 @@ if __name__ == '__main__':
             app_logger.info("✅ Real-time gap-up monitoring started with hybrid approach (5% alerts, 25% trading)")
         except Exception as e:
             app_logger.error(f"⚠️ Could not start real-time monitoring: {e}")
+        
+        # Validate and fix database consistency
+        try:
+            from bot.trading_database import trading_db
+            validation_result = trading_db.validate_database_consistency()
+            if validation_result['success']:
+                app_logger.info(f"✅ Database validation completed: {validation_result['fixed_count']} issues fixed")
+            else:
+                app_logger.warning(f"⚠️ Database validation issues: {validation_result.get('error', 'Unknown')}")
+        except Exception as e:
+            app_logger.error(f"⚠️ Could not validate database: {e}")
+        
+        # Convert any existing closed positions to trades
+        try:
+            from bot.trading_database import trading_db
+            trading_db.convert_closed_positions_to_trades()
+            app_logger.info("✅ Converted any existing closed positions to trades")
+        except Exception as e:
+            app_logger.error(f"⚠️ Could not convert closed positions: {e}")
     else:
         app_logger.warning("⚠️ Real data not available - Using mock data only")
         app_logger.info("💡 Install dependencies: pip install -r requirements.txt")

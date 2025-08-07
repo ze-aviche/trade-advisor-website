@@ -85,7 +85,7 @@ const app = createApp({
                 sortDirection: 'asc',
                 
                 // Trade History
-                tradeHistoryPeriod: '365', // Default to 1 year
+                tradeHistoryPeriod: '7', // Default to 1 week
                 tradeHistoryTicker: '', // Ticker search filter
                 
                 // Dashboard Trade Period
@@ -327,12 +327,12 @@ const app = createApp({
                     }, 500);
                     
                     console.log('🔌 Connecting WebSocket...');
-                    this.connectWebSocket();
+                this.connectWebSocket();
                     
                     console.log('⏰ Starting periodic updates...');
-                    this.startPeriodicUpdates();
-                    this.startPeriodicBotUpdates(); // Start bot updates
-                    
+                this.startPeriodicUpdates();
+                this.startPeriodicBotUpdates(); // Start bot updates
+                
                     console.log('✅ Dashboard initialization started successfully');
                     
                     // Hide overall loading state after a delay
@@ -407,18 +407,18 @@ const app = createApp({
                             timeout: 10000 // 10 second timeout
                         });
                         
-                        console.log('📊 Bot status response:', response.data);
-                        this.botStatus = {
-                            running: response.data.is_running || false,
-                            subscribedStocks: response.data.subscribed_stocks || [],
-                            analysisResults: response.data.analysis_results || [],
-                            positions: response.data.positions || [],
-                            activePositions: response.data.positions ? response.data.positions.length : 0
-                        };
-                        console.log('✅ Bot status loaded:', this.botStatus);
+                    console.log('📊 Bot status response:', response.data);
+                    this.botStatus = {
+                        running: response.data.is_running || false,
+                        subscribedStocks: response.data.subscribed_stocks || [],
+                        analysisResults: response.data.analysis_results || [],
+                        positions: response.data.positions || [],
+                        activePositions: response.data.positions ? response.data.positions.length : 0
+                    };
+                    console.log('✅ Bot status loaded:', this.botStatus);
                         this.updateLoadingProgress('bot', 'success');
                         return; // Success, exit retry loop
-                    } catch (error) {
+                } catch (error) {
                         console.error(`❌ Error loading bot status (attempt ${attempt}):`, error);
                         if (attempt === maxRetries) {
                             this.updateLoadingProgress('bot', 'error');
@@ -535,12 +535,12 @@ const app = createApp({
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         console.log(`📊 Stats loading attempt ${attempt}/${maxRetries}...`);
-                        const sessionToken = localStorage.getItem('session_token');
+                    const sessionToken = localStorage.getItem('session_token');
                         console.log('🔑 Using session token:', sessionToken ? 'Present' : 'Missing');
                         
-                        const response = await fetch('http://localhost:5000/api/trades', {
-                            headers: {
-                                'Authorization': `Bearer ${sessionToken}`
+                    const response = await fetch('http://localhost:5000/api/trades', {
+                        headers: {
+                            'Authorization': `Bearer ${sessionToken}`
                             },
                             signal: AbortSignal.timeout(10000) // 10 second timeout
                         });
@@ -551,34 +551,34 @@ const app = createApp({
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
                         
-                        const data = await response.json();
+                    const data = await response.json();
                         console.log('📊 Stats API response data:', data);
-                        
-                        if (data.success) {
-                            this.trades = data.trades;
-                            this.stats = {
-                                totalTrades: data.summary.total_trades,
-                                winRate: data.summary.win_rate,
-                                totalPnl: data.summary.total_pnl,
-                                pnl: data.summary.total_pnl,
-                                activePositions: this.trades.filter(t => t.status === 'filled').length,
-                                gapUps: this.gapUps.length
-                            };
+                    
+                    if (data.success) {
+                        this.trades = data.trades;
+                        this.stats = {
+                            totalTrades: data.summary.total_trades,
+                            winRate: data.summary.win_rate,
+                            totalPnl: data.summary.total_pnl,
+                            pnl: data.summary.total_pnl,
+                            activePositions: this.trades.filter(t => t.status === 'filled').length,
+                            gapUps: this.gapUps.length
+                        };
                             
                             console.log('✅ Stats loaded successfully:', this.stats);
                             this.updateLoadingProgress('stats', 'success');
-                            
-                            // Update charts after data is loaded
-                            setTimeout(() => {
-                                this.updatePnlChart();
-                            }, 100);
+                        
+                        // Update charts after data is loaded
+                        setTimeout(() => {
+                            this.updatePnlChart();
+                        }, 100);
                             
                             return; // Success, exit retry loop
                         } else {
                             console.error('❌ Stats API returned error:', data.message);
                             throw new Error(data.message || 'Failed to load stats');
-                        }
-                    } catch (error) {
+                    }
+                } catch (error) {
                         console.error(`❌ Error loading stats (attempt ${attempt}):`, error);
                         if (attempt === maxRetries) {
                             this.updateLoadingProgress('stats', 'error');
@@ -612,20 +612,20 @@ const app = createApp({
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
                         
-                        const data = await response.json();
+                    const data = await response.json();
                         console.log('📈 Gap-ups API response data:', data);
-                        
-                        if (data.success) {
-                            this.gapUps = data.data || [];
-                            this.stats.gapUps = this.gapUps.length;
+                    
+                    if (data.success) {
+                        this.gapUps = data.data || [];
+                        this.stats.gapUps = this.gapUps.length;
                             console.log('✅ Gap-ups loaded successfully:', this.gapUps.length, 'stocks');
                             this.updateLoadingProgress('gapUps', 'success');
                             return; // Success, exit retry loop
-                        } else {
+                    } else {
                             console.error('❌ Gap-ups API returned error:', data.message);
                             throw new Error(data.message || 'Failed to load gap-ups');
-                        }
-                    } catch (error) {
+                    }
+                } catch (error) {
                         console.error(`❌ Error loading gap-ups (attempt ${attempt}):`, error);
                         if (attempt === maxRetries) {
                             this.updateLoadingProgress('gapUps', 'error');
@@ -1480,7 +1480,7 @@ const app = createApp({
                 }
             },
             
-                        setupPnlChart() {
+            setupPnlChart() {
                 // This function is now deprecated - charts are created directly in updatePnlChart
                 console.log('🔄 setupPnlChart called - this function is deprecated');
             },
@@ -1554,64 +1554,64 @@ const app = createApp({
                         data: pnlData,
                         canvas: ctx
                     });
-                    
-                    this.charts.pnl = new Chart(ctx, {
-                        type: 'line',
-                        data: {
+                
+                this.charts.pnl = new Chart(ctx, {
+                    type: 'line',
+                    data: {
                             labels: labels,
-                            datasets: [{
-                                label: 'P&L',
+                        datasets: [{
+                            label: 'P&L',
                                 data: pnlData,
-                                borderColor: '#10B981',
-                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                tension: 0.4,
-                                fill: true,
-                                pointBackgroundColor: '#10B981',
-                                pointBorderColor: '#ffffff',
-                                pointBorderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    labels: {
+                            borderColor: '#10B981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#10B981',
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: {
                                         color: '#D1D5DB'
-                                    }
-                                },
-                                tooltip: {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                    titleColor: '#ffffff',
-                                    bodyColor: '#ffffff'
                                 }
                             },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: {
-                                        color: '#D1D5DB',
-                                        callback: function(value) {
-                                            return '$' + value.toLocaleString();
-                                        }
-                                    },
-                                    grid: {
-                                        color: '#374151'
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                titleColor: '#ffffff',
+                                    bodyColor: '#ffffff'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    color: '#D1D5DB',
+                                    callback: function(value) {
+                                        return '$' + value.toLocaleString();
                                     }
                                 },
-                                x: {
-                                    ticks: {
-                                        color: '#D1D5DB'
-                                    },
-                                    grid: {
-                                        color: '#374151'
-                                    }
+                                grid: {
+                                    color: '#374151'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: '#D1D5DB'
+                                },
+                                grid: {
+                                    color: '#374151'
                                 }
                             }
                         }
-                    });
+                    }
+                });
                     console.log('✅ PnL chart created successfully');
                     console.log('📊 Chart object:', this.charts.pnl);
                     console.log('📊 Chart data:', this.charts.pnl.data);
@@ -1703,8 +1703,20 @@ const app = createApp({
             // Format date
             formatDate(dateString) {
                 if (!dateString) return 'N/A';
-                // Return the date string as-is to avoid timezone issues
+                try {
+                    // Parse the ISO string and format to MM/DD/YYYY HH:MM
+                    const date = new Date(dateString);
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const year = date.getFullYear();
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    
+                    return `${month}/${day}/${year} ${hours}:${minutes}`;
+                } catch (error) {
+                    // Fallback to original string if parsing fails
                 return dateString;
+                }
             },
             
             // Format time
@@ -1947,7 +1959,7 @@ const app = createApp({
                     } else {
                         this.showNotification('Failed to save strategy settings', 'error');
                     }
-                } catch (error) {
+                    } catch (error) {
                     console.error('❌ Error saving strategy settings:', error);
                     this.showNotification('Error saving strategy settings', 'error');
                 }
@@ -1982,31 +1994,36 @@ const app = createApp({
                             window.STRATEGY_CONFIG.strategies = parsedSettings;
                         }
                     }
-                } catch (error) {
+                    } catch (error) {
                     console.error('❌ Error loading strategy settings:', error);
                 }
             },
             
             async syncTradesFromAlpaca() {
                 try {
-                    console.log('🔄 Syncing trades from Alpaca...');
+                    console.log('🔄 Syncing trades and positions from Alpaca...');
                     this.loading.syncTrades = true;
                     
                     const response = await axios.post('/api/bot/sync-trades');
                     
                     if (response.data.success) {
-                        this.showNotification(`✅ ${response.data.message}`, 'success');
-                        console.log('✅ Trades synced successfully:', response.data.data);
+                        const data = response.data.data;
+                        const message = `✅ Synced ${data.synced_count} items from Alpaca (${data.total_orders} orders, ${data.total_positions} positions)`;
+                        this.showNotification(message, 'success');
+                        console.log('✅ Sync completed successfully:', data);
                         
-                        // Reload trade history after sync
-                        await this.loadTradeHistory();
+                        // Reload both trade history and bot status after sync
+                        await Promise.all([
+                            this.loadTradeHistory(),
+                            this.loadBotStatus()
+                        ]);
                     } else {
-                        this.showNotification(`❌ Failed to sync trades: ${response.data.error}`, 'error');
-                        console.error('❌ Trade sync failed:', response.data.error);
+                        this.showNotification(`❌ Failed to sync from Alpaca: ${response.data.error}`, 'error');
+                        console.error('❌ Sync failed:', response.data.error);
                     }
-                } catch (error) {
-                    console.error('❌ Error syncing trades:', error);
-                    this.showNotification('❌ Error syncing trades from Alpaca', 'error');
+                    } catch (error) {
+                    console.error('❌ Error syncing from Alpaca:', error);
+                    this.showNotification('❌ Error syncing from Alpaca', 'error');
                 } finally {
                     this.loading.syncTrades = false;
                 }

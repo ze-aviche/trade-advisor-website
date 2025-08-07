@@ -20,6 +20,17 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
+def get_utc_datetime() -> str:
+    """Get current UTC datetime in ISO format"""
+    return datetime.now(timezone.utc).isoformat()
+
+def convert_to_utc(dt: datetime) -> str:
+    """Convert datetime to UTC ISO format"""
+    if dt.tzinfo is None:
+        # If no timezone info, assume it's UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
 class TradingDatabase:
     """Manages trading-specific database operations"""
     
@@ -185,11 +196,35 @@ class TradingDatabase:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
+                entry_time = get_utc_datetime()
+                
                 cursor.execute('''
                     INSERT OR REPLACE INTO positions 
                     (ticker, quantity, side, entry_price, status, broker, order_id, entry_time)
                     VALUES (?, ?, ?, ?, 'open', ?, ?, ?)
-                ''', (ticker, quantity, side, entry_price, broker, order_id, datetime.now().isoformat()))
+                ''', (ticker, quantity, side, entry_price, broker, order_id, entry_time))
+                
+                # Create trade record for open position
+                trade_data = {
+                    'trade_id': f"{ticker}_{side}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'side': side,
+                    'entry_price': entry_price,
+                    'exit_price': None,
+                    'entry_time': entry_time,
+                    'exit_time': None,
+                    'pnl': 0.0,  # Will be updated with current price
+                    'commission': 0.0,
+                    'strategy': 'Active Position',
+                    'broker': broker,
+                    'alpaca_id': order_id,
+                    'status': 'open',
+                    'notes': f"Active position - {side} {quantity} shares"
+                }
+                
+                # Record the trade
+                self.record_trade(trade_data)
                 
                 conn.commit()
                 logger.info(f"📈 Position opened: {ticker} {quantity} shares {side} @ ${entry_price}")
@@ -227,14 +262,45 @@ class TradingDatabase:
                     UPDATE positions 
                     SET exit_price = ?, exit_time = ?, status = 'closed', pnl = ?
                     WHERE ticker = ? AND side = ? AND status = 'open'
-                ''', (exit_price, exit_time or datetime.now().isoformat(), pnl, ticker, side))
+                ''', (exit_price, exit_time or get_utc_datetime(), pnl, ticker, side))
+                
+                if cursor.rowcount == 0:
+                    logger.error(f"❌ No rows updated when closing position {ticker} {side}")
+                    return False
+                
+                # Create trade record
+                trade_data = {
+                    'trade_id': f"{ticker}_{side}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}",
+                    'ticker': ticker,
+                    'quantity': position['quantity'],
+                    'side': side,
+                    'entry_price': position['entry_price'],
+                    'exit_price': exit_price,
+                    'entry_time': position['entry_time'],
+                    'exit_time': exit_time or get_utc_datetime(),
+                    'pnl': pnl,
+                    'commission': 0.0,
+                    'strategy': position.get('strategy', 'Unknown'),
+                    'broker': position.get('broker', 'alpaca'),
+                    'alpaca_id': position.get('order_id'),
+                    'status': 'closed',
+                    'notes': f"Closed position - {side} {quantity} shares"
+                }
+                
+                # Record the trade
+                trade_success = self.record_trade(trade_data)
+                if not trade_success:
+                    logger.error(f"❌ Failed to record trade for closed position {ticker} {side}")
+                    # Rollback the position update
+                    conn.rollback()
+                    return False
                 
                 conn.commit()
                 logger.info(f"📉 Position closed: {ticker} {side} @ ${exit_price} P&L: ${pnl:.2f}")
                 return True
                 
         except Exception as e:
-            logger.error(f"❌ Error closing position: {e}")
+            logger.error(f"❌ Error closing position {ticker} {side}: {e}")
             return False
     
     def get_position(self, ticker: str, side: str = None) -> Optional[Dict[str, Any]]:
@@ -672,18 +738,18 @@ class TradingDatabase:
             return {}
     
     def sync_trades_from_alpaca(self, alpaca_client) -> Dict[str, Any]:
-        """Sync trades from Alpaca to local database"""
+        """Sync trades and positions from Alpaca to local database"""
         try:
-            logger.info("🔄 Syncing trades from Alpaca...")
+            logger.info("🔄 Syncing trades and positions from Alpaca...")
             
             synced_count = 0
             skipped_count = 0
             error_count = 0
             
-            # First, sync current orders
+            # First, sync current orders (trades)
             try:
                 orders = alpaca_client.trading_client.get_orders()
-                logger.info(f"📋 Found {len(orders)} current orders")
+                logger.info(f"📋 Found {len(orders)} current orders from Alpaca")
             except Exception as e:
                 logger.error(f"❌ Error fetching orders from Alpaca: {e}")
                 orders = []
@@ -694,36 +760,41 @@ class TradingDatabase:
                     existing_trade = self.get_trade_by_alpaca_id(order.id)
                     
                     if not existing_trade:
-                        # Create trade record for all orders (not just filled ones)
-                        trade_data = {
-                            'trade_id': f"ALPACA_{order.id}",
-                            'ticker': order.symbol,
-                            'quantity': abs(int(order.qty)),
-                            'side': 'buy' if order.side == 'buy' else 'sell',
-                            'entry_price': float(order.filled_avg_price) if order.filled_avg_price and order.status == 'filled' else 0.0,
-                            'exit_price': None,  # Will be set when position is closed
-                            'entry_time': order.filled_at.isoformat() if order.filled_at else order.created_at.isoformat(),
-                            'exit_time': None,
-                            'pnl': 0.0,  # Will be calculated when position is closed
-                            'commission': float(order.commission) if order.commission else 0.0,
-                            'strategy': 'alpaca_sync',
-                            'broker': 'alpaca',
-                            'alpaca_id': order.id,
-                            'status': order.status,  # Include order status
-                            'notes': f"Synced from Alpaca: {order.type} order - {order.status}"
-                        }
-                        
-                        if self.record_trade(trade_data):
-                            synced_count += 1
-                            logger.info(f"✅ Synced order: {order.symbol} {order.qty} @ ${order.filled_avg_price or 'N/A'} (Status: {order.status})")
+                        # Create trade record for filled orders
+                        if order.status == 'filled':
+                            trade_data = {
+                                'trade_id': f"ALPACA_{order.id}",
+                                'ticker': order.symbol,
+                                'quantity': abs(int(order.qty)),
+                                'side': 'buy' if order.side == 'buy' else 'sell',
+                                'entry_price': float(order.filled_avg_price) if order.filled_avg_price else 0.0,
+                                'exit_price': None,  # Will be set when position is closed
+                                'entry_time': convert_to_utc(order.filled_at) if order.filled_at else convert_to_utc(order.created_at),
+                                'exit_time': None,
+                                'pnl': 0.0,  # Will be calculated when position is closed
+                                'commission': float(order.commission) if order.commission else 0.0,
+                                'strategy': 'alpaca_sync',
+                                'broker': 'alpaca',
+                                'alpaca_id': order.id,
+                                'status': 'closed' if order.side == 'sell' else 'open',
+                                'notes': f"Synced from Alpaca: {order.type} order - {order.status}"
+                            }
+                            
+                            if self.record_trade(trade_data):
+                                synced_count += 1
+                                logger.info(f"✅ Synced filled order: {order.symbol} {order.qty} @ ${order.filled_avg_price or 'N/A'} (Status: {order.status})")
+                            else:
+                                error_count += 1
+                                logger.error(f"❌ Failed to sync order: {order.symbol}")
                         else:
-                            error_count += 1
-                            logger.error(f"❌ Failed to sync order: {order.symbol}")
+                            # For non-filled orders, just log them
+                            logger.debug(f"⏭️ Skipping non-filled order: {order.symbol} (Status: {order.status})")
+                            skipped_count += 1
                     else:
                         # If trade exists, update it with new data
                         updates = {
                             'exit_price': float(order.filled_avg_price) if order.filled_avg_price and order.status == 'filled' else None,
-                            'exit_time': order.filled_at.isoformat() if order.filled_at else None,
+                            'exit_time': convert_to_utc(order.filled_at) if order.filled_at else None,
                             'status': order.status,
                             'notes': f"Synced from Alpaca: {order.type} order - {order.status}"
                         }
@@ -748,87 +819,118 @@ class TradingDatabase:
             
             for ticker, position in positions.items():
                 try:
-                    # Check if position already exists by ticker and side
-                    existing_position = self.get_position(ticker, 'buy' if position.get('quantity', 0) > 0 else 'sell')
+                    quantity = abs(int(position.get('quantity', 0)))
+                    side = 'buy' if position.get('quantity', 0) > 0 else 'sell'
+                    entry_price = float(position.get('avg_entry_price', 0))
+                    unrealized_pl = float(position.get('unrealized_pl', 0))
+                    
+                    # Check if position already exists in positions table
+                    existing_position = self.get_position(ticker, side)
                     
                     if not existing_position:
-                        # Create a unique ID for the position using ticker and quantity
-                        # This is more stable than using price which can fluctuate
-                        quantity = abs(int(position.get('quantity', 0)))
-                        position_id = f"POS_{ticker}_{quantity}_{datetime.now().strftime('%Y%m%d')}"
+                        # Create new position in positions table
+                        position_success = self.open_position(
+                            ticker=ticker,
+                            quantity=quantity,
+                            side=side,
+                            entry_price=entry_price,
+                            broker='alpaca',
+                            order_id=f"ALPACA_SYNC_{ticker}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+                        )
                         
-                        # Check if a trade with this ticker already exists (regardless of ID format)
-                        existing_trades = [t for t in self.get_trade_history() if t['ticker'] == ticker and t['status'] == 'open']
-                        
-                        if existing_trades:
-                            # Update existing trade instead of creating new one
-                            existing_trade = existing_trades[0]
-                            updates = {
-                                'pnl': float(position.get('unrealized_pl', 0)),
-                                'notes': f"Synced from Alpaca: Current position - {position.get('quantity', 0)} shares (updated)"
-                            }
-                            if self.update_trade(existing_trade['trade_id'], updates):
-                                synced_count += 1
-                                logger.info(f"✅ Updated existing position: {ticker} {position.get('quantity', 0)} shares @ ${position.get('avg_entry_price', 0)}")
-                            else:
-                                error_count += 1
-                                logger.error(f"❌ Failed to update existing position: {ticker}")
+                        if position_success:
+                            # Update P&L for the position
+                            self.update_position_price(ticker, entry_price)
+                            synced_count += 1
+                            logger.info(f"✅ Created new position: {ticker} {quantity} shares @ ${entry_price}")
                         else:
-                            # Create new trade record for position
-                            trade_data = {
-                                'trade_id': position_id,
-                                'ticker': ticker,
-                                'quantity': quantity,
-                                'side': 'buy' if position.get('quantity', 0) > 0 else 'sell',
-                                'entry_price': float(position.get('avg_entry_price', 0)),
-                                'exit_price': None,  # Position is still open
-                                'entry_time': datetime.now().isoformat(),  # Approximate entry time
-                                'exit_time': None,
-                                'pnl': float(position.get('unrealized_pl', 0)),
-                                'commission': 0.0,  # Commission not available for positions
-                                'strategy': 'alpaca_position_sync',
-                                'broker': 'alpaca',
-                                'alpaca_id': position_id,
-                                'status': 'open',
-                                'notes': f"Synced from Alpaca: Current position - {position.get('quantity', 0)} shares"
-                            }
-                            
-                            if self.record_trade(trade_data):
-                                synced_count += 1
-                                logger.info(f"✅ Synced position: {ticker} {position.get('quantity', 0)} shares @ ${position.get('avg_entry_price', 0)}")
-                            else:
-                                error_count += 1
-                                logger.error(f"❌ Failed to sync position: {ticker}")
+                            error_count += 1
+                            logger.error(f"❌ Failed to create position: {ticker}")
                     else:
                         # Update existing position with latest data
-                        self.update_position_price(ticker, float(position.get('avg_entry_price', 0)))
-                        
-                        # Also update the corresponding trade record
-                        existing_trade = self.get_trade_by_alpaca_id(existing_position.get('alpaca_id', ''))
-                        if existing_trade:
-                            updates = {
-                                'pnl': float(position.get('unrealized_pl', 0)),
-                                'notes': f"Synced from Alpaca: Current position - {position.get('quantity', 0)} shares (updated)"
-                            }
-                            if self.update_trade(existing_trade['trade_id'], updates):
-                                synced_count += 1
-                                logger.info(f"✅ Updated existing position: {ticker} {position.get('quantity', 0)} shares @ ${position.get('avg_entry_price', 0)}")
-                            else:
-                                error_count += 1
-                                logger.error(f"❌ Failed to update existing position: {ticker}")
-                        else:
-                            skipped_count += 1
-                            logger.debug(f"⏭️ Position exists but no trade record found: {ticker}")
+                        self.update_position_price(ticker, entry_price)
+                        synced_count += 1
+                        logger.info(f"✅ Updated existing position: {ticker} {quantity} shares @ ${entry_price}")
                 except Exception as e:
                     error_count += 1
                     logger.error(f"❌ Error processing position {ticker}: {e}")
             
-            logger.info(f"🔄 Sync complete: {synced_count} new trades/positions, {skipped_count} already exist, {error_count} errors")
+            # Clean up positions that no longer exist in Alpaca
+            try:
+                current_alpaca_tickers = set(positions.keys())
+                local_positions = self.get_all_positions()
+                cleaned_count = 0
+                
+                for local_pos in local_positions:
+                    if local_pos['ticker'] not in current_alpaca_tickers:
+                        # Position no longer exists in Alpaca, close it
+                        logger.info(f"🔄 Position {local_pos['ticker']} no longer exists in Alpaca, closing position")
+                        
+                        try:
+                            # Close the position (this will also create a trade record)
+                            close_success = self.close_position(
+                                ticker=local_pos['ticker'],
+                                side=local_pos['side'],
+                                exit_price=local_pos.get('entry_price', 0),  # Use entry price as exit price
+                                exit_time=get_utc_datetime()
+                            )
+                            
+                            if close_success:
+                                cleaned_count += 1
+                                logger.info(f"✅ Closed position: {local_pos['ticker']} (no longer in Alpaca)")
+                            else:
+                                error_count += 1
+                                logger.error(f"❌ Failed to close position: {local_pos['ticker']} - close_position returned False")
+                                
+                                # Fallback: manually close the position using SQL
+                                logger.info(f"🔄 Attempting manual SQL close for {local_pos['ticker']}")
+                                manual_close_success = self._manual_close_position(
+                                    ticker=local_pos['ticker'],
+                                    side=local_pos['side'],
+                                    exit_price=local_pos.get('entry_price', 0)
+                                )
+                                
+                                if manual_close_success:
+                                    cleaned_count += 1
+                                    logger.info(f"✅ Manually closed position: {local_pos['ticker']}")
+                                else:
+                                    error_count += 1
+                                    logger.error(f"❌ Manual close also failed for: {local_pos['ticker']}")
+                                    
+                        except Exception as e:
+                            error_count += 1
+                            logger.error(f"❌ Exception closing position {local_pos['ticker']}: {e}")
+                            
+                            # Fallback: manually close the position using SQL
+                            try:
+                                logger.info(f"🔄 Attempting manual SQL close for {local_pos['ticker']} after exception")
+                                manual_close_success = self._manual_close_position(
+                                    ticker=local_pos['ticker'],
+                                    side=local_pos['side'],
+                                    exit_price=local_pos.get('entry_price', 0)
+                                )
+                                
+                                if manual_close_success:
+                                    cleaned_count += 1
+                                    logger.info(f"✅ Manually closed position after exception: {local_pos['ticker']}")
+                                else:
+                                    logger.error(f"❌ Manual close failed after exception for: {local_pos['ticker']}")
+                            except Exception as manual_e:
+                                logger.error(f"❌ Manual close exception for {local_pos['ticker']}: {manual_e}")
+                
+                if cleaned_count > 0:
+                    logger.info(f"🧹 Cleaned up {cleaned_count} positions that no longer exist in Alpaca")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error cleaning up positions: {e}")
+            
+            logger.info(f"🔄 Sync complete: {synced_count} new trades/positions, {skipped_count} already exist, {error_count} errors, {cleaned_count} cleaned")
             return {
                 'success': True,
                 'synced_count': synced_count,
                 'skipped_count': skipped_count,
                 'error_count': error_count,
+                'cleaned_count': cleaned_count,
                 'total_orders': len(orders),
                 'total_positions': len(positions)
             }
@@ -881,6 +983,210 @@ class TradingDatabase:
         except Exception as e:
             logger.error(f"❌ Error cleaning up duplicate trades: {e}")
             return False
+    
+    def _manual_close_position(self, ticker: str, side: str, exit_price: float) -> bool:
+        """Manually close a position using direct SQL (fallback method)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get current position
+                cursor.execute('''
+                    SELECT * FROM positions 
+                    WHERE ticker = ? AND side = ? AND status = 'open'
+                ''', (ticker, side))
+                
+                position = cursor.fetchone()
+                if not position:
+                    logger.warning(f"⚠️ No open position found for manual close: {ticker} {side}")
+                    return False
+                
+                # Calculate P&L
+                entry_price = position['entry_price']
+                quantity = position['quantity']
+                pnl = (exit_price - entry_price) * quantity if side == 'buy' else (entry_price - exit_price) * quantity
+                
+                # Update position using direct SQL
+                cursor.execute('''
+                    UPDATE positions 
+                    SET exit_price = ?, exit_time = ?, status = 'closed', pnl = ?
+                    WHERE ticker = ? AND side = ? AND status = 'open'
+                ''', (exit_price, get_utc_datetime(), pnl, ticker, side))
+                
+                if cursor.rowcount == 0:
+                    logger.error(f"❌ Manual close failed - no rows updated for {ticker} {side}")
+                    return False
+                
+                # Create trade record manually
+                trade_id = f"{ticker}_{side}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}"
+                
+                cursor.execute('''
+                    INSERT INTO trades (trade_id, ticker, quantity, side, entry_price, exit_price, 
+                                     entry_time, exit_time, pnl, commission, strategy, broker, 
+                                     alpaca_id, status, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    trade_id, ticker, quantity, side, entry_price, exit_price,
+                    position['entry_time'], get_utc_datetime(), pnl, 0.0,
+                    position.get('strategy', 'Manual Close'), position.get('broker', 'alpaca'),
+                    position.get('order_id'), 'closed',
+                    f"Manually closed position - {side} {quantity} shares"
+                ))
+                
+                conn.commit()
+                logger.info(f"📉 Manually closed position: {ticker} {side} @ ${exit_price} P&L: ${pnl:.2f}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error in manual close position: {e}")
+            return False
+
+    def convert_closed_positions_to_trades(self) -> bool:
+        """Convert any closed positions to trade records"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get all closed positions
+                cursor.execute('''
+                    SELECT * FROM positions 
+                    WHERE status = 'closed' AND exit_time IS NOT NULL
+                ''')
+                
+                closed_positions = cursor.fetchall()
+                converted_count = 0
+                
+                for position in closed_positions:
+                    # Check if trade already exists
+                    existing_trade = self.get_trade_by_alpaca_id(position['order_id'])
+                    if existing_trade:
+                        logger.debug(f"Trade already exists for {position['ticker']} order {position['order_id']}")
+                        continue
+                    
+                    # Create trade record
+                    trade_data = {
+                        'trade_id': f"{position['ticker']}_{position['side']}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}",
+                        'ticker': position['ticker'],
+                        'quantity': position['quantity'],
+                        'side': position['side'],
+                        'entry_price': position['entry_price'],
+                        'exit_price': position['exit_price'],
+                        'entry_time': position['entry_time'],
+                        'exit_time': position['exit_time'],
+                        'pnl': position['pnl'],
+                        'commission': 0.0,
+                        'strategy': position.get('strategy', 'Unknown'),
+                        'broker': position.get('broker', 'alpaca'),
+                        'alpaca_id': position.get('order_id'),
+                        'status': 'closed',
+                        'notes': f"Converted from closed position - {position['side']} {position['quantity']} shares"
+                    }
+                    
+                    if self.record_trade(trade_data):
+                        converted_count += 1
+                        logger.info(f"✅ Converted closed position to trade: {position['ticker']} P&L: ${position['pnl']:.2f}")
+                
+                if converted_count > 0:
+                    logger.info(f"🔄 Converted {converted_count} closed positions to trades")
+                else:
+                    logger.info("✅ No closed positions to convert")
+                
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error converting closed positions to trades: {e}")
+            return False
+
+    def validate_database_consistency(self) -> Dict[str, Any]:
+        """Validate database consistency and fix any issues"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Check for open positions without corresponding trade records
+                cursor.execute('''
+                    SELECT p.ticker, p.side, p.quantity, p.entry_price, p.entry_time
+                    FROM positions p
+                    LEFT JOIN trades t ON p.ticker = t.ticker AND p.side = t.side AND t.status = 'open'
+                    WHERE p.status = 'open' AND t.trade_id IS NULL
+                ''')
+                
+                missing_trades = cursor.fetchall()
+                fixed_count = 0
+                
+                for position in missing_trades:
+                    logger.info(f"🔧 Creating missing trade record for open position: {position['ticker']}")
+                    
+                    trade_data = {
+                        'trade_id': f"{position['ticker']}_{position['side']}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}",
+                        'ticker': position['ticker'],
+                        'quantity': position['quantity'],
+                        'side': position['side'],
+                        'entry_price': position['entry_price'],
+                        'exit_price': None,
+                        'entry_time': position['entry_time'],
+                        'exit_time': None,
+                        'pnl': 0.0,
+                        'commission': 0.0,
+                        'strategy': 'Active Position',
+                        'broker': 'alpaca',
+                        'alpaca_id': f"VALIDATION_{position['ticker']}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}",
+                        'status': 'open',
+                        'notes': f"Created during validation - {position['side']} {position['quantity']} shares"
+                    }
+                    
+                    if self.record_trade(trade_data):
+                        fixed_count += 1
+                        logger.info(f"✅ Created missing trade record for {position['ticker']}")
+                
+                # Check for closed positions without corresponding trade records
+                cursor.execute('''
+                    SELECT p.ticker, p.side, p.quantity, p.entry_price, p.exit_price, p.entry_time, p.exit_time, p.pnl
+                    FROM positions p
+                    LEFT JOIN trades t ON p.ticker = t.ticker AND p.side = t.side AND t.status = 'closed'
+                    WHERE p.status = 'closed' AND t.trade_id IS NULL
+                ''')
+                
+                missing_closed_trades = cursor.fetchall()
+                
+                for position in missing_closed_trades:
+                    logger.info(f"🔧 Creating missing trade record for closed position: {position['ticker']}")
+                    
+                    trade_data = {
+                        'trade_id': f"{position['ticker']}_{position['side']}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}",
+                        'ticker': position['ticker'],
+                        'quantity': position['quantity'],
+                        'side': position['side'],
+                        'entry_price': position['entry_price'],
+                        'exit_price': position['exit_price'],
+                        'entry_time': position['entry_time'],
+                        'exit_time': position['exit_time'],
+                        'pnl': position['pnl'],
+                        'commission': 0.0,
+                        'strategy': 'Validation Fix',
+                        'broker': 'alpaca',
+                        'alpaca_id': f"VALIDATION_CLOSED_{position['ticker']}_{get_utc_datetime().replace(':', '').replace('-', '').replace('T', '_').split('.')[0]}",
+                        'status': 'closed',
+                        'notes': f"Created during validation - closed {position['side']} {position['quantity']} shares"
+                    }
+                    
+                    if self.record_trade(trade_data):
+                        fixed_count += 1
+                        logger.info(f"✅ Created missing closed trade record for {position['ticker']}")
+                
+                return {
+                    'success': True,
+                    'missing_open_trades': len(missing_trades),
+                    'missing_closed_trades': len(missing_closed_trades),
+                    'fixed_count': fixed_count
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Error validating database consistency: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
 # Global trading database instance
 trading_db = TradingDatabase() 

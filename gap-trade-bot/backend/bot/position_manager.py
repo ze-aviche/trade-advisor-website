@@ -78,7 +78,7 @@ class PositionManager:
                       exit_time: str = None) -> bool:
         """Close an existing position"""
         try:
-            # Close in database
+            # Close in database (this will also create the trade record)
             success = trading_db.close_position(ticker, side, exit_price, exit_time)
             
             if success:
@@ -89,30 +89,12 @@ class PositionManager:
                     entry_price = position['entry_price']
                     quantity = position['quantity']
                     
-                    # Calculate P&L
+                    # Calculate P&L for logging
                     if side == 'buy':
                         pnl = (exit_price - entry_price) * quantity
                     else:
                         pnl = (entry_price - exit_price) * quantity
                     
-                    # Record trade
-                    trade_data = {
-                        'trade_id': f"TRADE_{ticker}_{int(datetime.now().timestamp())}",
-                        'ticker': ticker,
-                        'quantity': quantity,
-                        'side': side,
-                        'entry_price': entry_price,
-                        'exit_price': exit_price,
-                        'entry_time': position['entry_time'],
-                        'exit_time': exit_time or datetime.now().isoformat(),
-                        'pnl': pnl,
-                        'commission': 0.0,  # Will be updated from broker
-                        'strategy': 'break_out',
-                        'broker': position.get('broker', 'alpaca'),
-                        'notes': f"Position closed at ${exit_price}"
-                    }
-                    
-                    trading_db.record_trade(trade_data)
                     del self.positions[key]
                     
                     logger.info(f"📉 Position closed: {ticker} {side} @ ${exit_price} P&L: ${pnl:.2f}")
