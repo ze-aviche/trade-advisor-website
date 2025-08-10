@@ -8,7 +8,7 @@ Separate from historical cache for optimal performance
 import sqlite3
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 

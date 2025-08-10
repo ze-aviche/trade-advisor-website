@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from functools import lru_cache
 import threading
+import pytz
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -63,7 +64,10 @@ class GapUpCache:
     
     def _get_cache_ttl(self, cache_type: str) -> int:
         """Get TTL based on cache type and market conditions"""
-        current_hour = datetime.now().hour
+        # Get current time in ET
+        et_tz = pytz.timezone('US/Eastern')
+        current_time = datetime.now(et_tz)
+        current_hour = current_time.hour
         
         # Peak hours (9:30-11:30 AM ET and 3:00-5:00 PM ET)
         if (9 <= current_hour <= 11) or (15 <= current_hour <= 17):

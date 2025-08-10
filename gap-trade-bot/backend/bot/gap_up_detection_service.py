@@ -11,6 +11,7 @@ import signal
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import logging
+import pytz
 
 # Configure logging for the detection service
 log_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -113,7 +114,7 @@ class GapUpDetectionService:
     def _run_detection(self):
         """Run gap-up detection and store results"""
         try:
-            # Check if data is fresh
+            # Check if data is fresh for today
             if gap_up_db.is_data_fresh(max_age_minutes=30):
                 logger.info("📊 Gap-up data is fresh, skipping detection")
                 return
@@ -143,7 +144,9 @@ class GapUpDetectionService:
                 logger.warning("⚠️ No gap-up data found")
                 gap_up_db.end_detection_session(session_id, 0, 0)
             
-            self.last_detection = datetime.now()
+            # Use ET timezone
+            et_tz = pytz.timezone('US/Eastern')
+            self.last_detection = datetime.now(et_tz)
             
         except Exception as e:
             logger.error(f"❌ Error running gap-up detection: {e}")

@@ -13,7 +13,7 @@ from collections import defaultdict, deque
 from polygon import RESTClient
 from dotenv import load_dotenv
 from logging_config import get_logger
-from gap_up_cache import cached_real_time_detection, get_cached_real_time_gap_ups, set_cached_real_time_gap_ups
+from gap_up_cache import cached_real_time_detection, get_cached_real_time_gap_ups, set_cached_real_time_gap_ups, set_cached_frontend_gap_ups
 
 # Load environment variables
 load_dotenv()
@@ -51,6 +51,9 @@ class OptimizedRealTimeGapDetector:
         self.gaps_found = 0
         self.trading_opportunities = 0
         self.last_performance_log = time.time()
+        
+        # Cache for frontend updates
+        self.current_gap_ups = []
         
         logger.info("✅ Optimized real-time gap-up detector initialized with hybrid approach")
         logger.info(f"📊 Alert threshold: {self.alert_threshold}%, Trading threshold: {self.trading_threshold}%")
@@ -381,6 +384,10 @@ class OptimizedRealTimeGapDetector:
                     if gap_up_data['is_trading_opportunity'] and self.trading_callback:
                         self.trading_callback(gap_up_data)
             
+            # Update frontend cache with fresh gap-up data
+            if gap_ups_found:
+                self._update_frontend_cache(gap_ups_found)
+            
             # Log performance every 10 scans
             if self.scan_count % 10 == 0:
                 current_time = time.time()
@@ -424,6 +431,39 @@ class OptimizedRealTimeGapDetector:
         """Stop real-time monitoring"""
         self.running = False
         logger.info("⏹️ Optimized real-time gap-up monitoring stopped")
+    
+    def _update_frontend_cache(self, gap_ups_found):
+        """Update the frontend cache with fresh gap-up data"""
+        try:
+            # Convert gap-up data to frontend format
+            frontend_data = []
+            for gap_up in gap_ups_found:
+                frontend_item = {
+                    'ticker': gap_up['ticker'],
+                    'company_name': gap_up.get('company_name', 'Unknown'),
+                    'price': gap_up['price'],  # Use 'price' from real-time detector
+                    'previous_close': gap_up['previous_close'],
+                    'change': gap_up['change'],  # Use 'change' from real-time detector
+                    'change_percent': gap_up['change_percent'],  # Use 'change_percent' from real-time detector
+                    'gap_percent': gap_up['gap_percent'],
+                    'volume': gap_up.get('volume', 0),
+                    'market_cap': gap_up.get('market_cap', 0),
+                    'sector': gap_up.get('sector', 'Unknown'),
+                    'peak_gap_percent': gap_up.get('peak_gap_percent', gap_up['gap_percent']),
+                    'peak_time': gap_up.get('peak_time', ''),
+                    'is_new_peak': gap_up.get('is_new_peak', False),
+                    'is_significant_drop': gap_up.get('is_significant_drop', False)
+                }
+                frontend_data.append(frontend_item)
+            
+            # Update the cache
+            set_cached_frontend_gap_ups(frontend_data)
+            self.current_gap_ups = frontend_data
+            
+            logger.info(f"✅ Updated frontend cache with {len(frontend_data)} gap-ups")
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating frontend cache: {e}")
     
     def get_stats(self):
         """Get monitoring statistics"""

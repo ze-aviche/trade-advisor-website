@@ -33,6 +33,15 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import gap_up_detector: {e}")
     REAL_DATA_AVAILABLE = False
 
+# Import trading bot (optional - may not be available if bot is not running)
+try:
+    from bot.trading_bot import trading_bot
+    BOT_AVAILABLE = True
+except ImportError as e:
+    app_logger.warning(f"Warning: Could not import trading_bot: {e}")
+    BOT_AVAILABLE = False
+    trading_bot = None
+
 # Import auth functions (these should always be available)
 try:
     from auth import auth_manager, require_auth
@@ -266,7 +275,7 @@ def handle_real_time_gap_up(gap_up_data):
     app_logger.info(f"🚨 Real-time gap-up broadcast: {gap_up_data['ticker']} - {gap_up_data['gap_percent']}%")
 
 def handle_trading_opportunity(gap_up_data):
-    """Handle real-time trading opportunities (25%+ gap-ups)"""
+    """Handle real-time trading opportunities"""
     try:
         ticker = gap_up_data['ticker']
         gap_percent = gap_up_data['gap_percent']
@@ -275,13 +284,17 @@ def handle_trading_opportunity(gap_up_data):
         from notification_service import notification_service
         notification_service.notify_gap_up_detection(gap_up_data)
         
-        # Notify the trading bot for subscription
-        if trading_bot.is_running:
-            import asyncio
-            asyncio.create_task(trading_bot.auto_subscribe_real_time_gap_up(ticker, gap_percent))
-            app_logger.warning(f"🎯 TRADING OPPORTUNITY: Notifying bot to subscribe to {ticker} ({gap_percent:.1f}%)")
-        else:
-            app_logger.info(f"⏸️ Bot not running, skipping trading opportunity for {ticker}")
+        # Directly call trading bot if available (avoid HTTP timeout)
+        try:
+            if trading_bot and trading_bot.is_running:
+                # Use asyncio to call the bot method asynchronously
+                import asyncio
+                asyncio.create_task(trading_bot.auto_subscribe_real_time_gap_up(ticker, gap_percent))
+                app_logger.warning(f"🎯 TRADING OPPORTUNITY: Directly subscribed to {ticker} ({gap_percent:.1f}%)")
+            else:
+                app_logger.info(f"⏸️ Bot not running, skipping subscription to {ticker}")
+        except Exception as e:
+            app_logger.error(f"❌ Error directly subscribing to {ticker}: {e}")
             
     except Exception as e:
         app_logger.error(f"❌ Error handling trading opportunity for {gap_up_data.get('ticker', 'unknown')}: {e}")
@@ -1913,6 +1926,25 @@ def clear_cache():
             'error': str(e)
         }), 500
 
+@app.route('/api/cache/invalidate-gap-ups', methods=['POST'])
+def invalidate_gap_ups_cache():
+    """Invalidate gap-ups cache specifically"""
+    try:
+        from gap_up_cache import invalidate_gap_up_cache
+        invalidate_gap_up_cache()
+        app_logger.info("🗑️ Gap-ups cache invalidated manually")
+        return jsonify({
+            'success': True,
+            'message': 'Gap-ups cache invalidated successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"❌ Error invalidating gap-ups cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/trades/convert-positions', methods=['POST'])
 def convert_positions_to_trades():
     """Convert closed positions to trade records"""
@@ -1938,6 +1970,38 @@ def convert_positions_to_trades():
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/bot/subscribe-gap-up', methods=['POST'])
+def subscribe_gap_up():
+    """Subscribe to a real-time gap-up stock"""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker')
+        gap_percent = data.get('gap_percent', 0)
+        
+        if not ticker:
+            return jsonify({'success': False, 'error': 'Ticker is required'}), 400
+        
+        # Check if gap is above 25%
+        if gap_percent < 25:
+            return jsonify({'success': False, 'error': f'Gap {gap_percent}% is below 25% threshold'}), 400
+        
+        # Try to subscribe using the trading bot
+        try:
+            if trading_bot and trading_bot.is_running:
+                import asyncio
+                asyncio.create_task(trading_bot.auto_subscribe_real_time_gap_up(ticker, gap_percent))
+                app_logger.warning(f"🎯 API SUBSCRIPTION: Added {ticker} ({gap_percent:.1f}% gap) to tracked symbols")
+                return jsonify({'success': True, 'message': f'Subscribed to {ticker}'})
+            else:
+                return jsonify({'success': False, 'error': 'Bot not running'}), 400
+        except Exception as e:
+            app_logger.error(f"❌ Error subscribing to {ticker}: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
+    except Exception as e:
+        app_logger.error(f"❌ Error in subscribe-gap-up endpoint: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app_logger.info("🚀 Starting Trading Advisor Web API...")

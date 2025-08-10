@@ -918,26 +918,18 @@ class TradingBot:
             
             logger.info("🔍 Checking for new gap-up stocks to subscribe...")
             
-            # Get gap-up stocks from database
-            from gap_up_detection_service import gap_up_detection_service
-            gap_up_stocks = gap_up_detection_service.get_gap_up_stocks(min_gap_percent=25.0)
+            # Get gap-up stocks directly from database
+            from bot.gap_up_db import gap_up_db
+            gap_up_stocks = gap_up_db.get_gap_up_stocks(min_gap_percent=25.0)
             
             # AUTO-SUBSCRIBE: Add new gap-up stocks to tracked symbols
             new_subscriptions = []
             for ticker in gap_up_stocks:
                 if ticker not in self.tracked_symbols:
-                    # Check if this stock meets our criteria for subscription
-                    try:
-                        current_data = data_manager.get_real_time_data(ticker)
-                        if current_data:
-                            gap_percent = current_data.get('gap_percent', 0)
-                            # Subscribe to stocks with significant gaps (≥25%)
-                            if gap_percent >= 25:
-                                self.tracked_symbols.add(ticker)
-                                new_subscriptions.append(ticker)
-                                logger.info(f"🎯 AUTO-SUBSCRIBE: Added {ticker} ({gap_percent:.1f}% gap) to tracked symbols")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Error checking {ticker} for subscription: {e}")
+                    # Subscribe to stocks with significant gaps (≥25%) directly from database
+                    self.tracked_symbols.add(ticker)
+                    new_subscriptions.append(ticker)
+                    logger.info(f"🎯 AUTO-SUBSCRIBE: Added {ticker} to tracked symbols (gap verified in database)")
             
             # Save updated subscription state if we added new stocks
             if new_subscriptions:

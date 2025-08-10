@@ -639,23 +639,57 @@ const app = createApp({
                 this.updateLoadingProgress('gapUps', 'error');
             },
             
+            async invalidateGapUpsCache() {
+                try {
+                    console.log('🗑️ Invalidating gap-ups cache...');
+                    const response = await fetch('http://localhost:5000/api/cache/invalidate-gap-ups', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        console.log('✅ Gap-ups cache invalidated successfully');
+                        this.showNotification('Gap-ups cache cleared successfully', 'success');
+                        
+                        // Reload gap-ups data immediately after cache invalidation
+                        await this.loadGapUps();
+                    } else {
+                        console.error('❌ Failed to invalidate gap-ups cache:', data.error);
+                        this.showNotification('Failed to clear cache: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    console.error('❌ Error invalidating gap-ups cache:', error);
+                    this.showNotification('Error clearing cache: ' + error.message, 'error');
+                }
+            },
+            
             async loadGapUpsBackground() {
                 try {
+                    console.log('🔄 Background gap-ups refresh triggered at:', new Date().toLocaleTimeString());
                     const response = await fetch('http://localhost:5000/api/gap-ups');
                     const data = await response.json();
                     
                     if (data.success) {
+                        const oldCount = this.gapUps.length;
                         this.gapUps = data.data || [];
                         this.stats.gapUps = this.gapUps.length;
+                        
+                        console.log(`✅ Background gap-ups updated: ${oldCount} → ${this.gapUps.length} stocks at ${new Date().toLocaleTimeString()}`);
                         
                         // Subscribe to real-time updates for gap-up stocks
                         if (this.socketConnected && this.gapUps.length > 0) {
                             const tickers = this.gapUps.map(stock => stock.ticker);
                             this.subscribeToStocks(tickers);
                         }
+                    } else {
+                        console.warn('⚠️ Background gap-ups API returned error:', data.message);
                     }
                 } catch (error) {
-                    console.error('Error loading gap-ups in background:', error);
+                    console.error('❌ Error loading gap-ups in background:', error);
                 }
             },
             
@@ -1875,8 +1909,11 @@ const app = createApp({
             
             // Start periodic updates
             startPeriodicUpdates() {
+                console.log('⏰ Starting periodic updates at:', new Date().toLocaleTimeString());
+                
                 // Update gap-ups every 30 seconds
                 setInterval(() => {
+                    console.log('⏰ 30-second interval triggered at:', new Date().toLocaleTimeString());
                     this.loadGapUpsBackground();
                 }, 30000);
                 

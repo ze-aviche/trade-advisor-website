@@ -8,13 +8,20 @@ import json
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Any
 import logging
+import os
+import pytz
 
 logger = logging.getLogger(__name__)
 
 class GapUpDatabase:
     """Database for storing gap-up detection results"""
     
-    def __init__(self, db_file: str = "bot/data/gap_up_cache.db"):
+    def __init__(self, db_file: str = None):
+        if db_file is None:
+            # Use absolute path to ensure consistency
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            db_file = os.path.join(script_dir, 'data', 'gap_up_cache.db')
+        
         self.db_file = db_file
         self.init_database()
     
@@ -121,13 +128,17 @@ class GapUpDatabase:
                     is_new_peak = stock.get('is_new_peak', False)
                     is_significant_drop = stock.get('is_significant_drop', False)
                     
+                    # Get current time in EST for consistent storage
+                    et_tz = pytz.timezone('US/Eastern')
+                    current_time_est = datetime.now(et_tz).strftime('%Y-%m-%d %H:%M:%S')
+                    
                     cursor.execute('''
                         INSERT OR REPLACE INTO gap_up_results 
                         (date, ticker, gap_percent, current_price, previous_close, 
-                         volume, market_cap, peak_gap_percent, is_new_peak, is_significant_drop)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         volume, market_cap, peak_gap_percent, is_new_peak, is_significant_drop, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (session_date, ticker, gap_percent, current_price, previous_close,
-                          volume, market_cap, peak_gap_percent, is_new_peak, is_significant_drop))
+                          volume, market_cap, peak_gap_percent, is_new_peak, is_significant_drop, current_time_est))
                 
                 conn.commit()
                 logger.info(f"💾 Stored {len(gap_up_data)} gap-up results for session {session_id}")
@@ -222,10 +233,37 @@ class GapUpDatabase:
                 
                 result = cursor.fetchone()
                 if not result or not result[0]:
+                    # No data for today, so data is not fresh
+                    logger.info(f"📊 No gap-up data found for today ({session_date})")
                     return False
                 
-                last_update = datetime.fromisoformat(result[0].replace('Z', '+00:00'))
-                age_minutes = (datetime.now() - last_update).total_seconds() / 60
+                # Parse the datetime string and handle timezone
+                last_update_str = result[0]
+                try:
+                    # Use EST timezone consistently
+                    et_tz = pytz.timezone('US/Eastern')
+                    current_time = datetime.now(et_tz)
+                    
+                    # Parse the timestamp
+                    last_update = datetime.fromisoformat(last_update_str)
+                    
+                    # Check if timestamp is in UTC (more than 2 hours ahead of current time)
+                    time_diff_hours = (last_update - current_time.replace(tzinfo=None)).total_seconds() / 3600
+                    
+                    if time_diff_hours > 2:  # Timestamp is more than 2 hours ahead (likely UTC)
+                        logger.info(f"📊 Detected UTC timestamp (diff: {time_diff_hours:.1f}h), converting to EST")
+                        last_update = last_update - timedelta(hours=5)  # Convert UTC to EST
+                        last_update = et_tz.localize(last_update)
+                    else:
+                        # Assume it's already in EST
+                        last_update = et_tz.localize(last_update)
+                    
+                    # Calculate age in minutes (both times are now in EST)
+                    age_minutes = (current_time - last_update).total_seconds() / 60
+                        
+                except ValueError as e:
+                    logger.error(f"❌ Error parsing timestamp '{last_update_str}': {e}")
+                    return False
                 
                 is_fresh = age_minutes < max_age_minutes
                 logger.info(f"📊 Gap-up data age: {age_minutes:.1f} minutes (fresh: {is_fresh})")

@@ -376,7 +376,7 @@ def get_gap_up_stocks():
         logger.error(f"❌ Error in get_gap_up_stocks: {e}")
         return []
 
-@cached_gap_up_detection(cache_type="default")
+@cached_gap_up_detection(cache_type="real_time")
 def get_gap_up_stocks_for_frontend():
     """
     Get all gap-up stocks for frontend display (not just new peaks)

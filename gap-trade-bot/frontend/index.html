@@ -288,9 +288,14 @@
                                 <span class="text-xs text-blue-400 bg-blue-900 bg-opacity-50 px-2 py-1 rounded">≥$1</span>
                             </div>
                         </div>
-                        <button @click="loadGapUps" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-sync-alt mr-2"></i>Refresh
-                        </button>
+                        <div class="flex items-center space-x-2">
+                            <button @click="loadGapUps" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                            </button>
+                            <button @click="invalidateGapUpsCache" class="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-trash mr-2"></i>Clear Cache
+                            </button>
+                        </div>
                     </div>
                     
                     <div v-if="loading.gapUps" class="text-center py-8">
@@ -310,7 +315,6 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Company</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Price</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Change%</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Gap%</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Volume</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Market Cap</th>
@@ -337,13 +341,6 @@
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm font-bold" :class="getPriceColor(stock)">
                                             ${{ stock.price }}
-                                        </div>
-                                    </td>
-                                    
-                                    <!-- Change% -->
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm" :class="getPriceChangeColor(stock.change_percent)">
-                                            {{ stock.change_percent >= 0 ? '+' : '' }}{{ stock.change_percent }}%
                                         </div>
                                     </td>
                                     
