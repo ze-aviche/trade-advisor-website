@@ -44,12 +44,20 @@ class TradingBotConfig:
     BROKER_ENDPOINT = os.getenv('ALPACA_ENDPOINT', 'https://paper-api.alpaca.markets')
     ALPACA_PAPER = True  # Use paper trading by default
     
-    # DAS Settings (for future use)
+    # DAS Settings
+    # DAS CMD API (legacy)
     DAS_API_KEY = os.getenv('DAS_API_KEY', '')
     DAS_SECRET_KEY = os.getenv('DAS_SECRET_KEY', '')
     DAS_BASE_URL = os.getenv('DAS_BASE_URL', 'https://api.dastrading.com')
-    DAS_FIX_HOST = os.getenv('DAS_FIX_HOST', '')
-    DAS_FIX_PORT = int(os.getenv('DAS_FIX_PORT', '0'))
+    
+    # DAS FIX API (preferred)
+    DAS_FIX_HOST = os.getenv('DAS_FIX_HOST', 'localhost')
+    DAS_FIX_PORT_STR = os.getenv('DAS_FIX_PORT', '5001')
+    DAS_FIX_PORT = int(DAS_FIX_PORT_STR) if DAS_FIX_PORT_STR else 5001
+    DAS_USERNAME = os.getenv('DAS_USERNAME', '')
+    DAS_PASSWORD = os.getenv('DAS_PASSWORD', '')
+    DAS_SENDER_COMP_ID = os.getenv('DAS_SENDER_COMP_ID', 'TRADINGBOT')
+    DAS_TARGET_COMP_ID = os.getenv('DAS_TARGET_COMP_ID', 'DAS')
     
     # Broker Selection
     BROKER_TYPE = os.getenv('BROKER_TYPE', 'alpaca')  # 'alpaca' or 'das'
@@ -89,15 +97,43 @@ class TradingBotConfig:
                 logger.warning("⚠️ No Alpaca credentials found - will use mock mode")
         
         elif broker_type == 'das':
-            if cls.DAS_API_KEY and cls.DAS_SECRET_KEY:
-                logger.info("✅ DAS credentials found - will use DAS trading")
+            # Check DAS FIX configuration first (preferred)
+            if (cls.DAS_FIX_HOST and cls.DAS_FIX_PORT and 
+                cls.DAS_USERNAME and cls.DAS_PASSWORD and
+                cls.DAS_USERNAME.strip() and cls.DAS_PASSWORD.strip()):
+                logger.info("✅ DAS FIX credentials found - will use DAS FIX trading")
+                logger.info(f"   FIX Host: {cls.DAS_FIX_HOST}:{cls.DAS_FIX_PORT}")
+                logger.info(f"   Sender: {cls.DAS_SENDER_COMP_ID}")
+                logger.info(f"   Target: {cls.DAS_TARGET_COMP_ID}")
+            # Check DAS CMD configuration (fallback)
+            elif cls.DAS_API_KEY and cls.DAS_SECRET_KEY and cls.DAS_API_KEY.strip() and cls.DAS_SECRET_KEY.strip():
+                logger.info("✅ DAS CMD credentials found - will use DAS CMD trading (fallback)")
             else:
                 logger.warning("⚠️ No DAS credentials found - will use mock mode")
+                logger.info("   To use DAS FIX API, set: DAS_FIX_HOST, DAS_FIX_PORT, DAS_USERNAME, DAS_PASSWORD")
+                logger.info("   To use DAS CMD API, set: DAS_API_KEY, DAS_SECRET_KEY")
         
         else:
             logger.warning(f"⚠️ Unknown broker type: {broker_type} - will use mock mode")
         
         return True
+    
+    @classmethod
+    def get_das_config_info(cls) -> Dict[str, Any]:
+        """Get DAS configuration information"""
+        return {
+            'fix_configured': bool(cls.DAS_FIX_HOST and cls.DAS_FIX_PORT and 
+                                  cls.DAS_USERNAME and cls.DAS_PASSWORD and
+                                  cls.DAS_USERNAME.strip() and cls.DAS_PASSWORD.strip()),
+            'cmd_configured': bool(cls.DAS_API_KEY and cls.DAS_SECRET_KEY and
+                                 cls.DAS_API_KEY.strip() and cls.DAS_SECRET_KEY.strip()),
+            'fix_host': cls.DAS_FIX_HOST,
+            'fix_port': cls.DAS_FIX_PORT,
+            'sender_comp_id': cls.DAS_SENDER_COMP_ID,
+            'target_comp_id': cls.DAS_TARGET_COMP_ID,
+            'username_configured': bool(cls.DAS_USERNAME and cls.DAS_USERNAME.strip()),
+            'password_configured': bool(cls.DAS_PASSWORD and cls.DAS_PASSWORD.strip())
+        }
 
 # Global config instance
 config = TradingBotConfig() 
