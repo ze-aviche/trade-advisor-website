@@ -14,6 +14,9 @@
 10. [Frontend Architecture](#frontend-architecture)
 11. [Deployment & Operations](#deployment--operations)
 12. [Troubleshooting](#troubleshooting)
+13. [Gap Tracking System](#gap-tracking-system)
+14. [Dual-Strategy Analysis](#dual-strategy-analysis)
+15. [Test Organization](#test-organization)
 
 ---
 
@@ -1496,6 +1499,171 @@ CORS(app, origins=["*"], methods=["GET", "POST", "OPTIONS"])
 - **Efficient DOM Updates**: Use Vue.js reactivity
 - **Memory Management**: Clean up subscriptions
 - **Lazy Loading**: Load data on demand
+
+---
+
+## 🔍 Gap Tracking System
+
+### Problem Solved
+The **Gap Tracking System** prevents overkill detection by tracking peak gap percentages throughout the trading day. It ensures stocks are only detected when they make new peaks (for breakout strategy) or when they drop significantly from their peak (for shorting strategy).
+
+### Before vs After
+
+#### Before (Overkill Detection)
+```
+9:30 AM  - ZEPP: 25% gap → DETECTED ✅
+10:30 AM - ZEPP: 35% gap → DETECTED ✅  
+12:00 PM - ZEPP: 38.12% gap → DETECTED ✅
+1:00 PM  - ZEPP: 35% gap → DETECTED ❌ (Not new peak)
+2:00 PM  - ZEPP: 30% gap → DETECTED ❌ (Not new peak)
+3:00 PM  - ZEPP: 25% gap → DETECTED ❌ (Not new peak)
+```
+
+#### After (Smart Detection)
+```
+9:30 AM  - ZEPP: 25% gap → NEW PEAK ✅ (Breakout candidate)
+10:30 AM - ZEPP: 35% gap → NEW PEAK ✅ (Breakout candidate)  
+12:00 PM - ZEPP: 38.12% gap → NEW PEAK ✅ (Breakout candidate)
+1:00 PM  - ZEPP: 35% gap → SKIP ❌ (Not new peak)
+2:00 PM  - ZEPP: 30% gap → SKIP ❌ (Not new peak)
+3:00 PM  - ZEPP: 25% gap → DROP CANDIDATE ✅ (Shorting candidate)
+```
+
+### Implementation
+
+#### GapTracker Class
+```python
+class GapTracker:
+    """Tracks peak gap percentages to prevent overkill detection"""
+    
+    def update_gap(self, ticker, current_gap, current_price) -> Tuple[bool, Dict]:
+        """Update gap and determine if it's a new peak"""
+        
+    def is_significant_drop(self, ticker, current_gap, drop_threshold=10.0) -> bool:
+        """Check if stock has dropped significantly from peak"""
+        
+    def get_peak_data(self, ticker) -> Optional[Dict]:
+        """Get peak data for a ticker"""
+```
+
+#### Data Persistence
+```python
+# JSON-based persistence
+{
+    "date": "2024-01-15",
+    "peak_gaps": {
+        "ZEPP": {
+            "peak_gap": 38.12,
+            "peak_price": 13.81,
+            "peak_time": "12:00:00",
+            "first_detected": "09:30:00",
+            "detection_count": 6,
+            "last_updated": "15:00:00"
+        }
+    }
+}
+```
+
+### Benefits
+- ✅ Only detects new peaks for breakout strategy
+- ✅ Tracks significant drops for shorting strategy
+- ✅ Eliminates noise and false signals
+- ✅ Optimizes computational resources
+
+---
+
+## 🎯 Dual-Strategy Analysis
+
+### Overview
+The trading bot now analyzes **BOTH** Break Out and Gap Up Short strategies for **EVERY** subscribed stock simultaneously, rather than choosing one strategy per stock.
+
+### Strategy Analysis
+For each subscribed stock, the bot analyzes:
+
+#### **Break Out Strategy** (Always Available)
+- **Direction**: LONG
+- **Conditions**: Gap up, above HOD, above VWAP, sufficient volume, market active
+- **Target**: 50% profit
+- **Stop Loss**: 15%
+
+#### **Gap Up Short Strategy** (Available After 10 AM for High Gaps)
+- **Direction**: SHORT  
+- **Conditions**: Gap ≥40%, after 10 AM, volume in range, below premarket high
+- **Target**: 15% profit (short)
+- **Stop Loss**: 15% (short)
+
+### Strategy Selection Logic
+```python
+# Analyze both strategies
+break_out_analysis = break_out_strategy.analyze_entry_conditions(ticker, data)
+gap_up_short_analysis = gap_up_short_strategy.analyze_entry_conditions(ticker, data)
+
+# Select the BEST strategy (highest confidence with entry signal)
+best_strategy = None
+best_confidence = 0
+
+if break_out_analysis.get('entry_signal') and break_out_analysis.get('confidence') > best_confidence:
+    best_strategy = "Break Out"
+    best_confidence = break_out_analysis.get('confidence')
+
+if gap_up_short_analysis.get('entry_signal') and gap_up_short_analysis.get('confidence') > best_confidence:
+    best_strategy = "Gap Up Short" 
+    best_confidence = gap_up_short_analysis.get('confidence')
+```
+
+### Benefits
+- ✅ **Maximum Opportunity Capture**: No missed trades due to strategy selection
+- ✅ **Real-Time Adaptation**: Stocks can trigger either strategy at any time
+- ✅ **Confidence-Based Selection**: Always executes the highest confidence strategy
+- ✅ **Risk Management**: Single entry per stock prevents conflicting positions
+- ✅ **Market Timing**: Respects time-based restrictions (Gap Up Short after 10 AM)
+
+---
+
+## 🧪 Test Organization
+
+### Test File Structure
+```
+backend/
+├── tests/
+│   ├── README.md                    # Main test documentation
+│   ├── gap_tracking/
+│   │   ├── README.md               # Gap tracking test docs
+│   │   └── test_gap_tracker.py     # Gap tracking tests
+│   ├── position_sizing/
+│   │   ├── README.md               # Position sizing test docs
+│   │   ├── test_position_sizing.py # Position sizing tests
+│   │   ├── test_positions.py       # Position retrieval tests
+│   │   └── test_position_check.py  # Position validation tests
+│   ├── bot_integration/
+│   │   ├── README.md               # Bot integration test docs
+│   │   ├── test_bot_integration.py # Bot integration tests
+│   │   ├── test_real_trading.py    # Real trading tests
+│   │   └── test_realistic_conditions.py # Market condition tests
+│   ├── api/
+│   │   ├── README.md               # API test docs
+│   │   ├── test_bot_status.py      # Bot status API tests
+│   │   ├── test_web_api.py         # Web API tests
+│   │   ├── test_trades.py          # Trade API tests
+│   │   ├── test_unsubscribe.py     # Unsubscribe API tests
+│   │   ├── test_auto_sync.py       # Auto sync tests
+│   │   ├── check_account.py        # Account integration tests
+│   │   ├── test_small_caps.py      # Small caps tests
+│   │   ├── test_period_dropdown.py # Period dropdown tests
+│   │   ├── test_data_fields.py     # Data field tests
+│   │   ├── simple_cache_test.py    # Cache tests
+│   │   └── test_cache.py           # Advanced cache tests
+│   └── strategies/
+│       ├── README.md               # Strategy test docs
+│       └── test_ai_agent.py        # AI agent tests
+```
+
+### Test Categories
+- **Gap Tracking Tests**: Verify peak tracking and drop detection
+- **Position Sizing Tests**: Validate position calculation logic
+- **Bot Integration Tests**: Test bot behavior under realistic conditions
+- **API Tests**: Verify all API endpoints and functionality
+- **Strategy Tests**: Test individual strategy implementations
 
 ---
 
