@@ -38,12 +38,6 @@ class TradingBotConfig:
     MAX_PORTFOLIO_RISK = 0.02  # Maximum 2% portfolio risk per trade
     
     # Broker Configuration
-    # Alpaca Settings
-    BROKER_API_KEY = os.getenv('ALPACA_API_KEY', '')
-    BROKER_SECRET = os.getenv('ALPACA_SECRET_KEY', '')
-    BROKER_ENDPOINT = os.getenv('ALPACA_ENDPOINT', 'https://paper-api.alpaca.markets')
-    ALPACA_PAPER = True  # Use paper trading by default
-    
     # DAS Settings
     # DAS CMD API (legacy)
     DAS_API_KEY = os.getenv('DAS_API_KEY', '')
@@ -60,7 +54,7 @@ class TradingBotConfig:
     DAS_TARGET_COMP_ID = os.getenv('DAS_TARGET_COMP_ID', 'DAS')
     
     # Broker Selection
-    BROKER_TYPE = os.getenv('BROKER_TYPE', 'alpaca')  # 'alpaca' or 'das'
+    BROKER_TYPE = os.getenv('BROKER_TYPE', 'das')  # 'das' only
     
     # Polygon API Settings
     POLYGON_API_KEY = os.getenv('POLYGON_API_KEY', '')
@@ -90,13 +84,7 @@ class TradingBotConfig:
         # Check broker configuration
         broker_type = cls.BROKER_TYPE.lower()
         
-        if broker_type == 'alpaca':
-            if cls.BROKER_API_KEY and cls.BROKER_SECRET:
-                logger.info("✅ Alpaca credentials found - will use Alpaca trading")
-            else:
-                logger.warning("⚠️ No Alpaca credentials found - will use mock mode")
-        
-        elif broker_type == 'das':
+        if broker_type == 'das':
             # Check DAS FIX configuration first (preferred)
             if (cls.DAS_FIX_HOST and cls.DAS_FIX_PORT and 
                 cls.DAS_USERNAME and cls.DAS_PASSWORD and

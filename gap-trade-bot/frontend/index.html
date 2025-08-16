@@ -676,13 +676,15 @@
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-lg font-medium text-white">Trade History</h3>
                         <div class="flex items-center space-x-3">
-                            <!-- Sync Trades Button (Moved to front for visibility) -->
-                            <button @click="syncTradesFromAlpaca" 
-                                    :disabled="loading.syncTrades"
-                                    class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-purple-500">
-                                <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-download-alt'" class="mr-2"></i>
-                                {{ loading.syncTrades ? 'Syncing...' : 'Sync Trades & Positions from Alpaca' }}
-                            </button>
+                            <!-- Sync Trades Buttons -->
+                            <div class="flex items-center space-x-2">
+                                <button @click="syncTradesFromDAS" 
+                                        :disabled="loading.syncTrades"
+                                        class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-green-500">
+                                    <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-download'" class="mr-2"></i>
+                                    {{ loading.syncTrades ? 'Syncing...' : 'Sync from DAS' }}
+                                </button>
+                            </div>
                             
                             <!-- Ticker Search -->
                             <div class="flex items-center space-x-2">
@@ -713,8 +715,12 @@
                                 </select>
                             </div>
                             
-                            <!-- Download Buttons -->
+                            <!-- Download and Import Buttons -->
                             <div class="flex items-center space-x-2">
+                                <button @click="showImportModal = true" 
+                                        class="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded-md text-sm font-medium">
+                                    <i class="fas fa-upload mr-2"></i>Import DAS Data
+                                </button>
                                 <button @click="downloadTradeHistoryCSV" 
                                         class="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-md text-sm font-medium">
                                     <i class="fas fa-download mr-2"></i>CSV
@@ -1197,7 +1203,47 @@
         </main>
     </div>
 
-
+    <!-- Import DAS Data Modal -->
+    <div v-if="showImportModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-white">Import DAS Trades Data</h3>
+                <button @click="showImportModal = false" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Paste DAS Trades Data (Format: %TRADE 1 MSFT B 100 28.3)
+                </label>
+                <textarea v-model="dasTradesData" 
+                          placeholder="Paste your DAS trades data here..."
+                          class="w-full h-32 bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2 focus:border-blue-500 focus:outline-none"
+                          rows="6"></textarea>
+            </div>
+            
+            <div class="flex items-center justify-between">
+                <div class="text-sm text-gray-400">
+                    <p>Example format:</p>
+                    <p class="font-mono text-xs">%TRADE 1 MSFT B 100 28.3</p>
+                    <p class="font-mono text-xs">%TRADE 2 AAPL S 50 150.25</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button @click="showImportModal = false" 
+                            class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium">
+                        Cancel
+                    </button>
+                    <button @click="importDASData" 
+                            :disabled="!dasTradesData.trim() || loading.importDAS"
+                            class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium">
+                        <i :class="loading.importDAS ? 'fas fa-spinner fa-spin' : 'fas fa-upload'" class="mr-2"></i>
+                        {{ loading.importDAS ? 'Importing...' : 'Import' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts -->
     <script src="app.js?v=20250731187100"></script>

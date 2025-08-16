@@ -36,7 +36,8 @@ const app = createApp({
                     dashboardTrades: false,
                     dashboardPnL: false,
                     syncTrades: false,
-                unsubscribe: false
+                    unsubscribe: false,
+                    importDAS: false
                 },
                 
                 // Charts
@@ -98,6 +99,10 @@ const app = createApp({
                 // Dashboard Trade Date Range
                 dashboardTradeFromDate: '',
                 dashboardTradeToDate: '',
+                
+                // Import DAS Data Modal
+                showImportModal: false,
+                dasTradesData: '',
                 
                 // Dashboard chart data
                 dashboardTrades: [],
@@ -477,8 +482,7 @@ const app = createApp({
                     // Refresh all bot-related data in parallel
                     const refreshTasks = [
                         this.loadBotStatus(),
-                        this.loadStrategiesFromBackend(),
-                        this.syncTradesFromAlpaca()
+                        this.loadStrategiesFromBackend()
                     ];
                     
                     await Promise.all(refreshTasks);
@@ -501,29 +505,10 @@ const app = createApp({
                     }
                 }, 5000);
                 
-                // AUTOMATIC BACKGROUND SYNC: Sync trades from Alpaca every 30 seconds
-                setInterval(() => {
-                    this.autoSyncTradesFromAlpaca();
-                }, 30000); // 30 seconds
+                // Auto-sync functionality removed - no longer using Alpaca
             },
             
-            async autoSyncTradesFromAlpaca() {
-                try {
-                    console.log('🔄 Automatic background sync: Syncing trades from Alpaca...');
-                    const response = await axios.post('/api/bot/sync-trades');
-                    
-                    if (response.data.success) {
-                        console.log('✅ Automatic sync completed:', response.data.data);
-                        // Reload trade history and bot status to show latest data
-                        await this.loadTradeHistory();
-                        await this.loadBotStatus();
-                    } else {
-                        console.warn('⚠️ Automatic sync failed:', response.data.error);
-                    }
-                } catch (error) {
-                    console.error('❌ Error in automatic sync:', error);
-                }
-            },
+
             
             async loadStats() {
                 console.log('📊 Loading stats...');
@@ -793,23 +778,53 @@ const app = createApp({
                     
                     // Build query parameters
                     const params = new URLSearchParams();
-                    params.append('period', this.tradeHistoryPeriod);
+                    
+                    // Convert period to date range
+                    const days = parseInt(this.tradeHistoryPeriod);
+                    const endDate = new Date().toISOString().split('T')[0];
+                    const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
+                    
+                    params.append('start_date', startDate);
+                    params.append('end_date', endDate);
+                    params.append('limit', '1000');
                     
                     if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim()) {
-                        params.append('ticker', this.tradeHistoryTicker.trim().toUpperCase());
+                        params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
                     }
                     
                     const response = await fetch(`http://localhost:5000/api/trades?${params.toString()}`);
                     const data = await response.json();
                     
                     if (data.success) {
-                        this.trades = data.trades || [];
+                        // Transform the data to match the expected format
+                        this.trades = (data.data.trades || []).map(trade => ({
+                            id: trade.id,
+                            ticker: trade.symbol,
+                            direction: trade.side === 'B' ? 'long' : (trade.side === 'S' ? 'short' : 'short'),
+                            quantity: trade.quantity,
+                            price: trade.price,
+                            status: 'filled',
+                            pnl: trade.pnl || 0,
+                            submitted_at: trade.trade_date + ' ' + trade.trade_time,
+                            route: trade.route,
+                            order_id: trade.order_id,
+                            ecn_fee: trade.ecn_fee
+                        }));
+                        
                         console.log(`📊 Loaded ${this.trades.length} trades${this.tradeHistoryTicker ? ` for ${this.tradeHistoryTicker}` : ''}`);
+                        
+                        // Update stats if summary is available
+                        if (data.data.summary) {
+                            this.stats.totalTrades = data.data.summary.total_trades || 0;
+                            this.stats.pnl = data.data.summary.total_pnl || 0;
+                        }
                     } else {
-                        console.error('Failed to load trade history:', data.message);
+                        console.error('Failed to load trade history:', data.error);
+                        this.showNotification('Failed to load trade history: ' + data.error, 'error');
                     }
                 } catch (error) {
                     console.error('Error loading trade history:', error);
+                    this.showNotification('Error loading trade history: ' + error.message, 'error');
                 } finally {
                     this.loading.trades = false;
                 }
@@ -1930,10 +1945,7 @@ const app = createApp({
                     this.loadDashboardData();
                 }, 120000); // 2 minutes
                 
-                // AUTOMATIC BACKGROUND SYNC: Sync trades from Alpaca every 30 seconds
-                setInterval(() => {
-                    this.autoSyncTradesFromAlpaca();
-                }, 30000); // 30 seconds
+                // Auto-sync functionality removed - no longer using Alpaca
             },
             
             // Strategy settings management
@@ -2036,33 +2048,73 @@ const app = createApp({
                 }
             },
             
-            async syncTradesFromAlpaca() {
+
+            
+            async syncTradesFromDAS() {
                 try {
-                    console.log('🔄 Syncing trades and positions from Alpaca...');
+                    console.log('🔄 Syncing trades from DAS Trader...');
                     this.loading.syncTrades = true;
                     
-                    const response = await axios.post('/api/bot/sync-trades');
+                    const response = await axios.post('/api/trades/sync-das');
                     
                     if (response.data.success) {
                         const data = response.data.data;
-                        const message = `✅ Synced ${data.synced_count} items from Alpaca (${data.total_orders} orders, ${data.total_positions} positions)`;
+                        const message = `✅ Synced ${data.added_count} trades from DAS Trader`;
                         this.showNotification(message, 'success');
-                        console.log('✅ Sync completed successfully:', data);
+                        console.log('✅ DAS sync completed successfully:', data);
                         
-                        // Reload both trade history and bot status after sync
-                        await Promise.all([
-                            this.loadTradeHistory(),
-                            this.loadBotStatus()
-                        ]);
+                        // Reload trade history after sync
+                        await this.loadTradeHistory();
                     } else {
-                        this.showNotification(`❌ Failed to sync from Alpaca: ${response.data.error}`, 'error');
-                        console.error('❌ Sync failed:', response.data.error);
+                        this.showNotification(`❌ Failed to sync from DAS: ${response.data.error}`, 'error');
+                        console.error('❌ DAS sync failed:', response.data.error);
                     }
-                    } catch (error) {
-                    console.error('❌ Error syncing from Alpaca:', error);
-                    this.showNotification('❌ Error syncing from Alpaca', 'error');
+                } catch (error) {
+                    console.error('❌ Error syncing from DAS:', error);
+                    this.showNotification('❌ Error syncing from DAS Trader', 'error');
                 } finally {
                     this.loading.syncTrades = false;
+                }
+            },
+            
+            async importDASData() {
+                try {
+                    if (!this.dasTradesData.trim()) {
+                        this.showNotification('Please enter DAS trades data', 'warning');
+                        return;
+                    }
+                    
+                    console.log('🔄 Importing DAS trades data...');
+                    this.loading.importDAS = true;
+                    
+                    const response = await axios.post('/api/trades/import-das', {
+                        das_trades_text: this.dasTradesData
+                    });
+                    
+                    if (response.data.success) {
+                        const data = response.data.data;
+                        const message = `✅ Successfully imported ${data.added_count} trades from DAS data`;
+                        this.showNotification(message, 'success');
+                        console.log('✅ DAS data import completed:', data);
+                        
+                        // Close modal and reload trade history
+                        this.showImportModal = false;
+                        this.dasTradesData = '';
+                        await this.loadTradeHistory();
+                        
+                        // Show errors if any
+                        if (data.errors && data.errors.length > 0) {
+                            console.warn('⚠️ Some trades failed to import:', data.errors);
+                        }
+                    } else {
+                        this.showNotification(`❌ Failed to import DAS data: ${response.data.error}`, 'error');
+                        console.error('❌ DAS data import failed:', response.data.error);
+                    }
+                } catch (error) {
+                    console.error('❌ Error importing DAS data:', error);
+                    this.showNotification('❌ Error importing DAS data', 'error');
+                } finally {
+                    this.loading.importDAS = false;
                 }
             },
             

@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 load_dotenv()
 
 def get_polygon_client():
-    """Get Polygon API client with API key"""
+    """Get Polygon API client with API key and timeout configuration"""
     api_key = os.environ.get('POLYGON_API_KEY')
     if not api_key:
         api_key = "5TcX1iTW6Fu2vysfbRbw60oW3PLWsdPT"
@@ -32,7 +32,18 @@ def get_polygon_client():
     if not api_key:
         raise ValueError("POLYGON_API_KEY environment variable is required")
     
-    return RESTClient(api_key)
+    # Create client with timeout configuration
+    client = RESTClient(api_key)
+    
+    # Set timeout for requests (if supported by the client)
+    try:
+        # Some REST clients support timeout configuration
+        if hasattr(client, 'timeout'):
+            client.timeout = 15  # 15 seconds timeout
+    except:
+        pass  # If timeout is not supported, continue without it
+    
+    return client
 
 def count_vwap_crosses(polygon_client, ticker, date):
     """
@@ -709,8 +720,14 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
         # If no cache or insufficient cached data, fetch from Polygon using batch processing
         logger.info(f"🔄 Fetching fresh batch data from Polygon for {ticker}")
         
-        # Use batch processing for much faster data retrieval
-        daily_data = get_batch_daily_data(ticker, from_date, to_date)
+        # Add timeout protection for API calls
+        try:
+            # Use batch processing for much faster data retrieval
+            daily_data = get_batch_daily_data(ticker, from_date, to_date)
+        except Exception as e:
+            logger.error(f"❌ Error fetching batch data for {ticker}: {e}")
+            # Return empty list instead of None to avoid breaking the API
+            return []
         
         if not daily_data:
             logger.error(f"❌ No historical data found for {ticker}")

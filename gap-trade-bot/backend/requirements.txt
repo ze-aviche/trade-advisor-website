@@ -3,13 +3,12 @@ Flask-CORS==4.0.0
 Flask-SocketIO==5.3.6
 python-socketio==5.8.0
 python-engineio==4.7.1
-requests==2.31.0
+requests>=2.32.4,<3.0.0
 python-dotenv==1.0.0
 polygon-api-client==1.15.3
 pytz==2025.2
-websockets>=11.0.3,<12.0.0
+websockets>=10.3,<15.0
 asyncio-mqtt==0.16.1
-alpaca-py==0.13.1
 psutil==5.9.5 
 
 # Google LLM Dependencies

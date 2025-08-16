@@ -55,7 +55,7 @@ class OptimizedRealTimeGapDetector:
         # Cache for frontend updates
         self.current_gap_ups = []
         
-        logger.info("✅ Optimized real-time gap-up detector initialized with hybrid approach")
+        logger.info("Optimized real-time gap-up detector initialized with hybrid approach")
         logger.info(f"📊 Alert threshold: {self.alert_threshold}%, Trading threshold: {self.trading_threshold}%")
     
     def _get_polygon_client(self):
@@ -63,12 +63,12 @@ class OptimizedRealTimeGapDetector:
         try:
             api_key = os.getenv('POLYGON_API_KEY')
             if not api_key:
-                logger.error("❌ POLYGON_API_KEY not found in environment")
+                logger.error("POLYGON_API_KEY not found in environment")
                 return None
             
             return RESTClient(api_key)
         except Exception as e:
-            logger.error(f"❌ Error creating Polygon client: {e}")
+            logger.error(f"Error creating Polygon client: {e}")
             return None
     
     def _check_rate_limit(self):
@@ -83,7 +83,7 @@ class OptimizedRealTimeGapDetector:
         # Check if we're over limit
         if self.api_calls >= self.max_api_calls_per_minute:
             wait_time = 60 - (current_time - self.last_api_reset)
-            logger.warning(f"⚠️ Rate limit reached, waiting {wait_time:.1f} seconds")
+            logger.warning(f"Rate limit reached, waiting {wait_time:.1f} seconds")
             time.sleep(wait_time)
             return False
         
@@ -206,7 +206,7 @@ class OptimizedRealTimeGapDetector:
                 return aggs[0].close
             return None
         except Exception as e:
-            logger.error(f"❌ Error getting previous close for {ticker}: {e}")
+            logger.error(f"Error getting previous close for {ticker}: {e}")
             return None
     
     def get_current_price(self, ticker):
@@ -243,7 +243,7 @@ class OptimizedRealTimeGapDetector:
             
             return None
         except Exception as e:
-            logger.error(f"❌ Error getting current price for {ticker}: {e}")
+            logger.error(f"Error getting current price for {ticker}: {e}")
             return None
     
     def check_gap_up(self, ticker):
@@ -294,7 +294,7 @@ class OptimizedRealTimeGapDetector:
             
             return None
         except Exception as e:
-            logger.error(f"❌ Error checking gap-up for {ticker}: {e}")
+            logger.error(f"Error checking gap-up for {ticker}: {e}")
             return None
     
     def _adaptive_scan_interval(self):
@@ -306,7 +306,7 @@ class OptimizedRealTimeGapDetector:
         # During peak hours, scan very frequently
         if peak_hours:
             if not hasattr(self, 'peak_hours_active') or not self.peak_hours_active:
-                logger.info("🚀 Peak hours detected (9:30-11:30 AM ET or 3:00-5:00 PM ET) - maximum scan frequency")
+                logger.info("Peak hours detected (9:30-11:30 AM ET or 3:00-5:00 PM ET) - maximum scan frequency")
                 self.peak_hours_active = True
                 self.market_hours_active = True
             return 2  # 2 seconds during peak hours
@@ -332,7 +332,7 @@ class OptimizedRealTimeGapDetector:
             # Adaptive scan interval
             scan_interval = self._adaptive_scan_interval()
             
-            logger.info(f"🔍 Scanning for real-time gap-ups (scan #{self.scan_count}, interval: {scan_interval}s)")
+            logger.info(f"Scanning for real-time gap-ups (scan #{self.scan_count}, interval: {scan_interval}s)")
             
             # Get all gainers from Polygon
             if not self._check_rate_limit():
@@ -344,7 +344,7 @@ class OptimizedRealTimeGapDetector:
             )
             
             if not tickers:
-                logger.warning("❌ No tickers returned from Polygon API")
+                logger.warning("No tickers returned from Polygon API")
                 return []
             
             gap_ups_found = []
@@ -400,7 +400,7 @@ class OptimizedRealTimeGapDetector:
             return gap_ups_found
             
         except Exception as e:
-            logger.error(f"❌ Error scanning for gap-ups: {e}")
+            logger.error(f"Error scanning for gap-ups: {e}")
             return []
     
     def start_monitoring(self, callback=None, trading_callback=None):
@@ -419,13 +419,13 @@ class OptimizedRealTimeGapDetector:
                     time.sleep(sleep_time)
                     
                 except Exception as e:
-                    logger.error(f"❌ Error in monitoring worker: {e}")
+                    logger.error(f"Error in monitoring worker: {e}")
                     time.sleep(60)  # Wait longer on error
         
         # Start monitoring thread
         thread = threading.Thread(target=monitor_worker, daemon=True, name="GapUpMonitor")
         thread.start()
-        logger.info("✅ Optimized real-time gap-up monitoring started with hybrid approach")
+        logger.info("Optimized real-time gap-up monitoring started with hybrid approach")
     
     def stop_monitoring(self):
         """Stop real-time monitoring"""
@@ -460,10 +460,10 @@ class OptimizedRealTimeGapDetector:
             set_cached_frontend_gap_ups(frontend_data)
             self.current_gap_ups = frontend_data
             
-            logger.info(f"✅ Updated frontend cache with {len(frontend_data)} gap-ups")
+            logger.info(f"Updated frontend cache with {len(frontend_data)} gap-ups")
             
         except Exception as e:
-            logger.error(f"❌ Error updating frontend cache: {e}")
+            logger.error(f"Error updating frontend cache: {e}")
     
     def get_stats(self):
         """Get monitoring statistics"""

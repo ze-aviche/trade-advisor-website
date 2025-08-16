@@ -169,6 +169,11 @@ def check_market_timing():
     now = dt.now()
     current_time = now.time()
     
+    # Check if it's a weekend (Saturday = 5, Sunday = 6)
+    if now.weekday() >= 5:
+        logger.info("📈 Weekend detected - market is closed")
+        return "closed"
+    
     # Market hours (EST/EDT)
     market_open = dt.strptime("09:30", "%H:%M").time()
     market_close = dt.strptime("16:00", "%H:%M").time()

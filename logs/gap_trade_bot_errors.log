@@ -1,5 +1,0 @@
-2025-07-31 12:59:27,036 | historical_data | ERROR | historical_data.py:716 | get_historical_gap_up_data() | ❌ No historical data found for SGNX
-2025-07-31 12:59:30,947 | historical_data | ERROR | historical_data.py:716 | get_historical_gap_up_data() | ❌ No historical data found for SGNX
-2025-07-31 12:59:33,698 | historical_data | ERROR | historical_data.py:716 | get_historical_gap_up_data() | ❌ No historical data found for SGNX
-2025-07-31 12:59:42,662 | historical_data | ERROR | historical_data.py:716 | get_historical_gap_up_data() | ❌ No historical data found for SGNX
-2025-07-31 12:59:51,744 | historical_data | ERROR | historical_data.py:716 | get_historical_gap_up_data() | ❌ No historical data found for SGNX
