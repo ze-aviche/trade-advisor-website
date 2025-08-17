@@ -523,9 +523,13 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
         cached_data = []  # Initialize cached_data in outer scope
         
         if use_cache:
-            # Check cache status
+            # Check cache status and freshness
             cache_status = historical_cache.get_cache_status(ticker)
             logger.info(f"Cache status for {ticker}: {cache_status}")
+            
+            # Check if cache is fresh (within 24 hours for recent data)
+            is_fresh = historical_cache.is_data_fresh(ticker, max_age_hours=24)
+            logger.info(f"Cache freshness for {ticker}: {'Fresh' if is_fresh else 'Stale'}")
             
             # Get cached data for the requested range
             cached_data = historical_cache.get_cached_data(ticker, from_date, to_date)
@@ -544,6 +548,12 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                 
                 logger.info(f"📊 Requested range: {requested_start} to {requested_end}")
                 logger.info(f"📊 Found {len(requested_cached_data)} gap-up days in requested range")
+                
+                # If cache is fresh and we have data, return it immediately
+                if is_fresh and requested_cached_data:
+                    requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
+                    logger.info(f"✅ Returning {len(requested_cached_data)} fresh cached gap-up days for {ticker}")
+                    return requested_cached_data
                 
                 # Check if requested range extends beyond cached range
                 cache_range = cache_status.get('data_range', {})
@@ -655,11 +665,6 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                                 logger.info(f"DEBUG: Found {len(missing_after)} missing dates after cache")
                             
                             logger.info(f"DEBUG: Found {len(missing_dates)} total missing dates for requested range")
-                        else:
-                            # Requested range is completely within cached range, but no gap-ups found
-                            logger.info(f"✅ Requested range is within cache, but no gap-up days found in this period")
-                            return []
-                            logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
                             
                             if missing_dates:
                                 # Use optimized batch delta processing instead of individual day fetching
@@ -681,6 +686,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                             else:
                                 logger.info(f"✅ No missing dates to fetch for requested range")
                                 return []
+                        else:
+                            # Requested range is completely within cached range, but no gap-ups found
+                            logger.info(f"✅ Requested range is within cache, but no gap-up days found in this period")
+                            return []
                     else:
                         # No cache range info, fetch delta for the entire requested range
                         logger.info(f"🔄 No cache range info, fetching delta for entire requested range")

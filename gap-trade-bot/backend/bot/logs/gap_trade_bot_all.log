@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "C:\Users\avina\OneDrive\Documents\Projects\trade-advisor-website\gap-trade-bot\backend\bot\run_bot.py", line 19, in <module>
-    from trading_bot import trading_bot
-  File "C:\Users\avina\OneDrive\Documents\Projects\trade-advisor-website\gap-trade-bot\backend\bot\trading_bot.py", line 20, in <module>
-    from bot.config import config as bot_config
-  File "C:\Users\avina\OneDrive\Documents\Projects\trade-advisor-website\gap-trade-bot\backend\bot\config.py", line 7, in <module>
-    from dotenv import load_dotenv
-ModuleNotFoundError: No module named 'dotenv'

@@ -46,6 +46,22 @@ except ImportError as e:
     auth_manager = None
     require_auth = lambda f: f  # No-op decorator
 
+# Import scheduled DAS sync
+try:
+    from scheduled_das_sync import start_scheduled_sync, stop_scheduled_sync, get_sync_status, manual_sync
+    SCHEDULED_SYNC_AVAILABLE = True
+except ImportError as e:
+    app_logger.warning(f"Warning: Could not import scheduled_das_sync: {e}")
+    SCHEDULED_SYNC_AVAILABLE = False
+
+# Import trading bot
+try:
+    from bot.trading_bot import trading_bot
+    BOT_AVAILABLE = True
+except ImportError as e:
+    app_logger.warning(f"Warning: Could not import trading bot: {e}")
+    BOT_AVAILABLE = False
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gap-up-detection-web-2024'
 CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
@@ -56,6 +72,40 @@ active_stocks = set()
 price_cache = {}
 websocket_connected = False
 real_time_gap_ups = []  # Store real-time detected gap-ups
+
+# Simple auth endpoints for frontend compatibility
+@app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
+def get_auth_profile():
+    """Get user profile - dummy endpoint for frontend compatibility"""
+    if request.method == 'OPTIONS':
+        # Handle preflight request
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+        return response
+    
+    try:
+        # Return dummy user data for now
+        user_data = {
+            'id': 1,
+            'username': 'demo_user',
+            'email': 'demo@example.com',
+            'role': 'user',
+            'authenticated': True
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': user_data,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting auth profile: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/api/health')
 def health_check():
@@ -134,17 +184,21 @@ def get_gap_up_details(ticker):
 def get_historical_data(ticker):
     """Get historical data for a specific ticker"""
     try:
+        app_logger.info(f"🔍 Historical data request for {ticker}")
+        
         if not REAL_DATA_AVAILABLE:
+            app_logger.warning(f"Historical data not available for {ticker}")
             return jsonify({
                 'success': False,
                 'error': 'Historical data not available'
             }), 503
         
-        # Get query parameters
-        days = request.args.get('days', '365', type=int)
+        # Get query parameters - accept both 'period' and 'days' for compatibility
+        period = request.args.get('period', '365', type=int)
+        days = request.args.get('days', period, type=int)  # Use period as fallback for days
         use_cache = request.args.get('cache', 'true').lower() == 'true'
         
-        app_logger.info(f"Fetching historical data for {ticker} - {days} days, cache: {use_cache}")
+        app_logger.info(f"📊 Fetching historical data for {ticker} - {days} days, cache: {use_cache}")
         
         # Add timeout protection for historical data fetching using threading
         import threading
@@ -155,9 +209,12 @@ def get_historical_data(ticker):
         
         def fetch_data():
             try:
+                app_logger.info(f"🔄 Starting data fetch for {ticker}")
                 data = get_historical_gap_up_data(ticker, days=days, use_cache=use_cache)
+                app_logger.info(f"✅ Data fetch completed for {ticker}, got {len(data) if data else 0} records")
                 result_queue.put(data)
             except Exception as e:
+                app_logger.error(f"❌ Exception in data fetch for {ticker}: {e}")
                 exception_queue.put(e)
         
         # Start the data fetching in a separate thread
@@ -170,7 +227,7 @@ def get_historical_data(ticker):
             fetch_thread.join(timeout=30)
             
             if fetch_thread.is_alive():
-                app_logger.error(f"Timeout fetching historical data for {ticker}")
+                app_logger.error(f"⏰ Timeout fetching historical data for {ticker}")
                 return jsonify({
                     'success': False,
                     'error': f'Timeout fetching historical data for {ticker}. Please try again.'
@@ -178,35 +235,184 @@ def get_historical_data(ticker):
             
             # Check for exceptions
             if not exception_queue.empty():
-                raise exception_queue.get()
+                exception = exception_queue.get()
+                app_logger.error(f"❌ Exception in historical data fetch for {ticker}: {exception}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Error fetching data: {str(exception)}'
+                }), 500
             
             # Get the result
             historical_data = result_queue.get()
             
         except Exception as e:
-            app_logger.error(f"Error in historical data fetch for {ticker}: {e}")
+            app_logger.error(f"❌ Error in historical data fetch for {ticker}: {e}")
             return jsonify({
                 'success': False,
-                'error': str(e)
+                'error': f'Error in data fetch: {str(e)}'
             }), 500
         
         if historical_data is None:
+            app_logger.warning(f"⚠️ No historical data returned for {ticker}")
             return jsonify({
                 'success': False,
-                'error': f'Failed to fetch historical data for {ticker}'
-            }), 500
+                'error': f'No historical data available for {ticker}'
+            }), 404
+        
+        # Ensure we return a list even if empty
+        if not isinstance(historical_data, list):
+            app_logger.warning(f"⚠️ Historical data for {ticker} is not a list: {type(historical_data)}")
+            historical_data = []
+        
+        app_logger.info(f"✅ Successfully retrieved {len(historical_data)} records for {ticker}")
         
         return jsonify({
             'success': True,
             'data': historical_data,
             'ticker': ticker,
             'days': days,
-            'count': len(historical_data) if historical_data else 0,
+            'count': len(historical_data),
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
-        app_logger.error(f"Error getting historical data for {ticker}: {e}")
+        app_logger.error(f"❌ Unexpected error getting historical data for {ticker}: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Unexpected error: {str(e)}'
+        }), 500
+
+@app.route('/api/test-historical/<ticker>')
+def test_historical_data(ticker):
+    """Test endpoint for historical data functionality"""
+    try:
+        app_logger.info(f"🧪 Testing historical data for {ticker}")
+        
+        # Test the import
+        try:
+            from historical_data import get_historical_gap_up_data
+            app_logger.info("✅ Historical data module imported successfully")
+        except Exception as e:
+            app_logger.error(f"❌ Failed to import historical data module: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Import error: {str(e)}'
+            }), 500
+        
+        # Test with a small number of days
+        try:
+            data = get_historical_gap_up_data(ticker, days=7, use_cache=False)
+            app_logger.info(f"✅ Test data fetch successful, got {len(data) if data else 0} records")
+            return jsonify({
+                'success': True,
+                'message': f'Test successful for {ticker}',
+                'records_found': len(data) if data else 0,
+                'data_type': str(type(data))
+            })
+        except Exception as e:
+            app_logger.error(f"❌ Test data fetch failed: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Test fetch error: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"❌ Test endpoint error: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Test error: {str(e)}'
+        }), 500
+
+@app.route('/api/cache/status')
+def get_cache_status():
+    """Get overall cache status and statistics"""
+    try:
+        from historical_cache import historical_cache
+        
+        # Get cache stats
+        stats = historical_cache.get_cache_stats()
+        
+        # Get recent cache activity
+        recent_activity = []
+        try:
+            with historical_cache.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT ticker, updated_at, COUNT(*) as records
+                    FROM historical_data_cache 
+                    GROUP BY ticker 
+                    ORDER BY updated_at DESC 
+                    LIMIT 10
+                ''')
+                recent_activity = [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            app_logger.error(f"Error getting recent activity: {e}")
+        
+        return jsonify({
+            'success': True,
+            'cache_stats': stats,
+            'recent_activity': recent_activity,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error getting cache status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/clear/<ticker>')
+def clear_cache_for_ticker(ticker):
+    """Clear cache for a specific ticker"""
+    try:
+        from historical_cache import historical_cache
+        
+        success = historical_cache.clear_cache(ticker)
+        
+        if success:
+            app_logger.info(f"🗑️ Cleared cache for {ticker}")
+            return jsonify({
+                'success': True,
+                'message': f'Cache cleared for {ticker}',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to clear cache for {ticker}'
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error clearing cache for {ticker}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/cache/clear')
+def clear_all_cache():
+    """Clear all historical data cache"""
+    try:
+        from historical_cache import historical_cache
+        
+        success = historical_cache.clear_cache()
+        
+        if success:
+            app_logger.info("🗑️ Cleared all historical data cache")
+            return jsonify({
+                'success': True,
+                'message': 'All cache cleared',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to clear cache'
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error clearing all cache: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -247,19 +453,23 @@ def analyze_stocks():
             'error': str(e)
         }), 500
 
+
+
 # Bot-related endpoints
 @app.route('/api/bot/status')
 def get_bot_status():
     """Get bot status"""
     try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        status = trading_bot.get_status()
         return jsonify({
             'success': True,
-            'data': {
-                'running': False,  # Placeholder - implement actual bot status
-                'subscribed_stocks': list(active_stocks),
-                'positions': [],
-                'active_positions': 0
-            },
+            'data': status,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -273,12 +483,24 @@ def get_bot_status():
 def start_bot():
     """Start the trading bot"""
     try:
-        # Placeholder - implement actual bot start logic
-        return jsonify({
-            'success': True,
-            'message': 'Bot started successfully',
-            'timestamp': datetime.now().isoformat()
-        })
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        success = trading_bot.start()
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Bot started successfully',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to start bot'
+            }), 500
     except Exception as e:
         app_logger.error(f"Error starting bot: {e}")
         return jsonify({
@@ -290,12 +512,24 @@ def start_bot():
 def stop_bot():
     """Stop the trading bot"""
     try:
-        # Placeholder - implement actual bot stop logic
-        return jsonify({
-            'success': True,
-            'message': 'Bot stopped successfully',
-            'timestamp': datetime.now().isoformat()
-        })
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        success = trading_bot.stop()
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Bot stopped successfully',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to stop bot'
+            }), 500
     except Exception as e:
         app_logger.error(f"Error stopping bot: {e}")
         return jsonify({
@@ -303,19 +537,29 @@ def stop_bot():
             'error': str(e)
         }), 500
 
-
-
 @app.route('/api/bot/update-strategies', methods=['POST'])
 def update_strategies():
     """Update bot strategies"""
     try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
         data = request.get_json()
-        # Placeholder - implement actual strategy update logic
-        return jsonify({
-            'success': True,
-            'message': 'Strategies updated successfully',
-            'timestamp': datetime.now().isoformat()
-        })
+        success = trading_bot.update_strategies(data)
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Strategies updated successfully',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to update strategies'
+            }), 500
     except Exception as e:
         app_logger.error(f"Error updating strategies: {e}")
         return jsonify({
@@ -327,12 +571,23 @@ def update_strategies():
 def unsubscribe_stocks():
     """Unsubscribe from stock updates"""
     try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
         data = request.get_json()
         tickers = data.get('tickers', [])
-        # Placeholder - implement actual unsubscribe logic
+        
+        success_count = 0
+        for ticker in tickers:
+            if trading_bot.unsubscribe_stock(ticker):
+                success_count += 1
+        
         return jsonify({
             'success': True,
-            'message': f'Unsubscribed from {len(tickers)} stocks',
+            'message': f'Unsubscribed from {success_count} stocks',
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -342,31 +597,208 @@ def unsubscribe_stocks():
             'error': str(e)
         }), 500
 
-# Trades endpoints
-@app.route('/api/trades')
-def get_trades():
-    """Get trade history"""
+@app.route('/api/bot/positions', methods=['GET'])
+def get_bot_positions():
+    """Get current bot positions"""
     try:
-        # Get query parameters
-        from_date = request.args.get('from')
-        to_date = request.args.get('to')
-        ticker = request.args.get('ticker')
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
         
-        # Placeholder - implement actual trade retrieval logic
-        trades = []  # This should fetch from database
+        # Get active positions from bot
+        active_positions = trading_bot.active_positions
+        
+        # Convert positions to serializable format
+        positions_data = []
+        for symbol, position in active_positions.items():
+            positions_data.append({
+                'symbol': position.symbol,
+                'type': position.type,
+                'size': position.size,
+                'entry_price': position.entry_price,
+                'profit_target': position.profit_target,
+                'stop_loss': position.stop_loss,
+                'entry_time': position.entry_time,
+                'position_id': position.position_id
+            })
         
         return jsonify({
             'success': True,
-            'data': trades,
-            'count': len(trades),
+            'data': {
+                'positions': positions_data,
+                'count': len(positions_data)
+            },
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
-        app_logger.error(f"Error getting trades: {e}")
+        app_logger.error(f"Error getting bot positions: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/bot/config', methods=['GET', 'POST'])
+def manage_bot_config():
+    """Get or update bot configuration"""
+    try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        if request.method == 'GET':
+            # Get current configuration
+            config = {
+                'profit_target_pct': trading_bot.profit_target_pct,
+                'stop_loss_pct': trading_bot.stop_loss_pct,
+                'monitor_interval': trading_bot.monitor_interval
+            }
+            
+            return jsonify({
+                'success': True,
+                'data': config,
+                'timestamp': datetime.now().isoformat()
+            })
+        
+        elif request.method == 'POST':
+            # Update configuration
+            data = request.get_json()
+            app_logger.info(f"🔄 Updating bot configuration: {data}")
+            
+            if 'profit_target_pct' in data:
+                old_value = trading_bot.profit_target_pct
+                trading_bot.profit_target_pct = float(data['profit_target_pct'])
+                app_logger.info(f"✅ Profit target updated: {old_value}% → {trading_bot.profit_target_pct}%")
+                
+            if 'stop_loss_pct' in data:
+                old_value = trading_bot.stop_loss_pct
+                trading_bot.stop_loss_pct = float(data['stop_loss_pct'])
+                app_logger.info(f"✅ Stop loss updated: {old_value}% → {trading_bot.stop_loss_pct}%")
+                
+            if 'monitor_interval' in data:
+                old_value = trading_bot.monitor_interval
+                trading_bot.monitor_interval = int(data['monitor_interval'])
+                app_logger.info(f"✅ Monitor interval updated: {old_value}s → {trading_bot.monitor_interval}s")
+            
+            app_logger.info(f"🎯 Current bot config - Profit: {trading_bot.profit_target_pct}%, Stop: {trading_bot.stop_loss_pct}%, Interval: {trading_bot.monitor_interval}s")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Bot configuration updated',
+                'timestamp': datetime.now().isoformat()
+            })
+            
+    except Exception as e:
+        app_logger.error(f"Error managing bot config: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/bot/validate-config', methods=['GET'])
+def validate_bot_config():
+    """Validate current bot configuration"""
+    try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        config = {
+            'profit_target_pct': trading_bot.profit_target_pct,
+            'stop_loss_pct': trading_bot.stop_loss_pct,
+            'monitor_interval': trading_bot.monitor_interval,
+            'is_running': trading_bot.is_running,
+            'monitoring': trading_bot.monitoring,
+            'active_positions_count': trading_bot.active_positions_count
+        }
+        
+        app_logger.info(f"🔍 Bot config validation: {config}")
+        
+        return jsonify({
+            'success': True,
+            'data': config,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        app_logger.error(f"Error validating bot config: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/bot/discover-positions', methods=['POST'])
+def discover_positions():
+    """Manually trigger position discovery"""
+    try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        # Trigger position discovery
+        trading_bot.discover_existing_positions()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Position discovery completed',
+            'data': {
+                'active_positions': trading_bot.active_positions_count
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error discovering positions: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/bot/panic-exit', methods=['POST'])
+def panic_exit_all_positions():
+    """Emergency panic exit - close all positions at market price"""
+    try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        app_logger.warning("🚨 PANIC EXIT REQUESTED VIA API")
+        
+        # Execute panic exit
+        result = trading_bot.panic_exit_all_positions()
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': result['message'],
+                'data': result,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Unknown error during panic exit'),
+                'data': result,
+                'timestamp': datetime.now().isoformat()
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error during panic exit: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+# Trades endpoints - placeholder removed, see Trade History API endpoints below
 
 # Cache endpoints
 @app.route('/api/cache/invalidate-gap-ups', methods=['POST'])
@@ -381,75 +813,6 @@ def invalidate_gap_ups_cache():
         })
     except Exception as e:
         app_logger.error(f"Error invalidating cache: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/cache/status')
-def get_cache_status():
-    """Get cache status and statistics"""
-    try:
-        from historical_cache import historical_cache
-        
-        stats = historical_cache.get_cache_stats()
-        return jsonify({
-            'success': True,
-            'data': stats,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        app_logger.error(f"Error getting cache status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/cache/clear/<ticker>', methods=['POST'])
-def clear_cache_for_ticker(ticker):
-    """Clear cache for a specific ticker"""
-    try:
-        from historical_cache import historical_cache
-        
-        success = historical_cache.clear_cache(ticker)
-        if success:
-            return jsonify({
-                'success': True,
-                'message': f'Cache cleared for {ticker}',
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': f'Failed to clear cache for {ticker}'
-            }), 500
-    except Exception as e:
-        app_logger.error(f"Error clearing cache for {ticker}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/cache/clear', methods=['POST'])
-def clear_all_cache():
-    """Clear all cache"""
-    try:
-        from historical_cache import historical_cache
-        
-        success = historical_cache.clear_cache()
-        if success:
-            return jsonify({
-                'success': True,
-                'message': 'All cache cleared',
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to clear all cache'
-            }), 500
-    except Exception as e:
-        app_logger.error(f"Error clearing all cache: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -728,6 +1091,102 @@ def sync_trades_from_das():
             'error': str(e)
         }), 500
 
+# Scheduled DAS Sync endpoints
+@app.route('/api/scheduled-sync/status', methods=['GET'])
+def get_scheduled_sync_status():
+    """Get scheduled sync service status"""
+    try:
+        if not SCHEDULED_SYNC_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Scheduled sync not available'
+            }), 503
+            
+        status = get_sync_status()
+        return jsonify({
+            'success': True,
+            'data': status,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting scheduled sync status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scheduled-sync/start', methods=['POST'])
+def start_scheduled_sync_service():
+    """Start the scheduled sync service"""
+    try:
+        if not SCHEDULED_SYNC_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Scheduled sync not available'
+            }), 503
+            
+        start_scheduled_sync()
+        return jsonify({
+            'success': True,
+            'message': 'Scheduled sync service started',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error starting scheduled sync: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scheduled-sync/stop', methods=['POST'])
+def stop_scheduled_sync_service():
+    """Stop the scheduled sync service"""
+    try:
+        if not SCHEDULED_SYNC_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Scheduled sync not available'
+            }), 503
+            
+        stop_scheduled_sync()
+        return jsonify({
+            'success': True,
+            'message': 'Scheduled sync service stopped',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error stopping scheduled sync: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scheduled-sync/manual', methods=['POST'])
+def trigger_manual_sync():
+    """Trigger a manual sync"""
+    try:
+        if not SCHEDULED_SYNC_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Scheduled sync not available'
+            }), 503
+            
+        result = manual_sync()
+        return jsonify({
+            'success': result['success'],
+            'message': result['message'],
+            'data': {
+                'synced_count': result['synced_count']
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error triggering manual sync: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
@@ -802,6 +1261,16 @@ if __name__ == '__main__':
     # Start background task in a separate thread
     update_thread = threading.Thread(target=update_real_time_gap_ups, daemon=True)
     update_thread.start()
+    
+    # Start scheduled DAS sync service
+    if SCHEDULED_SYNC_AVAILABLE:
+        try:
+            start_scheduled_sync()
+            app_logger.info("✅ Scheduled DAS sync service started")
+        except Exception as e:
+            app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
+    else:
+        app_logger.warning("⚠️ Scheduled DAS sync not available")
     
     app_logger.info("Starting Gap-Up Detection Web API...")
     app_logger.info("Server will be available at http://localhost:5000")

@@ -76,9 +76,6 @@
     
     <!-- Custom styles -->
     <link rel="stylesheet" href="styles.css">
-    
-    <!-- Strategy Configuration -->
-    <script src="strategy-config.js"></script>
 </head>
 <body class="bg-gray-900 text-white">
     <div id="app">
@@ -671,71 +668,123 @@
 
             <!-- Trade History Tab -->
             <div v-if="activeTab === 'trades'" class="space-y-6">
-                <!-- Period Selection and Controls -->
+                <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
-                    <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center justify-between mb-6">
                         <h3 class="text-lg font-medium text-white">Trade History</h3>
-                        <div class="flex items-center space-x-3">
-                            <!-- Sync Trades Buttons -->
+                        <button @click="loadTradeHistory" 
+                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+
+                    <!-- Auto Sync Status Section -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-6">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-300">Auto Sync:</span>
+                                    <span :class="scheduledSyncStatus.is_running ? 'text-green-400' : 'text-red-400'" class="text-sm font-medium">
+                                        {{ scheduledSyncStatus.is_running ? 'Running' : 'Stopped' }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-300">Market Hours:</span>
+                                    <span :class="scheduledSyncStatus.is_market_hours ? 'text-green-400' : 'text-red-400'" class="text-sm font-medium">
+                                        {{ scheduledSyncStatus.is_market_hours ? 'Open' : 'Closed' }}
+                                    </span>
+                                </div>
+                            </div>
                             <div class="flex items-center space-x-2">
-                                <button @click="syncTradesFromDAS" 
-                                        :disabled="loading.syncTrades"
-                                        class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-green-500">
-                                    <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-download'" class="mr-2"></i>
-                                    {{ loading.syncTrades ? 'Syncing...' : 'Sync from DAS' }}
+                                <button @click="startScheduledSync" 
+                                        :disabled="scheduledSyncStatus.is_running || loading.scheduledSync"
+                                        class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-sm font-medium">
+                                    <i class="fas fa-play mr-1"></i>Start
+                                </button>
+                                <button @click="stopScheduledSync" 
+                                        :disabled="!scheduledSyncStatus.is_running || loading.scheduledSync"
+                                        class="bg-red-600 hover:bg-red-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-sm font-medium">
+                                    <i class="fas fa-stop mr-1"></i>Stop
+                                </button>
+                                <button @click="triggerManualSync" 
+                                        :disabled="loading.scheduledSync"
+                                        class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-sm font-medium">
+                                    <i class="fas fa-sync mr-1"></i>Manual
                                 </button>
                             </div>
-                            
-                            <!-- Ticker Search -->
-                            <div class="flex items-center space-x-2">
-                                <label class="text-sm text-gray-400">Ticker:</label>
-                                <input v-model="tradeHistoryTicker" 
-                                       @keyup.enter="loadTradeHistory"
-                                       @input="onTradeHistoryTickerChange"
-                                       placeholder="Search by ticker (e.g., AAPL)"
-                                       class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none w-32">
-                                <button @click="clearTradeHistoryTicker" 
-                                        v-if="tradeHistoryTicker"
-                                        class="bg-gray-600 hover:bg-gray-700 px-2 py-2 rounded-md text-sm font-medium">
-                                    <i class="fas fa-times"></i>
-                                </button>
+                        </div>
+                    </div>
+
+                    <!-- Controls Section -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- Left Column: Sync and Search -->
+                        <div class="space-y-4">
+                            <!-- Sync from DAS -->
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h4 class="text-sm font-medium text-white mb-3">Data Synchronization</h4>
+                                <div class="flex items-center space-x-3">
+                                    <button @click="syncTradesFromDAS" 
+                                            :disabled="loading.syncTrades"
+                                            class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-green-500">
+                                        <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-download'" class="mr-2"></i>
+                                        {{ loading.syncTrades ? 'Syncing...' : 'Sync from DAS' }}
+                                    </button>
+                                    <button @click="showImportModal = true" 
+                                            class="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded-md text-sm font-medium">
+                                        <i class="fas fa-upload mr-2"></i>Import DAS Data
+                                    </button>
+                                </div>
                             </div>
-                            
-                            <!-- Period Selection -->
-                            <div class="flex items-center space-x-2">
-                                <label class="text-sm text-gray-400">Period:</label>
-                                <select v-model="tradeHistoryPeriod" @change="loadTradeHistory" 
-                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
-                                    <option value="1">1 Day</option>
-                                    <option value="7">1 Week</option>
-                                    <option value="30">1 Month</option>
-                                    <option value="90">3 Months</option>
-                                    <option value="180">6 Months</option>
-                                    <option value="365">1 Year</option>
-                                </select>
+
+                            <!-- Search and Filter -->
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h4 class="text-sm font-medium text-white mb-3">Search & Filter</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm text-gray-400 mb-2">Ticker Symbol</label>
+                                        <div class="flex items-center space-x-2">
+                                            <input v-model="tradeHistoryTicker" 
+                                                   @keyup.enter="loadTradeHistory"
+                                                   @input="onTradeHistoryTickerChange"
+                                                   placeholder="e.g., AAPL"
+                                                   class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                            <button @click="clearTradeHistoryTicker" 
+                                                    v-if="tradeHistoryTicker"
+                                                    class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm text-gray-400 mb-2">Time Period</label>
+                                        <select v-model="tradeHistoryPeriod" @change="loadTradeHistory" 
+                                                class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                            <option value="1">1 Day</option>
+                                            <option value="7">1 Week</option>
+                                            <option value="30">1 Month</option>
+                                            <option value="90">3 Months</option>
+                                            <option value="180">6 Months</option>
+                                            <option value="365">1 Year</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            <!-- Download and Import Buttons -->
-                            <div class="flex items-center space-x-2">
-                                <button @click="showImportModal = true" 
-                                        class="bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded-md text-sm font-medium">
-                                    <i class="fas fa-upload mr-2"></i>Import DAS Data
-                                </button>
+                        </div>
+
+                        <!-- Right Column: Export Options -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
+                            <div class="grid grid-cols-2 gap-3">
                                 <button @click="downloadTradeHistoryCSV" 
-                                        class="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-md text-sm font-medium">
-                                    <i class="fas fa-download mr-2"></i>CSV
+                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export CSV
                                 </button>
                                 <button @click="downloadTradeHistoryExcel" 
-                                        class="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium">
-                                    <i class="fas fa-download mr-2"></i>Excel
+                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export Excel
                                 </button>
                             </div>
-                            
-                            <!-- Refresh Button -->
-                            <button @click="loadTradeHistory" 
-                                    class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh
-                            </button>
+                            <p class="text-xs text-gray-400 mt-2">Download trade history in your preferred format</p>
                         </div>
                     </div>
                     
@@ -801,13 +850,7 @@
                                 <i :class="loading.bot ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-2"></i>
                                 {{ loading.bot ? 'Refreshing All...' : 'Refresh All Components' }}
                             </button>
-                            <!-- Sync Trades Button -->
-                            <button @click="syncTradesFromAlpaca" 
-                                    :disabled="loading.syncTrades"
-                                    class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium border-2 border-purple-500">
-                                <i :class="loading.syncTrades ? 'fas fa-spinner fa-spin' : 'fas fa-cloud-download-alt'" class="mr-2"></i>
-                                {{ loading.syncTrades ? 'Syncing...' : 'Sync Trades & Positions from Alpaca' }}
-                            </button>
+
                             <!-- Toggle Bot Button -->
                             <button @click="toggleBot" 
                                     :class="botStatus.running ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'"
@@ -818,7 +861,7 @@
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div class="bg-gray-700 rounded-lg p-4">
                             <div class="flex items-center space-x-2 mb-2">
                                 <div class="w-3 h-3 rounded-full" :class="botStatus.running ? 'bg-green-400 animate-pulse' : 'bg-red-400'"></div>
@@ -826,122 +869,75 @@
                                     {{ botStatus.running ? 'Running' : 'Stopped' }}
                                 </span>
                             </div>
-                            <p class="text-xs text-gray-400">Status</p>
+                            <p class="text-xs text-gray-400">Bot Status</p>
                         </div>
                         
                         <div class="bg-gray-700 rounded-lg p-4">
-                            <div class="text-2xl font-bold text-white">{{ botStatus.subscribedStocks.length }}</div>
-                            <p class="text-xs text-gray-400">Subscribed Stocks</p>
+                            <div class="text-2xl font-bold text-white">{{ botStatus.active_positions || 0 }}</div>
+                            <p class="text-xs text-gray-400">Active Positions</p>
                         </div>
                         
                         <div class="bg-gray-700 rounded-lg p-4">
-                            <div class="flex items-center justify-between">
-                                <div class="text-2xl font-bold text-white">{{ botStatus.positions.length }}</div>
-                                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse" title="Auto-sync active"></div>
-                            </div>
-                            <p class="text-xs text-gray-400">Active Positions (Auto-sync)</p>
+                            <div class="text-2xl font-bold text-white">{{ botStatus.profit_target_pct || 5.0 }}%</div>
+                            <p class="text-xs text-gray-400">Profit Target</p>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="text-2xl font-bold text-white">{{ botStatus.stop_loss_pct || 2.5 }}%</div>
+                            <p class="text-xs text-gray-400">Stop Loss</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Available Strategies Section -->
+                <!-- Bot Configuration Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium text-white">Available Strategies</h3>
-                        <button @click="viewCurrentSettings" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-eye mr-2"></i>View Current Settings
+                        <h3 class="text-lg font-medium text-white">Bot Configuration</h3>
+                        <button @click="updateBotConfig" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-save mr-2"></i>Save Configuration
                         </button>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div v-for="strategy in availableStrategies" :key="strategy.key" 
-                             class="bg-gray-700 rounded-lg p-4">
-                            <div class="flex items-center justify-between mb-3">
-                                <h4 class="text-lg font-medium" :class="strategy.color">{{ strategy.name }} Strategy</h4>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" 
-                                      :class="strategy.badgeClass">
-                                    {{ strategy.direction }}
-                                </span>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-md font-medium text-white mb-3">Profit Target</h4>
+                            <div class="flex items-center space-x-2">
+                                <input v-model.number="botConfig.profit_target_pct" 
+                                       type="number" 
+                                       min="0.1" 
+                                       max="100" 
+                                       step="0.1"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">%</span>
                             </div>
-                            
-                            <!-- Editable Parameters -->
-                            <div class="space-y-3 text-sm text-gray-300 mb-4">
-                                <!-- Min Gap % -->
-                                <div class="flex items-center justify-between">
-                                    <span>Min Gap %:</span>
-                                    <div class="flex items-center space-x-2">
-                                        <input v-model.number="strategy.minGap" 
-                                               type="number" 
-                                               min="0" 
-                                               max="200" 
-                                               step="0.1"
-                                               @input="validateStrategyParameter(strategy, 'minGap')"
-                                               class="w-20 bg-gray-600 text-white text-center px-2 py-1 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                        <span class="text-xs">%</span>
-                                    </div>
-                                </div>
-                                
-                                <!-- Target -->
-                                <div class="flex items-center justify-between">
-                                    <span>Target:</span>
-                                    <div class="flex items-center space-x-2">
-                                        <input v-model.number="strategy.target" 
-                                               type="number" 
-                                               min="0" 
-                                               max="200" 
-                                               step="0.1"
-                                               @input="validateStrategyParameter(strategy, 'target')"
-                                               class="w-20 bg-gray-600 text-white text-center px-2 py-1 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                        <span class="text-xs">%</span>
-                                    </div>
-                                </div>
-                                
-                                <!-- Stop Loss -->
-                                <div class="flex items-center justify-between">
-                                    <span>Stop Loss:</span>
-                                    <div class="flex items-center space-x-2">
-                                        <input v-model.number="strategy.stopLoss" 
-                                               type="number" 
-                                               min="0" 
-                                               max="100" 
-                                               step="0.1"
-                                               @input="validateStrategyParameter(strategy, 'stopLoss')"
-                                               class="w-20 bg-gray-600 text-white text-center px-2 py-1 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                        <span class="text-xs">%</span>
-                                    </div>
-                                </div>
-                                
-                                <div class="flex justify-between">
-                                    <span>Availability:</span>
-                                    <span :class="strategy.availabilityColor">{{ strategy.availability }}</span>
-                                </div>
+                            <p class="text-xs text-gray-400 mt-2">Percentage profit target for position exits</p>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-md font-medium text-white mb-3">Stop Loss</h4>
+                            <div class="flex items-center space-x-2">
+                                <input v-model.number="botConfig.stop_loss_pct" 
+                                       type="number" 
+                                       min="0.1" 
+                                       max="100" 
+                                       step="0.1"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">%</span>
                             </div>
-                            
-                            <!-- Strategy Description -->
-                            <div class="mt-3 pt-3 border-t border-gray-600">
-                                <div class="text-xs text-gray-400 mb-2">Key Conditions:</div>
-                                <ul class="text-xs space-y-1">
-                                    <li v-for="condition in strategy.conditions" :key="condition" class="flex items-center">
-                                        <i class="fas fa-check text-green-400 mr-2"></i>
-                                        {{ condition }}
-                                    </li>
-                                </ul>
+                            <p class="text-xs text-gray-400 mt-2">Percentage stop loss for position exits</p>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-md font-medium text-white mb-3">Monitor Interval</h4>
+                            <div class="flex items-center space-x-2">
+                                <input v-model.number="botConfig.monitor_interval" 
+                                       type="number" 
+                                       min="1" 
+                                       max="60" 
+                                       step="1"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">seconds</span>
                             </div>
-                            
-                            <!-- Strategy Status and Save Button -->
-                            <div class="mt-3 pt-3 border-t border-gray-600">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center text-xs">
-                                        <span class="text-gray-400 mr-2">Status:</span>
-                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                            <i class="fas fa-check-circle mr-1"></i>Active
-                                        </span>
-                                    </div>
-                                    <button @click="saveIndividualStrategy(strategy)" 
-                                            class="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-xs font-medium">
-                                        <i class="fas fa-save mr-1"></i>Save
-                                    </button>
-                                </div>
-                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Position monitoring cycle interval</p>
                         </div>
                     </div>
                 </div>
@@ -949,24 +945,10 @@
                 <!-- Subscribed Stocks Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium text-white">Subscribed Stocks</h3>
+                        <h3 class="text-lg font-medium text-white">Subscribed Stocks ({{ botPositions.length }})</h3>
                         <div class="flex items-center space-x-3">
-                            <!-- Unsubscribe Selected Button -->
-                            <button @click="unsubscribeSelectedStocks" 
-                                    :disabled="selectedStocks.length === 0 || loading.unsubscribe"
-                                    class="bg-red-600 hover:bg-red-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium">
-                                <i :class="loading.unsubscribe ? 'fas fa-spinner fa-spin' : 'fas fa-times'" class="mr-2"></i>
-                                {{ loading.unsubscribe ? 'Unsubscribing...' : `Unsubscribe (${selectedStocks.length})` }}
-                            </button>
-                            <!-- Select All Button -->
-                            <button @click="selectAllStocks" 
-                                    class="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-check-square mr-2"></i>Select All
-                            </button>
-                            <!-- Clear Selection Button -->
-                            <button @click="clearStockSelection" 
-                                    class="bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-square mr-2"></i>Clear
+                            <button @click="discoverPositions" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-search mr-2"></i>Discover Positions
                             </button>
                         </div>
                     </div>
@@ -974,53 +956,32 @@
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead class="bg-gray-700">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                        <input type="checkbox" @change="toggleAllStocks" :checked="allStocksSelected" 
-                                               class="rounded border-gray-600 text-blue-600 focus:ring-blue-500">
-                                    </th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Price</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Gap %</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Volume</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Quantity</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Profit Target</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Stop Loss</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Time</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="stock in botStatus.subscribedStocks" :key="stock.ticker">
+                                <tr v-for="position in botPositions" :key="position.symbol">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <input type="checkbox" :value="stock.ticker" v-model="selectedStocks" 
-                                               class="rounded border-gray-600 text-blue-600 focus:ring-blue-500">
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ stock.ticker }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ stock.currentPrice || 'N/A' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="stock.gapPercent >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        {{ stock.gapPercent ? stock.gapPercent.toFixed(2) + '%' : 'N/A' }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ stock.volume ? formatNumber(stock.volume) : 'N/A' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <div class="flex items-center space-x-2">
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                            Subscribed
+                                        <span :class="position.type === 'LONG' ? 'text-green-400' : 'text-red-400'" class="font-medium">
+                                            {{ position.type }}
                                         </span>
-                                            <!-- Position indicator -->
-                                            <span v-if="hasActivePosition(stock.ticker)" 
-                                                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
-                                                  title="Has active position">
-                                                <i class="fas fa-exclamation-triangle mr-1"></i>Position
-                                            </span>
-                                        </div>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <button @click="unsubscribeSingleStock(stock.ticker)" 
-                                                class="text-red-400 hover:text-red-300 transition-colors">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatNumber(position.size) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.entry_price.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-400">${{ position.profit_target.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-red-400">${{ position.stop_loss.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatTime(position.entry_time) }}</td>
                                 </tr>
-                                <tr v-if="botStatus.subscribedStocks.length === 0">
+                                <tr v-if="botPositions.length === 0">
                                     <td colspan="7" class="px-6 py-4 text-center text-sm text-gray-400">
-                                        No stocks currently subscribed
+                                        No positions currently subscribed
                                     </td>
                                 </tr>
                             </tbody>
@@ -1028,134 +989,158 @@
                     </div>
                 </div>
 
-                <!-- Analysis Results Section -->
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <h3 class="text-lg font-medium text-white mb-4">Analysis Results</h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-700">
-                            <thead class="bg-gray-700">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Best Strategy</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Best Confidence</th>
-                                    <th v-for="strategy in availableStrategies" :key="strategy.key" 
-                                         class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                                        {{ strategy.name }} Strategy
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="analysis in botStatus.analysisResults" :key="analysis.ticker">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ analysis.ticker }}</td>
-                                    
-                                    <!-- Best Strategy -->
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span v-if="analysis.bestStrategy" class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium" 
-                                              :class="getStrategyColor(analysis.bestStrategy)">
-                                            {{ analysis.bestStrategy }}
-                                        </span>
-                                        <span v-else class="text-gray-400">None</span>
-                                    </td>
-                                    
-                                    <!-- Best Confidence -->
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                        {{ analysis.bestConfidence ? analysis.bestConfidence.toFixed(1) + '%' : 'N/A' }}
-                                    </td>
-                                    
-                                    <!-- Dynamic Strategy Columns -->
-                                    <td v-for="strategy in availableStrategies" :key="strategy.key" 
-                                         class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <div v-if="analysis.strategies && analysis.strategies[strategy.key]" class="space-y-1">
-                                            <div class="flex items-center justify-between">
-                                                <span class="text-xs text-gray-400">Status:</span>
-                                                <span :class="analysis.strategies[strategy.key].entrySignal ? 'text-green-400' : 'text-red-400'" class="text-xs font-medium">
-                                                    {{ analysis.strategies[strategy.key].entrySignal ? 'ENTRY SIGNAL' : 'NO SIGNAL' }}
-                                            </span>
-                                        </div>
-                                            <div class="flex items-center justify-between">
-                                                <span class="text-xs text-gray-400">Confidence:</span>
-                                                <span class="text-xs text-gray-300">{{ analysis.strategies[strategy.key].confidence ? analysis.strategies[strategy.key].confidence.toFixed(1) + '%' : 'N/A' }}</span>
-                                            </div>
-                                            <div class="flex items-center justify-between">
-                                                <span class="text-xs text-gray-400">Applicable:</span>
-                                                <span :class="analysis.strategies[strategy.key].applicable ? 'text-green-400' : 'text-gray-400'" class="text-xs">
-                                                    {{ analysis.strategies[strategy.key].applicable ? 'YES' : 'NO' }}
-                                            </span>
-                                        </div>
-                                        </div>
-                                        <div v-else class="text-gray-400 text-xs">N/A</div>
-                                    </td>
-                                </tr>
-                                <tr v-if="botStatus.analysisResults.length === 0">
-                                    <td :colspan="3 + availableStrategies.length" class="px-6 py-4 text-center text-sm text-gray-400">
-                                        No analysis results available
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
 
-                <!-- Positions Section -->
+
+                <!-- Active Positions Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
-                    <h3 class="text-lg font-medium text-white mb-4">Active Positions</h3>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Active Positions ({{ botPositions.length }})</h3>
+                        <div class="flex items-center space-x-3">
+                            <button @click="refreshBotPositions" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-sync-alt mr-2"></i>Refresh Positions
+                            </button>
+                        </div>
+                    </div>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead class="bg-gray-700">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Strategy</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Price</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Price</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Target Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Profit Target</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Stop Loss</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Quantity</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Position Value</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">P&L</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">P&L %</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="position in botStatus.positions" :key="position.ticker">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.ticker }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                        <span v-if="position.strategyInfo" class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
-                                              :class="position.strategyInfo.strategy === 'breakOut' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'">
-                                            {{ position.strategyInfo.strategy === 'breakOut' ? 'Break Out' : 'Gap Up Short' }}
-                                        </span>
-                                        <span v-else class="text-gray-500">N/A</span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.entryPrice ? position.entryPrice.toFixed(2) : 'N/A' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.currentPrice ? position.currentPrice.toFixed(2) : 'N/A' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-400">
-                                        ${{ position.strategyInfo && position.strategyInfo.targetPrice ? position.strategyInfo.targetPrice.toFixed(2) : 'N/A' }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-red-400">
-                                        ${{ position.strategyInfo && position.strategyInfo.stopLossPrice ? position.strategyInfo.stopLossPrice.toFixed(2) : 'N/A' }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.quantity ? formatNumber(position.quantity) : 'N/A' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                        ${{ position.strategyInfo && position.strategyInfo.positionValue ? position.strategyInfo.positionValue.toFixed(2) : 'N/A' }}
-                                        <span v-if="position.strategyInfo && position.strategyInfo.maxPositionValue" class="text-xs text-gray-500">
-                                            / ${{ position.strategyInfo.maxPositionValue.toFixed(2) }}
+                                <tr v-for="position in botPositions" :key="position.symbol">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span :class="position.type === 'LONG' ? 'text-green-400' : 'text-red-400'" class="font-medium">
+                                            {{ position.type }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        ${{ position.pnl ? position.pnl.toFixed(2) : '0.00' }}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.entry_price.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ getCurrentPrice(position.symbol) || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-400">${{ position.profit_target.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-red-400">${{ position.stop_loss.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatNumber(position.size) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                        ${{ (position.entry_price * position.size).toFixed(2) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        {{ position.pnlPercent ? position.pnlPercent.toFixed(2) + '%' : '0.00%' }}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="getPositionPnL(position) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        ${{ getPositionPnL(position).toFixed(2) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.entryTime ? formatTime(position.entryTime) : 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="getPositionPnLPercent(position) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ getPositionPnLPercent(position).toFixed(2) }}%
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            <i class="fas fa-eye mr-1"></i>Monitoring
+                                        </span>
+                                    </td>
                                 </tr>
-                                <tr v-if="botStatus.positions.length === 0">
+                                <tr v-if="botPositions.length === 0">
                                     <td colspan="11" class="px-6 py-4 text-center text-sm text-gray-400">
                                         No active positions
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Emergency Panic Exit Section -->
+                <div class="bg-red-900 border border-red-700 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <i class="fas fa-exclamation-triangle text-red-400 text-2xl"></i>
+                            <h3 class="text-lg font-medium text-red-100">Emergency Panic Exit</h3>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <button @click="confirmPanicExit" 
+                                    :disabled="loading.panicExit"
+                                    class="bg-red-600 hover:bg-red-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-6 py-3 rounded-md text-sm font-bold transition-colors border-2 border-red-500">
+                                <i :class="loading.panicExit ? 'fas fa-spinner fa-spin' : 'fas fa-fire'" class="mr-2"></i>
+                                {{ loading.panicExit ? 'Executing...' : '🚨 PANIC EXIT ALL POSITIONS' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-red-800 rounded-lg p-4">
+                        <div class="flex items-start space-x-3">
+                            <i class="fas fa-info-circle text-red-300 mt-1"></i>
+                            <div class="text-red-100 text-sm">
+                                <p class="font-semibold mb-2">⚠️ WARNING: This action cannot be undone!</p>
+                                <ul class="list-disc list-inside space-y-1">
+                                    <li>Closes ALL current positions at market price immediately</li>
+                                    <li>Executes market orders for maximum speed</li>
+                                    <li>No confirmation dialogs during execution</li>
+                                    <li>Use only in emergency situations</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="panicExitResult" class="mt-4 bg-gray-800 rounded-lg p-4">
+                        <h4 class="text-md font-medium text-white mb-2">Panic Exit Results:</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                            <div class="bg-gray-700 rounded p-3">
+                                <div class="text-2xl font-bold text-green-400">{{ panicExitResult.positions_closed || 0 }}</div>
+                                <p class="text-gray-400">Successfully Closed</p>
+                            </div>
+                            <div class="bg-gray-700 rounded p-3">
+                                <div class="text-2xl font-bold text-red-400">{{ panicExitResult.positions_failed || 0 }}</div>
+                                <p class="text-gray-400">Failed to Close</p>
+                            </div>
+                            <div class="bg-gray-700 rounded p-3">
+                                <div class="text-2xl font-bold text-blue-400">{{ panicExitResult.total_positions || 0 }}</div>
+                                <p class="text-gray-400">Total Positions</p>
+                            </div>
+                            <div class="bg-gray-700 rounded p-3">
+                                <div class="text-lg font-bold" :class="panicExitResult.success ? 'text-green-400' : 'text-red-400'">
+                                    {{ panicExitResult.success ? 'SUCCESS' : 'FAILED' }}
+                                </div>
+                                <p class="text-gray-400">Status</p>
+                            </div>
+                        </div>
+                        <div v-if="panicExitResult.details && panicExitResult.details.length > 0" class="mt-4">
+                            <h5 class="text-sm font-medium text-white mb-2">Position Details:</h5>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-700">
+                                    <thead class="bg-gray-700">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Symbol</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Type</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Quantity</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Order Side</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-gray-800 divide-y divide-gray-700">
+                                        <tr v-for="detail in panicExitResult.details" :key="detail.symbol">
+                                            <td class="px-3 py-2 text-sm text-white">{{ detail.symbol }}</td>
+                                            <td class="px-3 py-2 text-sm">
+                                                <span :class="detail.type === 'LONG' ? 'text-green-400' : 'text-red-400'" class="font-medium">
+                                                    {{ detail.type }}
+                                                </span>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-gray-300">{{ detail.quantity }}</td>
+                                            <td class="px-3 py-2 text-sm text-gray-300">{{ detail.order_side }}</td>
+                                            <td class="px-3 py-2 text-sm">
+                                                <span :class="detail.status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'" class="font-medium">
+                                                    {{ detail.status }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
