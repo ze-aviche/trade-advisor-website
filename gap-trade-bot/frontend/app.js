@@ -53,6 +53,9 @@ const app = createApp({
                     trades: null
                 },
                 
+                // Chart update control
+                chartUpdateInProgress: false,
+                
                 // WebSocket connection
                 socket: null,
                 socketConnected: false,
@@ -115,7 +118,7 @@ const app = createApp({
                 sortDirection: 'asc',
                 
                 // Trade History
-                tradeHistoryPeriod: '7', // Default to 1 week
+                tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
                 tradeHistoryTicker: '', // Ticker search filter
                 
                 // Dashboard Trade Period
@@ -420,6 +423,14 @@ const app = createApp({
                     
                     await Promise.allSettled(promises);
                     console.log('✅ Dashboard data load completed');
+                    
+                    // Update charts after all data is loaded
+                    setTimeout(() => {
+                        console.log('🔄 Updating charts after data load...');
+                        this.updatePnlChart();
+                        this.updateTradeChart();
+                    }, 200);
+                    
                 } catch (error) {
                     console.error('❌ Error loading dashboard data:', error);
                     this.showNotification('Failed to load dashboard data: ' + error.message, 'error');
@@ -612,13 +623,8 @@ const app = createApp({
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         console.log(`📊 Stats loading attempt ${attempt}/${maxRetries}...`);
-                    const sessionToken = localStorage.getItem('session_token');
-                        console.log('🔑 Using session token:', sessionToken ? 'Present' : 'Missing');
                         
                     const response = await fetch('http://localhost:5000/api/trades', {
-                        headers: {
-                            'Authorization': `Bearer ${sessionToken}`
-                            },
                             signal: AbortSignal.timeout(10000) // 10 second timeout
                         });
                         
@@ -635,23 +641,25 @@ const app = createApp({
                         // Load trades directly from database
                         this.trades = data.data.trades || [];
                         
+                        // Calculate stats from database data
+                        const totalTrades = this.trades.length;
+                        const winningTrades = this.trades.filter(t => (t.pnl || 0) > 0).length;
+                        const totalPnl = this.trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                        const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+                        
                         // Update stats from database summary
                         this.stats = {
-                            totalTrades: data.data.summary.total_trades || 0,
-                            winRate: data.data.summary.win_rate || 0,
-                            totalPnl: data.data.summary.total_pnl || 0,
-                            pnl: data.data.summary.total_pnl || 0,
+                            totalTrades: totalTrades,
+                            winRate: winRate,
+                            totalPnl: totalPnl,
+                            pnl: totalPnl,
                             activePositions: this.trades.filter(t => t.status === 'filled').length,
                             gapUps: this.gapUps.length
                         };
                             
                         console.log('✅ Stats loaded successfully from database:', this.stats);
+                        console.log('📊 Calculated stats - Total:', totalTrades, 'Winning:', winningTrades, 'Win Rate:', winRate.toFixed(1) + '%', 'Total P&L:', totalPnl);
                             this.updateLoadingProgress('stats', 'success');
-                        
-                        // Update charts after data is loaded
-                        setTimeout(() => {
-                            this.updatePnlChart();
-                        }, 100);
                             
                             return; // Success, exit retry loop
                         } else {
@@ -782,11 +790,6 @@ const app = createApp({
                     // Load trades directly from database
                     this.dashboardTrades = data.data.trades || [];
                     console.log('✅ Dashboard trades loaded from database:', this.dashboardTrades.length, 'trades');
-                    
-                        // Update the trade chart with new data
-                        setTimeout(() => {
-                            this.updateTradeChart();
-                        }, 100);
                     } else {
                         console.error('Failed to load dashboard trades:', data.message);
                     }
@@ -814,11 +817,6 @@ const app = createApp({
                     // Load PnL data directly from database
                     this.dashboardPnL = data.data.trades || [];
                     console.log('✅ Dashboard P&L loaded from database:', this.dashboardPnL.length, 'trades');
-                    
-                        // Update the P&L chart with new data
-                        setTimeout(() => {
-                            this.updatePnlChart();
-                        }, 100);
                     } else {
                         console.error('Failed to load dashboard P&L data:', data.message);
                     }
@@ -843,11 +841,17 @@ const app = createApp({
                 // Convert period to date range
                 const days = parseInt(this.tradeHistoryPeriod);
                 const endDate = new Date().toISOString().split('T')[0];
-                const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
                 
-                params.append('start_date', startDate);
-                params.append('end_date', endDate);
-                params.append('limit', '1000');
+                // Handle "All Time" option (value 0)
+                if (days === 0) {
+                    // Don't apply date filters for "All Time"
+                    params.append('limit', '1000');
+                } else {
+                    const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
+                    params.append('start_date', startDate);
+                    params.append('end_date', endDate);
+                    params.append('limit', '1000');
+                }
                     
                     if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim()) {
                     params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
@@ -915,141 +919,154 @@ const app = createApp({
                 console.log('📊 Chart object exists:', !!this.charts.pnl);
                 console.log('📊 Dashboard PnL data:', this.dashboardPnL.length, 'trades');
                 
-                // Safely destroy existing chart if it exists
-                if (this.charts.pnl) {
-                    try {
-                        this.charts.pnl.destroy();
-                        console.log('🗑️ Destroyed existing PnL chart');
-                    } catch (error) {
-                        console.warn('⚠️ Error destroying existing chart:', error);
-                    }
-                    this.charts.pnl = null;
+                // Prevent multiple simultaneous chart updates
+                if (this.chartUpdateInProgress) {
+                    console.log('⚠️ Chart update already in progress, skipping...');
+                    return;
                 }
                 
-            // Create new chart with data directly from database
-            const ctx = document.getElementById('pnlChart');
-            if (!ctx) {
-                console.log('⚠️ PnL chart canvas not found - likely no trades yet');
-                return;
-            }
-            
-            // Calculate cumulative P&L from database trades
-                const pnlData = [];
-                const labels = [];
-                let cumulativePnl = 0;
-                
-                // Sort trades by timestamp
-                const sortedTrades = [...this.dashboardPnL].sort((a, b) => 
-                new Date(a.trade_date + ' ' + a.trade_time) - new Date(b.trade_date + ' ' + b.trade_time)
-                );
-                
-            console.log('📊 Sorted trades from database:', sortedTrades.length);
-                
-                sortedTrades.forEach((trade, index) => {
-                    const tradePnl = trade.pnl || 0;
-                    cumulativePnl += tradePnl;
-                    pnlData.push(cumulativePnl);
-                labels.push(new Date(trade.trade_date + ' ' + trade.trade_time).toLocaleDateString());
-                console.log(`📈 Trade ${index + 1}: ${trade.symbol} - PnL: $${tradePnl}, Cumulative: $${cumulativePnl}`);
-                });
-                
-                // If no trades, use default data
-                if (pnlData.length === 0) {
-                    pnlData.push(0);
-                    labels.push('No trades');
-                console.log('⚠️ No trades found in database, using default data');
-                }
-                
-            console.log('📊 Final PnL data from database:', pnlData);
-                console.log('📊 Final labels:', labels);
-                
-                // Check if canvas is visible and has dimensions
-                const canvasRect = ctx.getBoundingClientRect();
-                console.log('📊 Canvas dimensions:', {
-                    width: canvasRect.width,
-                    height: canvasRect.height,
-                    visible: canvasRect.width > 0 && canvasRect.height > 0
-                });
+                this.chartUpdateInProgress = true;
                 
                 try {
-                console.log('🔄 Creating PnL chart with database data:', {
-                        labels: labels,
-                        data: pnlData,
-                        canvas: ctx
-                    });
-                
-                this.charts.pnl = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                            labels: labels,
-                        datasets: [{
-                            label: 'P&L',
-                                data: pnlData,
-                            borderColor: '#10B981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            tension: 0.4,
-                            fill: true,
-                            pointBackgroundColor: '#10B981',
-                            pointBorderColor: '#ffffff',
-                            pointBorderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                labels: {
-                                        color: '#D1D5DB'
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                titleColor: '#ffffff',
-                                    bodyColor: '#ffffff'
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    color: '#D1D5DB',
-                                    callback: function(value) {
-                                        return '$' + value.toLocaleString();
-                                    }
-                                },
-                                grid: {
-                                    color: '#374151'
-                                }
-                            },
-                            x: {
-                                ticks: {
-                                    color: '#D1D5DB'
-                                },
-                                grid: {
-                                    color: '#374151'
-                                }
-                            }
+                    // Safely destroy existing chart if it exists
+                    if (this.charts.pnl) {
+                        try {
+                            this.charts.pnl.destroy();
+                            console.log('🗑️ Destroyed existing PnL chart');
+                        } catch (error) {
+                            console.warn('⚠️ Error destroying existing chart:', error);
                         }
+                        this.charts.pnl = null;
                     }
-                });
-                console.log('✅ PnL chart created successfully from database data');
-                    console.log('📊 Chart object:', this.charts.pnl);
-                    console.log('📊 Chart data:', this.charts.pnl.data);
-                    console.log('📊 Chart options:', this.charts.pnl.options);
                     
-                    // Force a resize to ensure the chart renders properly
+                    // Create new chart with data directly from database
+                    const ctx = document.getElementById('pnlChart');
+                    if (!ctx) {
+                        console.log('⚠️ PnL chart canvas not found - likely no trades yet');
+                        this.chartUpdateInProgress = false;
+                        return;
+                    }
+                    
+                    // Calculate cumulative P&L from database trades
+                    const pnlData = [];
+                    const labels = [];
+                    let cumulativePnl = 0;
+                    
+                    // Sort trades by timestamp
+                    const sortedTrades = [...this.dashboardPnL].sort((a, b) => 
+                        new Date(a.trade_date + ' ' + a.trade_time) - new Date(b.trade_date + ' ' + b.trade_time)
+                    );
+                    
+                    console.log('📊 Sorted trades from database:', sortedTrades.length);
+                    
+                    sortedTrades.forEach((trade, index) => {
+                        const tradePnl = trade.pnl || 0;
+                        cumulativePnl += tradePnl;
+                        pnlData.push(cumulativePnl);
+                        labels.push(new Date(trade.trade_date + ' ' + trade.trade_time).toLocaleDateString());
+                        console.log(`📈 Trade ${index + 1}: ${trade.symbol} - PnL: $${tradePnl}, Cumulative: $${cumulativePnl}`);
+                    });
+                    
+                    // If no trades, use default data
+                    if (pnlData.length === 0) {
+                        pnlData.push(0);
+                        labels.push('No trades');
+                        console.log('⚠️ No trades found in database, using default data');
+                    }
+                    
+                    console.log('📊 Final PnL data from database:', pnlData);
+                    console.log('📊 Final labels:', labels);
+                    
+                    // Check if canvas is visible and has dimensions
+                    const canvasRect = ctx.getBoundingClientRect();
+                    console.log('📊 Canvas dimensions:', {
+                        width: canvasRect.width,
+                        height: canvasRect.height,
+                        visible: canvasRect.width > 0 && canvasRect.height > 0
+                    });
+                    
+                    // Wait a bit to ensure DOM is ready
                     setTimeout(() => {
-                        if (this.charts.pnl && this.charts.pnl.resize) {
-                            this.charts.pnl.resize();
-                            console.log('📊 Chart resized');
+                        try {
+                            console.log('🔄 Creating PnL chart with database data:', {
+                                labels: labels,
+                                data: pnlData,
+                                canvas: ctx
+                            });
+                            
+                            this.charts.pnl = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: labels,
+                                    datasets: [{
+                                        label: 'P&L',
+                                        data: pnlData,
+                                        borderColor: '#10B981',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                        tension: 0.4,
+                                        fill: true,
+                                        pointBackgroundColor: '#10B981',
+                                        pointBorderColor: '#ffffff',
+                                        pointBorderWidth: 2,
+                                        pointRadius: 4,
+                                        pointHoverRadius: 6
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: {
+                                            display: true,
+                                            labels: {
+                                                color: '#D1D5DB'
+                                            }
+                                        },
+                                        tooltip: {
+                                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                            titleColor: '#ffffff',
+                                            bodyColor: '#ffffff'
+                                        }
+                                    },
+                                    scales: {
+                                        y: {
+                                            beginAtZero: true,
+                                            ticks: {
+                                                color: '#D1D5DB',
+                                                callback: function(value) {
+                                                    return '$' + value.toLocaleString();
+                                                }
+                                            },
+                                            grid: {
+                                                color: '#374151'
+                                            }
+                                        },
+                                        x: {
+                                            ticks: {
+                                                color: '#D1D5DB'
+                                            },
+                                            grid: {
+                                                color: '#374151'
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            console.log('✅ PnL chart created successfully from database data');
+                            console.log('📊 Chart object:', this.charts.pnl);
+                            
+                        } catch (error) {
+                            console.error('❌ Error creating PnL chart:', error);
+                            this.charts.pnl = null;
+                        } finally {
+                            this.chartUpdateInProgress = false;
                         }
-                    }, 100);
+                    }, 50);
+                    
                 } catch (error) {
-                    console.error('❌ Error creating PnL chart:', error);
-                    this.charts.pnl = null;
+                    console.error('❌ Error in updatePnlChart:', error);
+                    this.chartUpdateInProgress = false;
                 }
             },
             
@@ -1104,13 +1121,25 @@ const app = createApp({
                     }
                 }
                 
-            // Calculate from database trades
-                const winning = this.dashboardTrades.filter(t => (t.pnl || 0) > 0).length;
-                const losing = this.dashboardTrades.filter(t => (t.pnl || 0) < 0).length;
-                const pending = this.dashboardTrades.filter(t => t.status === 'pending').length;
-                
-                this.charts.trades.data.datasets[0].data = [winning, losing, pending];
-                this.charts.trades.update();
+                try {
+                    // Calculate from database trades
+                    const winning = this.dashboardTrades.filter(t => (t.pnl || 0) > 0).length;
+                    const losing = this.dashboardTrades.filter(t => (t.pnl || 0) < 0).length;
+                    const pending = this.dashboardTrades.filter(t => t.status === 'pending').length;
+                    
+                    console.log('📊 Trade distribution - Winning:', winning, 'Losing:', losing, 'Pending:', pending);
+                    
+                    // Update chart data safely
+                    if (this.charts.trades && this.charts.trades.data && this.charts.trades.data.datasets && this.charts.trades.data.datasets[0]) {
+                        this.charts.trades.data.datasets[0].data = [winning, losing, pending];
+                        this.charts.trades.update('none'); // Use 'none' mode to prevent animation issues
+                        console.log('✅ Trade chart updated successfully');
+                    } else {
+                        console.warn('⚠️ Trade chart structure not ready for update');
+                    }
+                } catch (error) {
+                    console.error('❌ Error updating trade chart:', error);
+                }
             },
             
         setupCharts() {
