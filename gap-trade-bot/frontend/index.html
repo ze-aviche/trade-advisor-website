@@ -140,137 +140,286 @@
         <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
             <!-- Dashboard Tab -->
             <div v-if="activeTab === 'dashboard'" class="space-y-6">
-                <!-- Stats Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div class="bg-gray-800 rounded-lg p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-arrow-up text-green-400 text-2xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-400">Gap-Up Stocks</p>
-                                <p class="text-2xl font-semibold text-white">{{ stats.gapUps }}</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gray-800 rounded-lg p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-exchange-alt text-blue-400 text-2xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-400">Total Trades</p>
-                                <p class="text-2xl font-semibold text-white">{{ stats.totalTrades }}</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gray-800 rounded-lg p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-dollar-sign text-green-400 text-2xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-400">P&L</p>
-                                <p class="text-2xl font-semibold" :class="(stats.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
-                                    ${{ (stats.pnl || 0).toFixed(2) }}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-gray-800 rounded-lg p-6">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-percentage text-yellow-400 text-2xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <p class="text-sm font-medium text-gray-400">Win Rate</p>
-                                <p class="text-2xl font-semibold text-white">{{ stats.winRate }}%</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                
+                                 <!-- Stats Cards -->
+                 <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                     <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
+                         <div class="flex items-center">
+                             <div class="flex-shrink-0">
+                                 <i class="fas fa-arrow-up text-green-400 text-3xl"></i>
+                             </div>
+                             <div class="ml-6">
+                                 <p class="text-base font-medium text-gray-400">Gap-Up Stocks</p>
+                                 <p class="text-3xl font-bold text-white">{{ stats.gapUps }}</p>
+                             </div>
+                         </div>
+                     </div>
+                     
+                     <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
+                         <div class="flex items-center">
+                             <div class="flex-shrink-0">
+                                 <i class="fas fa-exchange-alt text-blue-400 text-3xl"></i>
+                             </div>
+                             <div class="ml-6">
+                                 <p class="text-base font-medium text-gray-400">Total Trades</p>
+                                 <p class="text-3xl font-bold text-white">{{ stats.totalTrades }}</p>
+                             </div>
+                         </div>
+                     </div>
+                     
+                     <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
+                         <div class="flex items-center">
+                             <div class="flex-shrink-0">
+                                 <i class="fas fa-dollar-sign text-green-400 text-3xl"></i>
+                             </div>
+                             <div class="ml-6">
+                                 <p class="text-base font-medium text-gray-400">P&L</p>
+                                 <p class="text-3xl font-bold" :class="(stats.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                     ${{ (stats.pnl || 0).toFixed(2) }}
+                                 </p>
+                             </div>
+                         </div>
+                     </div>
+                     
+                     <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
+                         <div class="flex items-center">
+                             <div class="flex-shrink-0">
+                                 <i class="fas fa-percentage text-yellow-400 text-3xl"></i>
+                             </div>
+                             <div class="ml-6">
+                                 <p class="text-base font-medium text-gray-400">Win Rate</p>
+                                                                  <p class="text-3xl font-bold text-white">{{ stats.winRate.toFixed(2) }}%</p>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
 
-                <!-- Charts -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="bg-gray-800 rounded-lg p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-medium text-white">P&L Over Time</h3>
-                            <div class="flex items-center space-x-2">
-                                <label class="text-sm text-gray-400">From:</label>
-                                <input type="date" v-model="dashboardPnLFromDate" @change="loadDashboardPnL"
-                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
-                                <label class="text-sm text-gray-400">To:</label>
-                                <input type="date" v-model="dashboardPnLToDate" @change="loadDashboardPnL"
-                                       class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                                  <!-- Charts -->
+                 <div class="space-y-8">
+                     <!-- P&L Over Time Chart -->
+                     <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
+                         <div class="mb-8">
+                             <h3 class="text-2xl font-bold text-white mb-6">P&L Over Time</h3>
+                             
+                             <!-- Controls Row -->
+                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                 <div class="flex items-center space-x-4">
+                                     <input type="checkbox" v-model="showAllTrades" @change="onShowAllTradesToggle" id="showAllTradesPnL"
+                                            class="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500">
+                                     <label for="showAllTradesPnL" class="text-base text-gray-300 font-medium">Show All Trades</label>
+                                 </div>
+                                 
+                                 <div v-if="!showAllTrades" class="flex items-center space-x-4">
+                                     <label class="text-base text-gray-300 font-medium">Date Range:</label>
+                                     <div class="flex space-x-3">
+                                         <input type="date" v-model="dashboardPnLFromDate" @change="loadDashboardPnL"
+                                                class="bg-gray-700 text-white text-base rounded-lg px-4 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                         <input type="date" v-model="dashboardPnLToDate" @change="loadDashboardPnL"
+                                                class="bg-gray-700 text-white text-base rounded-lg px-4 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                     </div>
+                                 </div>
+                             </div>
+                         </div>
+                       
+                       <div v-if="loading.dashboardPnL" class="text-center py-8">
+                           <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                           <p class="mt-2 text-gray-400">Loading P&L data...</p>
+                       </div>
+                       
+                       <div v-else-if="dashboardPnL.length === 0" class="text-center py-8">
+                           <i class="fas fa-chart-line text-4xl text-gray-500 mb-4"></i>
+                           <p class="text-lg text-gray-400">No trades found</p>
+                           <p class="text-sm text-gray-500 mt-2">
+                               <span v-if="showAllTrades">No trades in database</span>
+                               <span v-else>No trades found for selected date range</span>
+                           </p>
+                           <div v-if="!showAllTrades" class="mt-2 text-xs text-gray-600">
+                               Date range: {{ dashboardPnLFromDate || 'Default' }} to {{ dashboardPnLToDate || 'Default' }}
+                           </div>
+                       </div>
+                       
+                                                <div v-else>
+                            <div class="mb-4 text-sm text-gray-400 bg-gray-700 rounded-lg p-3">
+                                <span v-if="showAllTrades">Showing all {{ dashboardPnL.length }} trades</span>
+                                <span v-else>Showing {{ dashboardPnL.length }} trades from {{ dashboardPnLFromDate || 'Default' }} to {{ dashboardPnLToDate || 'Default' }}</span>
                             </div>
-                        </div>
-                        
-                        <div v-if="loading.dashboardPnL" class="text-center py-8">
-                            <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
-                            <p class="mt-2 text-gray-400">Loading P&L data...</p>
-                        </div>
-                        
-                        <div v-else-if="dashboardPnL.length === 0" class="text-center py-8">
-                            <i class="fas fa-chart-line text-4xl text-gray-500 mb-4"></i>
-                            <p class="text-lg text-gray-400">No trades yet</p>
-                            <p class="text-sm text-gray-500 mt-2">P&L chart will appear here once trades are executed</p>
-                        </div>
-                        
-                        <div v-else class="relative" style="height: 300px;">
-                            <canvas id="pnlChart"></canvas>
+                            <div class="relative" style="height: 350px;">
+                                <canvas id="pnlChart"></canvas>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="bg-gray-800 rounded-lg p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-medium text-white">Trade Distribution</h3>
-                            <div class="flex items-center space-x-2">
-                                <label class="text-sm text-gray-400">From:</label>
-                                <input type="date" v-model="dashboardTradeFromDate" @change="loadDashboardTrades"
-                                        class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
-                                <label class="text-sm text-gray-400">To:</label>
-                                <input type="date" v-model="dashboardTradeToDate" @change="loadDashboardTrades"
-                                       class="bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
-                            </div>
-                        </div>
-                        
-                        <div v-if="loading.dashboardTrades" class="text-center py-8">
-                            <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
-                            <p class="mt-2 text-gray-400">Loading trade data...</p>
-                        </div>
-                        
-                        <div v-else-if="dashboardTrades.length === 0" class="text-center py-8">
-                            <i class="fas fa-chart-pie text-4xl text-gray-500 mb-4"></i>
-                            <p class="text-lg text-gray-400">No trades yet</p>
-                            <p class="text-sm text-gray-500 mt-2">Trade distribution will appear here once trades are executed</p>
-                        </div>
-                        
-                        <div v-else class="relative" style="height: 300px;">
-                            <canvas id="tradeChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Recent Activity -->
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <h3 class="text-lg font-medium text-white mb-4">Recent Activity</h3>
-                    <div class="space-y-3">
-                        <div v-for="activity in recentActivity" :key="activity.id" 
-                             class="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
-                            <div class="flex items-center">
-                                <i :class="activity.icon" class="mr-3 text-lg" :class="activity.color"></i>
-                                <div>
-                                    <p class="text-sm font-medium text-white">{{ activity.title }}</p>
-                                    <p class="text-xs text-gray-400">{{ activity.description }}</p>
+                    <!-- Trade Distribution & Analytics Chart -->
+                    <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
+                        <div class="mb-8">
+                            <h3 class="text-2xl font-bold text-white mb-6">Trade Distribution & Analytics</h3>
+                            
+                            <!-- Controls Row 1 -->
+                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+                                <div class="flex items-center space-x-4">
+                                    <input type="checkbox" v-model="showAllTrades" @change="onShowAllTradesToggle" id="showAllTradesDist"
+                                           class="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500">
+                                    <label for="showAllTradesDist" class="text-base text-gray-300 font-medium">Show All Trades</label>
+                                </div>
+                                
+                                <div class="flex items-center space-x-4">
+                                    <label class="text-base text-gray-300 font-medium">Trade Type:</label>
+                                    <select v-model="tradeTypeFilter" @change="loadDashboardTrades"
+                                            class="bg-gray-700 text-white text-base rounded-lg px-4 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none flex-1">
+                                        <option value="all">All Trades</option>
+                                        <option value="long">Long Only</option>
+                                        <option value="short">Short Only</option>
+                                    </select>
                                 </div>
                             </div>
-                            <span class="text-xs text-gray-400">{{ activity.time }}</span>
+                            
+                            <!-- Controls Row 2 -->
+                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+                                <div class="flex items-center space-x-4">
+                                    <label class="text-base text-gray-300 font-medium">Chart View:</label>
+                                    <select v-model="chartViewType" @change="onChartViewTypeChange"
+                                            class="bg-gray-700 text-white text-base rounded-lg px-4 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none flex-1">
+                                        <option value="long_short">Long vs Short</option>
+                                        <option value="win_loss">Win vs Loss</option>
+                                        <option value="ticker">By Ticker</option>
+                                        <option value="monthly">Monthly Performance</option>
+                                    </select>
+                                </div>
+                                
+                                <div v-if="!showAllTrades" class="flex items-center space-x-4">
+                                    <label class="text-base text-gray-300 font-medium">Date Range:</label>
+                                    <div class="flex space-x-3">
+                                        <input type="date" v-model="dashboardTradeFromDate" @change="loadDashboardTrades"
+                                               class="bg-gray-700 text-white text-base rounded-lg px-4 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                        <input type="date" v-model="dashboardTradeToDate" @change="loadDashboardTrades"
+                                               class="bg-gray-700 text-white text-base rounded-lg px-4 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
+                      
+                      <div v-if="loading.dashboardTrades" class="text-center py-8">
+                          <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                          <p class="mt-2 text-gray-400">Loading trade data...</p>
+                      </div>
+                      
+                      <div v-else-if="dashboardTrades.length === 0" class="text-center py-8">
+                          <i class="fas fa-chart-pie text-4xl text-gray-500 mb-4"></i>
+                          <p class="text-lg text-gray-400">No trades found</p>
+                          <p class="text-sm text-gray-500 mt-2">
+                              <span v-if="showAllTrades">No trades in database</span>
+                              <span v-else>No trades found for selected date range</span>
+                          </p>
+                          <div v-if="!showAllTrades" class="mt-2 text-xs text-gray-600">
+                              Date range: {{ dashboardTradeFromDate || 'Default' }} to {{ dashboardTradeToDate || 'Default' }}
+                          </div>
+                      </div>
+                      
+                                                                                                                                                  <div v-else>
+                            <div class="mb-4 text-sm text-gray-400 bg-gray-700 rounded-lg p-3">
+                                <span v-if="showAllTrades">Showing all {{ dashboardTrades.length }} trades</span>
+                                <span v-else>Showing {{ dashboardTrades.length }} trades from {{ dashboardTradeFromDate || 'Default' }} to {{ dashboardTradeToDate || 'Default' }}</span>
+                                <span v-if="tradeTypeFilter !== 'all'" class="ml-2 text-blue-400">({{ tradeTypeFilter }} trades only)</span>
+                            </div>
+                            <div class="relative" style="height: 350px;">
+                                <canvas id="tradeChart"></canvas>
+                            </div>
+                           
+                           <!-- Analytics Summary -->
+                           <div class="mt-10 grid grid-cols-1 xl:grid-cols-2 gap-8">
+                               <!-- Overall Stats -->
+                               <div class="bg-gradient-to-br from-gray-700 to-gray-800 rounded-xl p-8 border border-gray-600 shadow-lg">
+                                   <div class="flex items-center mb-6">
+                                       <div class="w-4 h-4 bg-blue-400 rounded-full mr-4"></div>
+                                       <h4 class="text-xl font-bold text-white">Overall Performance</h4>
+                                   </div>
+                                   <div class="space-y-4">
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Total Trades:</span>
+                                           <span class="text-white font-bold text-xl">{{ tradeAnalytics.totalTrades }}</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Win Rate:</span>
+                                           <span class="text-green-400 font-bold text-xl">{{ tradeAnalytics.overallWinRate.toFixed(2) }}%</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Total P&L:</span>
+                                           <span :class="tradeAnalytics.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold text-xl">${{ tradeAnalytics.totalPnl.toFixed(2) }}</span>
+                                       </div>
+                                   </div>
+                               </div>
+                               
+                               <!-- Long Trades Stats -->
+                               <div class="bg-gradient-to-br from-green-900/20 to-green-800/20 rounded-xl p-8 border border-green-600/30 shadow-lg">
+                                   <div class="flex items-center mb-6">
+                                       <div class="w-4 h-4 bg-green-400 rounded-full mr-4"></div>
+                                       <h4 class="text-xl font-bold text-green-300">Long Trades</h4>
+                                   </div>
+                                   <div class="space-y-4">
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Count:</span>
+                                           <span class="text-white font-bold text-xl">{{ tradeAnalytics.longTrades.count }}</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Win Rate:</span>
+                                           <span class="text-green-400 font-bold text-xl">{{ tradeAnalytics.longTrades.winRate.toFixed(2) }}%</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">P&L:</span>
+                                           <span :class="tradeAnalytics.longTrades.pnl >= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold text-xl">${{ tradeAnalytics.longTrades.pnl.toFixed(2) }}</span>
+                                       </div>
+                                   </div>
+                               </div>
+                               
+                               <!-- Short Trades Stats -->
+                               <div class="bg-gradient-to-br from-red-900/20 to-red-800/20 rounded-xl p-8 border border-red-600/30 shadow-lg">
+                                   <div class="flex items-center mb-6">
+                                       <div class="w-4 h-4 bg-red-400 rounded-full mr-4"></div>
+                                       <h4 class="text-xl font-bold text-red-300">Short Trades</h4>
+                                   </div>
+                                   <div class="space-y-4">
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Count:</span>
+                                           <span class="text-white font-bold text-xl">{{ tradeAnalytics.shortTrades.count }}</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Win Rate:</span>
+                                           <span class="text-green-400 font-bold text-xl">{{ tradeAnalytics.shortTrades.winRate.toFixed(2) }}%</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">P&L:</span>
+                                           <span :class="tradeAnalytics.shortTrades.pnl >= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold text-xl">${{ tradeAnalytics.shortTrades.pnl.toFixed(2) }}</span>
+                                       </div>
+                                   </div>
+                               </div>
+                               
+                               <!-- Top Performers -->
+                               <div class="bg-gradient-to-br from-purple-900/20 to-purple-800/20 rounded-xl p-8 border border-purple-600/30 shadow-lg">
+                                   <div class="flex items-center mb-6">
+                                       <div class="w-4 h-4 bg-purple-400 rounded-full mr-4"></div>
+                                       <h4 class="text-xl font-bold text-purple-300">Top Performers</h4>
+                                   </div>
+                                   <div class="space-y-4">
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Best Ticker:</span>
+                                           <span class="text-white font-bold text-xl">{{ tradeAnalytics.topPerformers.bestTicker || 'N/A' }}</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Best P&L:</span>
+                                           <span :class="tradeAnalytics.topPerformers.bestPnl >= 0 ? 'text-green-400' : 'text-red-400'" class="text-white font-bold text-xl">${{ tradeAnalytics.topPerformers.bestPnl.toFixed(2) }}</span>
+                                       </div>
+                                       <div class="flex justify-between items-center">
+                                           <span class="text-gray-300 font-medium text-lg">Avg Trade:</span>
+                                           <span :class="tradeAnalytics.avgTradePnl >= 0 ? 'text-green-400' : 'text-red-400'" class="font-bold text-xl">${{ tradeAnalytics.avgTradePnl.toFixed(2) }}</span>
+                                       </div>
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+
+                                 
             </div>
 
             <!-- Gap-Ups Tab -->

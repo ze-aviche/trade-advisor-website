@@ -55,6 +55,8 @@ const app = createApp({
                 
                 // Chart update control
                 chartUpdateInProgress: false,
+                pnlChartUpdateTimeout: null,
+                tradeChartUpdateTimeout: null,
                 
                 // WebSocket connection
                 socket: null,
@@ -148,9 +150,21 @@ const app = createApp({
                 thread_alive: false
             },
             
-            // Dashboard chart data - Direct from database
+                            // Dashboard chart data - Direct from database
                 dashboardTrades: [],
                 dashboardPnL: [],
+                showAllTrades: true, // Toggle to show all trades regardless of date - default to true since trades are from 2025
+                tradeTypeFilter: 'all', // Filter for trade type: 'all', 'long', 'short'
+                chartViewType: 'long_short', // Chart view type: 'long_short', 'win_loss', 'ticker', 'monthly'
+                tradeAnalytics: {
+                    totalTrades: 0,
+                    overallWinRate: 0,
+                    totalPnl: 0,
+                    avgTradePnl: 0,
+                    longTrades: { count: 0, winRate: 0, pnl: 0 },
+                    shortTrades: { count: 0, winRate: 0, pnl: 0 },
+                    topPerformers: { bestTicker: '', bestPnl: 0 }
+                },
                 
                 // Stock selection for unsubscribe
                 selectedStocks: []
@@ -187,6 +201,24 @@ const app = createApp({
             });
         },
         
+        beforeDestroy() {
+            // Clean up timeouts and charts
+            if (this.pnlChartUpdateTimeout) {
+                clearTimeout(this.pnlChartUpdateTimeout);
+            }
+            if (this.tradeChartUpdateTimeout) {
+                clearTimeout(this.tradeChartUpdateTimeout);
+            }
+            
+            // Destroy charts
+            if (this.charts.pnl && typeof this.charts.pnl.destroy === 'function') {
+                this.charts.pnl.destroy();
+            }
+            if (this.charts.trades && typeof this.charts.trades.destroy === 'function') {
+                this.charts.trades.destroy();
+            }
+        },
+        
         methods: {
             checkAuth() {
                 const sessionToken = localStorage.getItem('session_token');
@@ -214,15 +246,24 @@ const app = createApp({
             // Handle tab changes
             onTabChange(tabName) {
                 console.log(`🔄 Tab changed to: ${tabName}`);
-                if (tabName === 'bot') {
+                if (tabName === 'dashboard') {
+                    console.log('📊 Dashboard tab selected - ensuring charts are updated...');
+                    // Ensure charts are updated when dashboard tab is accessed
+                    this.$nextTick(() => {
+                        setTimeout(() => {
+                            this.updatePnlChart();
+                            this.updateTradeChart();
+                        }, 100);
+                    });
+                } else if (tabName === 'bot') {
                     console.log('🤖 Bot tab selected - loading bot status...');
                     this.loadBotStatus();
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.loadTradeHistory();
-            } else if (tabName === 'historical') {
-                console.log('📈 Historical Data tab selected - ready for analysis...');
-                // Historical tab is ready for user input, no auto-loading needed
+                } else if (tabName === 'historical') {
+                    console.log('📈 Historical Data tab selected - ready for analysis...');
+                    // Historical tab is ready for user input, no auto-loading needed
                 }
             },
             
@@ -309,7 +350,16 @@ const app = createApp({
                     
                     // Start loading dashboard data in parallel
                     console.log('📊 Starting dashboard data loading...');
-                    this.loadDashboardData().catch(error => {
+                    this.loadDashboardData().then(() => {
+                                            // Initialize charts after dashboard data loads
+                    console.log('📊 Initializing charts after dashboard data load...');
+                    this.$nextTick(() => {
+                        setTimeout(() => {
+                            this.updatePnlChart();
+                            this.updateTradeChart();
+                        }, 1000); // Increased delay to ensure DOM is ready
+                    });
+                    }).catch(error => {
                         console.error('❌ Failed to load dashboard data:', error);
                     });
                     
@@ -427,9 +477,11 @@ const app = createApp({
                     // Update charts after all data is loaded
                     setTimeout(() => {
                         console.log('🔄 Updating charts after data load...');
-                        this.updatePnlChart();
-                        this.updateTradeChart();
-                    }, 200);
+                        this.$nextTick(() => {
+                            this.updatePnlChart();
+                            this.updateTradeChart();
+                        });
+                    }, 500);
                     
                 } catch (error) {
                     console.error('❌ Error loading dashboard data:', error);
@@ -614,7 +666,7 @@ const app = createApp({
             },
             
             async loadStats() {
-            console.log('📊 Loading stats from DAS trades database...');
+            console.log('📊 Loading DASHBOARD stats from DAS trades database (all trades, no filtering)...');
                 this.updateLoadingProgress('stats', 'loading');
                 
                 const maxRetries = 3;
@@ -624,7 +676,8 @@ const app = createApp({
                     try {
                         console.log(`📊 Stats loading attempt ${attempt}/${maxRetries}...`);
                         
-                    const response = await fetch('http://localhost:5000/api/trades', {
+                    // Load ALL trades for dashboard stats (no filtering)
+                    const response = await fetch('http://localhost:5000/api/trades?limit=1000', {
                             signal: AbortSignal.timeout(10000) // 10 second timeout
                         });
                         
@@ -641,13 +694,13 @@ const app = createApp({
                         // Load trades directly from database
                         this.trades = data.data.trades || [];
                         
-                        // Calculate stats from database data
+                        // Calculate DASHBOARD stats from ALL database trades (no filtering)
                         const totalTrades = this.trades.length;
                         const winningTrades = this.trades.filter(t => (t.pnl || 0) > 0).length;
                         const totalPnl = this.trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
                         const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
                         
-                        // Update stats from database summary
+                        // Update DASHBOARD stats (these should remain constant regardless of trade history filters)
                         this.stats = {
                             totalTrades: totalTrades,
                             winRate: winRate,
@@ -657,8 +710,8 @@ const app = createApp({
                             gapUps: this.gapUps.length
                         };
                             
-                        console.log('✅ Stats loaded successfully from database:', this.stats);
-                        console.log('📊 Calculated stats - Total:', totalTrades, 'Winning:', winningTrades, 'Win Rate:', winRate.toFixed(1) + '%', 'Total P&L:', totalPnl);
+                        console.log('✅ DASHBOARD stats loaded successfully from database:', this.stats);
+                        console.log('📊 DASHBOARD stats - Total:', totalTrades, 'Winning:', winningTrades, 'Win Rate:', winRate.toFixed(2) + '%', 'Total P&L:', totalPnl);
                             this.updateLoadingProgress('stats', 'success');
                             
                             return; // Success, exit retry loop
@@ -678,6 +731,92 @@ const app = createApp({
                 }
                 
                 this.updateLoadingProgress('stats', 'error');
+            },
+            
+            calculateTradeAnalytics() {
+                try {
+                    console.log('📊 Calculating trade analytics...');
+                    
+                    const trades = this.dashboardTrades;
+                    if (!trades || trades.length === 0) {
+                        console.log('⚠️ No trades available for analytics calculation');
+                        return;
+                    }
+                    
+                    // Overall stats
+                    const totalTrades = trades.length;
+                    const winningTrades = trades.filter(t => (t.pnl || 0) > 0).length;
+                    const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                    const overallWinRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+                    const avgTradePnl = totalTrades > 0 ? totalPnl / totalTrades : 0;
+                    
+                    // Long trades analysis
+                    const longTrades = trades.filter(t => {
+                        const side = t.side?.toLowerCase() || t.direction?.toLowerCase() || '';
+                        return side === 'b'; // 'B' = Buy = Long
+                    });
+                    const longWinningTrades = longTrades.filter(t => (t.pnl || 0) > 0).length;
+                    const longPnl = longTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                    const longWinRate = longTrades.length > 0 ? (longWinningTrades / longTrades.length) * 100 : 0;
+                    
+                    // Short trades analysis
+                    const shortTrades = trades.filter(t => {
+                        const side = t.side?.toLowerCase() || t.direction?.toLowerCase() || '';
+                        return side === 's'; // 'S' = Sell = Short
+                    });
+                    const shortWinningTrades = shortTrades.filter(t => (t.pnl || 0) > 0).length;
+                    const shortPnl = shortTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                    const shortWinRate = shortTrades.length > 0 ? (shortWinningTrades / shortTrades.length) * 100 : 0;
+                    
+                    // Top performers analysis
+                    const tickerPerformance = {};
+                    trades.forEach(trade => {
+                        const ticker = trade.symbol || trade.ticker || 'Unknown';
+                        if (!tickerPerformance[ticker]) {
+                            tickerPerformance[ticker] = { pnl: 0, count: 0 };
+                        }
+                        tickerPerformance[ticker].pnl += (trade.pnl || 0);
+                        tickerPerformance[ticker].count += 1;
+                    });
+                    
+                    let bestTicker = '';
+                    let bestPnl = 0;
+                    Object.entries(tickerPerformance).forEach(([ticker, data]) => {
+                        if (data.pnl > bestPnl) {
+                            bestTicker = ticker;
+                            bestPnl = data.pnl;
+                        }
+                    });
+                    
+                    // Update analytics object
+                    this.tradeAnalytics = {
+                        totalTrades: totalTrades,
+                        overallWinRate: overallWinRate,
+                        totalPnl: totalPnl,
+                        avgTradePnl: avgTradePnl,
+                        longTrades: {
+                            count: longTrades.length,
+                            winRate: longWinRate,
+                            pnl: longPnl
+                        },
+                        shortTrades: {
+                            count: shortTrades.length,
+                            winRate: shortWinRate,
+                            pnl: shortPnl
+                        },
+                        topPerformers: {
+                            bestTicker: bestTicker,
+                            bestPnl: bestPnl
+                        }
+                    };
+                    
+                    console.log('✅ Trade analytics calculated:', this.tradeAnalytics);
+                    console.log(`📊 Long trades: ${longTrades.length} trades, ${longWinRate.toFixed(2)}% win rate, $${longPnl.toFixed(2)} P&L`);
+                    console.log(`📊 Short trades: ${shortTrades.length} trades, ${shortWinRate.toFixed(2)}% win rate, $${shortPnl.toFixed(2)} P&L`);
+                    
+                } catch (error) {
+                    console.error('❌ Error calculating trade analytics:', error);
+                }
             },
             
             async loadGapUpConfig() {
@@ -776,23 +915,74 @@ const app = createApp({
             
             async loadDashboardTrades() {
                 try {
-                    // Use date range instead of period
-                    const fromDate = this.dashboardTradeFromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                    const toDate = this.dashboardTradeToDate || new Date().toISOString().split('T')[0];
-                    
-                    console.log('🔄 Loading dashboard trades for date range:', fromDate, 'to', toDate);
                     this.loading.dashboardTrades = true;
-                
-                const response = await fetch(`http://localhost:5000/api/trades?start_date=${fromDate}&end_date=${toDate}`);
-                    const data = await response.json();
                     
-                    if (data.success) {
-                    // Load trades directly from database
-                    this.dashboardTrades = data.data.trades || [];
-                    console.log('✅ Dashboard trades loaded from database:', this.dashboardTrades.length, 'trades');
+                    if (this.showAllTrades) {
+                        // Load all trades without date restrictions
+                        console.log('🔄 Loading all dashboard trades (no date filter)...');
+                        const response = await fetch(`http://localhost:5000/api/trades?limit=100`);
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.dashboardTrades = data.data.trades || [];
+                            console.log('✅ All dashboard trades loaded from database:', this.dashboardTrades.length, 'trades');
+                        } else {
+                            console.error('Failed to load dashboard trades:', data.message);
+                        }
                     } else {
-                        console.error('Failed to load dashboard trades:', data.message);
+                        // Use date range instead of period
+                        const fromDate = this.dashboardTradeFromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                        const toDate = this.dashboardTradeToDate || new Date().toISOString().split('T')[0];
+                        
+                        console.log('🔄 Loading dashboard trades for date range:', fromDate, 'to', toDate);
+                    
+                        // First try with the specified date range
+                        let response = await fetch(`http://localhost:5000/api/trades?start_date=${fromDate}&end_date=${toDate}`);
+                        let data = await response.json();
+                        
+                        if (data.success && data.data.trades && data.data.trades.length > 0) {
+                            // Load trades directly from database
+                            this.dashboardTrades = data.data.trades || [];
+                            console.log('✅ Dashboard trades loaded from database with date filter:', this.dashboardTrades.length, 'trades');
+                        } else {
+                            console.log('⚠️ No trades found with date filter, trying without date restrictions...');
+                            // If no trades found with date filter, try without date restrictions
+                            response = await fetch(`http://localhost:5000/api/trades?limit=100`);
+                            data = await response.json();
+                            
+                            if (data.success) {
+                                this.dashboardTrades = data.data.trades || [];
+                                console.log('✅ Dashboard trades loaded from database without date filter:', this.dashboardTrades.length, 'trades');
+                            } else {
+                                console.error('Failed to load dashboard trades:', data.message);
+                            }
+                        }
                     }
+                    
+                    // Apply trade type filter
+                    if (this.tradeTypeFilter !== 'all') {
+                        const originalCount = this.dashboardTrades.length;
+                        this.dashboardTrades = this.dashboardTrades.filter(trade => {
+                            // Map database fields to expected frontend fields
+                            const tradeDirection = trade.side?.toLowerCase() || trade.direction?.toLowerCase() || '';
+                            // Map 'B' to 'long', 'S' to 'short'
+                            const mappedDirection = tradeDirection === 'b' ? 'long' : tradeDirection === 's' ? 'short' : tradeDirection;
+                            return mappedDirection === this.tradeTypeFilter;
+                        });
+                        console.log(`🔍 Applied trade type filter '${this.tradeTypeFilter}': ${originalCount} → ${this.dashboardTrades.length} trades`);
+                    }
+                    
+                    // Calculate trade analytics
+                    this.calculateTradeAnalytics();
+                    
+                    // Update trade chart after data loads with debouncing
+                    if (this.tradeChartUpdateTimeout) {
+                        clearTimeout(this.tradeChartUpdateTimeout);
+                    }
+                    this.tradeChartUpdateTimeout = setTimeout(() => {
+                        this.updateTradeChart();
+                    }, 200);
+                    
                 } catch (error) {
                     console.error('Error loading dashboard trades:', error);
                 } finally {
@@ -803,29 +993,111 @@ const app = createApp({
             
             async loadDashboardPnL() {
                 try {
-                    // Use date range instead of period
-                    const fromDate = this.dashboardPnLFromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                    const toDate = this.dashboardPnLToDate || new Date().toISOString().split('T')[0];
-                    
-                    console.log('🔄 Loading dashboard P&L for date range:', fromDate, 'to', toDate);
                     this.loading.dashboardPnL = true;
-                
-                const response = await fetch(`http://localhost:5000/api/trades?start_date=${fromDate}&end_date=${toDate}`);
-                    const data = await response.json();
                     
-                    if (data.success) {
-                    // Load PnL data directly from database
-                    this.dashboardPnL = data.data.trades || [];
-                    console.log('✅ Dashboard P&L loaded from database:', this.dashboardPnL.length, 'trades');
+                    if (this.showAllTrades) {
+                        // Load all trades without date restrictions
+                        console.log('🔄 Loading all dashboard P&L (no date filter)...');
+                        const response = await fetch(`http://localhost:5000/api/trades?limit=100`);
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            this.dashboardPnL = data.data.trades || [];
+                            console.log('✅ All dashboard P&L loaded from database:', this.dashboardPnL.length, 'trades');
+                        } else {
+                            console.error('Failed to load dashboard P&L data:', data.message);
+                        }
                     } else {
-                        console.error('Failed to load dashboard P&L data:', data.message);
+                        // Use date range instead of period
+                        const fromDate = this.dashboardPnLFromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                        const toDate = this.dashboardPnLToDate || new Date().toISOString().split('T')[0];
+                        
+                        console.log('🔄 Loading dashboard P&L for date range:', fromDate, 'to', toDate);
+                    
+                        // First try with the specified date range
+                        let response = await fetch(`http://localhost:5000/api/trades?start_date=${fromDate}&end_date=${toDate}`);
+                        let data = await response.json();
+                        
+                        if (data.success && data.data.trades && data.data.trades.length > 0) {
+                            // Load PnL data directly from database
+                            this.dashboardPnL = data.data.trades || [];
+                            console.log('✅ Dashboard P&L loaded from database with date filter:', this.dashboardPnL.length, 'trades');
+                        } else {
+                            console.log('⚠️ No trades found with date filter, trying without date restrictions...');
+                            // If no trades found with date filter, try without date restrictions
+                            response = await fetch(`http://localhost:5000/api/trades?limit=100`);
+                            data = await response.json();
+                            
+                            if (data.success) {
+                                this.dashboardPnL = data.data.trades || [];
+                                console.log('✅ Dashboard P&L loaded from database without date filter:', this.dashboardPnL.length, 'trades');
+                            } else {
+                                console.error('Failed to load dashboard P&L data:', data.message);
+                            }
+                        }
                     }
+                    
+                    // Update PnL chart after data loads with debouncing
+                    if (this.pnlChartUpdateTimeout) {
+                        clearTimeout(this.pnlChartUpdateTimeout);
+                    }
+                    this.pnlChartUpdateTimeout = setTimeout(() => {
+                        this.updatePnlChart();
+                    }, 200);
+                    
                 } catch (error) {
                     console.error('Error loading dashboard P&L data:', error);
                 } finally {
                     this.loading.dashboardPnL = false;
                     console.log('🏁 Dashboard P&L loading finished');
                 }
+            },
+            
+            async onShowAllTradesToggle() {
+                console.log('🔄 Show All Trades toggle changed to:', this.showAllTrades);
+                // Load both dashboard components when toggle changes
+                await Promise.all([
+                    this.loadDashboardTrades(),
+                    this.loadDashboardPnL()
+                ]);
+                
+                // Update charts after data loads
+                this.$nextTick(() => {
+                    setTimeout(() => {
+                        this.updatePnlChart();
+                        this.updateTradeChart();
+                    }, 200);
+                });
+            },
+            
+            onChartViewTypeChange() {
+                console.log('🔄 Chart view type changed to:', this.chartViewType);
+                this.updateTradeChart();
+            },
+            
+            setDateRangeTo2025() {
+                // Quick method to set date range to 2025 to match database
+                this.dashboardPnLFromDate = '2025-01-01';
+                this.dashboardPnLToDate = '2025-12-31';
+                this.dashboardTradeFromDate = '2025-01-01';
+                this.dashboardTradeToDate = '2025-12-31';
+                this.showAllTrades = false; // Turn off show all trades to use date range
+                
+                console.log('📅 Date range set to 2025');
+                
+                // Reload both components
+                Promise.all([
+                    this.loadDashboardTrades(),
+                    this.loadDashboardPnL()
+                ]).then(() => {
+                    // Update charts after data loads
+                    this.$nextTick(() => {
+                        setTimeout(() => {
+                            this.updatePnlChart();
+                            this.updateTradeChart();
+                        }, 200);
+                    });
+                });
             },
             
             async loadTradeHistory() {
@@ -878,11 +1150,8 @@ const app = createApp({
                     
                     console.log(`📊 Loaded ${this.trades.length} trades from database${this.tradeHistoryTicker ? ` for ${this.tradeHistoryTicker}` : ''}`);
                     
-                    // Update stats if summary is available
-                    if (data.data.summary) {
-                        this.stats.totalTrades = data.data.summary.total_trades || 0;
-                        this.stats.pnl = data.data.summary.total_pnl || 0;
-                    }
+                    // Note: We don't update dashboard stats here to keep them independent
+                    // Dashboard stats should only be updated by loadStats() method
                     } else {
                     console.error('Failed to load trade history:', data.error);
                     this.showNotification('Failed to load trade history: ' + data.error, 'error');
@@ -896,26 +1165,41 @@ const app = createApp({
         },
         
         initializeDateRanges() {
-            // Set default date ranges (last 7 days to include recent activity)
-            const today = new Date();
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(today.getDate() - 7);
+            // Check if we should use 2025 dates (since trades are from 2025)
+            const use2025Dates = true; // Set to true since trades are from 2025
             
-            // Format dates for input fields (YYYY-MM-DD)
-            this.dashboardPnLFromDate = sevenDaysAgo.toISOString().split('T')[0];
-            this.dashboardPnLToDate = today.toISOString().split('T')[0];
-            this.dashboardTradeFromDate = sevenDaysAgo.toISOString().split('T')[0];
-            this.dashboardTradeToDate = today.toISOString().split('T')[0];
-            
-            console.log('📅 Date ranges initialized:', {
-                pnl: `${this.dashboardPnLFromDate} to ${this.dashboardPnLToDate}`,
-                trades: `${this.dashboardTradeFromDate} to ${this.dashboardTradeToDate}`
+            if (use2025Dates) {
+                // Set dates to 2025 to match the database
+                this.dashboardPnLFromDate = '2025-01-01';
+                this.dashboardPnLToDate = '2025-12-31';
+                this.dashboardTradeFromDate = '2025-01-01';
+                this.dashboardTradeToDate = '2025-12-31';
+                
+                console.log('📅 Date ranges initialized for 2025:', {
+                    pnl: `${this.dashboardPnLFromDate} to ${this.dashboardPnLToDate}`,
+                    trades: `${this.dashboardTradeFromDate} to ${this.dashboardTradeToDate}`
                 });
-            },
+            } else {
+                // Use current year dates
+                const today = new Date();
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(today.getDate() - 7);
+                
+                this.dashboardPnLFromDate = sevenDaysAgo.toISOString().split('T')[0];
+                this.dashboardPnLToDate = today.toISOString().split('T')[0];
+                this.dashboardTradeFromDate = sevenDaysAgo.toISOString().split('T')[0];
+                this.dashboardTradeToDate = today.toISOString().split('T')[0];
+                
+                console.log('📅 Date ranges initialized for current year:', {
+                    pnl: `${this.dashboardPnLFromDate} to ${this.dashboardPnLToDate}`,
+                    trades: `${this.dashboardTradeFromDate} to ${this.dashboardTradeToDate}`
+                });
+            }
+        },
             
         // Chart methods
             updatePnlChart() {
-            console.log('🔄 Updating PnL chart from database...');
+                console.log('🔄 Updating PnL chart from database...');
                 console.log('📊 Chart object exists:', !!this.charts.pnl);
                 console.log('📊 Dashboard PnL data:', this.dashboardPnL.length, 'trades');
                 
@@ -927,23 +1211,42 @@ const app = createApp({
                 
                 this.chartUpdateInProgress = true;
                 
+                // Add a small delay to prevent rapid successive updates
+                if (this.pnlChartUpdateTimeout) {
+                    clearTimeout(this.pnlChartUpdateTimeout);
+                }
+                
                 try {
-                    // Safely destroy existing chart if it exists
-                    if (this.charts.pnl) {
-                        try {
+                                    // Safely destroy existing chart if it exists
+                if (this.charts.pnl) {
+                    try {
+                        if (typeof this.charts.pnl.destroy === 'function') {
                             this.charts.pnl.destroy();
                             console.log('🗑️ Destroyed existing PnL chart');
-                        } catch (error) {
-                            console.warn('⚠️ Error destroying existing chart:', error);
                         }
-                        this.charts.pnl = null;
+                    } catch (error) {
+                        console.warn('⚠️ Error destroying existing PnL chart:', error);
                     }
+                    this.charts.pnl = null;
+                }
                     
                     // Create new chart with data directly from database
                     const ctx = document.getElementById('pnlChart');
                     if (!ctx) {
                         console.log('⚠️ PnL chart canvas not found - likely no trades yet');
                         this.chartUpdateInProgress = false;
+                        return;
+                    }
+                    
+                    // Ensure the canvas is visible and has dimensions
+                    const rect = ctx.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) {
+                        console.log('⚠️ PnL chart canvas has no dimensions, waiting...');
+                        // Wait a bit and try again
+                        setTimeout(() => {
+                            this.chartUpdateInProgress = false;
+                            this.updatePnlChart();
+                        }, 100);
                         return;
                     }
                     
@@ -985,84 +1288,107 @@ const app = createApp({
                         visible: canvasRect.width > 0 && canvasRect.height > 0
                     });
                     
-                    // Wait a bit to ensure DOM is ready
-                    setTimeout(() => {
-                        try {
-                            console.log('🔄 Creating PnL chart with database data:', {
+                    // Ensure canvas has proper dimensions
+                    if (canvasRect.width === 0 || canvasRect.height === 0) {
+                        console.log('⚠️ Canvas has no dimensions, setting default size');
+                        ctx.style.width = '100%';
+                        ctx.style.height = '300px';
+                    }
+                    
+                    // Create chart immediately without setTimeout
+                    try {
+                        console.log('🔄 Creating PnL chart with database data:', {
+                            labels: labels,
+                            data: pnlData,
+                            canvas: ctx
+                        });
+                        
+                        this.charts.pnl = new Chart(ctx, {
+                            type: 'line',
+                            data: {
                                 labels: labels,
-                                data: pnlData,
-                                canvas: ctx
-                            });
-                            
-                            this.charts.pnl = new Chart(ctx, {
-                                type: 'line',
-                                data: {
-                                    labels: labels,
-                                    datasets: [{
-                                        label: 'P&L',
-                                        data: pnlData,
-                                        borderColor: '#10B981',
-                                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                        tension: 0.4,
-                                        fill: true,
-                                        pointBackgroundColor: '#10B981',
-                                        pointBorderColor: '#ffffff',
-                                        pointBorderWidth: 2,
-                                        pointRadius: 4,
-                                        pointHoverRadius: 6
-                                    }]
-                                },
-                                options: {
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                    plugins: {
-                                        legend: {
-                                            display: true,
-                                            labels: {
-                                                color: '#D1D5DB'
+                                datasets: [{
+                                    label: 'Cumulative P&L',
+                                    data: pnlData,
+                                    borderColor: '#10B981',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    tension: 0.4,
+                                    fill: true,
+                                    pointBackgroundColor: '#10B981',
+                                    pointBorderColor: '#ffffff',
+                                    pointBorderWidth: 2,
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: false, // Disable animation to prevent issues
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        labels: {
+                                            color: '#D1D5DB',
+                                            font: {
+                                                size: 12
                                             }
-                                        },
-                                        tooltip: {
-                                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                            titleColor: '#ffffff',
-                                            bodyColor: '#ffffff'
                                         }
                                     },
-                                    scales: {
-                                        y: {
-                                            beginAtZero: true,
-                                            ticks: {
-                                                color: '#D1D5DB',
-                                                callback: function(value) {
-                                                    return '$' + value.toLocaleString();
+                                    tooltip: {
+                                        enabled: true,
+                                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                        titleColor: '#ffffff',
+                                        bodyColor: '#ffffff',
+                                        callbacks: {
+                                            label: function(context) {
+                                                if (context.parsed && context.parsed.y !== undefined) {
+                                                    return 'P&L: $' + context.parsed.y.toLocaleString();
                                                 }
-                                            },
-                                            grid: {
-                                                color: '#374151'
-                                            }
-                                        },
-                                        x: {
-                                            ticks: {
-                                                color: '#D1D5DB'
-                                            },
-                                            grid: {
-                                                color: '#374151'
+                                                return '';
                                             }
                                         }
                                     }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        display: true,
+                                        ticks: {
+                                            color: '#D1D5DB',
+                                            callback: function(value) {
+                                                return '$' + value.toLocaleString();
+                                            }
+                                        },
+                                        grid: {
+                                            color: '#374151',
+                                            display: true
+                                        }
+                                    },
+                                    x: {
+                                        display: true,
+                                        ticks: {
+                                            color: '#D1D5DB',
+                                            maxRotation: 45
+                                        },
+                                        grid: {
+                                            color: '#374151',
+                                            display: true
+                                        }
+                                    }
                                 }
-                            });
-                            
-                            console.log('✅ PnL chart created successfully from database data');
-                            console.log('📊 Chart object:', this.charts.pnl);
-                            
-                        } catch (error) {
-                            console.error('❌ Error creating PnL chart:', error);
-                            this.charts.pnl = null;
-                        } finally {
-                            this.chartUpdateInProgress = false;
-                        }
-                    }, 50);
+                            }
+                        });
+                        
+                        console.log('✅ PnL chart created successfully from database data');
+                        console.log('📊 Chart object:', this.charts.pnl);
+                        
+                    } catch (error) {
+                        console.error('❌ Error creating PnL chart:', error);
+                        this.charts.pnl = null;
+                    } finally {
+                        this.chartUpdateInProgress = false;
+                    }
                     
                 } catch (error) {
                     console.error('❌ Error in updatePnlChart:', error);
@@ -1106,45 +1432,250 @@ const app = createApp({
             
         // Update trade chart with database data
             updateTradeChart() {
-            const ctx = document.getElementById('tradeChart');
-            if (!ctx) {
-                console.log('⚠️ Trade chart canvas not found - likely no trades yet');
-                return;
-            }
-            
-                if (!this.charts.trades) {
-                    console.warn('⚠️ Trade chart not initialized, attempting to setup...');
-                    this.setupTradeChart();
-                    if (!this.charts.trades) {
-                        console.error('❌ Failed to initialize Trade chart');
-                        return;
+                const ctx = document.getElementById('tradeChart');
+                if (!ctx) {
+                    console.log('⚠️ Trade chart canvas not found - likely no trades yet');
+                    return;
+                }
+                
+                // Ensure the canvas is visible and has dimensions
+                const rect = ctx.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) {
+                    console.log('⚠️ Trade chart canvas has no dimensions, waiting...');
+                    // Wait a bit and try again
+                    setTimeout(() => {
+                        this.updateTradeChart();
+                    }, 100);
+                    return;
+                }
+                
+                // Safely destroy existing chart if it exists
+                if (this.charts.trades) {
+                    try {
+                        if (typeof this.charts.trades.destroy === 'function') {
+                            this.charts.trades.destroy();
+                            console.log('🗑️ Destroyed existing Trade chart');
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ Error destroying existing trade chart:', error);
                     }
+                    this.charts.trades = null;
                 }
                 
                 try {
-                    // Calculate from database trades
-                    const winning = this.dashboardTrades.filter(t => (t.pnl || 0) > 0).length;
-                    const losing = this.dashboardTrades.filter(t => (t.pnl || 0) < 0).length;
-                    const pending = this.dashboardTrades.filter(t => t.status === 'pending').length;
-                    
-                    console.log('📊 Trade distribution - Winning:', winning, 'Losing:', losing, 'Pending:', pending);
-                    
-                    // Update chart data safely
-                    if (this.charts.trades && this.charts.trades.data && this.charts.trades.data.datasets && this.charts.trades.data.datasets[0]) {
-                        this.charts.trades.data.datasets[0].data = [winning, losing, pending];
-                        this.charts.trades.update('none'); // Use 'none' mode to prevent animation issues
-                        console.log('✅ Trade chart updated successfully');
-                    } else {
-                        console.warn('⚠️ Trade chart structure not ready for update');
+                    // Ensure canvas has proper dimensions
+                    const canvasRect = ctx.getBoundingClientRect();
+                    if (canvasRect.width === 0 || canvasRect.height === 0) {
+                        console.log('⚠️ Trade chart canvas has no dimensions, setting default size');
+                        ctx.style.width = '100%';
+                        ctx.style.height = '300px';
                     }
+                    
+                    let chartData = {};
+                    let chartType = 'doughnut';
+                    
+                    // Prepare chart data based on view type
+                    switch (this.chartViewType) {
+                        case 'long_short':
+                            const longTrades = this.dashboardTrades.filter(t => {
+                                const side = t.side?.toLowerCase() || t.direction?.toLowerCase() || '';
+                                return side === 'b'; // 'B' = Buy = Long
+                            }).length;
+                            
+                            const shortTrades = this.dashboardTrades.filter(t => {
+                                const side = t.side?.toLowerCase() || t.direction?.toLowerCase() || '';
+                                return side === 's'; // 'S' = Sell = Short
+                            }).length;
+                            
+                            const otherTrades = this.dashboardTrades.length - longTrades - shortTrades;
+                            
+                            chartData = {
+                                labels: ['Long Trades', 'Short Trades', 'Other Trades'],
+                                datasets: [{
+                                    data: [longTrades, shortTrades, otherTrades],
+                                    backgroundColor: ['#10B981', '#EF4444', '#6B7280'],
+                                    borderColor: '#374151',
+                                    borderWidth: 2
+                                }]
+                            };
+                            console.log('📊 Long vs Short distribution - Long:', longTrades, 'Short:', shortTrades, 'Other:', otherTrades);
+                            break;
+                            
+                        case 'win_loss':
+                            const winningTrades = this.dashboardTrades.filter(t => (t.pnl || 0) > 0).length;
+                            const losingTrades = this.dashboardTrades.filter(t => (t.pnl || 0) < 0).length;
+                            const neutralTrades = this.dashboardTrades.filter(t => (t.pnl || 0) === 0).length;
+                            
+                            chartData = {
+                                labels: ['Winning Trades', 'Losing Trades', 'Neutral Trades'],
+                                datasets: [{
+                                    data: [winningTrades, losingTrades, neutralTrades],
+                                    backgroundColor: ['#10B981', '#EF4444', '#F59E0B'],
+                                    borderColor: '#374151',
+                                    borderWidth: 2
+                                }]
+                            };
+                            console.log('📊 Win vs Loss distribution - Winning:', winningTrades, 'Losing:', losingTrades, 'Neutral:', neutralTrades);
+                            break;
+                            
+                        case 'ticker':
+                            // Group by ticker and show top 10
+                            const tickerCounts = {};
+                            this.dashboardTrades.forEach(trade => {
+                                const ticker = trade.symbol || trade.ticker || 'Unknown';
+                                tickerCounts[ticker] = (tickerCounts[ticker] || 0) + 1;
+                            });
+                            
+                            const sortedTickers = Object.entries(tickerCounts)
+                                .sort(([,a], [,b]) => b - a)
+                                .slice(0, 10);
+                            
+                            chartData = {
+                                labels: sortedTickers.map(([ticker]) => ticker),
+                                datasets: [{
+                                    data: sortedTickers.map(([,count]) => count),
+                                    backgroundColor: [
+                                        '#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444',
+                                        '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280'
+                                    ],
+                                    borderColor: '#374151',
+                                    borderWidth: 1
+                                }]
+                            };
+                            console.log('📊 Ticker distribution - Top 10 tickers:', sortedTickers);
+                            break;
+                            
+                        case 'monthly':
+                            // Group by month
+                            const monthlyData = {};
+                            this.dashboardTrades.forEach(trade => {
+                                const date = new Date(trade.created_at || trade.trade_date || trade.submitted_at);
+                                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                                monthlyData[monthKey] = (monthlyData[monthKey] || 0) + 1;
+                            });
+                            
+                            const sortedMonths = Object.entries(monthlyData)
+                                .sort(([a], [b]) => a.localeCompare(b))
+                                .slice(-12); // Last 12 months
+                            
+                            chartType = 'bar';
+                            chartData = {
+                                labels: sortedMonths.map(([month]) => month),
+                                datasets: [{
+                                    label: 'Trades per Month',
+                                    data: sortedMonths.map(([,count]) => count),
+                                    backgroundColor: '#3B82F6',
+                                    borderColor: '#1D4ED8',
+                                    borderWidth: 1
+                                }]
+                            };
+                            console.log('📊 Monthly distribution - Last 12 months:', sortedMonths);
+                            break;
+                            
+                        default:
+                            // Default to long_short
+                            const defaultLong = this.dashboardTrades.filter(t => {
+                                const side = t.side?.toLowerCase() || t.direction?.toLowerCase() || '';
+                                return side === 'b'; // 'B' = Buy = Long
+                            }).length;
+                            
+                            const defaultShort = this.dashboardTrades.filter(t => {
+                                const side = t.side?.toLowerCase() || t.direction?.toLowerCase() || '';
+                                return side === 's'; // 'S' = Sell = Short
+                            }).length;
+                            
+                            chartData = {
+                                labels: ['Long Trades', 'Short Trades'],
+                                datasets: [{
+                                    data: [defaultLong, defaultShort],
+                                    backgroundColor: ['#10B981', '#EF4444'],
+                                    borderColor: '#374151',
+                                    borderWidth: 2
+                                }]
+                            };
+                            break;
+                    }
+                    
+                    // Create new chart with current data
+                    this.charts.trades = new Chart(ctx, {
+                        type: chartType,
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false, // Disable animation to prevent issues
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: chartType === 'bar' ? 'top' : 'bottom',
+                                    labels: {
+                                        color: '#D1D5DB',
+                                        font: {
+                                            size: 12
+                                        },
+                                        padding: 20
+                                    }
+                                },
+                                tooltip: {
+                                    enabled: true,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    titleColor: '#ffffff',
+                                    bodyColor: '#ffffff',
+                                    callbacks: {
+                                        label: function(context) {
+                                            if (context.dataset && context.dataset.data) {
+                                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                                const percentage = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0;
+                                                return `${context.label}: ${context.parsed} (${percentage}%)`;
+                                            }
+                                            return '';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: chartType === 'bar' ? {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        color: '#D1D5DB'
+                                    },
+                                    grid: {
+                                        color: '#374151'
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        color: '#D1D5DB',
+                                        maxRotation: 45
+                                    },
+                                    grid: {
+                                        color: '#374151'
+                                    }
+                                }
+                            } : undefined
+                        }
+                    });
+                    
+                    console.log('✅ Trade chart created successfully with database data');
+                    
                 } catch (error) {
                     console.error('❌ Error updating trade chart:', error);
+                    this.charts.trades = null;
                 }
             },
             
         setupCharts() {
             try {
                 console.log('🔄 Setting up charts...');
+                
+                // Check if Chart.js is available
+                if (typeof Chart === 'undefined') {
+                    console.error('❌ Chart.js is not loaded');
+                    return;
+                }
+                
+                console.log('📊 Chart.js version:', Chart.version);
+                
                 // Only setup trade chart - PnL chart is created dynamically
                 this.setupTradeChart();
                 
@@ -1155,11 +1686,15 @@ const app = createApp({
                 
                 // Handle window resize to prevent chart issues
                 window.addEventListener('resize', () => {
-                    if (this.charts.pnl) {
-                        this.charts.pnl.resize();
-                    }
-                    if (this.charts.trades) {
-                        this.charts.trades.resize();
+                    try {
+                        if (this.charts.pnl && typeof this.charts.pnl.resize === 'function') {
+                            this.charts.pnl.resize();
+                        }
+                        if (this.charts.trades && typeof this.charts.trades.resize === 'function') {
+                            this.charts.trades.resize();
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ Error resizing charts:', error);
                     }
                 });
             } catch (error) {

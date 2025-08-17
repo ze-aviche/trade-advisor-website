@@ -61,13 +61,23 @@ class ScheduledDASSync:
             return False
     
     def is_market_hours(self):
-        """Check if it's currently market hours (8 AM - 8 PM ET)"""
+        """Check if it's currently market hours (8 AM - 8 PM ET, weekdays only)"""
         try:
             now = datetime.now(self.eastern_tz)
+            
+            # Check if it's a weekday (Monday = 0, Sunday = 6)
+            if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
+                logger.info(f"⏰ Weekend detected ({now.strftime('%A')}), market is closed")
+                return False
+            
+            # Check if it's within market hours (8 AM - 8 PM ET)
             market_start = now.replace(hour=8, minute=0, second=0, microsecond=0)
             market_end = now.replace(hour=20, minute=0, second=0, microsecond=0)
             
-            return market_start <= now <= market_end
+            is_open = market_start <= now <= market_end
+            logger.info(f"⏰ Market hours check: {now.strftime('%A %I:%M %p ET')} - {'OPEN' if is_open else 'CLOSED'}")
+            return is_open
+            
         except Exception as e:
             logger.error(f"Error checking market hours: {e}")
             return False
