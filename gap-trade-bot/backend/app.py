@@ -31,7 +31,6 @@ apply_emoji_filter()
 try:
     from gap_up_detector import get_gap_up_stocks, get_gap_up_stocks_for_frontend
     from historical_data import get_historical_gap_up_data
-    from real_time_detector import real_time_detector
     REAL_DATA_AVAILABLE = True
 except ImportError as e:
     app_logger.warning(f"Warning: Could not import gap_up_detector: {e}")
@@ -175,6 +174,69 @@ def get_gap_up_details(ticker):
         })
     except Exception as e:
         app_logger.error(f"Error getting gap-up details for {ticker}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/gap-ups/config', methods=['GET', 'POST'])
+def gap_ups_config():
+    """Get or set gap-up configuration"""
+    try:
+        if request.method == 'GET':
+            # Get current configuration
+            import config as config_module
+            min_percentage = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 15.0)
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'min_percentage': min_percentage
+                }
+            })
+        else:
+            # POST - Update configuration
+            data = request.get_json()
+            min_percentage = data.get('min_percentage', 25.0)
+            
+            # Validate input
+            if not isinstance(min_percentage, (int, float)) or min_percentage < 0:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid min_percentage value'
+                }), 400
+            
+            # Update configuration file
+            config_path = os.path.join(os.path.dirname(__file__), 'config.py')
+            
+            # Read current config
+            with open(config_path, 'r') as f:
+                config_content = f.read()
+            
+            # Update the GAP_UP_MIN_PERCENTAGE line
+            import re
+            pattern = r'GAP_UP_MIN_PERCENTAGE\s*=\s*[\d.]+'
+            replacement = f'GAP_UP_MIN_PERCENTAGE = {min_percentage}'
+            
+            if re.search(pattern, config_content):
+                new_config_content = re.sub(pattern, replacement, config_content)
+            else:
+                # Add the line if it doesn't exist
+                new_config_content = config_content + f'\nGAP_UP_MIN_PERCENTAGE = {min_percentage}'
+            
+            # Write updated config
+            with open(config_path, 'w') as f:
+                f.write(new_config_content)
+            
+            app_logger.info(f"✅ Gap-up configuration updated: min_percentage = {min_percentage}%")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Configuration updated: min_percentage = {min_percentage}%'
+            })
+            
+    except Exception as e:
+        app_logger.error(f"Error in gap-ups config: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -497,9 +559,11 @@ def start_bot():
                 'timestamp': datetime.now().isoformat()
             })
         else:
+            # Enhanced error message for DAS connection issues
             return jsonify({
                 'success': False,
-                'error': 'Failed to start bot'
+                'error': 'Failed to start bot: DAS Trader is not connected. Please ensure DAS Trader is running and connected.',
+                'details': 'The bot requires a connection to DAS Trader to function. Please check that DAS Trader is running and the connection is established.'
             }), 500
     except Exception as e:
         app_logger.error(f"Error starting bot: {e}")
@@ -796,6 +860,62 @@ def panic_exit_all_positions():
             'success': False,
             'error': str(e),
             'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/bot/das-connection', methods=['GET', 'POST'])
+def manage_das_connection():
+    """Manage DAS connection - GET to check status, POST to force reconnect"""
+    try:
+        if not BOT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Bot not available'
+            }), 503
+        
+        if request.method == 'GET':
+            # Check DAS connection status
+            das_connected = trading_bot.check_and_establish_das_connection()
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'das_connected': das_connected,
+                    'message': 'DAS Connected' if das_connected else 'DAS Not Connected'
+                },
+                'timestamp': datetime.now().isoformat()
+            })
+        
+        elif request.method == 'POST':
+            # Force reconnection to DAS
+            app_logger.info("🔄 Force reconnecting to DAS...")
+            
+            success = trading_bot.force_reconnect_das()
+            
+            if success:
+                app_logger.info("✅ Successfully reconnected to DAS")
+                return jsonify({
+                    'success': True,
+                    'message': 'Successfully reconnected to DAS',
+                    'data': {
+                        'das_connected': True
+                    },
+                    'timestamp': datetime.now().isoformat()
+                })
+            else:
+                app_logger.error("❌ Failed to reconnect to DAS")
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to reconnect to DAS. Please ensure DAS Trader is running.',
+                    'data': {
+                        'das_connected': False
+                    }
+                }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error managing DAS connection: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 # Trades endpoints - placeholder removed, see Trade History API endpoints below
@@ -1203,31 +1323,8 @@ def handle_disconnect():
     websocket_connected = False
     app_logger.info("WebSocket client disconnected")
 
-@socketio.on('subscribe')
-def handle_subscribe(data):
-    """Handle stock subscription"""
-    try:
-        ticker = data.get('ticker', '').upper()
-        if ticker:
-            active_stocks.add(ticker)
-            app_logger.info(f"Subscribed to {ticker}")
-            emit('subscribed', {'ticker': ticker, 'status': 'subscribed'})
-    except Exception as e:
-        app_logger.error(f"Error subscribing to {ticker}: {e}")
-        emit('error', {'message': f'Error subscribing to {ticker}'})
-
-@socketio.on('unsubscribe')
-def handle_unsubscribe(data):
-    """Handle stock unsubscription"""
-    try:
-        ticker = data.get('ticker', '').upper()
-        if ticker in active_stocks:
-            active_stocks.remove(ticker)
-            app_logger.info(f"Unsubscribed from {ticker}")
-            emit('unsubscribed', {'ticker': ticker, 'status': 'unsubscribed'})
-    except Exception as e:
-        app_logger.error(f"Error unsubscribing from {ticker}: {e}")
-        emit('error', {'message': f'Error unsubscribing from {ticker}'})
+# Note: Stock subscriptions are handled by DAS integration, not WebSocket
+# WebSocket is only used for gap-up data broadcasts
 
 def broadcast_gap_ups():
     """Broadcast real-time gap-up data to connected clients"""
@@ -1239,22 +1336,34 @@ def broadcast_gap_ups():
 
 # Background task to update real-time gap-ups
 def update_real_time_gap_ups():
-    """Background task to update real-time gap-up data"""
+    """
+    Background task to update gap-up data using delayed data
+    Optimized for early morning gap-up detection to reduce API costs
+    Uses 15-minute delayed data instead of real-time data
+    """
     global real_time_gap_ups
+    
+    # Gap-up configuration
+    GAP_UP_UPDATE_INTERVAL = 300  # 5 minutes
+    DELAYED_DATA_DESCRIPTION = '15-minute delayed data for cost optimization'
+    
     while True:
         try:
             if REAL_DATA_AVAILABLE:
-                # Get latest gap-up data
+                # Get latest gap-up data using delayed data
                 latest_gap_ups = get_gap_up_stocks_for_frontend()
                 real_time_gap_ups = latest_gap_ups
                 
                 # Broadcast to connected clients
                 broadcast_gap_ups()
                 
-            time.sleep(60)  # Update every minute
+            # Use configurable update interval to reduce API calls
+            # This is sufficient for early morning gap-up detection
+            app_logger.info(f"⏰ Next gap-up update in {GAP_UP_UPDATE_INTERVAL} seconds ({DELAYED_DATA_DESCRIPTION})")
+            time.sleep(GAP_UP_UPDATE_INTERVAL)
         except Exception as e:
-            app_logger.error(f"Error updating real-time gap-ups: {e}")
-            time.sleep(60)
+            app_logger.error(f"Error updating gap-ups: {e}")
+            time.sleep(GAP_UP_UPDATE_INTERVAL)  # Use same interval on error
 
 # Start background task
 if __name__ == '__main__':

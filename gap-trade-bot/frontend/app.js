@@ -40,7 +40,11 @@ const app = createApp({
                 scheduledSync: false,
                 unsubscribe: false,
                 importDAS: false,
-                panicExit: false
+                panicExit: false,
+                saveGapUpConfig: false,
+                dasConnection: false,
+                dasReconnect: false,
+                botToggle: false
                 },
                 
                 // Charts
@@ -73,12 +77,16 @@ const app = createApp({
                 botStatus: {
                     running: false,
                     monitoring: false,
-                    subscribedStocks: [],
+                    subscribed_stocks: [],
                     positions: [],
                     active_positions: 0,
+                    last_update: null,
                     profit_target_pct: 5.0,
                     stop_loss_pct: 2.5,
-                    monitor_interval: 5
+                    monitor_interval: 5,
+                    das_connected: false,
+                    internal_running_state: false,
+                    internal_monitoring_state: false
                 },
                 
                 // Bot configuration
@@ -86,6 +94,11 @@ const app = createApp({
                     profit_target_pct: 5.0,
                     stop_loss_pct: 2.5,
                     monitor_interval: 5
+                },
+                
+                // Gap-up configuration
+                gapUpConfig: {
+                    min_percentage: 25.0
                 },
                 
                 // Bot positions
@@ -143,8 +156,8 @@ const app = createApp({
         
         computed: {
             allStocksSelected() {
-                return this.botStatus.subscribedStocks.length > 0 && 
-                       this.selectedStocks.length === this.botStatus.subscribedStocks.length;
+                return this.botStatus.subscribed_stocks.length > 0 && 
+                       this.selectedStocks.length === this.botStatus.subscribed_stocks.length;
             }
         },
         
@@ -399,6 +412,7 @@ const app = createApp({
                 try {
                     const promises = [
                         this.loadStats().then(() => console.log('✅ Stats loaded')),
+                        this.loadGapUpConfig().then(() => console.log('✅ Gap-up config loaded')),
                         this.loadGapUps().then(() => console.log('✅ Gap-ups loaded')),
                         this.loadDashboardTrades().then(() => console.log('✅ Dashboard trades loaded')),
                         this.loadDashboardPnL().then(() => console.log('✅ Dashboard PnL loaded'))
@@ -432,12 +446,16 @@ const app = createApp({
                         this.botStatus = {
                             running: response.data.data.running || false,
                             monitoring: response.data.data.monitoring || false,
-                            subscribedStocks: response.data.data.subscribed_stocks || [],
+                            subscribed_stocks: response.data.data.subscribed_stocks || [],
                             positions: response.data.data.positions || [],
                             active_positions: response.data.data.active_positions || 0,
+                            last_update: response.data.data.last_update || null,
                             profit_target_pct: response.data.data.profit_target_pct || 5.0,
                             stop_loss_pct: response.data.data.stop_loss_pct || 2.5,
-                            monitor_interval: response.data.data.monitor_interval || 5
+                            monitor_interval: response.data.data.monitor_interval || 5,
+                            das_connected: response.data.data.das_connected || false,
+                            internal_running_state: response.data.data.internal_running_state || false,
+                            internal_monitoring_state: response.data.data.internal_monitoring_state || false
                         };
                         
                         // Update bot config to match current status
@@ -652,6 +670,53 @@ const app = createApp({
                 }
                 
                 this.updateLoadingProgress('stats', 'error');
+            },
+            
+            async loadGapUpConfig() {
+                try {
+                    console.log('⚙️ Loading gap-up configuration...');
+                    const response = await fetch('http://localhost:5000/api/gap-ups/config');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.gapUpConfig = data.data;
+                        console.log('✅ Gap-up configuration loaded:', this.gapUpConfig);
+                    } else {
+                        console.error('❌ Failed to load gap-up configuration:', data.error);
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading gap-up configuration:', error);
+                }
+            },
+            
+            async saveGapUpConfig() {
+                try {
+                    console.log('💾 Saving gap-up configuration...');
+                    const response = await fetch('http://localhost:5000/api/gap-ups/config', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            min_percentage: this.gapUpConfig.min_percentage
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        console.log('✅ Gap-up configuration saved:', data.message);
+                        // Reload gap-ups with new configuration
+                        await this.loadGapUps();
+                        this.showNotification('Configuration saved successfully!', 'success');
+                    } else {
+                        console.error('❌ Failed to save gap-up configuration:', data.error);
+                        this.showNotification('Failed to save configuration', 'error');
+                    }
+                } catch (error) {
+                    console.error('❌ Error saving gap-up configuration:', error);
+                    this.showNotification('Error saving configuration', 'error');
+                }
             },
             
             async loadGapUps() {
@@ -1504,8 +1569,9 @@ const app = createApp({
         },
         
         connectWebSocket() {
-            // Placeholder - implement if needed
-            console.log('🔌 Connecting WebSocket...');
+            // WebSocket is only used for gap-up data broadcasts, not stock subscriptions
+            // Stock subscriptions are handled by DAS integration
+            console.log('🔌 WebSocket connection not needed for stock subscriptions - using DAS integration');
         },
         
         startPeriodicUpdates() {
@@ -1558,6 +1624,7 @@ const app = createApp({
             if (days === 365) return '1 Year';
             if (days === 730) return '2 Years';
             if (days === 1095) return '3 Years';
+            if (days === 1825) return '5 Years';
             return `${days} Days`;
         },
         
@@ -1896,19 +1963,50 @@ const app = createApp({
         // Helper method to toggle bot on/off
         async toggleBot() {
             try {
+                this.loading.botToggle = true;
+                
+                // Determine action based on effective running state
                 const action = this.botStatus.running ? 'stop' : 'start';
+                
+                // If trying to start but DAS is disconnected, show error
+                if (action === 'start' && !this.botStatus.das_connected) {
+                    this.showNotification('❌ Cannot start bot: DAS Trader is not connected. Please reconnect to DAS first.', 'error');
+                    return;
+                }
+                
                 const response = await axios.post(`/api/bot/${action}`);
                 
                 if (response.data.success) {
+                    // Update the effective running state
                     this.botStatus.running = !this.botStatus.running;
                     this.showNotification(`Bot ${action}ed successfully`, 'success');
                     await this.loadBotStatus(); // Refresh status
                 } else {
-                    this.showNotification(`Failed to ${action} bot: ${response.data.error}`, 'error');
+                    // Enhanced error handling for bot start failures
+                    let errorMessage = response.data.error || 'Unknown error';
+                    
+                    // Check if it's a bot start failure and provide more specific DAS-related message
+                    if (action === 'start' && !response.data.success) {
+                        if (errorMessage.includes('Failed to start bot') || errorMessage.includes('Failed to connect')) {
+                            errorMessage = '❌ Cannot start bot: DAS Trader is not connected. Please ensure DAS Trader is running and connected.';
+                        }
+                    }
+                    
+                    this.showNotification(errorMessage, 'error');
                 }
             } catch (error) {
                 console.error(`Error ${this.botStatus.running ? 'stopping' : 'starting'} bot:`, error);
-                this.showNotification(`Error ${this.botStatus.running ? 'stopping' : 'starting'} bot`, 'error');
+                
+                // Enhanced error handling for network/connection issues
+                let errorMessage = `Error ${this.botStatus.running ? 'stopping' : 'starting'} bot`;
+                
+                if (!this.botStatus.running && error.response?.status === 500) {
+                    errorMessage = '❌ Cannot start bot: DAS Trader is not connected. Please ensure DAS Trader is running and connected before starting the bot.';
+                }
+                
+                this.showNotification(errorMessage, 'error');
+            } finally {
+                this.loading.botToggle = false;
             }
         },
         
@@ -1987,6 +2085,47 @@ const app = createApp({
                 this.showNotification('❌ Error during panic exit: ' + error.message, 'error');
             } finally {
                 this.loading.panicExit = false;
+            }
+        },
+        
+        // DAS Connection Management
+        async checkDasConnection() {
+            try {
+                this.loading.dasConnection = true;
+                const response = await axios.get('/api/bot/das-connection');
+                
+                if (response.data.success) {
+                    this.botStatus.das_connected = response.data.data.das_connected;
+                    this.showNotification(response.data.data.message, response.data.data.das_connected ? 'success' : 'warning');
+                } else {
+                    this.showNotification('Failed to check DAS connection', 'error');
+                }
+            } catch (error) {
+                console.error('Error checking DAS connection:', error);
+                this.showNotification('Error checking DAS connection', 'error');
+            } finally {
+                this.loading.dasConnection = false;
+            }
+        },
+        
+        async reconnectDas() {
+            try {
+                this.loading.dasReconnect = true;
+                const response = await axios.post('/api/bot/das-connection');
+                
+                if (response.data.success) {
+                    this.botStatus.das_connected = true;
+                    this.showNotification('Successfully reconnected to DAS', 'success');
+                    // Refresh bot status to get updated information
+                    await this.loadBotStatus();
+                } else {
+                    this.showNotification(response.data.error || 'Failed to reconnect to DAS', 'error');
+                }
+            } catch (error) {
+                console.error('Error reconnecting to DAS:', error);
+                this.showNotification('Error reconnecting to DAS', 'error');
+            } finally {
+                this.loading.dasReconnect = false;
             }
         }
         }

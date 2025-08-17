@@ -70,3 +70,26 @@ config = {
 
 # Clear alias for main backend config
 web_config = config 
+
+# Gap-Up Detection Configuration (Cost Optimized)
+# Use delayed data instead of real-time data to reduce API costs
+
+# Note: Stock list removed - system will use alternative methods for gap-up detection
+
+# Gap-up detection settings
+GAP_UP_MIN_PERCENTAGE = 12  # Minimum gap percentage to consider (25% for significant gaps)
+GAP_UP_MIN_PRICE = 0.75      # Minimum stock price to consider
+GAP_UP_UPDATE_INTERVAL = 300  # Update interval in seconds (5 minutes)
+
+# Data source configuration
+USE_DELAYED_DATA = True       # Use 15-minute delayed data instead of real-time
+DELAYED_DATA_DESCRIPTION = "15-minute delayed data for cost optimization"
+
+# Make these available as module-level attributes
+__all__ = [
+    'GAP_UP_MIN_PERCENTAGE',
+    'GAP_UP_MIN_PRICE', 
+    'GAP_UP_UPDATE_INTERVAL',
+    'USE_DELAYED_DATA',
+    'DELAYED_DATA_DESCRIPTION'
+] 

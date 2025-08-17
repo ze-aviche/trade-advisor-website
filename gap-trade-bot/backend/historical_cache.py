@@ -265,7 +265,7 @@ class HistoricalDataCache:
                 unique_tickers = cursor.fetchone()['tickers']
                 
                 # Get cache size
-                cursor.execute('SELECT SUM(LENGTH(data_json)) as size FROM historical_data_cache')
+                cursor.execute('SELECT COALESCE(SUM(LENGTH(data_json)), 0) as size FROM historical_data_cache')
                 size_bytes = cursor.fetchone()['size'] or 0
                 size_mb = round(size_bytes / (1024 * 1024), 2)
                 
@@ -301,7 +301,13 @@ class HistoricalDataCache:
                 if not row:
                     return False
                 
-                last_updated = datetime.fromisoformat(row['updated_at'])
+                # Safely convert string date to datetime object
+                if row['updated_at'] and isinstance(row['updated_at'], str):
+                    last_updated = datetime.fromisoformat(row['updated_at'])
+                else:
+                    # If it's already a datetime object or None, handle appropriately
+                    last_updated = row['updated_at'] if row['updated_at'] else datetime.now()
+                
                 age_hours = (datetime.now() - last_updated).total_seconds() / 3600
                 
                 return age_hours <= max_age_hours

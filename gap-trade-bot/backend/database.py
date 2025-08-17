@@ -209,8 +209,11 @@ class DatabaseManager:
                 
                 if row:
                     session = dict(row)
-                    session['expires_at'] = datetime.fromisoformat(session['expires_at'])
-                    session['created_at'] = datetime.fromisoformat(session['created_at'])
+                    # Safely convert string dates to datetime objects
+                    if session['expires_at'] and isinstance(session['expires_at'], str):
+                        session['expires_at'] = datetime.fromisoformat(session['expires_at'])
+                    if session['created_at'] and isinstance(session['created_at'], str):
+                        session['created_at'] = datetime.fromisoformat(session['created_at'])
                     return session
                 return None
         except Exception as e:
@@ -347,7 +350,16 @@ class DatabaseManager:
                     trade = dict(row)
                     # Convert datetime objects to strings for JSON serialization
                     if trade['created_at']:
-                        trade['created_at'] = trade['created_at'].isoformat()
+                        # Check if it's already a string or needs conversion
+                        if hasattr(trade['created_at'], 'isoformat'):
+                            # It's a datetime object
+                            trade['created_at'] = trade['created_at'].isoformat()
+                        elif isinstance(trade['created_at'], str):
+                            # It's already a string, leave as is
+                            pass
+                        else:
+                            # Convert to string using str() as fallback
+                            trade['created_at'] = str(trade['created_at'])
                     trades.append(trade)
                 
                 return trades
@@ -364,12 +376,12 @@ class DatabaseManager:
                 query = '''
                     SELECT 
                         COUNT(*) as total_trades,
-                        SUM(CASE WHEN side = 'B' THEN quantity ELSE 0 END) as total_buy_quantity,
-                        SUM(CASE WHEN side IN ('S', 'SS') THEN quantity ELSE 0 END) as total_sell_quantity,
-                        SUM(CASE WHEN side = 'B' THEN quantity * price ELSE 0 END) as total_buy_value,
-                        SUM(CASE WHEN side IN ('S', 'SS') THEN quantity * price ELSE 0 END) as total_sell_value,
-                        SUM(pnl) as total_pnl,
-                        SUM(ecn_fee) as total_fees
+                        COALESCE(SUM(CASE WHEN side = 'B' THEN quantity ELSE 0 END), 0) as total_buy_quantity,
+                        COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN quantity ELSE 0 END), 0) as total_sell_quantity,
+                        COALESCE(SUM(CASE WHEN side = 'B' THEN quantity * price ELSE 0 END), 0) as total_buy_value,
+                        COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN quantity * price ELSE 0 END), 0) as total_sell_value,
+                        COALESCE(SUM(pnl), 0) as total_pnl,
+                        COALESCE(SUM(ecn_fee), 0) as total_fees
                     FROM trades
                     WHERE 1=1
                 '''
@@ -392,11 +404,30 @@ class DatabaseManager:
                 
                 if row:
                     summary = dict(row)
-                    # Calculate additional metrics
+                    
+                    # Ensure all values are numbers, not None
+                    summary['total_trades'] = summary['total_trades'] or 0
+                    summary['total_buy_quantity'] = summary['total_buy_quantity'] or 0
+                    summary['total_sell_quantity'] = summary['total_sell_quantity'] or 0
+                    summary['total_buy_value'] = summary['total_buy_value'] or 0
+                    summary['total_sell_value'] = summary['total_sell_value'] or 0
+                    summary['total_pnl'] = summary['total_pnl'] or 0
+                    summary['total_fees'] = summary['total_fees'] or 0
+                    
+                    # Calculate additional metrics with safe arithmetic
                     summary['net_quantity'] = summary['total_buy_quantity'] - summary['total_sell_quantity']
                     summary['net_value'] = summary['total_buy_value'] - summary['total_sell_value']
-                    summary['avg_buy_price'] = summary['total_buy_value'] / summary['total_buy_quantity'] if summary['total_buy_quantity'] > 0 else 0
-                    summary['avg_sell_price'] = summary['total_sell_value'] / summary['total_sell_quantity'] if summary['total_sell_quantity'] > 0 else 0
+                    
+                    # Safe division with zero checks
+                    summary['avg_buy_price'] = (
+                        summary['total_buy_value'] / summary['total_buy_quantity'] 
+                        if summary['total_buy_quantity'] > 0 else 0
+                    )
+                    summary['avg_sell_price'] = (
+                        summary['total_sell_value'] / summary['total_sell_quantity'] 
+                        if summary['total_sell_quantity'] > 0 else 0
+                    )
+                    
                     return summary
                 return None
         except Exception as e:

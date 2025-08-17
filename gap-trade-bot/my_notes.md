@@ -1,14 +1,22 @@
-USED DBs: 
+Windows commands: 
 
-gap-trade-bot/backend/trading_advisor.db (110KB) - Main application database
-Users, sessions, historical data cache
-Used by: database.py, historical_cache.py, config.py
-gap-trade-bot/backend/bot/trading_positions.db (86KB) - Trading bot database
-Positions, orders, trades
-Used by: trading_database.py
-gap-trade-bot/backend/bot/strategies/gap_up_history.db (90KB) - Gap-up historical data
-Historical gap-up data for backtesting
-Used by: gap_up_detector.py, gap_up_db.py, fetch_gap_up_history.py
-gap-trade-bot/backend/bot/data/gap_up_cache.db (0KB) - Gap-up cache database
-Caching system for gap-up detection
-Used by: gap_up_db.py
+.\venv\Scripts\Activate.ps1
+
+taskkill /PID XXXX /F
+
+Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "Polygon|API|timeout|connection|
+
+Connection|network|Network" | Select-Object -Last 20
+
+Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+
+Get-Process -Name "*chrome*", "*firefox*", "*edge*", "*safari*" -ErrorAction SilentlyContinue |Stop-Process -Force
+
+=====================================================================================================================
+positions
+
+price_check_interval: 1 second
+position_discovery_interval: 30 seconds
+config_check_interval: 300 seconds (5 minutes)
+
+=====================================================================================================================
