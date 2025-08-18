@@ -27,7 +27,7 @@ const app = createApp({
                 trades: [],
                 
                 // UI state
-                activeTab: 'dashboard',
+                activeTab: localStorage.getItem('activeTab') || 'dashboard',
                 loading: {
                     stats: false,
                     gapUps: false,
@@ -248,6 +248,9 @@ const app = createApp({
             onTabChange(tabName) {
                 console.log(`🔄 Tab changed to: ${tabName}`);
                 console.log(`🔍 Current activeTab value: ${this.activeTab}`);
+                
+                // Save the active tab to localStorage for persistence across page refreshes
+                localStorage.setItem('activeTab', tabName);
                 
                 if (tabName === 'dashboard') {
                     console.log('📊 Dashboard tab selected - ensuring charts are updated...');
@@ -1879,50 +1882,9 @@ const app = createApp({
         
         // Utility Methods
             showNotification(message, type = 'info') {
-                const notification = document.createElement('div');
-                notification.className = `fixed top-0 left-0 right-0 z-50 transform -translate-y-full transition-transform duration-500 ease-in-out ${
-                    type === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white' :
-                    type === 'error' ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white' :
-                    type === 'success' ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' :
-                    'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
-                }`;
-                
-                notification.innerHTML = `
-                    <div class="flex items-center justify-between px-6 py-4 shadow-lg">
-                        <div class="flex items-center space-x-3">
-                            <div class="flex-shrink-0">
-                                ${type === 'warning' ? '<i class="fas fa-exclamation-triangle text-xl"></i>' :
-                                  type === 'error' ? '<i class="fas fa-times-circle text-xl"></i>' :
-                                  type === 'success' ? '<i class="fas fa-check-circle text-xl"></i>' :
-                                  '<i class="fas fa-info-circle text-xl"></i>'}
-                            </div>
-                            <div>
-                                <p class="font-semibold">${message}</p>
-                                <p class="text-sm opacity-90">${new Date().toLocaleTimeString()}</p>
-                            </div>
-                        </div>
-                        <button onclick="this.parentElement.parentElement.remove()" class="text-white hover:text-gray-200">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                `;
-                
-                document.body.appendChild(notification);
-                
-                // Slide in
-                setTimeout(() => {
-                    notification.classList.remove('-translate-y-full');
-                }, 100);
-                
-                // Auto remove after 6 seconds
-                setTimeout(() => {
-                    notification.classList.add('-translate-y-full');
-                    setTimeout(() => {
-                        if (notification.parentElement) {
-                            notification.remove();
-                        }
-                    }, 500);
-                }, 6000);
+                // Removed notification banners - logging to console instead
+                const logLevel = type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log';
+                console[logLevel](`[${type.toUpperCase()}] ${message}`);
             },
             
         // Format date
