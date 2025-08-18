@@ -943,15 +943,34 @@ def invalidate_gap_ups_cache():
 def start_ai_session():
     """Start AI agent session"""
     try:
-        # Placeholder - implement actual AI session logic
-        return jsonify({
-            'success': True,
-            'data': {
-                'session_id': 'session_' + str(int(time.time())),
-                'status': 'active'
-            },
-            'timestamp': datetime.now().isoformat()
-        })
+        # Import AI agent
+        try:
+            from ai_agent import GoogleAIAgent
+            ai_agent = GoogleAIAgent()
+            session_id = 'session_' + str(int(time.time()))
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'session_id': session_id,
+                    'status': 'active',
+                    'message': 'AI Agent session started successfully'
+                },
+                'timestamp': datetime.now().isoformat()
+            })
+        except ImportError as e:
+            app_logger.error(f"AI Agent module not available: {e}")
+            return jsonify({
+                'success': False,
+                'error': 'AI Agent module not available. Please check dependencies.'
+            }), 500
+        except ValueError as e:
+            app_logger.error(f"AI Agent configuration error: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+            
     except Exception as e:
         app_logger.error(f"Error starting AI session: {e}")
         return jsonify({
@@ -967,19 +986,119 @@ def ai_chat():
         message = data.get('message', '')
         session_id = data.get('session_id', '')
         
-        # Placeholder - implement actual AI chat logic
-        response = f"AI response to: {message}"
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'Message is required'
+            }), 400
         
-        return jsonify({
-            'success': True,
-            'data': {
-                'response': response,
-                'session_id': session_id
-            },
-            'timestamp': datetime.now().isoformat()
-        })
+        # Import and use AI agent
+        try:
+            from ai_agent import GoogleAIAgent
+            ai_agent = GoogleAIAgent()
+            
+            # Process the message
+            result = ai_agent.process_message(message, session_id)
+            
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'response': result['response'],
+                        'session_id': session_id,
+                        'tools_used': result.get('tools_used', []),
+                        'symbols_analyzed': result.get('symbols_analyzed', [])
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': result.get('error', 'Unknown error'),
+                    'session_id': session_id
+                }), 500
+                
+        except ImportError as e:
+            app_logger.error(f"AI Agent module not available: {e}")
+            return jsonify({
+                'success': False,
+                'error': 'AI Agent module not available. Please check dependencies.'
+            }), 500
+        except ValueError as e:
+            app_logger.error(f"AI Agent configuration error: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+            
     except Exception as e:
         app_logger.error(f"Error in AI chat: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/ai-agent/history', methods=['GET'])
+def get_ai_history():
+    """Get AI conversation history"""
+    try:
+        session_id = request.args.get('session_id', '')
+        
+        try:
+            from ai_agent import GoogleAIAgent
+            ai_agent = GoogleAIAgent()
+            history = ai_agent.get_conversation_history(session_id)
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'history': history,
+                    'session_id': session_id
+                },
+                'timestamp': datetime.now().isoformat()
+            })
+        except ImportError as e:
+            app_logger.error(f"AI Agent module not available: {e}")
+            return jsonify({
+                'success': False,
+                'error': 'AI Agent module not available. Please check dependencies.'
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error getting AI history: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/ai-agent/clear-history', methods=['POST'])
+def clear_ai_history():
+    """Clear AI conversation history"""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id', '')
+        
+        try:
+            from ai_agent import GoogleAIAgent
+            ai_agent = GoogleAIAgent()
+            success = ai_agent.clear_conversation_history(session_id)
+            
+            return jsonify({
+                'success': success,
+                'data': {
+                    'session_id': session_id,
+                    'message': 'Conversation history cleared successfully' if success else 'Failed to clear history'
+                },
+                'timestamp': datetime.now().isoformat()
+            })
+        except ImportError as e:
+            app_logger.error(f"AI Agent module not available: {e}")
+            return jsonify({
+                'success': False,
+                'error': 'AI Agent module not available. Please check dependencies.'
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error clearing AI history: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
