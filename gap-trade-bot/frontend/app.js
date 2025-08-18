@@ -267,6 +267,9 @@ const app = createApp({
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.loadTradeHistory();
+                } else if (tabName === 'gap-ups') {
+                    console.log('📈 Gap-Ups tab selected - loading gap-ups data...');
+                    this.loadGapUps();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     // Historical tab is ready for user input, no auto-loading needed
@@ -1910,6 +1913,43 @@ const app = createApp({
         formatNumber(num) {
             if (!num || num === 0) return 'N/A';
             return num.toLocaleString();
+        },
+        
+        // Format market cap with appropriate suffixes
+        formatMarketCap(marketCap) {
+            if (!marketCap || marketCap === 0) return 'N/A';
+            
+            const num = parseFloat(marketCap);
+            if (isNaN(num)) return 'N/A';
+            
+            if (num >= 1e12) {
+                return `$${(num / 1e12).toFixed(2)}T`;
+            } else if (num >= 1e9) {
+                return `$${(num / 1e9).toFixed(2)}B`;
+            } else if (num >= 1e6) {
+                return `$${(num / 1e6).toFixed(2)}M`;
+            } else if (num >= 1e3) {
+                return `$${(num / 1e3).toFixed(2)}K`;
+            } else {
+                return `$${num.toFixed(2)}`;
+            }
+        },
+        
+        // Format time
+        formatTime(timeString) {
+            if (!timeString) return 'N/A';
+            try {
+                // Parse the time string and format to HH:MM:SS
+                const date = new Date(timeString);
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                
+                return `${hours}:${minutes}:${seconds}`;
+            } catch (error) {
+                // Fallback to original string if parsing fails
+                return timeString;
+            }
         },
         
         // Get status color
