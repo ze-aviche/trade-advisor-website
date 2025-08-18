@@ -292,4 +292,129 @@ canvas {
 .tooltip:hover .tooltiptext {
     visibility: visible;
     opacity: 1;
+}
+
+/* Historical data table specific styling */
+.historical-table-container {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    scrollbar-width: thin;
+    scrollbar-color: #6B7280 #374151;
+    position: relative;
+}
+
+.historical-table-container::-webkit-scrollbar {
+    height: 16px;
+}
+
+.historical-table-container::-webkit-scrollbar-track {
+    background: #374151;
+    border-radius: 8px;
+    margin: 2px;
+}
+
+.historical-table-container::-webkit-scrollbar-thumb {
+    background: #6B7280;
+    border-radius: 8px;
+    border: 2px solid #374151;
+    min-width: 40px;
+}
+
+.historical-table-container::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
+}
+
+.historical-table-container::-webkit-scrollbar-corner {
+    background: #374151;
+}
+
+.historical-table-container table {
+    min-width: max-content;
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.historical-table-container th {
+    background-color: #4B5563;
+    color: #D1D5DB;
+    font-weight: 600;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 2px solid #374151;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    min-width: 120px;
+}
+
+.historical-table-container td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #374151;
+    color: #D1D5DB;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    min-width: 120px;
+}
+
+.historical-table-container tr:hover {
+    background-color: #4B5563;
+    transition: background-color 0.2s ease;
+}
+
+/* Force horizontal scroll */
+.historical-table-container {
+    display: block;
+    width: 100%;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    position: relative;
+}
+
+.historical-table-container table {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+}
+
+/* Ensure table cells don't wrap */
+.historical-table-container th,
+.historical-table-container td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 120px;
+    max-width: none;
+}
+
+/* Additional scrollbar styling for better visibility */
+.historical-table-container {
+    scrollbar-width: auto;
+    scrollbar-color: #6B7280 #374151;
+}
+
+/* Ensure the table takes full width when content is wide */
+.historical-table-container table {
+    width: max-content;
+    min-width: 100%;
+}
+
+/* Responsive table */
+@media (max-width: 1024px) {
+    .historical-table-container {
+        font-size: 0.75rem;
+    }
+    
+    .historical-table-container th,
+    .historical-table-container td {
+        padding: 8px 12px;
+        min-width: 100px;
+    }
 } 

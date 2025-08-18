@@ -1,0 +1,155 @@
+# Environment variables and API keys
+.env
+*.env
+.env.local
+.env.production
+.env.development
+
+# API Keys and Secrets
+*_key.txt
+*_secret.txt
+api_keys.txt
+secrets.txt
+credentials.json
+alpaca_keys.txt
+das_keys.txt
+polygon_key.txt
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+trading_advisor.db
+sessions.json
+users.json
+
+# Log files
+*.log
+logs/
+log/
+backend/logs/
+frontend/logs/
+
+# Cache and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Trading bot specific
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!angular.json
+!karma.conf.json
+!tslint.json
+
+# Test results
+test_*.json
+*_results_*.json
+comprehensive_*.json
+
+# Configuration files with sensitive data
+config_local.py
+local_config.py
+secrets.py
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Trading data files
+*.csv
+*.xlsx
+*.xls
+data/
+historical_data/
+cache/
+*.cache
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp 
