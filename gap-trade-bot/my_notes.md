@@ -12,6 +12,8 @@ Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
 
 Get-Process -Name "*chrome*", "*firefox*", "*edge*", "*safari*" -ErrorAction SilentlyContinue |Stop-Process -Force
 
+wmic process where "name='python.exe'" get ProcessId,CommandLine
+
 =====================================================================================================================
 positions
 
