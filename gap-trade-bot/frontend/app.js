@@ -65,10 +65,11 @@ const app = createApp({
                 livePrices: {},
                 
                 // AI Chat
-                chatSession: null,
-                chatMessages: [],
-                newMessage: '',
-                chatLoading: false,
+                aiChatMessages: [],
+                aiNewMessage: '',
+                aiChatLoading: false,
+                
+
                 
                 // System status
                 systemStatus: {
@@ -246,6 +247,8 @@ const app = createApp({
             // Handle tab changes
             onTabChange(tabName) {
                 console.log(`🔄 Tab changed to: ${tabName}`);
+                console.log(`🔍 Current activeTab value: ${this.activeTab}`);
+                
                 if (tabName === 'dashboard') {
                     console.log('📊 Dashboard tab selected - ensuring charts are updated...');
                     // Ensure charts are updated when dashboard tab is accessed
@@ -264,6 +267,9 @@ const app = createApp({
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     // Historical tab is ready for user input, no auto-loading needed
+                } else if (tabName === 'ai-chat') {
+                    console.log('🤖 AI Chat tab selected - ready for chat...');
+                    // AI chat tab is ready for user interaction
                 }
             },
             
@@ -2691,6 +2697,83 @@ const app = createApp({
             } finally {
                 this.loading.dasReconnect = false;
             }
+        },
+        
+        // AI Chat Methods
+        async sendAIMessage(predefinedMessage = null) {
+            const message = predefinedMessage || this.aiNewMessage.trim();
+            if (!message || this.aiChatLoading) return;
+            
+            // Clear input if not a predefined message
+            if (!predefinedMessage) {
+                this.aiNewMessage = '';
+            }
+            
+            // Add user message to chat
+            this.aiChatMessages.push({
+                id: Date.now(),
+                type: 'user',
+                content: message,
+                timestamp: new Date()
+            });
+            
+            this.aiChatLoading = true;
+            
+            try {
+                const response = await axios.post('/api/ai-agent/chat', {
+                    message: message
+                });
+                
+                if (response.data.success) {
+                    // Add AI response to chat
+                    this.aiChatMessages.push({
+                        id: Date.now() + 1,
+                        type: 'assistant',
+                        content: response.data.data.response,
+                        timestamp: new Date(),
+                        tools_used: response.data.data.tools_used,
+                        symbols_analyzed: response.data.data.symbols_analyzed
+                    });
+                    
+                    console.log('✅ AI response received:', response.data.data);
+                } else {
+                    // Add error message to chat
+                    this.aiChatMessages.push({
+                        id: Date.now() + 1,
+                        type: 'assistant',
+                        content: `Sorry, I encountered an error: ${response.data.error}`,
+                        timestamp: new Date()
+                    });
+                }
+            } catch (error) {
+                console.error('Error sending AI message:', error);
+                this.aiChatMessages.push({
+                    id: Date.now() + 1,
+                    type: 'assistant',
+                    content: 'Sorry, I encountered an error processing your request. Please try again.',
+                    timestamp: new Date()
+                });
+            } finally {
+                this.aiChatLoading = false;
+                // Scroll to bottom of chat
+                this.$nextTick(() => {
+                    const chatContainer = document.querySelector('.h-96.overflow-y-auto');
+                    if (chatContainer) {
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    }
+                });
+            }
+        },
+        
+        clearAIChatHistory() {
+            this.aiChatMessages = [];
+            this.showNotification('Chat history cleared successfully', 'success');
+        },
+        
+        formatAITime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
         }
     });
