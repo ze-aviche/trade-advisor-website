@@ -95,18 +95,34 @@ class DASConnection:
             if not self.connected:
                 return False
             
-            # Send a simple command to test connection
-            test_script = "GET ACCOUNT\r\n"
-            result = self.SendScript(bytearray(test_script, encoding="ascii"))
+            # Set a short timeout for the connection check
+            original_timeout = self.s.gettimeout()
+            self.s.settimeout(2)  # 2 second timeout for connection check
             
-            # If we get any response, connection is alive
-            if result and len(result.strip()) > 0:
-                return True
-            else:
-                logger.warning("DAS connection appears to be dead")
-                self.connected = False
-                return False
+            try:
+                # Send a simple command to test connection
+                test_script = "GET ACCOUNT\r\n"
+                self.s.sendall(bytearray(test_script, encoding="ascii"))
                 
+                # Try to receive response with timeout
+                response = self.s.recv(1024).decode("ascii")
+                
+                # If we get any response, connection is alive
+                if response and len(response.strip()) > 0:
+                    return True
+                else:
+                    logger.warning("DAS connection appears to be dead (no response)")
+                    self.connected = False
+                    return False
+                    
+            finally:
+                # Restore original timeout
+                self.s.settimeout(original_timeout)
+                
+        except socket.timeout:
+            logger.warning("DAS connection check timed out")
+            self.connected = False
+            return False
         except Exception as e:
             logger.warning(f"DAS connection check failed: {e}")
             self.connected = False
@@ -301,12 +317,65 @@ class PriceManager:
             else:
                 logger.debug(f"No cached price data found for {symbol}")
             
-            # For now, return None if no cached data
-            # In a full implementation, you would update price data here
-            return None
+            # Try to fetch current price from DAS if not cached
+            return self._fetch_current_price_from_das(symbol)
             
         except Exception as e:
             logger.error(f"Error getting current price for {symbol}: {e}")
+            return None
+    
+    def _fetch_current_price_from_das(self, symbol: str) -> Optional[float]:
+        """Fetch current price directly from DAS using GET QUOTE command"""
+        try:
+            symbol_upper = symbol.upper()
+            
+            # Use GET QUOTE command to get current price
+            quote_script = f"GET QUOTE {symbol_upper}\r\n"
+            result = self.connection.SendScript(bytearray(quote_script, encoding="ascii"))
+            
+            if result and result.strip():
+                # Parse the quote response
+                price = self._parse_quote_response(result, symbol_upper)
+                if price:
+                    logger.debug(f"Fetched current price for {symbol}: ${price:.2f}")
+                    return price
+            
+            logger.warning(f"Could not fetch price for {symbol} from DAS")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error fetching price for {symbol} from DAS: {e}")
+            return None
+    
+    def _parse_quote_response(self, response: str, symbol: str) -> Optional[float]:
+        """Parse DAS quote response to extract price"""
+        try:
+            lines = response.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line.startswith('%QUOTE') and symbol in line:
+                    # Parse quote line: %QUOTE SYMBOL BID ASK LAST
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        try:
+                            bid = float(parts[2])
+                            ask = float(parts[3])
+                            last = float(parts[4])
+                            
+                            # Use bid price for exits (what we can actually sell for)
+                            if bid > 0:
+                                return bid
+                            elif ask > 0:
+                                return ask
+                            elif last > 0:
+                                return last
+                        except (ValueError, IndexError):
+                            continue
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error parsing quote response for {symbol}: {e}")
             return None
 
 class ExitConditionChecker:
@@ -408,10 +477,12 @@ class TradingBot:
         self.price_check_interval = 1  # Check prices every 1 second (critical for exits)
         self.position_discovery_interval = 30  # Check for new positions every 30 seconds
         self.config_check_interval = 300  # Check config changes every 5 minutes
+        self.connection_check_interval = 10  # Check connection every 10 seconds (less frequent)
         
         # Monitoring timestamps
         self.last_position_discovery = 0
         self.last_config_check = 0
+        self.last_connection_check = 0
         
         # Monitoring thread
         self.monitor_thread: Optional[threading.Thread] = None
@@ -665,19 +736,23 @@ class TradingBot:
         
         while self.monitoring and self.is_running:
             try:
-                # Check if DAS is still connected before proceeding
-                if not self.das_connection or not self.das_connection.connected:
-                    logger.warning("⚠️ DAS connection lost, pausing monitoring...")
-                    time.sleep(5)  # Wait 5 seconds before checking again
-                    continue
-                
-                # Verify connection is still alive
-                if not self.das_connection.check_connection():
-                    logger.warning("⚠️ DAS connection appears dead, pausing monitoring...")
-                    time.sleep(5)  # Wait 5 seconds before checking again
-                    continue
-                
                 current_time = time.time()
+                
+                # Check connection status less frequently to avoid overwhelming DAS
+                if current_time - self.last_connection_check >= self.connection_check_interval:
+                    # Check if DAS is still connected before proceeding
+                    if not self.das_connection or not self.das_connection.connected:
+                        logger.warning("⚠️ DAS connection lost, pausing monitoring...")
+                        time.sleep(5)  # Wait 5 seconds before checking again
+                        continue
+                    
+                    # Verify connection is still alive
+                    if not self.das_connection.check_connection():
+                        logger.warning("⚠️ DAS connection appears dead, pausing monitoring...")
+                        time.sleep(5)  # Wait 5 seconds before checking again
+                        continue
+                    
+                    self.last_connection_check = current_time
                 
                 # Always check prices and exit conditions (critical for trading)
                 if self.active_positions:
@@ -838,6 +913,7 @@ class TradingBot:
             'price_check_interval': self.price_check_interval,
             'position_discovery_interval': self.position_discovery_interval,
             'config_check_interval': self.config_check_interval,
+            'connection_check_interval': self.connection_check_interval,
             'das_connected': das_connected,
             'internal_running_state': self.is_running,  # Keep track of internal state
             'internal_monitoring_state': self.monitoring  # Keep track of internal state
