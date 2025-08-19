@@ -728,32 +728,26 @@ def manage_bot_config():
             })
         
         elif request.method == 'POST':
-            # Update configuration
+            # Update configuration using the update_strategies method to ensure active positions are updated
             data = request.get_json()
             app_logger.info(f"🔄 Updating bot configuration: {data}")
             
-            if 'profit_target_pct' in data:
-                old_value = trading_bot.profit_target_pct
-                trading_bot.profit_target_pct = float(data['profit_target_pct'])
-                app_logger.info(f"✅ Profit target updated: {old_value}% → {trading_bot.profit_target_pct}%")
-                
-            if 'stop_loss_pct' in data:
-                old_value = trading_bot.stop_loss_pct
-                trading_bot.stop_loss_pct = float(data['stop_loss_pct'])
-                app_logger.info(f"✅ Stop loss updated: {old_value}% → {trading_bot.stop_loss_pct}%")
-                
-            if 'monitor_interval' in data:
-                old_value = trading_bot.monitor_interval
-                trading_bot.monitor_interval = int(data['monitor_interval'])
-                app_logger.info(f"✅ Monitor interval updated: {old_value}s → {trading_bot.monitor_interval}s")
+            # Use the update_strategies method to ensure active positions are recalculated
+            success = trading_bot.update_strategies(data)
             
-            app_logger.info(f"🎯 Current bot config - Profit: {trading_bot.profit_target_pct}%, Stop: {trading_bot.stop_loss_pct}%, Interval: {trading_bot.monitor_interval}s")
-            
-            return jsonify({
-                'success': True,
-                'message': 'Bot configuration updated',
-                'timestamp': datetime.now().isoformat()
-            })
+            if success:
+                app_logger.info(f"🎯 Current bot config - Profit: {trading_bot.profit_target_pct}%, Stop: {trading_bot.stop_loss_pct}%, Interval: {trading_bot.monitor_interval}s")
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Bot configuration updated successfully',
+                    'timestamp': datetime.now().isoformat()
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to update bot configuration'
+                }), 500
             
     except Exception as e:
         app_logger.error(f"Error managing bot config: {e}")
