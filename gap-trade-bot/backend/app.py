@@ -874,7 +874,7 @@ def manage_das_connection():
         
         if request.method == 'GET':
             # Check DAS connection status
-            das_connected = trading_bot.check_and_establish_das_connection()
+            das_connected = trading_bot.connect_to_das()
             
             return jsonify({
                 'success': True,

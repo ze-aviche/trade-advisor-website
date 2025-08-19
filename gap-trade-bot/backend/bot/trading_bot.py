@@ -2,6 +2,7 @@
 """
 Enhanced Trading Bot Module
 Integrates position monitoring, DAS connection, and automated exit management
+Based on working implementation from accentor-trading-bot
 """
 
 import time
@@ -9,9 +10,11 @@ import logging
 import threading
 import socket
 import uuid
+import os
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
+from logging.handlers import RotatingFileHandler
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +38,22 @@ class PriceData:
     last: float = 0.0
     timestamp: float = 0.0
 
-class DASConnection:
-    """DAS Trader Connection Class"""
+class Connection:
+    """DAS Trader Connection Class - Working implementation"""
     
     def __init__(self):
         self.s = socket.socket()
-        self.connected = False
-        self.last_connection_attempt = 0
-        self.connection_retry_interval = 5  # Retry every 5 seconds
     
+    def Connect(self, host, port):
+        self.s.settimeout(2)
+        self.s.connect(tuple([host, port]))
+        time.sleep(0.1)
+
+    def Login(self, logindata):
+        self.s.sendall(logindata)
+        time.sleep(0.1)
+        print((self.s.recv(1024*1024)).decode("ascii"))
+
     def ConnectToServer(self):
         """Connect to DAS server"""
         try:
@@ -137,9 +147,7 @@ class DASConnection:
                 self.connected = False
         except Exception as e:
             logger.error(f"Error disconnecting from DAS: {e}")
-    
     def recvall(self):
-        """Receive all available data"""
         data = b''
         bufsize = 4096
         while True:
@@ -150,30 +158,49 @@ class DASConnection:
         return data
     
     def SendScript(self, script):
-        """Send script to DAS"""
         try:
-            if not self.connected:
-                logger.error("Not connected to DAS")
-                return ""
-            
             self.s.sendall(script)
-            
-            # Determine sleep time based on command type
-            script_str = script.decode("ascii")
-            if script_str.startswith("GET") or script_str.startswith("NEWORDER") or script_str.startswith("SL"):
-                time.sleep(0.1)
-            elif "REPLACE" in script_str or "COMPLEXORDER" in script_str:
-                time.sleep(0.2)
+        except socket.gaierror as e:
+            logger.error(f"Address-related error: {e}")
+        except socket.herror as e:
+            logger.error(f"Host-related error: {e}")
+        except socket.timeout as e:
+            logger.error(f"Timeout error: {e}")
+        except socket.error as e:
+            logger.error(f"General socket error: {e}")
+        finally: 
+            getCMD = script[:3]
+            newordCMD = script[:8]
+            shortCMD = script[:2]
+        
+            if(getCMD.decode("ascii") == "GET" or newordCMD.decode("ascii") == "NEWORDER" or shortCMD.decode("ascii") == "SL" or "MINCHART" in script.decode("ascii") or "DAYCHART" in script.decode("ascii")):
+                time.sleep(.1)
+            elif("REPLACE" in script.decode("ascii") or "COMPLEXORDER" in script.decode("ascii")):
+                time.sleep(.2)
             else:
-                time.sleep(0.0005)
-            
+                time.sleep(.0005)
+
+        try:
             data = self.recvall()
-            return data.decode("ascii").strip()
-            
-        except Exception as e:
-            logger.error(f"Error sending script to DAS: {e}")
-            self.connected = False  # Mark as disconnected on error
+        except socket.timeout:
             return ""
+        return data.decode("ascii").strip()
+
+    def Disconnect(self):
+        try:
+            self.s.sendall(b'QUIT\r\n')
+        except:
+            pass
+        finally:
+            try:
+                self.s.close()
+            except:
+                pass
+
+class cmdAPI:
+    """CMD API helper class"""
+    def __init__(self):
+        self.uniq = uuid.uuid4()
 
 class PositionParser:
     """Handles parsing of position data from DAS"""
@@ -237,7 +264,7 @@ class PositionParser:
 class PriceManager:
     """Handles price data management and Level 1 subscriptions"""
     
-    def __init__(self, connection: DASConnection):
+    def __init__(self, connection: Connection):
         self.connection = connection
         self.subscribed_symbols = set()
         self.price_cache: Dict[str, PriceData] = {}
@@ -282,18 +309,153 @@ class PriceManager:
         try:
             symbol_upper = symbol.upper()
             if symbol_upper in self.subscribed_symbols:
-                unsubscribe_script = f"UNSB {symbol_upper} Lv1\r\n"
-                result = self.connection.SendScript(bytearray(unsubscribe_script, encoding="ascii"))
-                logger.info(f"Unsubscription result for {symbol}: {result}")
-                self.subscribed_symbols.remove(symbol_upper)
-                logger.info(f"Successfully unsubscribed from {symbol} Level 1 data")
+                unsub_script = f"UNSB {symbol_upper} Lv1\r\n"
+                result = self.connection.SendScript(bytearray(unsub_script, encoding="ascii"))
+                
+                self.subscribed_symbols.discard(symbol_upper)
+                if symbol_upper in self.price_cache:
+                    del self.price_cache[symbol_upper]
+                
+                logger.info(f"Unsubscribed from {symbol} Level 1 data")
                 return True
-            else:
-                logger.debug(f"Already unsubscribed from {symbol} Level 1 data")
-                return True
+            
+            return True
+            
         except Exception as e:
             logger.error(f"Error unsubscribing from {symbol}: {e}")
             return False
+    
+    def update_price_data(self, symbol: str) -> Optional[PriceData]:
+        """Update price data for a symbol using Level 1 data"""
+        try:
+            # First ensure we're subscribed to Level 1 data for this symbol
+            if symbol.upper() not in self.subscribed_symbols:
+                logger.info(f"Subscribing to Level 1 data for {symbol}")
+                self.subscribe_to_symbol(symbol)
+                # Give a moment for subscription to take effect
+                time.sleep(0.5)
+            
+            # Get the data stream for the subscribed symbol (same as subscription command)
+            data_script = f"SB {symbol.upper()} Lv1\r\n"
+            result = self.connection.SendScript(bytearray(data_script, encoding="ascii"))
+            
+            # Log the raw result for debugging
+            logger.debug(f"Raw Level 1 result for {symbol}: {result}")
+            
+            # Parse Level 1 data response
+            lines = result.split('\n')
+            first_line = None
+            
+            # Find the first line that contains our symbol
+            for line in lines:
+                line = line.strip()
+                if line and symbol.upper() in line.upper():
+                    first_line = line
+                    break
+            
+            if first_line:
+                parts = first_line.split()
+                logger.debug(f"Found Level 1 line for {symbol}: {parts}")
+                
+                # Parse Level 1 data format: $Quote SYMBOL A:ASK Asz:ASKSIZE B:BID Bsz:BIDSIZE ...
+                ask_price = None
+                bid_price = None
+                last_price = None
+                
+                for part in parts:
+                    # Look for Ask price (A:PRICE)
+                    if part.startswith('A:') and len(part) > 2:
+                        try:
+                            ask_price = float(part[2:])  # Remove 'A:' prefix
+                        except ValueError:
+                            continue
+                    
+                    # Look for Bid price (B:PRICE)
+                    elif part.startswith('B:') and len(part) > 2:
+                        try:
+                            bid_price = float(part[2:])  # Remove 'B:' prefix
+                        except ValueError:
+                            continue
+                    
+                    # Look for Last price (L:PRICE)
+                    elif part.startswith('L:') and len(part) > 2:
+                        try:
+                            last_price = float(part[2:])  # Remove 'L:' prefix
+                        except ValueError:
+                            continue
+                
+                # Validate prices are reasonable
+                if ask_price and 0.01 <= ask_price <= 10000:
+                    if bid_price and 0.01 <= bid_price <= 10000:
+                        if last_price and 0.01 <= last_price <= 10000:
+                            price_data = PriceData(
+                                ask=ask_price,
+                                bid=bid_price,
+                                last=last_price,
+                                timestamp=time.time()
+                            )
+                            
+                            self.price_cache[symbol.upper()] = price_data
+                            logger.info(f"Updated price data for {symbol}: Ask=${ask_price:.2f}, Bid=${bid_price:.2f}, Last=${last_price:.2f}")
+                            return price_data
+                        else:
+                            # Use ask and bid only
+                            price_data = PriceData(
+                                ask=ask_price,
+                                bid=bid_price,
+                                last=0.0,
+                                timestamp=time.time()
+                            )
+                            
+                            self.price_cache[symbol.upper()] = price_data
+                            logger.info(f"Updated price data for {symbol}: Ask=${ask_price:.2f}, Bid=${bid_price:.2f}")
+                            return price_data
+                    else:
+                        # Use ask only
+                        price_data = PriceData(
+                            ask=ask_price,
+                            bid=0.0,
+                            last=0.0,
+                            timestamp=time.time()
+                        )
+                        
+                        self.price_cache[symbol.upper()] = price_data
+                        logger.info(f"Updated price data for {symbol}: Ask=${ask_price:.2f}")
+                        return price_data
+                elif bid_price and 0.01 <= bid_price <= 10000:
+                    # Use bid only
+                    price_data = PriceData(
+                        ask=0.0,
+                        bid=bid_price,
+                        last=0.0,
+                        timestamp=time.time()
+                    )
+                    
+                    self.price_cache[symbol.upper()] = price_data
+                    logger.info(f"Updated price data for {symbol}: Bid=${bid_price:.2f}")
+                    return price_data
+                elif last_price and 0.01 <= last_price <= 10000:
+                    # Use last only
+                    price_data = PriceData(
+                        ask=0.0,
+                        bid=0.0,
+                        last=last_price,
+                        timestamp=time.time()
+                    )
+                    
+                    self.price_cache[symbol.upper()] = price_data
+                    logger.info(f"Updated price data for {symbol}: Last=${last_price:.2f}")
+                    return price_data
+                else:
+                    logger.warning(f"No valid prices found for {symbol} in Level 1 data")
+            else:
+                logger.warning(f"No Level 1 data line found for {symbol} in response: {result}")
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error updating price data for {symbol}: {e}")
+            return None
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol from cached data - use bid for exits"""
@@ -317,8 +479,19 @@ class PriceManager:
             else:
                 logger.debug(f"No cached price data found for {symbol}")
             
-            # Try to fetch current price from DAS if not cached
-            return self._fetch_current_price_from_das(symbol)
+            # If no cached data or invalid data, try to update it
+            logger.info(f"Attempting to update price data for {symbol}")
+            updated_data = self.update_price_data(symbol)
+            if updated_data:
+                if updated_data.bid > 0:
+                    return updated_data.bid
+                elif updated_data.ask > 0:
+                    return updated_data.ask
+                elif updated_data.last > 0:
+                    return updated_data.last
+            
+            logger.warning(f"Could not get current price for {symbol} - no valid price data available")
+            return None
             
         except Exception as e:
             logger.error(f"Error getting current price for {symbol}: {e}")
@@ -407,9 +580,9 @@ class ExitConditionChecker:
 class OrderManager:
     """Handles order placement and management"""
     
-    def __init__(self, connection: DASConnection):
+    def __init__(self, connection: Connection):
         self.connection = connection
-        self.uniq = str(uuid.uuid4())
+        self.cmd = cmdAPI()
     
     def close_position(self, symbol: str, position: Position, current_price: float, exit_reason: str) -> bool:
         """Close a position using proper CMDAPI format"""
@@ -419,7 +592,7 @@ class OrderManager:
             logger.info(f"   Current price: ${current_price:.2f}")
             
             # Generate unique ID for the order
-            unID = int(uuid.uuid4().hex[:8], 16)
+            unID = int(self.cmd.uniq)
             
             # Place exit order using proper CMDAPI format
             if position.type == "LONG":
@@ -445,7 +618,14 @@ class OrderManager:
                 return True
             else:
                 logger.error(f"❌ Exit order failed for {symbol}: {result}")
-                return False
+                
+                # Check for SSR (Short Sale Restriction) error
+                if "SSR" in result.upper() or "SHORT MARKET ORDER DISABLED" in result.upper():
+                    logger.warning(f"SSR detected for {symbol}, will retry in next cycle")
+                    return False  # Don't remove from tracking, let it retry
+                else:
+                    logger.warning(f"Removing {symbol} from position tracking due to order failure")
+                    return False  # Remove from tracking
                 
         except Exception as e:
             logger.error(f"Error closing position for {symbol}: {e}")
@@ -463,7 +643,7 @@ class TradingBot:
         self.last_update = None
         
         # DAS Connection components
-        self.das_connection: Optional[DASConnection] = None
+        self.connection: Optional[Connection] = None
         self.price_manager: Optional[PriceManager] = None
         self.order_manager: Optional[OrderManager] = None
         
@@ -483,74 +663,73 @@ class TradingBot:
         self.last_position_discovery = 0
         self.last_config_check = 0
         self.last_connection_check = 0
-        
         # Monitoring thread
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitoring = False
         
-    def check_and_establish_das_connection(self) -> bool:
-        """Check if DAS is connected, try to connect if not"""
-        try:
-            # If we have a connection, check if it's still alive
-            if self.das_connection and self.das_connection.connected:
-                if self.das_connection.check_connection():
-                    logger.debug("✅ DAS connection is alive")
-                    return True
-                else:
-                    logger.warning("⚠️ DAS connection is dead, will attempt reconnect")
-            
-            # Try to establish connection
-            logger.info("🔌 Attempting to establish DAS connection...")
-            return self.connect_to_das()
-            
-        except Exception as e:
-            logger.error(f"❌ Error checking/establishing DAS connection: {e}")
-            return False
-    
     def connect_to_das(self) -> bool:
         """Connect to DAS Trader"""
         try:
             logger.info("Connecting to DAS server...")
-            self.das_connection = DASConnection()
+            self.connection = Connection()
+            self.connection.ConnectToServer()
             
-            if self.das_connection.ConnectToServer():
-                # Initialize components after connection
-                self.price_manager = PriceManager(self.das_connection)
-                self.order_manager = OrderManager(self.das_connection)
-                
-                logger.info("✅ Successfully connected to DAS server")
-                return True
-            else:
-                logger.error("❌ Failed to connect to DAS server")
-                return False
+            # Initialize components after connection
+            self.price_manager = PriceManager(self.connection)
+            self.order_manager = OrderManager(self.connection)
+            
+            logger.info("✅ Successfully connected to DAS server")
+            return True
                 
         except Exception as e:
             logger.error(f"❌ Error connecting to DAS: {e}")
             return False
     
+    def force_reconnect_das(self) -> bool:
+        """Force reconnection to DAS Trader"""
+        try:
+            logger.info("🔄 Force reconnecting to DAS server...")
+            
+            # Disconnect if already connected
+            if self.connection:
+                try:
+                    self.disconnect_from_das()
+                except Exception as e:
+                    logger.warning(f"Warning during disconnect: {e}")
+            
+            # Connect again
+            return self.connect_to_das()
+                
+        except Exception as e:
+            logger.error(f"❌ Error force reconnecting to DAS: {e}")
+            return False
+    
     def disconnect_from_das(self):
         """Disconnect from DAS Trader"""
-        if self.das_connection:
+        if self.connection:
             try:
                 # Unsubscribe from all symbols before disconnecting
                 if self.price_manager:
                     for symbol in list(self.price_manager.subscribed_symbols):
                         self.price_manager.unsubscribe_from_symbol(symbol)
                 
-                self.das_connection.Disconnect()
+                self.connection.Disconnect()
                 logger.info("✅ Disconnected from DAS server")
             except Exception as e:
                 logger.error(f"⚠️ Disconnect warning: {e}")
+            finally:
+                # Clear the connection reference
+                self.connection = None
     
     def get_current_positions(self) -> str:
         """Get current positions from DAS - returns raw string data"""
         try:
-            if not self.das_connection:
+            if not self.connection:
                 return ""
             
             script = "GET POSITIONS\r\n"
             logger.info("Getting current positions from DAS...")
-            result = self.das_connection.SendScript(bytearray(script, encoding="ascii"))
+            result = self.connection.SendScript(bytearray(script, encoding="ascii"))
             
             # Filter and log only positions with qty > 0
             filtered_result = self._filter_positions_with_quantity(result)
@@ -730,99 +909,72 @@ class TradingBot:
             return False
     
     def monitor_positions_loop(self):
-        """Main position monitoring loop with multi-tier intervals"""
-        logger.info("👀 Starting enhanced position monitoring loop...")
-        logger.info(f"📊 Monitoring intervals - Price: {self.price_check_interval}s, Position Discovery: {self.position_discovery_interval}s, Config: {self.config_check_interval}s")
+        """Main position monitoring loop"""
+        logger.info("👀 Starting position monitoring loop...")
         
         while self.monitoring and self.is_running:
             try:
-                current_time = time.time()
+                logger.info(f"Starting position monitoring cycle. Active positions: {len(self.active_positions)}")
                 
-                # Check connection status less frequently to avoid overwhelming DAS
-                if current_time - self.last_connection_check >= self.connection_check_interval:
-                    # Check if DAS is still connected before proceeding
-                    if not self.das_connection or not self.das_connection.connected:
-                        logger.warning("⚠️ DAS connection lost, pausing monitoring...")
-                        time.sleep(5)  # Wait 5 seconds before checking again
-                        continue
-                    
-                    # Verify connection is still alive
-                    if not self.das_connection.check_connection():
-                        logger.warning("⚠️ DAS connection appears dead, pausing monitoring...")
-                        time.sleep(5)  # Wait 5 seconds before checking again
-                        continue
-                    
-                    self.last_connection_check = current_time
+                # Update price data for all subscribed symbols
+                if self.price_manager:
+                    for symbol in list(self.active_positions.keys()):
+                        if symbol.upper() in self.price_manager.subscribed_symbols:
+                            self.price_manager.update_price_data(symbol)
                 
-                # Always check prices and exit conditions (critical for trading)
-                if self.active_positions:
-                    logger.debug(f"🔄 Price monitoring cycle. Active positions: {len(self.active_positions)}")
+                # Get current positions from DAS
+                current_positions_raw = self.get_current_positions()
+                
+                for symbol, position in list(self.active_positions.items()):
+                    logger.info(f"Checking position: {symbol} ({position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f})")
                     
-                    for symbol, position in list(self.active_positions.items()):
-                        logger.debug(f"📊 Checking {symbol} price...")
-                        
-                        # Get current price
-                        current_price = None
+                    # Check if position still exists in DAS using proper parsing
+                    position_exists = self._check_position_exists_in_das(current_positions_raw, symbol)
+                    
+                    if not position_exists:
+                        logger.info(f"Position {symbol} no longer exists in DAS, removing from tracking")
+                        del self.active_positions[symbol]
+                        # Unsubscribe from the symbol since position is closed
                         if self.price_manager:
-                            current_price = self.price_manager.get_current_price(symbol)
-                        
-                        if current_price:
-                            logger.debug(f"💰 Current price for {symbol}: ${current_price:.2f}")
-                            
-                            # Check exit conditions
-                            should_exit, exit_reason = ExitConditionChecker.check_exit_conditions(
-                                symbol, position, current_price
-                            )
-                            
-                            if should_exit:
-                                logger.info(f"🚪 Exit condition met for {symbol}: {exit_reason}")
-                                
-                                if self.order_manager:
-                                    success = self.order_manager.close_position(symbol, position, current_price, exit_reason)
-                                    if success:
-                                        del self.active_positions[symbol]
-                                        if self.price_manager:
-                                            self.price_manager.unsubscribe_from_symbol(symbol)
-                            else:
-                                logger.debug(f"✅ No exit conditions met for {symbol}")
-                        else:
-                            logger.warning(f"⚠️ Could not get current price for {symbol}")
-                
-                # Check for new positions (less frequent)
-                if current_time - self.last_position_discovery >= self.position_discovery_interval:
-                    logger.info("🔍 Checking for new positions...")
-                    self.check_for_new_positions()
-                    self.last_position_discovery = current_time
-                
-                # Check for position closures (less frequent)
-                if current_time - self.last_position_discovery >= self.position_discovery_interval:
-                    current_positions_raw = self.get_current_positions()
+                            self.price_manager.unsubscribe_from_symbol(symbol)
+                        continue
                     
-                    for symbol, position in list(self.active_positions.items()):
-                        position_exists = self._check_position_exists_in_das(current_positions_raw, symbol)
+                    current_price = None
+                    if self.price_manager:
+                        current_price = self.price_manager.get_current_price(symbol)
+                    
+                    if current_price:
+                        logger.info(f"Current price for {symbol}: ${current_price:.2f}")
                         
-                        if not position_exists:
-                            logger.info(f"❌ Position {symbol} no longer exists in DAS, removing from tracking")
-                            del self.active_positions[symbol]
-                            if self.price_manager:
-                                self.price_manager.unsubscribe_from_symbol(symbol)
+                        # Check exit conditions
+                        should_exit, exit_reason = ExitConditionChecker.check_exit_conditions(
+                            symbol, position, current_price
+                        )
+                        
+                        if should_exit:
+                            logger.info(f"Exit condition met for {symbol}: {exit_reason} at ${current_price:.2f}")
+                            
+                            if self.order_manager:
+                                success = self.order_manager.close_position(symbol, position, current_price, exit_reason)
+                                if success:
+                                    del self.active_positions[symbol]
+                                    if self.price_manager:
+                                        self.price_manager.unsubscribe_from_symbol(symbol)
+                        else:
+                            logger.info(f"No exit conditions met for {symbol} at ${current_price:.2f}")
+                    else:
+                        logger.warning(f"Could not get current price for {symbol}")
                 
-                # Check for config changes (least frequent)
-                if current_time - self.last_config_check >= self.config_check_interval:
-                    logger.debug("⚙️ Checking for config changes...")
-                    # Note: Config changes are currently handled via API, but we could add
-                    # file monitoring or other config sources here if needed
-                    self.last_config_check = current_time
+                # Check for new positions that might have been opened manually
+                self.check_for_new_positions()
                 
-                # Update position count
-                self.active_positions_count = len(self.active_positions)
-                
-                # Wait before next price check (most frequent operation)
-                time.sleep(self.price_check_interval)
+                # Wait before next check
+                logger.info(f"Position monitoring cycle completed. Active positions: {len(self.active_positions)}")
+                time.sleep(self.monitor_interval)
                 
             except Exception as e:
-                logger.error(f"❌ Error in position monitoring loop: {e}")
-                time.sleep(30)  # Wait longer on error
+                logger.error(f"Error monitoring positions: {e}")
+                time.sleep(30)
     
     def start(self) -> bool:
         """Start the trading bot"""
@@ -831,7 +983,7 @@ class TradingBot:
             self.last_update = datetime.now()
             
             # Connect to DAS
-            if not self.check_and_establish_das_connection():
+            if not self.connect_to_das():
                 logger.error("❌ Failed to connect to DAS, cannot start bot")
                 logger.error("💡 Please ensure DAS Trader is running and the connection is established")
                 return False
@@ -872,40 +1024,41 @@ class TradingBot:
             logger.error(f"❌ Error stopping bot: {e}")
             return False
     
-    def force_reconnect_das(self) -> bool:
-        """Force a reconnection to DAS"""
-        try:
-            logger.info("🔄 Force reconnecting to DAS...")
-            
-            # Disconnect if currently connected
-            if self.das_connection:
-                self.das_connection.Disconnect()
-            
-            # Try to establish new connection
-            return self.check_and_establish_das_connection()
-            
-        except Exception as e:
-            logger.error(f"❌ Error force reconnecting to DAS: {e}")
-            return False
-    
     def get_status(self) -> Dict:
         """Get bot status"""
-        # Check DAS connection status
-        das_connected = False
-        if self.das_connection:
-            das_connected = self.das_connection.connected and self.das_connection.check_connection()
-        
-        # Bot cannot be truly "running" without DAS connection
-        # Even if is_running is True, if DAS is disconnected, the bot is effectively stopped
-        effective_running = self.is_running and das_connected
-        effective_monitoring = self.monitoring and das_connected
+        # Convert active positions to a format suitable for frontend
+        positions_data = []
+        for symbol, position in self.active_positions.items():
+            # Get current price for P&L calculation
+            current_price = self.price_manager.get_current_price(symbol) if self.price_manager else position.entry_price
+            
+            # Calculate P&L
+            if position.type == "LONG":
+                unrealized_pnl = (current_price - position.entry_price) * position.size
+                unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+            else:  # SHORT
+                unrealized_pnl = (position.entry_price - current_price) * position.size
+                unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+            
+            positions_data.append({
+                'symbol': position.symbol,
+                'type': position.type,
+                'size': position.size,
+                'entry_price': position.entry_price,
+                'current_price': current_price,
+                'profit_target': position.profit_target,
+                'stop_loss': position.stop_loss,
+                'entry_time': position.entry_time,
+                'position_id': position.position_id,
+                'unrealized_pnl': unrealized_pnl,
+                'unrealized_pnl_pct': unrealized_pnl_pct
+            })
         
         return {
-            'running': effective_running,
-            'monitoring': effective_monitoring,
-            'subscribed_stocks': list(self.subscribed_stocks),
-            'positions': self.positions,
-            'active_positions': self.active_positions_count,
+            'running': self.is_running,
+            'monitoring': self.monitoring,
+            'active_positions': positions_data,  # Return active positions data directly
+            'active_positions_count': self.active_positions_count,
             'last_update': self.last_update.isoformat() if self.last_update else None,
             'profit_target_pct': self.profit_target_pct,
             'stop_loss_pct': self.stop_loss_pct,
@@ -914,9 +1067,7 @@ class TradingBot:
             'position_discovery_interval': self.position_discovery_interval,
             'config_check_interval': self.config_check_interval,
             'connection_check_interval': self.connection_check_interval,
-            'das_connected': das_connected,
-            'internal_running_state': self.is_running,  # Keep track of internal state
-            'internal_monitoring_state': self.monitoring  # Keep track of internal state
+            'das_connected': self.connection is not None
         }
     
     def subscribe_stock(self, ticker: str) -> bool:
@@ -941,10 +1092,53 @@ class TradingBot:
             return False
     
     def update_strategies(self, strategies: Dict) -> bool:
-        """Update bot strategies"""
+        """Update bot strategies and recalculate exit targets for existing positions"""
         try:
-            logger.info(f"✅ Strategies updated: {strategies}")
+            logger.info(f"🔄 Updating bot strategies: {strategies}")
+            
+            # Store old values for logging
+            old_profit_target = self.profit_target_pct
+            old_stop_loss = self.stop_loss_pct
+            old_monitor_interval = self.monitor_interval
+            
+            # Update configuration values
+            if 'profit_target_pct' in strategies:
+                self.profit_target_pct = float(strategies['profit_target_pct'])
+                logger.info(f"📊 Profit target updated: {old_profit_target}% → {self.profit_target_pct}%")
+            
+            if 'stop_loss_pct' in strategies:
+                self.stop_loss_pct = float(strategies['stop_loss_pct'])
+                logger.info(f"📊 Stop loss updated: {old_stop_loss}% → {self.stop_loss_pct}%")
+            
+            if 'monitor_interval' in strategies:
+                self.monitor_interval = int(strategies['monitor_interval'])
+                logger.info(f"📊 Monitor interval updated: {old_monitor_interval}s → {self.monitor_interval}s")
+            
+            # Recalculate exit targets for all existing positions
+            positions_updated = 0
+            for symbol, position in self.active_positions.items():
+                old_profit_target_val = position.profit_target
+                old_stop_loss_val = position.stop_loss
+                
+                # Recalculate exit targets with new percentages
+                new_profit_target, new_stop_loss = self._calculate_exit_targets(
+                    position.type, 
+                    position.entry_price
+                )
+                
+                # Update the position object
+                position.profit_target = new_profit_target
+                position.stop_loss = new_stop_loss
+                
+                logger.info(f"🔄 Updated {symbol} exit targets:")
+                logger.info(f"   Profit target: ${old_profit_target_val:.2f} → ${new_profit_target:.2f}")
+                logger.info(f"   Stop loss: ${old_stop_loss_val:.2f} → ${new_stop_loss:.2f}")
+                
+                positions_updated += 1
+            
+            logger.info(f"✅ Strategies updated successfully. {positions_updated} positions recalculated.")
             return True
+            
         except Exception as e:
             logger.error(f"❌ Error updating strategies: {e}")
             return False
@@ -957,7 +1151,7 @@ class TradingBot:
         try:
             logger.warning("🚨 PANIC EXIT INITIATED - CLOSING ALL POSITIONS AT MARKET")
             
-            if not self.das_connection or not self.das_connection.connected:
+            if not self.connection:
                 logger.error("❌ Not connected to DAS - cannot execute panic exit")
                 return {
                     'success': False,
@@ -1005,7 +1199,7 @@ class TradingBot:
                         order_side = "BUY"
                     
                     logger.info(f"Sending order: {script}")
-                    result = self.das_connection.SendScript(bytearray(script + "\r\n", encoding="ascii"))
+                    result = self.connection.SendScript(bytearray(script + "\r\n", encoding="ascii"))
                     
                     if "SUCCESS" in result.upper() or "ACCEPTED" in result.upper():
                         successful_closes += 1

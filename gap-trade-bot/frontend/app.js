@@ -83,9 +83,9 @@ const app = createApp({
                 botStatus: {
                     running: false,
                     monitoring: false,
-                    subscribed_stocks: [],
                     positions: [],
-                    active_positions: 0,
+                    active_positions: [],
+                    active_positions_count: 0,
                     last_update: null,
                     profit_target_pct: 5.0,
                     stop_loss_pct: 2.5,
@@ -93,6 +93,13 @@ const app = createApp({
                     das_connected: false,
                     internal_running_state: false,
                     internal_monitoring_state: false
+                },
+                
+                // Real-time updates
+                realTimeUpdates: {
+                    enabled: false,
+                    interval: null,
+                    lastUpdate: null
                 },
                 
                 // Bot configuration
@@ -107,8 +114,7 @@ const app = createApp({
                     min_percentage: 25.0
                 },
                 
-                // Bot positions
-                botPositions: [],
+
                 
                 // User data
                 user: null,
@@ -167,17 +173,11 @@ const app = createApp({
                     topPerformers: { bestTicker: '', bestPnl: 0 }
                 },
                 
-                // Stock selection for unsubscribe
-                selectedStocks: []
+
             }
         },
         
-        computed: {
-            allStocksSelected() {
-                return this.botStatus.subscribed_stocks.length > 0 && 
-                       this.selectedStocks.length === this.botStatus.subscribed_stocks.length;
-            }
-        },
+
         
         mounted() {
             console.log('🎯 Vue.js app mounted successfully');
@@ -203,6 +203,9 @@ const app = createApp({
         },
         
         beforeDestroy() {
+            // Stop real-time updates
+            this.stopRealTimeUpdates();
+            
             // Clean up timeouts and charts
             if (this.pnlChartUpdateTimeout) {
                 clearTimeout(this.pnlChartUpdateTimeout);
@@ -262,8 +265,8 @@ const app = createApp({
                         }, 100);
                     });
                 } else if (tabName === 'bot') {
-                    console.log('🤖 Bot tab selected - loading bot status...');
-                    this.loadBotStatus();
+                    console.log('🤖 Bot tab selected - loading bot status with real-time updates...');
+                    this.loadBotStatusWithRealTime();
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.loadTradeHistory();
@@ -372,9 +375,9 @@ const app = createApp({
                         console.error('❌ Failed to load dashboard data:', error);
                     });
                     
-                    // Load bot status in parallel
-                    console.log('🤖 Loading bot status...');
-                    this.loadBotStatus().catch(error => {
+                    // Load bot status in parallel with real-time updates
+                    console.log('🤖 Loading bot status with real-time updates...');
+                    this.loadBotStatusWithRealTime().catch(error => {
                         console.error('❌ Failed to load bot status:', error);
                     });
                     
@@ -518,9 +521,9 @@ const app = createApp({
                         this.botStatus = {
                             running: response.data.data.running || false,
                             monitoring: response.data.data.monitoring || false,
-                            subscribed_stocks: response.data.data.subscribed_stocks || [],
                             positions: response.data.data.positions || [],
-                            active_positions: response.data.data.active_positions || 0,
+                            active_positions: response.data.data.active_positions || [],
+                            active_positions_count: response.data.data.active_positions_count || 0,
                             last_update: response.data.data.last_update || null,
                             profit_target_pct: response.data.data.profit_target_pct || 5.0,
                             stop_loss_pct: response.data.data.stop_loss_pct || 2.5,
@@ -557,23 +560,49 @@ const app = createApp({
                 this.updateLoadingProgress('bot', 'error');
             },
             
-            async loadBotPositions() {
-                try {
-                    console.log('📊 Loading bot positions...');
-                    const response = await axios.get('/api/bot/positions');
-                    
-                    if (response.data.success) {
-                        this.botPositions = response.data.data.positions || [];
-                        console.log('✅ Bot positions loaded:', this.botPositions.length);
-                    } else {
-                        console.error('❌ Bot positions error:', response.data.error);
-                        this.botPositions = [];
+            // Real-time update methods
+            startRealTimeUpdates() {
+                console.log('🔄 Starting real-time updates...');
+                if (this.realTimeUpdates.enabled) {
+                    console.log('⚠️ Real-time updates already running');
+                    return;
+                }
+                
+                this.realTimeUpdates.enabled = true;
+                this.realTimeUpdates.interval = setInterval(async () => {
+                    if (this.botStatus.running && this.botStatus.monitoring) {
+                        await this.loadBotStatus();
+                        this.realTimeUpdates.lastUpdate = new Date();
+                        console.log('🔄 Real-time update completed:', this.realTimeUpdates.lastUpdate);
                     }
-                } catch (error) {
-                    console.error('❌ Error loading bot positions:', error);
-                    this.botPositions = [];
+                }, 1000); // Update every 1 second when bot is running
+                
+                console.log('✅ Real-time updates started');
+            },
+            
+            stopRealTimeUpdates() {
+                console.log('🛑 Stopping real-time updates...');
+                if (this.realTimeUpdates.interval) {
+                    clearInterval(this.realTimeUpdates.interval);
+                    this.realTimeUpdates.interval = null;
+                }
+                this.realTimeUpdates.enabled = false;
+                console.log('✅ Real-time updates stopped');
+            },
+            
+            // Enhanced bot status loading with real-time updates
+            async loadBotStatusWithRealTime() {
+                await this.loadBotStatus();
+                
+                // Start real-time updates if bot is running
+                if (this.botStatus.running && this.botStatus.monitoring) {
+                    this.startRealTimeUpdates();
+                } else {
+                    this.stopRealTimeUpdates();
                 }
             },
+            
+
             
             async loadBotConfig() {
                 try {
@@ -622,7 +651,6 @@ const app = createApp({
                     if (response.data.success) {
                         console.log('✅ Position discovery completed');
                         this.showNotification('Position discovery completed successfully', 'success');
-                        await this.loadBotPositions(); // Refresh positions
                         await this.loadBotStatus(); // Refresh bot status
                     } else {
                         console.error('❌ Position discovery error:', response.data.error);
@@ -637,7 +665,7 @@ const app = createApp({
             async refreshBotPositions() {
                 try {
                     console.log('🔄 Refreshing bot positions...');
-                    await this.loadBotPositions();
+                    await this.loadBotStatus(); // Refresh bot status which includes active positions
                     this.showNotification('Bot positions refreshed', 'success');
                 } catch (error) {
                     console.error('❌ Error refreshing bot positions:', error);
@@ -2112,8 +2140,9 @@ const app = createApp({
         },
         
         startPeriodicBotUpdates() {
-            // Placeholder - implement if needed
             console.log('⏰ Starting periodic bot updates...');
+            // Real-time updates are now handled by startRealTimeUpdates()
+            // This method is kept for compatibility but the real work is done elsewhere
         },
         
         // Historical Data Methods
@@ -2479,7 +2508,6 @@ const app = createApp({
                 this.loading.bot = true;
                 await Promise.all([
                     this.loadBotStatus(),
-                    this.loadBotPositions(),
                     this.loadBotConfig(),
                     this.loadScheduledSyncStatus()
                 ]);
@@ -2512,7 +2540,7 @@ const app = createApp({
                     // Update the effective running state
                     this.botStatus.running = !this.botStatus.running;
                     this.showNotification(`Bot ${action}ed successfully`, 'success');
-                    await this.loadBotStatus(); // Refresh status
+                    await this.loadBotStatusWithRealTime(); // Refresh status with real-time updates
                 } else {
                     // Enhanced error handling for bot start failures
                     let errorMessage = response.data.error || 'Unknown error';
@@ -2602,9 +2630,8 @@ const app = createApp({
                         data.data.positions_failed > 0 ? 'warning' : 'success'
                     );
                     
-                    // Refresh bot status and positions after panic exit
+                    // Refresh bot status after panic exit
                     await this.loadBotStatus();
-                    await this.loadBotPositions();
                     
                     console.log('✅ Panic exit completed successfully:', data.data);
                 } else {

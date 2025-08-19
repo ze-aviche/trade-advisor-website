@@ -4,9 +4,21 @@ Windows commands:
 
 taskkill /PID XXXX /F
 
-Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "Polygon|API|timeout|connection|
+==================================================================================================================
+Grep Logs:
+
+Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "Polygon|API|timeout|connection"
+
+Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "target profit|stop loss"
+
+Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "Profit target updated"
+
+Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "panic"
 
 Connection|network|Network" | Select-Object -Last 20
+
+=====================================================================================================================
+Process:
 
 Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
 
