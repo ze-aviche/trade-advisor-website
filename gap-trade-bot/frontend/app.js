@@ -99,7 +99,10 @@ const app = createApp({
                 realTimeUpdates: {
                     enabled: false,
                     interval: null,
-                    lastUpdate: null
+                    lastUpdate: null,
+                    isUpdating: false,
+                    updateInterval: 2000, // Configurable update interval in milliseconds
+                    enabled: false
                 },
                 
                 // Bot configuration
@@ -108,6 +111,7 @@ const app = createApp({
                     stop_loss_pct: 2.5,
                     monitor_interval: 5
                 },
+                isEditingBotConfig: false, // Track if user is actively editing bot config
                 
                 // Gap-up configuration
                 gapUpConfig: {
@@ -518,7 +522,7 @@ const app = createApp({
                     console.log('📊 Bot status response:', response.data);
                     
                     if (response.data.success) {
-                        this.botStatus = {
+                        const newBotStatus = {
                             running: response.data.data.running || false,
                             monitoring: response.data.data.monitoring || false,
                             positions: response.data.data.positions || [],
@@ -533,14 +537,87 @@ const app = createApp({
                             internal_monitoring_state: response.data.data.internal_monitoring_state || false
                         };
                         
-                        // Update bot config to match current status
-                        this.botConfig = {
+                        // Intelligent update: only update values that have actually changed
+                        let hasChanges = false;
+                        
+                        // Check if active positions have changed
+                        const positionsChanged = this.hasActivePositionsChanged(newBotStatus.active_positions);
+                        
+                        // Track position changes for better feedback
+                        if (positionsChanged) {
+                            const positionChanges = this.trackPositionChanges(newBotStatus.active_positions);
+                            if (positionChanges.length > 0) {
+                                console.log('📊 Position changes:', positionChanges);
+                            }
+                        }
+                        
+                        // Debug: Log active positions profit target and stop loss values
+                        if (newBotStatus.active_positions && newBotStatus.active_positions.length > 0) {
+                            console.log('📊 Active positions profit target and stop loss values:');
+                            newBotStatus.active_positions.forEach(pos => {
+                                console.log(`  ${pos.symbol}: profit_target=$${pos.profit_target?.toFixed(2)}, stop_loss=$${pos.stop_loss?.toFixed(2)}`);
+                            });
+                        }
+                        
+                        // Update only changed values to prevent unnecessary re-renders
+                        Object.keys(newBotStatus).forEach(key => {
+                            if (key === 'active_positions') {
+                                // Special handling for active positions to prevent unnecessary re-renders
+                                if (positionsChanged) {
+                                    this.botStatus[key] = newBotStatus[key];
+                                    hasChanges = true;
+                                    console.log('🔄 Active positions updated');
+                                }
+                            } else if (JSON.stringify(this.botStatus[key]) !== JSON.stringify(newBotStatus[key])) {
+                                this.botStatus[key] = newBotStatus[key];
+                                hasChanges = true;
+                                console.log(`🔄 ${key} updated:`, newBotStatus[key]);
+                            }
+                        });
+                        
+                        // Update bot config from botStatus to ensure active positions get updated values
+                        // Only update the UI input fields if user is not actively editing
+                        const newBotConfig = {
                             profit_target_pct: this.botStatus.profit_target_pct,
                             stop_loss_pct: this.botStatus.stop_loss_pct,
                             monitor_interval: this.botStatus.monitor_interval
                         };
                         
-                        console.log('✅ Bot status loaded:', this.botStatus);
+                        // Check if bot config values have changed
+                        let configChanged = false;
+                        const configChanges = [];
+                        
+                        Object.keys(newBotConfig).forEach(key => {
+                            if (this.botConfig[key] !== newBotConfig[key]) {
+                                const oldValue = this.botConfig[key];
+                                
+                                // Only update the botConfig if user is not actively editing
+                                // This prevents input field refresh while user is typing
+                                if (!this.isEditingBotConfig) {
+                                    this.botConfig[key] = newBotConfig[key];
+                                    configChanged = true;
+                                    configChanges.push({
+                                        key: key,
+                                        old: oldValue,
+                                        new: newBotConfig[key]
+                                    });
+                                    console.log(`⚙️ Bot config ${key} updated: ${oldValue} → ${newBotConfig[key]}`);
+                                } else {
+                                    // Log that we're skipping the update due to user editing
+                                    console.log(`⚙️ Skipping bot config ${key} update (${oldValue} → ${newBotConfig[key]}) - user is editing`);
+                                }
+                            }
+                        });
+                        
+                        if (configChanged) {
+                            console.log('⚙️ Bot configuration updated with changes:', configChanges);
+                        }
+                        
+                        if (hasChanges) {
+                            console.log('✅ Bot status updated with changes:', this.botStatus);
+                        } else {
+                            console.log('✅ Bot status checked (no changes)');
+                        }
                     } else {
                         console.error('❌ Bot status error:', response.data.error);
                     }
@@ -560,6 +637,87 @@ const app = createApp({
                 this.updateLoadingProgress('bot', 'error');
             },
             
+            // Helper method to check if active positions have actually changed
+            hasActivePositionsChanged(newPositions) {
+                const currentPositions = this.botStatus.active_positions || [];
+                
+                // If count is different, positions have changed
+                if (currentPositions.length !== newPositions.length) {
+                    return true;
+                }
+                
+                // Check if any position values have changed
+                for (let i = 0; i < newPositions.length; i++) {
+                    const newPos = newPositions[i];
+                    const currentPos = currentPositions[i];
+                    
+                    if (!currentPos || 
+                        newPos.symbol !== currentPos.symbol ||
+                        newPos.current_price !== currentPos.current_price ||
+                        newPos.unrealized_pnl !== currentPos.unrealized_pnl ||
+                        newPos.unrealized_pnl_pct !== currentPos.unrealized_pnl_pct) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            },
+            
+            // Track position changes for visual feedback
+            trackPositionChanges(newPositions) {
+                const currentPositions = this.botStatus.active_positions || [];
+                const changes = [];
+                
+                // Create a map of current positions by symbol
+                const currentPosMap = {};
+                currentPositions.forEach(pos => {
+                    currentPosMap[pos.symbol] = pos;
+                });
+                
+                // Check for changes in each new position
+                newPositions.forEach(newPos => {
+                    const currentPos = currentPosMap[newPos.symbol];
+                    if (currentPos) {
+                        const positionChanges = {};
+                        
+                        if (newPos.current_price !== currentPos.current_price) {
+                            positionChanges.current_price = {
+                                old: currentPos.current_price,
+                                new: newPos.current_price
+                            };
+                        }
+                        
+                        if (newPos.unrealized_pnl !== currentPos.unrealized_pnl) {
+                            positionChanges.unrealized_pnl = {
+                                old: currentPos.unrealized_pnl,
+                                new: newPos.unrealized_pnl
+                            };
+                        }
+                        
+                        if (newPos.unrealized_pnl_pct !== currentPos.unrealized_pnl_pct) {
+                            positionChanges.unrealized_pnl_pct = {
+                                old: currentPos.unrealized_pnl_pct,
+                                new: newPos.unrealized_pnl_pct
+                            };
+                        }
+                        
+                        if (Object.keys(positionChanges).length > 0) {
+                            changes.push({
+                                symbol: newPos.symbol,
+                                changes: positionChanges
+                            });
+                        }
+                    }
+                });
+                
+                // Log changes for debugging
+                if (changes.length > 0) {
+                    console.log('📊 Position changes detected:', changes);
+                }
+                
+                return changes;
+            },
+            
             // Real-time update methods
             startRealTimeUpdates() {
                 console.log('🔄 Starting real-time updates...');
@@ -571,11 +729,19 @@ const app = createApp({
                 this.realTimeUpdates.enabled = true;
                 this.realTimeUpdates.interval = setInterval(async () => {
                     if (this.botStatus.running && this.botStatus.monitoring) {
+                        // Add visual feedback for updates
+                        this.realTimeUpdates.isUpdating = true;
+                        
                         await this.loadBotStatus();
                         this.realTimeUpdates.lastUpdate = new Date();
                         console.log('🔄 Real-time update completed:', this.realTimeUpdates.lastUpdate);
+                        
+                        // Remove visual feedback after a short delay
+                        setTimeout(() => {
+                            this.realTimeUpdates.isUpdating = false;
+                        }, 500);
                     }
-                }, 1000); // Update every 1 second when bot is running
+                }, this.realTimeUpdates.updateInterval); // Use configurable update interval
                 
                 console.log('✅ Real-time updates started');
             },
@@ -588,6 +754,19 @@ const app = createApp({
                 }
                 this.realTimeUpdates.enabled = false;
                 console.log('✅ Real-time updates stopped');
+            },
+            
+            // Update real-time interval dynamically
+            updateRealTimeInterval() {
+                console.log('⚙️ Updating real-time interval to:', this.realTimeUpdates.updateInterval + 'ms');
+                
+                // If updates are currently running, restart with new interval
+                if (this.realTimeUpdates.enabled) {
+                    this.stopRealTimeUpdates();
+                    this.startRealTimeUpdates();
+                }
+                
+                this.showNotification(`Update interval changed to ${this.realTimeUpdates.updateInterval/1000}s`, 'info');
             },
             
             // Enhanced bot status loading with real-time updates
@@ -627,12 +806,25 @@ const app = createApp({
             async updateBotConfig() {
                 try {
                     console.log('⚙️ Updating bot configuration...');
+                    console.log('⚙️ Sending config:', this.botConfig);
                     const response = await axios.post('/api/bot/config', this.botConfig);
                     
                     if (response.data.success) {
                         console.log('✅ Bot config updated successfully');
+                        console.log('✅ Backend response:', response.data);
                         this.showNotification('Bot configuration updated successfully', 'success');
+                        
+                        // Force refresh bot status to get updated active positions
+                        console.log('🔄 Refreshing bot status after config update...');
                         await this.loadBotStatus(); // Refresh bot status
+                        
+                        // Debug: Check if active positions were updated
+                        if (this.botStatus.active_positions && this.botStatus.active_positions.length > 0) {
+                            console.log('📊 Active positions after config update:');
+                            this.botStatus.active_positions.forEach(pos => {
+                                console.log(`  ${pos.symbol}: profit_target=$${pos.profit_target?.toFixed(2)}, stop_loss=$${pos.stop_loss?.toFixed(2)}`);
+                            });
+                        }
                     } else {
                         console.error('❌ Bot config update error:', response.data.error);
                         this.showNotification('Failed to update bot configuration: ' + response.data.error, 'error');
@@ -671,6 +863,28 @@ const app = createApp({
                     console.error('❌ Error refreshing bot positions:', error);
                     this.showNotification('Failed to refresh bot positions', 'error');
                 }
+            },
+            
+            async refreshBotConfig() {
+                try {
+                    console.log('⚙️ Refreshing bot configuration...');
+                    await this.loadBotConfig(); // Refresh bot configuration
+                    this.showNotification('Bot configuration refreshed', 'success');
+                } catch (error) {
+                    console.error('❌ Error refreshing bot configuration:', error);
+                    this.showNotification('Failed to refresh bot configuration', 'error');
+                }
+            },
+            
+            // Bot configuration editing handlers
+            onBotConfigFocus() {
+                this.isEditingBotConfig = true;
+                console.log('⚙️ User started editing bot configuration');
+            },
+            
+            onBotConfigBlur() {
+                this.isEditingBotConfig = false;
+                console.log('⚙️ User finished editing bot configuration');
             },
             
             // Helper methods for position calculations

@@ -15,6 +15,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
+import sys
+import os
+
+# Add the parent directory to the path to import database
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from database import db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -615,6 +621,41 @@ class OrderManager:
                 
                 logger.info(f"✅ Position closed: {symbol} {position.type}")
                 logger.info(f"   P&L: ${pnl:.2f}")
+                
+                # Save trade to database
+                try:
+                    # Determine trade side for database
+                    if position.type == "LONG":
+                        trade_side = "S"  # Sell to close long position
+                    else:
+                        trade_side = "B"  # Buy to close short position
+                    
+                    # Create trade data for database
+                    trade_data = {
+                        'trade_id': int(time.time() * 1000) % 1000000,  # Generate unique trade ID
+                        'symbol': symbol.upper(),
+                        'side': trade_side,
+                        'quantity': position.size,
+                        'price': current_price,
+                        'route': 'SMAT',
+                        'trade_time': datetime.now().strftime('%H:%M:%S'),
+                        'order_id': unID,
+                        'liquidity': '',
+                        'ecn_fee': 0.0,
+                        'pnl': pnl,
+                        'trade_date': datetime.now().date().isoformat()
+                    }
+                    
+                    # Save to database
+                    success, message = db_manager.add_trade(trade_data)
+                    if success:
+                        logger.info(f"💾 Trade saved to database: {symbol} {trade_side} {position.size} @ ${current_price:.2f}, P&L: ${pnl:.2f}")
+                    else:
+                        logger.error(f"❌ Failed to save trade to database: {message}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error saving trade to database: {e}")
+                
                 return True
             else:
                 logger.error(f"❌ Exit order failed for {symbol}: {result}")
@@ -666,6 +707,9 @@ class TradingBot:
         # Monitoring thread
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitoring = False
+        
+        # Thread safety lock for active_positions
+        self._positions_lock = threading.Lock()
         
     def connect_to_das(self) -> bool:
         """Connect to DAS Trader"""
@@ -821,24 +865,25 @@ class TradingBot:
             discovered_positions = PositionParser.parse_positions_raw(positions_raw)
             
             # Track discovered positions
-            for pos_data in discovered_positions:
-                symbol = pos_data['symbol']
-                if symbol not in self.active_positions:
-                    logger.info(f"📊 Adding {symbol} to active positions tracking...")
-                    
-                    # Create position object
-                    position = self._create_position_object(pos_data)
-                    self.active_positions[symbol] = position
-                    
-                    # Subscribe to Level 1 data for this symbol
-                    if self.price_manager:
-                        self.price_manager.subscribe_to_symbol(symbol)
-                    
-                    logger.info(f"✅ Added {symbol} to tracking: {position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f}")
-                else:
-                    logger.info(f"ℹ️ {symbol} already in active positions, skipping")
-            
-            self.active_positions_count = len(self.active_positions)
+            with self._positions_lock:
+                for pos_data in discovered_positions:
+                    symbol = pos_data['symbol']
+                    if symbol not in self.active_positions:
+                        logger.info(f"📊 Adding {symbol} to active positions tracking...")
+                        
+                        # Create position object
+                        position = self._create_position_object(pos_data)
+                        self.active_positions[symbol] = position
+                        
+                        # Subscribe to Level 1 data for this symbol
+                        if self.price_manager:
+                            self.price_manager.subscribe_to_symbol(symbol)
+                        
+                        logger.info(f"✅ Added {symbol} to tracking: {position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f}")
+                    else:
+                        logger.info(f"ℹ️ {symbol} already in active positions, skipping")
+                
+                self.active_positions_count = len(self.active_positions)
             logger.info(f"📊 Total discovered positions: {len(discovered_positions)}")
             logger.info(f"📊 Total active positions after discovery: {self.active_positions_count}")
             
@@ -859,31 +904,32 @@ class TradingBot:
             current_symbols = set()
             new_positions_found = []
             
-            for pos_data in current_positions:
-                symbol = pos_data['symbol']
-                current_symbols.add(symbol.upper())
+            with self._positions_lock:
+                for pos_data in current_positions:
+                    symbol = pos_data['symbol']
+                    current_symbols.add(symbol.upper())
+                    
+                    # Check if this is a new position not in our tracking
+                    if symbol.upper() not in self.active_positions:
+                        logger.info(f"Found new position: {symbol}")
+                        
+                        # Create position object
+                        position = self._create_position_object(pos_data)
+                        self.active_positions[symbol.upper()] = position
+                        
+                        # Subscribe to Level 1 data for this symbol
+                        if self.price_manager:
+                            self.price_manager.subscribe_to_symbol(symbol)
+                        
+                        new_positions_found.append(pos_data)
                 
-                # Check if this is a new position not in our tracking
-                if symbol.upper() not in self.active_positions:
-                    logger.info(f"Found new position: {symbol}")
-                    
-                    # Create position object
-                    position = self._create_position_object(pos_data)
-                    self.active_positions[symbol.upper()] = position
-                    
-                    # Subscribe to Level 1 data for this symbol
-                    if self.price_manager:
-                        self.price_manager.subscribe_to_symbol(symbol)
-                    
-                    new_positions_found.append(pos_data)
-            
-            # Log new positions found
-            if new_positions_found:
-                logger.info(f"🆕 Found {len(new_positions_found)} new position(s):")
-                for pos in new_positions_found:
-                    logger.info(f"   {pos['symbol']} {pos['type']} {pos['quantity']} @ ${pos['avg_price']:.2f}")
-            
-            self.active_positions_count = len(self.active_positions)
+                # Log new positions found
+                if new_positions_found:
+                    logger.info(f"🆕 Found {len(new_positions_found)} new position(s):")
+                    for pos in new_positions_found:
+                        logger.info(f"   {pos['symbol']} {pos['type']} {pos['quantity']} @ ${pos['avg_price']:.2f}")
+                
+                self.active_positions_count = len(self.active_positions)
                     
         except Exception as e:
             logger.warning(f"Error checking for new positions: {e}")
@@ -918,14 +964,20 @@ class TradingBot:
                 
                 # Update price data for all subscribed symbols
                 if self.price_manager:
-                    for symbol in list(self.active_positions.keys()):
+                    with self._positions_lock:
+                        symbols_to_check = list(self.active_positions.keys())
+                    for symbol in symbols_to_check:
                         if symbol.upper() in self.price_manager.subscribed_symbols:
                             self.price_manager.update_price_data(symbol)
                 
                 # Get current positions from DAS
                 current_positions_raw = self.get_current_positions()
                 
-                for symbol, position in list(self.active_positions.items()):
+                # Get a copy of active positions to iterate over
+                with self._positions_lock:
+                    active_positions_copy = dict(self.active_positions)
+                
+                for symbol, position in active_positions_copy.items():
                     logger.info(f"Checking position: {symbol} ({position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f})")
                     
                     # Check if position still exists in DAS using proper parsing
@@ -933,7 +985,10 @@ class TradingBot:
                     
                     if not position_exists:
                         logger.info(f"Position {symbol} no longer exists in DAS, removing from tracking")
-                        del self.active_positions[symbol]
+                        with self._positions_lock:
+                            if symbol in self.active_positions:
+                                del self.active_positions[symbol]
+                                self.active_positions_count = len(self.active_positions)
                         # Unsubscribe from the symbol since position is closed
                         if self.price_manager:
                             self.price_manager.unsubscribe_from_symbol(symbol)
@@ -957,7 +1012,10 @@ class TradingBot:
                             if self.order_manager:
                                 success = self.order_manager.close_position(symbol, position, current_price, exit_reason)
                                 if success:
-                                    del self.active_positions[symbol]
+                                    with self._positions_lock:
+                                        if symbol in self.active_positions:
+                                            del self.active_positions[symbol]
+                                            self.active_positions_count = len(self.active_positions)
                                     if self.price_manager:
                                         self.price_manager.unsubscribe_from_symbol(symbol)
                         else:
@@ -1028,17 +1086,31 @@ class TradingBot:
         """Get bot status"""
         # Convert active positions to a format suitable for frontend
         positions_data = []
-        for symbol, position in self.active_positions.items():
+        
+        # Use lock to safely access active_positions
+        with self._positions_lock:
+            # Create a copy of the active positions to avoid iteration issues
+            active_positions_copy = dict(self.active_positions)
+            positions_count = self.active_positions_count
+        
+        # Process the copy outside the lock to avoid blocking
+        for symbol, position in active_positions_copy.items():
             # Get current price for P&L calculation
             current_price = self.price_manager.get_current_price(symbol) if self.price_manager else position.entry_price
             
-            # Calculate P&L
-            if position.type == "LONG":
-                unrealized_pnl = (current_price - position.entry_price) * position.size
-                unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
-            else:  # SHORT
-                unrealized_pnl = (position.entry_price - current_price) * position.size
-                unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+            # Ensure current_price is not None before calculating P&L
+            if current_price is None:
+                current_price = position.entry_price
+                unrealized_pnl = 0.0
+                unrealized_pnl_pct = 0.0
+            else:
+                # Calculate P&L
+                if position.type == "LONG":
+                    unrealized_pnl = (current_price - position.entry_price) * position.size
+                    unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                else:  # SHORT
+                    unrealized_pnl = (position.entry_price - current_price) * position.size
+                    unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
             
             positions_data.append({
                 'symbol': position.symbol,
@@ -1058,7 +1130,7 @@ class TradingBot:
             'running': self.is_running,
             'monitoring': self.monitoring,
             'active_positions': positions_data,  # Return active positions data directly
-            'active_positions_count': self.active_positions_count,
+            'active_positions_count': positions_count,
             'last_update': self.last_update.isoformat() if self.last_update else None,
             'profit_target_pct': self.profit_target_pct,
             'stop_loss_pct': self.stop_loss_pct,
@@ -1116,25 +1188,26 @@ class TradingBot:
             
             # Recalculate exit targets for all existing positions
             positions_updated = 0
-            for symbol, position in self.active_positions.items():
-                old_profit_target_val = position.profit_target
-                old_stop_loss_val = position.stop_loss
-                
-                # Recalculate exit targets with new percentages
-                new_profit_target, new_stop_loss = self._calculate_exit_targets(
-                    position.type, 
-                    position.entry_price
-                )
-                
-                # Update the position object
-                position.profit_target = new_profit_target
-                position.stop_loss = new_stop_loss
-                
-                logger.info(f"🔄 Updated {symbol} exit targets:")
-                logger.info(f"   Profit target: ${old_profit_target_val:.2f} → ${new_profit_target:.2f}")
-                logger.info(f"   Stop loss: ${old_stop_loss_val:.2f} → ${new_stop_loss:.2f}")
-                
-                positions_updated += 1
+            with self._positions_lock:
+                for symbol, position in self.active_positions.items():
+                    old_profit_target_val = position.profit_target
+                    old_stop_loss_val = position.stop_loss
+                    
+                    # Recalculate exit targets with new percentages
+                    new_profit_target, new_stop_loss = self._calculate_exit_targets(
+                        position.type, 
+                        position.entry_price
+                    )
+                    
+                    # Update the position object
+                    position.profit_target = new_profit_target
+                    position.stop_loss = new_stop_loss
+                    
+                    logger.info(f"🔄 Updated {symbol} exit targets:")
+                    logger.info(f"   Profit target: ${old_profit_target_val:.2f} → ${new_profit_target:.2f}")
+                    logger.info(f"   Stop loss: ${old_stop_loss_val:.2f} → ${new_stop_loss:.2f}")
+                    
+                    positions_updated += 1
             
             logger.info(f"✅ Strategies updated successfully. {positions_updated} positions recalculated.")
             return True
@@ -1205,6 +1278,42 @@ class TradingBot:
                         successful_closes += 1
                         status = "SUCCESS"
                         logger.info(f"✅ Successfully closed {position['symbol']} {position['type']}")
+                        
+                        # Save trade to database
+                        try:
+                            # Calculate P&L (approximate since we don't have current price)
+                            # For panic exit, we'll use the average price as current price (P&L will be 0)
+                            current_price = position['avg_price']
+                            if position['type'] == "LONG":
+                                pnl = 0.0  # Approximate for panic exit
+                            else:
+                                pnl = 0.0  # Approximate for panic exit
+                            
+                            # Create trade data for database
+                            trade_data = {
+                                'trade_id': int(time.time() * 1000) % 1000000,  # Generate unique trade ID
+                                'symbol': position['symbol'].upper(),
+                                'side': "S" if position['type'] == "LONG" else "B",  # Sell to close long, Buy to close short
+                                'quantity': position['quantity'],
+                                'price': current_price,
+                                'route': 'SMAT',
+                                'trade_time': datetime.now().strftime('%H:%M:%S'),
+                                'order_id': unID,
+                                'liquidity': '',
+                                'ecn_fee': 0.0,
+                                'pnl': pnl,
+                                'trade_date': datetime.now().date().isoformat()
+                            }
+                            
+                            # Save to database
+                            success, message = db_manager.add_trade(trade_data)
+                            if success:
+                                logger.info(f"💾 Panic exit trade saved to database: {position['symbol']} {position['type']} {position['quantity']} @ ${current_price:.2f}")
+                            else:
+                                logger.error(f"❌ Failed to save panic exit trade to database: {message}")
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Error saving panic exit trade to database: {e}")
                     else:
                         failed_closes += 1
                         status = "FAILED"
@@ -1237,8 +1346,9 @@ class TradingBot:
                     })
             
             # Update local position tracking
-            self.active_positions.clear()
-            self.active_positions_count = 0
+            with self._positions_lock:
+                self.active_positions.clear()
+                self.active_positions_count = 0
             
             result = {
                 'success': True,

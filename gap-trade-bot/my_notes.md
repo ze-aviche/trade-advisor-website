@@ -17,6 +17,8 @@ Get-Content logs\gap_trade_backend_all.log | Select-String -Pattern "panic"
 
 Connection|network|Network" | Select-Object -Last 20
 
+Get-Content -Path "logs\gap_trade_backend_all.log" -Wait | Select-String -Pattern "Error"
+
 =====================================================================================================================
 Process:
 

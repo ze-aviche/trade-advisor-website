@@ -1132,20 +1132,27 @@
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-lg font-medium text-white">Bot Configuration</h3>
-                        <button @click="updateBotConfig" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-save mr-2"></i>Save Configuration
-                        </button>
+                        <div class="flex items-center space-x-2">
+                            <button @click="refreshBotConfig" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-sync-alt mr-2"></i>Refresh Config
+                            </button>
+                            <button @click="updateBotConfig" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-save mr-2"></i>Save Configuration
+                            </button>
+                        </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div class="bg-gray-700 rounded-lg p-4">
                             <h4 class="text-md font-medium text-white mb-3">Profit Target</h4>
                             <div class="flex items-center space-x-2">
-                                <input v-model.number="botConfig.profit_target_pct" 
-                                       type="number" 
-                                       min="0.1" 
-                                       max="100" 
-                                       step="0.1"
-                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                                <input v-model.number="botConfig.profit_target_pct"
+                       type="number"
+                       min="0.1"
+                       max="100"
+                       step="0.1"
+                       @focus="onBotConfigFocus"
+                       @blur="onBotConfigBlur"
+                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
                                 <span class="text-sm text-gray-300">%</span>
                             </div>
                             <p class="text-xs text-gray-400 mt-2">Percentage profit target for position exits</p>
@@ -1154,12 +1161,14 @@
                         <div class="bg-gray-700 rounded-lg p-4">
                             <h4 class="text-md font-medium text-white mb-3">Stop Loss</h4>
                             <div class="flex items-center space-x-2">
-                                <input v-model.number="botConfig.stop_loss_pct" 
-                                       type="number" 
-                                       min="0.1" 
-                                       max="100" 
-                                       step="0.1"
-                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                                <input v-model.number="botConfig.stop_loss_pct"
+                       type="number"
+                       min="0.1"
+                       max="100"
+                       step="0.1"
+                       @focus="onBotConfigFocus"
+                       @blur="onBotConfigBlur"
+                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
                                 <span class="text-sm text-gray-300">%</span>
                             </div>
                             <p class="text-xs text-gray-400 mt-2">Percentage stop loss for position exits</p>
@@ -1168,12 +1177,14 @@
                         <div class="bg-gray-700 rounded-lg p-4">
                             <h4 class="text-md font-medium text-white mb-3">Monitor Interval</h4>
                             <div class="flex items-center space-x-2">
-                                <input v-model.number="botConfig.monitor_interval" 
-                                       type="number" 
-                                       min="1" 
-                                       max="60" 
-                                       step="1"
-                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                                <input v-model.number="botConfig.monitor_interval"
+                       type="number"
+                       min="1"
+                       max="60"
+                       step="1"
+                       @focus="onBotConfigFocus"
+                       @blur="onBotConfigBlur"
+                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
                                 <span class="text-sm text-gray-300">seconds</span>
                             </div>
                             <p class="text-xs text-gray-400 mt-2">Position monitoring cycle interval</p>
@@ -1191,11 +1202,23 @@
                         <div class="flex items-center space-x-3">
                             <h3 class="text-lg font-medium text-white">Active Positions ({{ botStatus.active_positions_count || 0 }})</h3>
                             <div v-if="realTimeUpdates.enabled && botStatus.running" class="flex items-center space-x-2">
-                                <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                <span class="text-xs text-green-400">Live Updates</span>
+                                <div class="w-2 h-2 rounded-full" :class="realTimeUpdates.isUpdating ? 'bg-yellow-400 animate-ping' : 'bg-green-400 animate-pulse'"></div>
+                                <span class="text-xs" :class="realTimeUpdates.isUpdating ? 'text-yellow-400' : 'text-green-400'">
+                                    {{ realTimeUpdates.isUpdating ? 'Updating...' : 'Live Updates' }}
+                                </span>
                             </div>
                         </div>
                         <div class="flex items-center space-x-3">
+                            <div class="flex items-center space-x-2">
+                                <label class="text-xs text-gray-400">Update Interval:</label>
+                                <select v-model="realTimeUpdates.updateInterval" @change="updateRealTimeInterval" 
+                                        class="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                                    <option value="1000">1s</option>
+                                    <option value="2000">2s</option>
+                                    <option value="5000">5s</option>
+                                    <option value="10000">10s</option>
+                                </select>
+                            </div>
                             <button @click="refreshBotPositions" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
                                 <i class="fas fa-sync-alt mr-2"></i>Refresh Positions
                             </button>
@@ -1227,17 +1250,28 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.entry_price.toFixed(2) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.current_price.toFixed(2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 transition-colors duration-300" 
+                                        :class="realTimeUpdates.isUpdating ? 'bg-yellow-900/20' : ''">
+                                        ${{ position.current_price.toFixed(2) }}
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-green-400">${{ position.profit_target.toFixed(2) }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-red-400">${{ position.stop_loss.toFixed(2) }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatNumber(position.size) }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                         ${{ (position.entry_price * position.size).toFixed(2) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm transition-colors duration-300" 
+                                        :class="[
+                                            position.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400',
+                                            realTimeUpdates.isUpdating ? 'bg-yellow-900/20' : ''
+                                        ]">
                                         ${{ position.unrealized_pnl.toFixed(2) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.unrealized_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm transition-colors duration-300" 
+                                        :class="[
+                                            position.unrealized_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400',
+                                            realTimeUpdates.isUpdating ? 'bg-yellow-900/20' : ''
+                                        ]">
                                         {{ position.unrealized_pnl_pct.toFixed(2) }}%
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
