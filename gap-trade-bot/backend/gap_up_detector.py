@@ -279,7 +279,6 @@ def get_gap_up_stocks():
         logger.error(f"❌ Error in get_gap_up_stocks: {e}")
         return []
 
-@cached_gap_up_detection(cache_type="real_time")
 def get_gap_up_stocks_for_frontend():
     """
     Get gap-up stocks for frontend display by scanning the entire market
@@ -295,6 +294,21 @@ def get_gap_up_stocks_for_frontend():
         GAP_UP_MIN_PRICE = 0.75
         USE_DELAYED_DATA = True
         DELAYED_DATA_DESCRIPTION = '15-minute delayed data for cost optimization'
+        
+        # Debug: Log the actual threshold being used
+        logger.info(f"🔧 DEBUG: Using threshold from config: {GAP_UP_MIN_PERCENTAGE}%")
+        logger.info(f"🔧 DEBUG: Config module path: {config_module.__file__}")
+        logger.info(f"🔧 DEBUG: All config attributes: {[attr for attr in dir(config_module) if not attr.startswith('_')]}")
+        
+        # Use threshold-aware caching
+        from gap_up_cache import gap_up_cache
+        cache_key = f"gap_up_frontend_threshold_{GAP_UP_MIN_PERCENTAGE}"
+        
+        # Try to get from cache first
+        cached_result = gap_up_cache.get(cache_key, "real_time")
+        if cached_result is not None:
+            logger.info(f"✅ Returning cached gap-up results for threshold {GAP_UP_MIN_PERCENTAGE}%")
+            return cached_result
         
         polygon_client = get_polygon_client()
         logger.info("✅ Polygon API client initialized successfully")
@@ -413,6 +427,13 @@ def get_gap_up_stocks_for_frontend():
         logger.info(f"📊 Tickers with no current price: {no_current_price}")
         logger.info(f"📊 Tickers with gap < {GAP_UP_MIN_PERCENTAGE}%: {gap_too_small}")
         logger.info(f"✅ Final gap-up stocks found: {len(gap_up_stocks)}")
+        
+        # Cache the results with threshold-aware key
+        try:
+            gap_up_cache.set(cache_key, gap_up_stocks, "real_time")
+            logger.info(f"💾 Cached gap-up results for threshold {GAP_UP_MIN_PERCENTAGE}%")
+        except Exception as cache_error:
+            logger.warning(f"⚠️ Could not cache results: {cache_error}")
         
         return gap_up_stocks
         

@@ -274,6 +274,9 @@ const app = createApp({
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.loadTradeHistory();
+                } else if (tabName === 'gap-ups') {
+                    console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
+                    this.loadGapUps();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     // Historical tab is ready for user input, no auto-loading needed
@@ -1079,6 +1082,7 @@ const app = createApp({
                     if (data.success) {
                         this.gapUpConfig = data.data;
                         console.log('✅ Gap-up configuration loaded:', this.gapUpConfig);
+                        console.log('✅ Gap-up min_percentage:', this.gapUpConfig.min_percentage);
                     } else {
                         console.error('❌ Failed to load gap-up configuration:', data.error);
                     }
@@ -1119,6 +1123,7 @@ const app = createApp({
             
             async loadGapUps() {
                 console.log('📈 Loading gap-ups...');
+                console.log('📈 Current gap-up config:', this.gapUpConfig);
                 this.updateLoadingProgress('gapUps', 'loading');
                 
                 const maxRetries = 3;
@@ -1139,11 +1144,14 @@ const app = createApp({
                         
                     const data = await response.json();
                         console.log('📈 Gap-ups API response data:', data);
+                        console.log('📈 Gap-ups count:', data.count);
+                        console.log('📈 Gap-ups data length:', data.data ? data.data.length : 0);
                     
                     if (data.success) {
                         this.gapUps = data.data || [];
                         this.stats.gapUps = this.gapUps.length;
                             console.log('✅ Gap-ups loaded successfully:', this.gapUps.length, 'stocks');
+                            console.log('✅ Gap-ups data:', this.gapUps);
                             this.updateLoadingProgress('gapUps', 'success');
                             return; // Success, exit retry loop
                     } else {
@@ -2152,6 +2160,23 @@ const app = createApp({
         formatNumber(num) {
             if (!num || num === 0) return 'N/A';
             return num.toLocaleString();
+        },
+        
+        // Format market cap
+        formatMarketCap(marketCap) {
+            if (!marketCap || marketCap === 0) return 'N/A';
+            
+            if (marketCap >= 1e12) {
+                return `$${(marketCap / 1e12).toFixed(2)}T`;
+            } else if (marketCap >= 1e9) {
+                return `$${(marketCap / 1e9).toFixed(2)}B`;
+            } else if (marketCap >= 1e6) {
+                return `$${(marketCap / 1e6).toFixed(2)}M`;
+            } else if (marketCap >= 1e3) {
+                return `$${(marketCap / 1e3).toFixed(2)}K`;
+            } else {
+                return `$${marketCap.toFixed(2)}`;
+            }
         },
         
         // Get status color

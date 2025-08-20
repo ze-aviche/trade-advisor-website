@@ -240,7 +240,23 @@ def invalidate_gap_up_cache() -> None:
     gap_up_cache.invalidate(gap_up_cache.GAP_UP_STOCKS_KEY)
     gap_up_cache.invalidate(gap_up_cache.GAP_UP_FRONTEND_KEY)
     gap_up_cache.invalidate(gap_up_cache.REAL_TIME_GAP_UPS_KEY)
-    logger.info("🗑️ Gap-up cache invalidated")
+    
+    # Also invalidate threshold-specific cache keys
+    import config as config_module
+    current_threshold = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 15.0)
+    threshold_cache_key = f"gap_up_frontend_threshold_{current_threshold}"
+    gap_up_cache.invalidate(threshold_cache_key)
+    
+    # Invalidate all threshold-specific keys (in case there are multiple)
+    keys_to_remove = []
+    for key in list(gap_up_cache.cache.keys()):
+        if key.startswith("gap_up_frontend_threshold_"):
+            keys_to_remove.append(key)
+    
+    for key in keys_to_remove:
+        gap_up_cache.invalidate(key)
+    
+    logger.info("🗑️ Gap-up cache invalidated (including threshold-specific keys)")
 
 def get_cache_stats() -> Dict[str, Any]:
     """Get cache performance statistics"""

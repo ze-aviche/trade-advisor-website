@@ -228,11 +228,28 @@ def gap_ups_config():
             with open(config_path, 'w') as f:
                 f.write(new_config_content)
             
+            # Force reload the config module to pick up the new value
+            try:
+                import importlib
+                import config as config_module
+                importlib.reload(config_module)
+                app_logger.info(f"🔄 Config module reloaded, new threshold: {getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 'unknown')}%")
+            except Exception as reload_error:
+                app_logger.warning(f"⚠️ Could not reload config module: {reload_error}")
+            
+            # Invalidate gap-up cache to ensure fresh data with new threshold
+            try:
+                from gap_up_cache import invalidate_gap_up_cache
+                invalidate_gap_up_cache()
+                app_logger.info("🗑️ Gap-up cache invalidated after config update")
+            except Exception as cache_error:
+                app_logger.warning(f"⚠️ Could not invalidate cache: {cache_error}")
+            
             app_logger.info(f"✅ Gap-up configuration updated: min_percentage = {min_percentage}%")
             
             return jsonify({
                 'success': True,
-                'message': f'Configuration updated: min_percentage = {min_percentage}%'
+                'message': f'Configuration updated: min_percentage = {min_percentage}% (cache cleared)'
             })
             
     except Exception as e:
@@ -919,14 +936,53 @@ def manage_das_connection():
 def invalidate_gap_ups_cache():
     """Invalidate gap-ups cache"""
     try:
-        # Placeholder - implement actual cache invalidation
+        # Import and call the actual cache invalidation function
+        from gap_up_cache import invalidate_gap_up_cache
+        invalidate_gap_up_cache()
+        
+        app_logger.info("🗑️ Gap-ups cache manually invalidated via API")
+        
         return jsonify({
             'success': True,
-            'message': 'Gap-ups cache invalidated',
+            'message': 'Gap-ups cache invalidated successfully',
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error invalidating cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/debug/config', methods=['GET'])
+def debug_config():
+    """Debug endpoint to check current config values"""
+    try:
+        import config as config_module
+        import importlib
+        
+        # Get current config values
+        current_threshold = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 'NOT_FOUND')
+        
+        # Try to reload and get fresh values
+        try:
+            importlib.reload(config_module)
+            reloaded_threshold = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 'NOT_FOUND')
+        except Exception as e:
+            reloaded_threshold = f"ERROR: {e}"
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'current_threshold': current_threshold,
+                'reloaded_threshold': reloaded_threshold,
+                'config_file_path': config_module.__file__,
+                'config_attributes': [attr for attr in dir(config_module) if not attr.startswith('_')]
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error in debug config: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
