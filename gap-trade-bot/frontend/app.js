@@ -566,11 +566,10 @@ const app = createApp({
                         Object.keys(newBotStatus).forEach(key => {
                             if (key === 'active_positions') {
                                 // Special handling for active positions to prevent unnecessary re-renders
-                                if (positionsChanged) {
-                                    this.botStatus[key] = newBotStatus[key];
-                                    hasChanges = true;
-                                    console.log('🔄 Active positions updated');
-                                }
+                                // Always call updateActivePositions to ensure proper array handling
+                                this.updateActivePositions(newBotStatus[key]);
+                                hasChanges = true;
+                                console.log('🔄 Active positions updated');
                             } else if (JSON.stringify(this.botStatus[key]) !== JSON.stringify(newBotStatus[key])) {
                                 this.botStatus[key] = newBotStatus[key];
                                 hasChanges = true;
@@ -2741,23 +2740,7 @@ const app = createApp({
             }
         },
         
-        // Helper method to refresh all bot components
-        async refreshAllBotComponents() {
-            try {
-                this.loading.bot = true;
-                await Promise.all([
-                    this.loadBotStatus(),
-                    this.loadBotConfig(),
-                    this.loadScheduledSyncStatus()
-                ]);
-                this.showNotification('All bot components refreshed successfully', 'success');
-            } catch (error) {
-                console.error('Error refreshing bot components:', error);
-                this.showNotification('Error refreshing bot components', 'error');
-            } finally {
-                    this.loading.bot = false;
-            }
-        },
+
         
         // Helper method to toggle bot on/off
         async toggleBot() {
@@ -3002,6 +2985,101 @@ const app = createApp({
             if (!timestamp) return '';
             const date = new Date(timestamp);
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        },
+        updateActivePositions(newPositions) {
+            const currentPositions = this.botStatus.active_positions || [];
+            
+            // If newPositions is empty, clear all positions
+            if (newPositions.length === 0) {
+                if (currentPositions.length > 0) {
+                    currentPositions.length = 0; // Clear the array
+                    console.log('🔄 Cleared all active positions');
+                }
+                this.botStatus.active_positions_count = 0;
+                console.log('🔄 Active positions updated: 0 positions');
+                return;
+            }
+            
+            // Create a map of current positions by symbol for quick lookup
+            const currentPosMap = {};
+            currentPositions.forEach((pos, index) => {
+                currentPosMap[pos.symbol] = { position: pos, index: index };
+            });
+            
+            // Update existing positions and add new ones
+            newPositions.forEach(newPos => {
+                const existing = currentPosMap[newPos.symbol];
+                
+                if (existing) {
+                    // Update existing position values without replacing the object reference
+                    const currentPos = existing.position;
+                    let hasChanges = false;
+                    
+                    // Check and update each field individually
+                    if (currentPos.current_price !== newPos.current_price) {
+                        currentPos.current_price = newPos.current_price;
+                        hasChanges = true;
+                        this.highlightValueUpdate(newPos.symbol, 'current_price');
+                    }
+                    if (currentPos.unrealized_pnl !== newPos.unrealized_pnl) {
+                        currentPos.unrealized_pnl = newPos.unrealized_pnl;
+                        hasChanges = true;
+                        this.highlightValueUpdate(newPos.symbol, 'unrealized_pnl');
+                    }
+                    if (currentPos.unrealized_pnl_pct !== newPos.unrealized_pnl_pct) {
+                        currentPos.unrealized_pnl_pct = newPos.unrealized_pnl_pct;
+                        hasChanges = true;
+                        this.highlightValueUpdate(newPos.symbol, 'unrealized_pnl_pct');
+                    }
+                    if (currentPos.profit_target !== newPos.profit_target) {
+                        currentPos.profit_target = newPos.profit_target;
+                        hasChanges = true;
+                    }
+                    if (currentPos.stop_loss !== newPos.stop_loss) {
+                        currentPos.stop_loss = newPos.stop_loss;
+                        hasChanges = true;
+                    }
+                    
+                    if (hasChanges) {
+                        console.log(`🔄 Updated position ${newPos.symbol} values`);
+                    }
+                } else {
+                    // Add new position
+                    currentPositions.push(newPos);
+                    console.log(`🔄 Added new position ${newPos.symbol}`);
+                }
+            });
+            
+            // Remove positions that no longer exist
+            const newPosSymbols = new Set(newPositions.map(pos => pos.symbol));
+            for (let i = currentPositions.length - 1; i >= 0; i--) {
+                if (!newPosSymbols.has(currentPositions[i].symbol)) {
+                    console.log(`🔄 Removed position ${currentPositions[i].symbol}`);
+                    currentPositions.splice(i, 1);
+                }
+            }
+            
+            // Update the count
+            this.botStatus.active_positions_count = currentPositions.length;
+            
+            console.log(`🔄 Active positions updated: ${currentPositions.length} positions`);
+        },
+        
+        // Highlight value updates with visual feedback
+        highlightValueUpdate(symbol, field) {
+            // Add a temporary class to highlight the updated value
+            setTimeout(() => {
+                const row = document.querySelector(`[data-symbol="${symbol}"]`);
+                if (row) {
+                    const valueCells = row.querySelectorAll('.value-cell');
+                    valueCells.forEach(cell => {
+                        cell.classList.add('updating');
+                        setTimeout(() => {
+                            cell.classList.remove('updating');
+                        }, 300);
+                    });
+                }
+            }, 50);
         }
         }
     });

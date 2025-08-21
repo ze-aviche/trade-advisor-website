@@ -1107,23 +1107,42 @@ class TradingBot:
         for position in current_positions:
             symbol = position['symbol'].upper()
             current_realized_pnl = position.get('realized_pnl', 0.0)
+            quantity = position.get('quantity', 0)
+            avg_price = position.get('avg_price', 0.0)
             
             # Check if we have a previous realized PnL for this symbol
             if symbol in self.last_realized_pnl:
                 previous_realized_pnl = self.last_realized_pnl[symbol]
                 
                 # If realized PnL has changed, a trade occurred
-                if abs(current_realized_pnl - previous_realized_pnl) > 0.01:  # Small threshold
-                    pnl_change = current_realized_pnl - previous_realized_pnl
-                    changes.append({
-                        'type': 'realized_pnl_change',
-                        'symbol': symbol,
-                        'pnl_change': pnl_change,
-                        'current_realized': current_realized_pnl,
-                        'previous_realized': previous_realized_pnl,
-                        'position': position
-                    })
-                    logger.info(f"Detected realized PnL change for {symbol}: ${pnl_change:.2f}")
+                pnl_change = current_realized_pnl - previous_realized_pnl
+                
+                # Only process significant PnL changes
+                if abs(pnl_change) > 0.01:  # Small threshold to avoid noise
+                    # Additional validation for closed positions
+                    if quantity == 0:
+                        # For closed positions, only process if we have a reasonable PnL change
+                        if abs(pnl_change) > 0.1:  # Higher threshold for closed positions
+                            changes.append({
+                                'type': 'realized_pnl_change',
+                                'symbol': symbol,
+                                'pnl_change': pnl_change,
+                                'current_realized': current_realized_pnl,
+                                'previous_realized': previous_realized_pnl,
+                                'position': position
+                            })
+                            logger.info(f"Detected realized PnL change for closed position {symbol}: ${pnl_change:.2f}")
+                    else:
+                        # For active positions, process normal PnL changes
+                        changes.append({
+                            'type': 'realized_pnl_change',
+                            'symbol': symbol,
+                            'pnl_change': pnl_change,
+                            'current_realized': current_realized_pnl,
+                            'previous_realized': previous_realized_pnl,
+                            'position': position
+                        })
+                        logger.info(f"Detected realized PnL change for active position {symbol}: ${pnl_change:.2f}")
             
             # Update the last known realized PnL (even for closed positions)
             self.last_realized_pnl[symbol] = current_realized_pnl
@@ -1134,25 +1153,69 @@ class TradingBot:
         """Save a detected trade change to the database"""
         try:
             if change['type'] == 'realized_pnl_change':
+                # Only save trades with valid PnL changes and reasonable values
+                pnl_change = change['pnl_change']
+                
+                # Skip if PnL change is too small (likely noise)
+                if abs(pnl_change) < 0.01:
+                    logger.debug(f"Skipping small PnL change for {change['symbol']}: ${pnl_change:.2f}")
+                    return
+                
+                # Skip if PnL change is unreasonably large (likely error)
+                if abs(pnl_change) > 10000:
+                    logger.warning(f"Skipping unreasonably large PnL change for {change['symbol']}: ${pnl_change:.2f}")
+                    return
+                
+                # Get position data
+                position = change['position']
+                quantity = position.get('quantity', 0)
+                avg_price = position.get('avg_price', 0.0)
+                
+                # Skip if quantity is 0 and price is 0 (closed position with no valid data)
+                if quantity == 0 and avg_price == 0.0:
+                    logger.debug(f"Skipping closed position with no valid data for {change['symbol']}")
+                    return
+                
+                # Use a reasonable price if avg_price is 0
+                if avg_price == 0.0:
+                    # Try to get price from recent trades in database
+                    from database import db_manager
+                    recent_trades = db_manager.get_trades(symbol=change['symbol'], limit=5)
+                    if recent_trades:
+                        # Use the most recent trade price
+                        avg_price = recent_trades[0]['price']
+                        logger.info(f"Using recent trade price for {change['symbol']}: ${avg_price:.2f}")
+                    else:
+                        logger.warning(f"No valid price available for {change['symbol']}, skipping trade")
+                        return
+                
                 # Create trade record for realized PnL change
                 trade_data = {
                     'trade_id': int(time.time() * 1000) % 1000000,
                     'symbol': change['symbol'],
                     'side': 'S',  # Use 'S' for realized PnL changes (sell side)
-                    'quantity': change['position'].get('quantity', 0),
-                    'price': change['position'].get('avg_price', 0.0),
+                    'quantity': quantity,
+                    'price': avg_price,
                     'route': 'SMAT',
                     'trade_time': datetime.now().strftime('%H:%M:%S'),
                     'order_id': 0,  # No specific order ID for detected trades
                     'liquidity': '',
                     'ecn_fee': 0.0,
-                    'pnl': round(change['pnl_change'], 2),
+                    'pnl': round(pnl_change, 2),
                     'trade_date': datetime.now().date().isoformat()
                 }
                 
+                # Check if we already have a similar trade recently (avoid duplicates)
+                recent_trades = db_manager.get_trades(symbol=change['symbol'], limit=10)
+                for recent_trade in recent_trades:
+                    if (recent_trade['pnl'] == round(pnl_change, 2) and 
+                        recent_trade['trade_time'] == trade_data['trade_time']):
+                        logger.debug(f"Skipping duplicate trade for {change['symbol']} with PnL: ${pnl_change:.2f}")
+                        return
+                
                 success, message = db_manager.add_trade(trade_data)
                 if success:
-                    logger.info(f"Saved realized PnL change trade: {change['symbol']} PnL: ${change['pnl_change']:.2f}")
+                    logger.info(f"Saved realized PnL change trade: {change['symbol']} Qty: {quantity} @ ${avg_price:.2f}, PnL: ${pnl_change:.2f}")
                 else:
                     logger.error(f"Failed to save trade: {message}")
                     
@@ -1386,6 +1449,11 @@ class TradingBot:
         
         # Process the copy outside the lock to avoid blocking
         for symbol, position in active_positions_copy.items():
+            # Skip positions with 0 quantity - they shouldn't be displayed
+            if position.size == 0:
+                logger.debug(f"Skipping position {symbol} with 0 quantity")
+                continue
+                
             # Get current price for P&L calculation
             current_price = self.price_manager.get_current_price(symbol) if self.price_manager else position.entry_price
             
@@ -1395,17 +1463,25 @@ class TradingBot:
                 unrealized_pnl = 0.0
                 unrealized_pnl_pct = 0.0
             else:
-                                 # Calculate P&L
-                 if position.type == "LONG":
-                     unrealized_pnl = (current_price - position.entry_price) * position.size
-                     unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
-                 else:  # SHORT
-                     unrealized_pnl = (position.entry_price - current_price) * position.size
-                     unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
-                 
-                 # Round PnL values to 2 decimal places
-                 unrealized_pnl = round(unrealized_pnl, 2)
-                 unrealized_pnl_pct = round(unrealized_pnl_pct, 2)
+                # Calculate P&L
+                if position.type == "LONG":
+                    unrealized_pnl = (current_price - position.entry_price) * position.size
+                    # Prevent division by zero
+                    if position.entry_price > 0:
+                        unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                    else:
+                        unrealized_pnl_pct = 0.0
+                else:  # SHORT
+                    unrealized_pnl = (position.entry_price - current_price) * position.size
+                    # Prevent division by zero
+                    if position.entry_price > 0:
+                        unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                    else:
+                        unrealized_pnl_pct = 0.0
+                
+                # Round PnL values to 2 decimal places
+                unrealized_pnl = round(unrealized_pnl, 2)
+                unrealized_pnl_pct = round(unrealized_pnl_pct, 2)
             
             positions_data.append({
                 'symbol': position.symbol,
@@ -1425,7 +1501,7 @@ class TradingBot:
             'running': self.is_running,
             'monitoring': self.monitoring,
             'active_positions': positions_data,  # Return active positions data directly
-            'active_positions_count': positions_count,
+            'active_positions_count': len(positions_data),  # Use actual count of displayed positions
             'last_update': self.last_update.isoformat() if self.last_update else None,
             'profit_target_pct': self.profit_target_pct,
             'stop_loss_pct': self.stop_loss_pct,

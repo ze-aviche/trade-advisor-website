@@ -520,4 +520,63 @@ canvas {
         padding: 8px 12px;
         min-width: 100px;
     }
+}
+
+/* Active Positions Table Smooth Updates */
+.active-positions-table td {
+    transition: all 0.3s ease-in-out;
+}
+
+.active-positions-table td.value-cell {
+    transition: color 0.3s ease-in-out, background-color 0.3s ease-in-out;
+}
+
+.active-positions-table td.updating {
+    background-color: rgba(245, 158, 11, 0.1);
+    animation: valueUpdate 0.3s ease-in-out;
+}
+
+@keyframes valueUpdate {
+    0% {
+        background-color: rgba(245, 158, 11, 0.2);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+/* Smooth transitions for position values */
+.position-value {
+    transition: all 0.3s ease-in-out;
+}
+
+.position-value.updating {
+    background-color: rgba(245, 158, 11, 0.1);
+    border-radius: 4px;
+    padding: 2px 4px;
+}
+
+/* Row transition effects */
+.active-positions-table tr {
+    transition: all 0.3s ease-in-out;
+}
+
+.active-positions-table tr.entering {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.active-positions-table tr.entering-active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.active-positions-table tr.exiting {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.active-positions-table tr.exiting-active {
+    opacity: 0;
+    transform: translateY(-10px);
 } 
