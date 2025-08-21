@@ -435,9 +435,12 @@ class DatabaseManager:
             return None
     
     def parse_das_trades_data(self, das_trades_text):
-        """Parse DAS trades data and return list of trade dictionaries"""
+        """Parse DAS trades data and return list of trade dictionaries with calculated PnL"""
         trades = []
         lines = das_trades_text.strip().split('\n')
+        
+        # Group trades by symbol to calculate PnL
+        symbol_trades = {}
         
         for line in lines:
             line = line.strip()
@@ -445,9 +448,13 @@ class DatabaseManager:
                 # Parse trade line: %TRADE 1 MSFT B 100 28.3
                 parts = line.split()
                 if len(parts) >= 6:
+                    symbol = parts[2]
+                    if symbol not in symbol_trades:
+                        symbol_trades[symbol] = []
+                    
                     trade_data = {
                         'trade_id': int(parts[1]),
-                        'symbol': parts[2],
+                        'symbol': symbol,
                         'side': parts[3],
                         'quantity': int(parts[4]),
                         'price': float(parts[5]),
@@ -456,12 +463,110 @@ class DatabaseManager:
                         'order_id': None,
                         'liquidity': '',
                         'ecn_fee': 0.0,
-                        'pnl': 0.0,
+                        'pnl': 0.0,  # Will be calculated below
                         'trade_date': datetime.now().date().isoformat()
                     }
-                    trades.append(trade_data)
+                    symbol_trades[symbol].append(trade_data)
+        
+        # Calculate PnL for each symbol's trades
+        for symbol, symbol_trade_list in symbol_trades.items():
+            # Sort trades by trade_id to ensure proper order
+            symbol_trade_list.sort(key=lambda x: x['trade_id'])
+            
+            # Calculate PnL for closing trades
+            for i, trade in enumerate(symbol_trade_list):
+                if trade['side'] in ['S', 'SS']:  # Sell trade (closing position)
+                    # Find the corresponding buy trade
+                    for j in range(i-1, -1, -1):  # Look backwards for buy trade
+                        if symbol_trade_list[j]['side'] == 'B':
+                            buy_trade = symbol_trade_list[j]
+                            # Calculate PnL: (sell_price - buy_price) * quantity
+                            pnl = (trade['price'] - buy_trade['price']) * trade['quantity']
+                            trade['pnl'] = round(pnl, 2)
+                            break
+                elif trade['side'] == 'B':  # Buy trade (opening position)
+                    # PnL will be calculated when the corresponding sell trade is processed
+                    trade['pnl'] = 0.0
+        
+        # Flatten the trades back to a single list
+        for symbol_trade_list in symbol_trades.values():
+            trades.extend(symbol_trade_list)
         
         return trades
+    
+    def recalculate_pnl_for_existing_trades(self):
+        """Recalculate PnL for all existing trades in the database using roundtrip logic"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get all trades grouped by symbol
+                cursor.execute('''
+                    SELECT id, trade_id, symbol, side, quantity, price, trade_date
+                    FROM trades 
+                    ORDER BY symbol, trade_date, trade_time, trade_id
+                ''')
+                all_trades = cursor.fetchall()
+                
+                # Group trades by symbol
+                symbol_trades = {}
+                for trade in all_trades:
+                    symbol = trade['symbol']
+                    if symbol not in symbol_trades:
+                        symbol_trades[symbol] = []
+                    symbol_trades[symbol].append(dict(trade))
+                
+                # Calculate PnL for each symbol's trades using roundtrip logic
+                updates_made = 0
+                for symbol, trades in symbol_trades.items():
+                    # Sort trades by date and time
+                    trades.sort(key=lambda x: (x['trade_date'], x.get('trade_time', ''), x['trade_id']))
+                    
+                    # Separate buy and sell trades
+                    buy_trades = [t for t in trades if t['side'] == 'B']
+                    sell_trades = [t for t in trades if t['side'] in ['S', 'SS']]
+                    
+                    # Calculate total quantities
+                    total_buy_qty = sum(trade['quantity'] for trade in buy_trades)
+                    total_sell_qty = sum(trade['quantity'] for trade in sell_trades)
+                    
+                    # Only calculate PnL if we have complete roundtrips
+                    if total_buy_qty > 0 and total_sell_qty > 0:
+                        # Calculate weighted average buy price
+                        total_buy_value = sum(trade['quantity'] * (trade['price'] or 0) for trade in buy_trades)
+                        avg_buy_price = total_buy_value / total_buy_qty if total_buy_qty > 0 else 0
+                        
+                        # Calculate weighted average sell price
+                        total_sell_value = sum(trade['quantity'] * (trade['price'] or 0) for trade in sell_trades)
+                        avg_sell_price = total_sell_value / total_sell_qty if total_sell_qty > 0 else 0
+                        
+                        # Calculate PnL for the roundtrip
+                        if avg_buy_price > 0 and avg_sell_price > 0:
+                            roundtrip_qty = min(total_buy_qty, total_sell_qty)
+                            pnl = (avg_sell_price - avg_buy_price) * roundtrip_qty
+                            pnl = round(pnl, 2)  # Round to 2 decimal places
+                            
+                            # Update all sell trades with the calculated PnL
+                            for sell_trade in sell_trades:
+                                cursor.execute('''
+                                    UPDATE trades SET pnl = ? WHERE id = ?
+                                ''', (pnl, sell_trade['id']))
+                                updates_made += 1
+                    
+                    # Set PnL to 0 for buy trades (opening positions)
+                    for buy_trade in buy_trades:
+                        cursor.execute('''
+                            UPDATE trades SET pnl = 0.0 WHERE id = ?
+                        ''', (buy_trade['id'],))
+                        updates_made += 1
+                
+                conn.commit()
+                print(f"✅ Recalculated PnL for {updates_made} trades using roundtrip logic")
+                return True, f"Successfully recalculated PnL for {updates_made} trades using roundtrip logic"
+                
+        except Exception as e:
+            print(f"Database error recalculating PnL: {e}")
+            return False, f"Error recalculating PnL: {str(e)}"
 
 # Global database manager instance
 db_manager = DatabaseManager() 

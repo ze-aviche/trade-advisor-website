@@ -1017,14 +1017,6 @@
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="text-lg font-medium text-white">Bot Status</h3>
                         <div class="flex items-center space-x-3">
-                            <!-- Comprehensive Refresh Button -->
-                            <button @click="refreshAllBotComponents" 
-                                    :disabled="loading.bot"
-                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                                <i :class="loading.bot ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-2"></i>
-                                {{ loading.bot ? 'Refreshing All...' : 'Refresh All Components' }}
-                            </button>
-
                             <!-- Toggle Bot Button -->
                             <button @click="toggleBot" 
                                     :disabled="loading.botToggle || !botStatus.das_connected"
@@ -1225,7 +1217,7 @@
                         </div>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-700">
+                        <table class="min-w-full divide-y divide-gray-700 active-positions-table">
                             <thead class="bg-gray-700">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
@@ -1242,7 +1234,7 @@
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="position in botStatus.active_positions" :key="position.symbol">
+                                <tr v-for="position in botStatus.active_positions" :key="position.symbol" :data-symbol="position.symbol" class="transition-all duration-300 ease-in-out">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         <span :class="position.type === 'LONG' ? 'text-green-400' : 'text-red-400'" class="font-medium">
@@ -1250,9 +1242,9 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.entry_price.toFixed(2) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 transition-colors duration-300" 
-                                        :class="realTimeUpdates.isUpdating ? 'bg-yellow-900/20' : ''">
-                                        ${{ position.current_price.toFixed(2) }}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 value-cell" 
+                                        :class="realTimeUpdates.isUpdating ? 'updating' : ''">
+                                        <span class="position-value">${{ position.current_price.toFixed(2) }}</span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-green-400">${{ position.profit_target.toFixed(2) }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-red-400">${{ position.stop_loss.toFixed(2) }}</td>
@@ -1260,19 +1252,19 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                         ${{ (position.entry_price * position.size).toFixed(2) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm transition-colors duration-300" 
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm value-cell" 
                                         :class="[
                                             position.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400',
-                                            realTimeUpdates.isUpdating ? 'bg-yellow-900/20' : ''
+                                            realTimeUpdates.isUpdating ? 'updating' : ''
                                         ]">
-                                        ${{ position.unrealized_pnl.toFixed(2) }}
+                                        <span class="position-value">${{ position.unrealized_pnl.toFixed(2) }}</span>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm transition-colors duration-300" 
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm value-cell" 
                                         :class="[
                                             position.unrealized_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400',
-                                            realTimeUpdates.isUpdating ? 'bg-yellow-900/20' : ''
+                                            realTimeUpdates.isUpdating ? 'updating' : ''
                                         ]">
-                                        {{ position.unrealized_pnl_pct.toFixed(2) }}%
+                                        <span class="position-value">{{ position.unrealized_pnl_pct.toFixed(2) }}%</span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
