@@ -276,6 +276,7 @@ class PositionParser:
     def parse_positions_raw(positions_raw: str) -> List[Dict]:
         """Parse raw positions data from DAS"""
         positions = []
+        symbol_positions = {}  # Dictionary to track positions by symbol
         
         if not positions_raw or positions_raw.strip() == "":
             return positions
@@ -284,7 +285,38 @@ class PositionParser:
         for line in lines:
             position = PositionParser.parse_position_line(line)
             if position:
-                positions.append(position)
+                symbol = position['symbol'].upper()
+                
+                if symbol in symbol_positions:
+                    # If we already have a position for this symbol, merge the data
+                    existing = symbol_positions[symbol]
+                    
+                    # For quantity, use the non-zero value if one exists
+                    if existing['quantity'] == 0 and position['quantity'] > 0:
+                        existing['quantity'] = position['quantity']
+                        existing['avg_price'] = position['avg_price']
+                        existing['type'] = position['type']
+                    
+                    # For realized PnL, sum them up (could be multiple trades)
+                    existing['realized_pnl'] += position['realized_pnl']
+                    
+                    # For unrealized PnL, use the non-zero value if one exists
+                    if existing['unrealized_pnl'] == 0.0 and position['unrealized_pnl'] != 0.0:
+                        existing['unrealized_pnl'] = position['unrealized_pnl']
+                    
+                    logger.debug(f"Merged position data for {symbol}: realized_pnl += {position['realized_pnl']:.2f}")
+                else:
+                    # First time seeing this symbol
+                    symbol_positions[symbol] = position.copy()
+        
+        # Convert the deduplicated positions back to a list
+        positions = list(symbol_positions.values())
+        
+        # Log the deduplication results
+        if len(positions) > 0:
+            logger.info(f"Parsed {len(positions)} unique positions from DAS data")
+            for pos in positions:
+                logger.debug(f"  {pos['symbol']}: {pos['type']} {pos['quantity']} @ ${pos['avg_price']:.2f}, Realized: ${pos['realized_pnl']:.2f}")
         
         return positions
 
@@ -922,6 +954,13 @@ class TradingBot:
             with self._positions_lock:
                 for pos_data in discovered_positions:
                     symbol = pos_data['symbol']
+                    quantity = pos_data.get('quantity', 0)
+                    
+                    # Skip positions with 0 quantity
+                    if quantity == 0:
+                        logger.info(f"⏭️ Skipping {symbol} with 0 quantity during position discovery")
+                        continue
+                    
                     if symbol not in self.active_positions:
                         logger.info(f"📊 Adding {symbol} to active positions tracking...")
                         
@@ -961,7 +1000,13 @@ class TradingBot:
             with self._positions_lock:
                 for pos_data in current_positions:
                     symbol = pos_data['symbol']
+                    quantity = pos_data.get('quantity', 0)
                     current_symbols.add(symbol.upper())
+                    
+                    # Skip positions with 0 quantity
+                    if quantity == 0:
+                        logger.info(f"⏭️ Skipping {symbol} with 0 quantity during new position check")
+                        continue
                     
                     # Check if this is a new position not in our tracking
                     if symbol.upper() not in self.active_positions:
@@ -1031,22 +1076,48 @@ class TradingBot:
                         logger.info(f"🔄 Manual trade detected for {symbol}: Realized PnL changed by ${pnl_change:.2f}")
                         
                         # Save the manual trade to database
-                        self._save_manual_trade(symbol, pnl_change, position)
-                
-                # Update the last known realized PnL
-                self.last_realized_pnl[symbol] = current_realized_pnl
+                        success = self._save_manual_trade(symbol, pnl_change, position)
+                        
+                        # Only update the last known PnL if the trade was successfully saved
+                        if success:
+                            self.last_realized_pnl[symbol] = current_realized_pnl
+                        else:
+                            logger.warning(f"Failed to save manual trade for {symbol}, keeping previous PnL value")
+                else:
+                    # First time seeing this symbol, just initialize the tracking
+                    self.last_realized_pnl[symbol] = current_realized_pnl
                 
         except Exception as e:
             logger.error(f"Error detecting manual trades: {e}")
     
-    def _save_manual_trade(self, symbol: str, pnl_change: float, position: Dict):
-        """Save a detected manual trade to the database"""
+    def _save_manual_trade(self, symbol: str, pnl_change: float, position: Dict) -> bool:
+        """Save a detected manual trade to the database. Returns True if successful, False otherwise."""
         try:
+            # Check for duplicate trades to prevent repeated saves
+            from database import db_manager
+            
+            # Look for recent trades with the same PnL change for this symbol
+            recent_trades = db_manager.get_trades(symbol=symbol, limit=10)
+            for recent_trade in recent_trades:
+                if (abs(recent_trade['pnl'] - round(pnl_change, 2)) < 0.01 and 
+                    recent_trade['trade_time'] == datetime.now().strftime('%H:%M:%S')):
+                    logger.debug(f"Skipping duplicate manual trade for {symbol} with PnL: ${pnl_change:.2f}")
+                    return True  # Return True since we're intentionally skipping
+            
+            # Determine the correct side based on position type
+            # For LONG positions: realized PnL comes from selling (S)
+            # For SHORT positions: realized PnL comes from buying to cover (B)
+            position_type = position.get('type', 'LONG')
+            if position_type == 'LONG':
+                trade_side = 'S'  # Sell to close long position
+            else:  # SHORT
+                trade_side = 'B'  # Buy to cover short position
+            
             # Create trade data for the manual trade
             trade_data = {
                 'trade_id': int(time.time() * 1000) % 1000000,
                 'symbol': symbol,
-                'side': 'M',  # Manual trade
+                'side': trade_side,  # Use correct side based on position type
                 'quantity': position.get('quantity', 0),
                 'price': position.get('avg_price', 0.0),
                 'route': 'SMAT',
@@ -1070,11 +1141,14 @@ class TradingBot:
             success, message = db_manager.add_trade(trade_data)
             if success:
                 logger.info(f"Manual trade saved to database: {symbol} PnL change: ${pnl_change:.2f}")
+                return True
             else:
                 logger.error(f"Failed to save manual trade to database: {message}")
+                return False
                 
         except Exception as e:
             logger.error(f"Error saving manual trade: {e}")
+            return False
     
     def _initialize_realized_pnl_tracking(self):
         """Initialize realized PnL tracking for all current positions"""
@@ -1189,11 +1263,18 @@ class TradingBot:
                         logger.warning(f"No valid price available for {change['symbol']}, skipping trade")
                         return
                 
+                # Determine the correct side based on position type
+                position_type = change['position'].get('type', 'LONG')
+                if position_type == 'LONG':
+                    trade_side = 'S'  # Sell to close long position
+                else:  # SHORT
+                    trade_side = 'B'  # Buy to cover short position
+                
                 # Create trade record for realized PnL change
                 trade_data = {
                     'trade_id': int(time.time() * 1000) % 1000000,
                     'symbol': change['symbol'],
-                    'side': 'S',  # Use 'S' for realized PnL changes (sell side)
+                    'side': trade_side,  # Use correct side based on position type
                     'quantity': quantity,
                     'price': avg_price,
                     'route': 'SMAT',
@@ -1323,6 +1404,18 @@ class TradingBot:
                     active_positions_copy = dict(self.active_positions)
                 
                 for symbol, position in active_positions_copy.items():
+                    # Skip positions with 0 quantity - they shouldn't be processed for exit conditions
+                    if position.size == 0:
+                        logger.info(f"Skipping position {symbol} with 0 quantity - removing from tracking")
+                        with self._positions_lock:
+                            if symbol in self.active_positions:
+                                del self.active_positions[symbol]
+                                self.active_positions_count = len(self.active_positions)
+                        # Unsubscribe from the symbol since position has 0 quantity
+                        if self.price_manager:
+                            self.price_manager.unsubscribe_from_symbol(symbol)
+                        continue
+                    
                     logger.info(f"Checking position: {symbol} ({position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f})")
                     
                     # Check if position still exists in DAS using proper parsing
