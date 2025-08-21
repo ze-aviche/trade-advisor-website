@@ -1349,6 +1349,38 @@ def get_trade_summary():
             'error': str(e)
         }), 500
 
+@app.route('/api/trades/recalculate-pnl', methods=['POST'])
+def recalculate_trade_pnl():
+    """Recalculate PnL for all existing trades in the database"""
+    try:
+        from database import db_manager
+        
+        app_logger.info("🔄 Starting PnL recalculation for all trades...")
+        
+        # Recalculate PnL for all trades
+        success, message = db_manager.recalculate_pnl_for_existing_trades()
+        
+        if success:
+            app_logger.info(f"✅ {message}")
+            return jsonify({
+                'success': True,
+                'message': message,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            app_logger.error(f"❌ {message}")
+            return jsonify({
+                'success': False,
+                'error': message
+            }), 500
+            
+    except Exception as e:
+        app_logger.error(f"Error recalculating trade PnL: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/trades/sync-das', methods=['POST'])
 def sync_trades_from_das():
     """Sync trades from DAS Trader"""

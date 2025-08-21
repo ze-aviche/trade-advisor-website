@@ -213,7 +213,7 @@ class PositionParser:
     
     @staticmethod
     def parse_position_line(line: str) -> Optional[Dict]:
-        """Parse a single position line from DAS"""
+        """Parse a single position line from DAS including realized PnL"""
         try:
             line = line.strip()
             if not line or not line.startswith('%POS'):
@@ -228,6 +228,23 @@ class PositionParser:
             quantity = int(parts[3])
             avg_price = float(parts[4])
             
+            # Parse additional fields if available
+            realized_pnl = 0.0
+            unrealized_pnl = 0.0
+            
+            # DAS position format: %POS symb type qty avgcost initqty initprice Realized CreatTime Unrealized
+            if len(parts) >= 8:
+                try:
+                    realized_pnl = float(parts[7])  # Realized PnL
+                except (ValueError, IndexError):
+                    realized_pnl = 0.0
+            
+            if len(parts) >= 10:
+                try:
+                    unrealized_pnl = float(parts[9])  # Unrealized PnL
+                except (ValueError, IndexError):
+                    unrealized_pnl = 0.0
+            
             # Validate position type
             if position_type_num == 2:
                 position_type = "LONG"
@@ -236,13 +253,17 @@ class PositionParser:
             else:
                 return None
             
-            # Only return valid positions
-            if quantity > 0 and avg_price > 0:
+            # Return position data including PnL information
+            # For realized PnL tracking, we want to include positions with quantity = 0 (closed positions)
+            # Also include positions with avg_price = 0 if they have realized PnL
+            if avg_price > 0 or realized_pnl != 0.0:
                 return {
                     'symbol': symbol,
                     'type': position_type,
                     'quantity': quantity,
-                    'avg_price': avg_price
+                    'avg_price': avg_price,
+                    'realized_pnl': realized_pnl,
+                    'unrealized_pnl': unrealized_pnl
                 }
             
             return None
@@ -595,7 +616,7 @@ class OrderManager:
         try:
             logger.info(f"🚪 Closing {position.type} position for {symbol}")
             logger.info(f"   Exit reason: {exit_reason}")
-            logger.info(f"   Current price: ${current_price:.2f}")
+            logger.info(f"   Entry price: ${position.entry_price:.2f}")
             
             # Generate unique ID for the order
             unID = int(self.cmd.uniq)
@@ -613,13 +634,28 @@ class OrderManager:
             logger.info(f"Exit order result: {result}")
             
             if "SUCCESS" in result.upper() or "ACCEPTED" in result.upper():
-                # Calculate P&L
-                if position.type == "LONG":
-                    pnl = (current_price - position.entry_price) * position.size
+                # For market orders, we need to get the execution price
+                # Since we can't easily get the fill price from DAS in real-time,
+                # we'll use the current price as an approximation for PnL calculation
+                execution_price = current_price
+                
+                # If current price is not available, use entry price as fallback
+                if execution_price is None or execution_price <= 0:
+                    logger.warning(f"No execution price available for {symbol}, using entry price")
+                    execution_price = position.entry_price
+                    pnl = 0.0  # No PnL if we can't determine execution price
                 else:
-                    pnl = (position.entry_price - current_price) * position.size
+                    # Calculate P&L using execution price (roundtrip logic)
+                    if position.type == "LONG":
+                        pnl = (execution_price - position.entry_price) * position.size
+                    else:
+                        pnl = (position.entry_price - execution_price) * position.size
+                    
+                    # Round PnL to 2 decimal places
+                    pnl = round(pnl, 2)
                 
                 logger.info(f"✅ Position closed: {symbol} {position.type}")
+                logger.info(f"   Execution price: ${execution_price:.2f}")
                 logger.info(f"   P&L: ${pnl:.2f}")
                 
                 # Save trade to database
@@ -636,7 +672,7 @@ class OrderManager:
                         'symbol': symbol.upper(),
                         'side': trade_side,
                         'quantity': position.size,
-                        'price': current_price,
+                        'price': execution_price,
                         'route': 'SMAT',
                         'trade_time': datetime.now().strftime('%H:%M:%S'),
                         'order_id': unID,
@@ -646,10 +682,20 @@ class OrderManager:
                         'trade_date': datetime.now().date().isoformat()
                     }
                     
+                    # Log trade data for debugging
+                    logger.info(f"📊 Trade data prepared:")
+                    logger.info(f"   Symbol: {trade_data['symbol']}")
+                    logger.info(f"   Side: {trade_data['side']}")
+                    logger.info(f"   Quantity: {trade_data['quantity']}")
+                    logger.info(f"   Price: ${trade_data['price']:.2f}")
+                    logger.info(f"   PnL: ${trade_data['pnl']:.2f}")
+                    logger.info(f"   Trade ID: {trade_data['trade_id']}")
+                    logger.info(f"   Order ID: {trade_data['order_id']}")
+                    
                     # Save to database
                     success, message = db_manager.add_trade(trade_data)
                     if success:
-                        logger.info(f"💾 Trade saved to database: {symbol} {trade_side} {position.size} @ ${current_price:.2f}, P&L: ${pnl:.2f}")
+                        logger.info(f"💾 Trade saved to database: {symbol} {trade_side} {position.size} @ ${execution_price:.2f}, P&L: ${pnl:.2f}")
                     else:
                         logger.error(f"❌ Failed to save trade to database: {message}")
                         
@@ -710,6 +756,14 @@ class TradingBot:
         
         # Thread safety lock for active_positions
         self._positions_lock = threading.Lock()
+        
+        # Manual trade tracking
+        self.last_realized_pnl: Dict[str, float] = {}  # Track last known realized PnL per symbol
+        
+        # Trade populator integration
+        self.trade_populator_enabled = True
+        self.trade_populator_thread = None
+        self.trade_populator_running = False
         
     def connect_to_das(self) -> bool:
         """Connect to DAS Trader"""
@@ -954,6 +1008,231 @@ class TradingBot:
             logger.error(f"Error checking if position exists for {symbol}: {e}")
             return False
     
+    def _detect_manual_trades(self, positions_raw: str):
+        """Detect manual trades by monitoring realized PnL changes"""
+        try:
+            if not positions_raw or positions_raw.strip() == "":
+                return
+            
+            # Parse all positions to get realized PnL data
+            positions = PositionParser.parse_positions_raw(positions_raw)
+            
+            for position in positions:
+                symbol = position['symbol'].upper()
+                current_realized_pnl = position.get('realized_pnl', 0.0)
+                
+                # Check if we have a previous realized PnL for this symbol
+                if symbol in self.last_realized_pnl:
+                    previous_realized_pnl = self.last_realized_pnl[symbol]
+                    
+                    # If realized PnL has changed, a manual trade occurred
+                    if abs(current_realized_pnl - previous_realized_pnl) > 0.01:  # Small threshold to avoid floating point issues
+                        pnl_change = current_realized_pnl - previous_realized_pnl
+                        logger.info(f"🔄 Manual trade detected for {symbol}: Realized PnL changed by ${pnl_change:.2f}")
+                        
+                        # Save the manual trade to database
+                        self._save_manual_trade(symbol, pnl_change, position)
+                
+                # Update the last known realized PnL
+                self.last_realized_pnl[symbol] = current_realized_pnl
+                
+        except Exception as e:
+            logger.error(f"Error detecting manual trades: {e}")
+    
+    def _save_manual_trade(self, symbol: str, pnl_change: float, position: Dict):
+        """Save a detected manual trade to the database"""
+        try:
+            # Create trade data for the manual trade
+            trade_data = {
+                'trade_id': int(time.time() * 1000) % 1000000,
+                'symbol': symbol,
+                'side': 'M',  # Manual trade
+                'quantity': position.get('quantity', 0),
+                'price': position.get('avg_price', 0.0),
+                'route': 'SMAT',
+                'trade_time': datetime.now().strftime('%H:%M:%S'),
+                'order_id': 0,  # No specific order ID for manual trades
+                'liquidity': '',
+                'ecn_fee': 0.0,
+                'pnl': round(pnl_change, 2),  # The PnL change from the manual trade
+                'trade_date': datetime.now().date().isoformat()
+            }
+            
+            # Log the manual trade
+            logger.info(f"Manual trade data:")
+            logger.info(f"   Symbol: {trade_data['symbol']}")
+            logger.info(f"   Side: {trade_data['side']}")
+            logger.info(f"   Quantity: {trade_data['quantity']}")
+            logger.info(f"   Price: ${trade_data['price']:.2f}")
+            logger.info(f"   PnL: ${trade_data['pnl']:.2f}")
+            
+            # Save to database
+            success, message = db_manager.add_trade(trade_data)
+            if success:
+                logger.info(f"Manual trade saved to database: {symbol} PnL change: ${pnl_change:.2f}")
+            else:
+                logger.error(f"Failed to save manual trade to database: {message}")
+                
+        except Exception as e:
+            logger.error(f"Error saving manual trade: {e}")
+    
+    def _initialize_realized_pnl_tracking(self):
+        """Initialize realized PnL tracking for all current positions"""
+        try:
+            logger.info("Initializing realized PnL tracking...")
+            
+            # Get current positions to initialize tracking
+            positions_raw = self.get_current_positions()
+            positions = PositionParser.parse_positions_raw(positions_raw)
+            
+            for position in positions:
+                symbol = position['symbol'].upper()
+                realized_pnl = position.get('realized_pnl', 0.0)
+                self.last_realized_pnl[symbol] = realized_pnl
+                logger.info(f"Initialized realized PnL tracking for {symbol}: ${realized_pnl:.2f}")
+            
+            logger.info(f"Realized PnL tracking initialized for {len(positions)} symbols")
+            
+        except Exception as e:
+            logger.error(f"Error initializing realized PnL tracking: {e}")
+    
+    def _detect_trade_changes(self, current_positions: List[Dict]) -> List[Dict]:
+        """Detect changes in realized PnL and position status"""
+        changes = []
+        
+        # Create a set of current symbols (including those with quantity = 0 for realized PnL tracking)
+        current_symbols = {pos['symbol'].upper() for pos in current_positions}
+        
+        # Check for realized PnL changes in current positions (including closed positions)
+        for position in current_positions:
+            symbol = position['symbol'].upper()
+            current_realized_pnl = position.get('realized_pnl', 0.0)
+            
+            # Check if we have a previous realized PnL for this symbol
+            if symbol in self.last_realized_pnl:
+                previous_realized_pnl = self.last_realized_pnl[symbol]
+                
+                # If realized PnL has changed, a trade occurred
+                if abs(current_realized_pnl - previous_realized_pnl) > 0.01:  # Small threshold
+                    pnl_change = current_realized_pnl - previous_realized_pnl
+                    changes.append({
+                        'type': 'realized_pnl_change',
+                        'symbol': symbol,
+                        'pnl_change': pnl_change,
+                        'current_realized': current_realized_pnl,
+                        'previous_realized': previous_realized_pnl,
+                        'position': position
+                    })
+                    logger.info(f"Detected realized PnL change for {symbol}: ${pnl_change:.2f}")
+            
+            # Update the last known realized PnL (even for closed positions)
+            self.last_realized_pnl[symbol] = current_realized_pnl
+        
+        return changes
+    
+    def _save_trade_change(self, change: Dict):
+        """Save a detected trade change to the database"""
+        try:
+            if change['type'] == 'realized_pnl_change':
+                # Create trade record for realized PnL change
+                trade_data = {
+                    'trade_id': int(time.time() * 1000) % 1000000,
+                    'symbol': change['symbol'],
+                    'side': 'S',  # Use 'S' for realized PnL changes (sell side)
+                    'quantity': change['position'].get('quantity', 0),
+                    'price': change['position'].get('avg_price', 0.0),
+                    'route': 'SMAT',
+                    'trade_time': datetime.now().strftime('%H:%M:%S'),
+                    'order_id': 0,  # No specific order ID for detected trades
+                    'liquidity': '',
+                    'ecn_fee': 0.0,
+                    'pnl': round(change['pnl_change'], 2),
+                    'trade_date': datetime.now().date().isoformat()
+                }
+                
+                success, message = db_manager.add_trade(trade_data)
+                if success:
+                    logger.info(f"Saved realized PnL change trade: {change['symbol']} PnL: ${change['pnl_change']:.2f}")
+                else:
+                    logger.error(f"Failed to save trade: {message}")
+                    
+        except Exception as e:
+            logger.error(f"Error saving trade change: {e}")
+    
+    def _trade_populator_loop(self):
+        """Trade populator monitoring loop"""
+        logger.info("Starting trade populator monitoring...")
+        
+        while self.trade_populator_running:
+            try:
+                # Get current positions from DAS
+                positions_raw = self.get_current_positions()
+                
+                if positions_raw and positions_raw.strip():
+                    # Parse positions
+                    positions = PositionParser.parse_positions_raw(positions_raw)
+                    
+                    # Detect changes
+                    changes = self._detect_trade_changes(positions)
+                    
+                    # Save any detected changes
+                    for change in changes:
+                        self._save_trade_change(change)
+                    
+                    # Log current status periodically
+                    if positions and len(positions) > 0:
+                        logger.info(f"Current positions: {len(positions)}")
+                        for pos in positions:
+                            symbol = pos['symbol']
+                            realized = pos.get('realized_pnl', 0.0)
+                            unrealized = pos.get('unrealized_pnl', 0.0)
+                            logger.info(f"   {symbol}: Realized ${realized:.2f}, Unrealized ${unrealized:.2f}")
+                
+                # Wait before next poll (10 seconds)
+                time.sleep(10)
+                
+            except Exception as e:
+                logger.error(f"Error in trade populator loop: {e}")
+                time.sleep(10)
+    
+    def start_trade_populator(self):
+        """Start the trade populator in a separate thread"""
+        if not self.trade_populator_enabled:
+            logger.info("Trade populator is disabled")
+            return
+        
+        if self.trade_populator_running:
+            logger.info("Trade populator is already running")
+            return
+        
+        try:
+            # Initialize realized PnL tracking
+            self._initialize_realized_pnl_tracking()
+            
+            # Start trade populator thread
+            self.trade_populator_running = True
+            self.trade_populator_thread = threading.Thread(target=self._trade_populator_loop, daemon=True)
+            self.trade_populator_thread.start()
+            
+            logger.info("Trade populator started successfully")
+            
+        except Exception as e:
+            logger.error(f"Error starting trade populator: {e}")
+    
+    def stop_trade_populator(self):
+        """Stop the trade populator"""
+        if not self.trade_populator_running:
+            return
+        
+        try:
+            self.trade_populator_running = False
+            if self.trade_populator_thread and self.trade_populator_thread.is_alive():
+                self.trade_populator_thread.join(timeout=5)
+            logger.info("Trade populator stopped")
+            
+        except Exception as e:
+            logger.error(f"Error stopping trade populator: {e}")
+    
     def monitor_positions_loop(self):
         """Main position monitoring loop"""
         logger.info("👀 Starting position monitoring loop...")
@@ -972,6 +1251,9 @@ class TradingBot:
                 
                 # Get current positions from DAS
                 current_positions_raw = self.get_current_positions()
+                
+                # Detect manual trades by monitoring realized PnL changes
+                self._detect_manual_trades(current_positions_raw)
                 
                 # Get a copy of active positions to iterate over
                 with self._positions_lock:
@@ -1049,12 +1331,18 @@ class TradingBot:
             # Discover existing positions
             self.discover_existing_positions()
             
+            # Initialize realized PnL tracking
+            self._initialize_realized_pnl_tracking()
+            
             # Start position monitoring in a separate thread
             self.monitoring = True
             self.monitor_thread = threading.Thread(target=self.monitor_positions_loop, daemon=True)
             self.monitor_thread.start()
             
-            logger.info("✅ Trading bot started with position monitoring")
+            # Start trade populator
+            self.start_trade_populator()
+            
+            logger.info("Trading bot started with position monitoring and trade populator")
             return True
             
         except Exception as e:
@@ -1072,10 +1360,13 @@ class TradingBot:
             if self.monitor_thread and self.monitor_thread.is_alive():
                 self.monitor_thread.join(timeout=5)
             
+            # Stop trade populator
+            self.stop_trade_populator()
+            
             # Disconnect from DAS
             self.disconnect_from_das()
             
-            logger.info("✅ Trading bot stopped")
+            logger.info("Trading bot stopped")
             return True
             
         except Exception as e:
@@ -1104,13 +1395,17 @@ class TradingBot:
                 unrealized_pnl = 0.0
                 unrealized_pnl_pct = 0.0
             else:
-                # Calculate P&L
-                if position.type == "LONG":
-                    unrealized_pnl = (current_price - position.entry_price) * position.size
-                    unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
-                else:  # SHORT
-                    unrealized_pnl = (position.entry_price - current_price) * position.size
-                    unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                                 # Calculate P&L
+                 if position.type == "LONG":
+                     unrealized_pnl = (current_price - position.entry_price) * position.size
+                     unrealized_pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+                 else:  # SHORT
+                     unrealized_pnl = (position.entry_price - current_price) * position.size
+                     unrealized_pnl_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+                 
+                 # Round PnL values to 2 decimal places
+                 unrealized_pnl = round(unrealized_pnl, 2)
+                 unrealized_pnl_pct = round(unrealized_pnl_pct, 2)
             
             positions_data.append({
                 'symbol': position.symbol,
@@ -1281,13 +1576,44 @@ class TradingBot:
                         
                         # Save trade to database
                         try:
-                            # Calculate P&L (approximate since we don't have current price)
-                            # For panic exit, we'll use the average price as current price (P&L will be 0)
+                            # Calculate P&L for panic exit
+                            # We need to find the corresponding entry trade to calculate P&L
                             current_price = position['avg_price']
+                            
+                            # Get the entry trade for this position to calculate P&L
+                            from database import db_manager
+                            entry_trades = db_manager.get_trades(
+                                symbol=position['symbol'], 
+                                limit=100
+                            )
+                            
+                            # Find the most recent entry trade (opposite side)
+                            entry_trade = None
                             if position['type'] == "LONG":
-                                pnl = 0.0  # Approximate for panic exit
+                                # For LONG position, find the most recent BUY trade
+                                for trade in entry_trades:
+                                    if trade['side'] == 'B':
+                                        entry_trade = trade
+                                        break
                             else:
-                                pnl = 0.0  # Approximate for panic exit
+                                # For SHORT position, find the most recent SELL trade
+                                for trade in entry_trades:
+                                    if trade['side'] in ['S', 'SS']:
+                                        entry_trade = trade
+                                        break
+                            
+                            # Calculate P&L if we found the entry trade
+                            if entry_trade:
+                                entry_price = entry_trade['price']
+                                if position['type'] == "LONG":
+                                    pnl = (current_price - entry_price) * position['quantity']
+                                else:
+                                    pnl = (entry_price - current_price) * position['quantity']
+                                # Round PnL to 2 decimal places
+                                pnl = round(pnl, 2)
+                            else:
+                                # Fallback: use average price as entry price (P&L = 0)
+                                pnl = 0.0
                             
                             # Create trade data for database
                             trade_data = {
