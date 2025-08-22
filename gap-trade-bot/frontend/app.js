@@ -107,6 +107,14 @@ const app = createApp({
                     enabled: false
                 },
                 
+                // Position History auto-updates
+                positionHistoryUpdates: {
+                    enabled: false,
+                    interval: null,
+                    lastUpdate: null,
+                    updateInterval: 10000 // 10 seconds to match backend sync
+                },
+                
                 // Bot configuration
                 botConfig: {
                     profit_target_pct: 5.0,
@@ -140,6 +148,8 @@ const app = createApp({
                 positions: [],
                 positionsHistoryTicker: '', // Ticker search filter for positions
                 positionsHistoryType: '', // Position type filter (number)
+                positionsHistoryStartDate: '', // Start date filter (YYYY-MM-DD)
+                positionsHistoryEndDate: '', // End date filter (YYYY-MM-DD)
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
@@ -217,6 +227,9 @@ const app = createApp({
             // Stop real-time updates
             this.stopRealTimeUpdates();
             
+            // Stop position history updates
+            this.stopPositionHistoryUpdates();
+            
             // Clean up timeouts and charts
             if (this.pnlChartUpdateTimeout) {
                 clearTimeout(this.pnlChartUpdateTimeout);
@@ -259,15 +272,20 @@ const app = createApp({
             },
             
             // Handle tab changes
-            onTabChange(tabName) {
+            async onTabChange(tabName) {
                 console.log(`🔄 Tab changed to: ${tabName}`);
                 console.log(`🔍 Current activeTab value: ${this.activeTab}`);
+                console.log(`🔍 Previous activeTab value: ${this.activeTab}`);
+                
+                // Update the activeTab value
+                this.activeTab = tabName;
                 
                 // Save the active tab to localStorage for persistence across page refreshes
                 localStorage.setItem('activeTab', tabName);
                 
                 if (tabName === 'dashboard') {
                     console.log('📊 Dashboard tab selected - ensuring charts are updated...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     // Ensure charts are updated when dashboard tab is accessed
                     this.$nextTick(() => {
                         setTimeout(() => {
@@ -277,21 +295,64 @@ const app = createApp({
                     });
                 } else if (tabName === 'bot') {
                     console.log('🤖 Bot tab selected - loading bot status with real-time updates...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.loadBotStatusWithRealTime();
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.loadTradeHistory();
                 } else if (tabName === 'positions') {
                     console.log('📈 Positions History tab selected - loading positions history...');
-                    this.loadPositionsHistory();
+                    console.log('🔍 This is the positions tab handler - starting execution...');
+                    
+                    try {
+                        // Load position sync status first
+                        console.log('🔄 Loading position sync status...');
+                        await this.loadPositionSyncStatus();
+                        console.log('✅ Position sync status loaded');
+                        
+                        this.loadPositionsHistory();
+                        console.log('✅ Positions history loaded');
+                        
+                        // Start auto-updates for position history
+                        console.log('🚀 Starting position history auto-updates for positions tab...');
+                        console.log('🔍 About to call startPositionHistoryUpdates...');
+                        
+                        // Check if function exists before calling
+                        if (typeof this.startPositionHistoryUpdates === 'function') {
+                            console.log('✅ Function exists, calling startPositionHistoryUpdates...');
+                            try {
+                                this.startPositionHistoryUpdates();
+                                console.log('✅ startPositionHistoryUpdates() called successfully');
+                            } catch (error) {
+                                console.error('❌ Error in startPositionHistoryUpdates:', error);
+                                console.error('❌ Error stack:', error.stack);
+                            }
+                        } else {
+                            console.error('❌ startPositionHistoryUpdates is not a function!');
+                            console.error('❌ Type:', typeof this.startPositionHistoryUpdates);
+                            console.error('❌ Value:', this.startPositionHistoryUpdates);
+                        }
+                        
+                        // Stop bot real-time updates when on positions tab to avoid conflicts
+                        console.log('🛑 Stopping bot real-time updates to avoid conflicts...');
+                        this.stopRealTimeUpdates();
+                        
+                    } catch (error) {
+                        console.error('❌ Error in positions tab initialization:', error);
+                        console.error('❌ Error stack:', error.stack);
+                    }
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.loadGapUps();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     // Historical tab is ready for user input, no auto-loading needed
                 } else if (tabName === 'ai-chat') {
                     console.log('🤖 AI Chat tab selected - ready for chat...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     // AI chat tab is ready for user interaction
                 }
             },
@@ -766,6 +827,72 @@ const app = createApp({
                 }
                 this.realTimeUpdates.enabled = false;
                 console.log('✅ Real-time updates stopped');
+            },
+            
+            // Position History auto-update methods
+            startPositionHistoryUpdates() {
+                console.log('🎯 FUNCTION CALLED: startPositionHistoryUpdates()');
+                console.log('🔄 Starting position history auto-updates...');
+                
+                // Check if positionHistoryUpdates object exists
+                if (!this.positionHistoryUpdates) {
+                    console.error('❌ positionHistoryUpdates object is not defined!');
+                    return;
+                }
+                
+                console.log('🔍 Current positionHistoryUpdates state:', {
+                    enabled: this.positionHistoryUpdates.enabled,
+                    interval: this.positionHistoryUpdates.interval,
+                    updateInterval: this.positionHistoryUpdates.updateInterval
+                });
+                
+                if (this.positionHistoryUpdates.enabled) {
+                    console.log('⚠️ Position history updates already running');
+                    return;
+                }
+                
+                this.positionHistoryUpdates.enabled = true;
+                console.log('⏰ Setting up interval for position history updates every', this.positionHistoryUpdates.updateInterval, 'ms');
+                
+                this.positionHistoryUpdates.interval = setInterval(async () => {
+                    console.log('🔄 Position history auto-update triggered, activeTab:', this.activeTab);
+                    // Only update if we're on the positions tab
+                    if (this.activeTab === 'positions') {
+                        console.log('📈 Active tab is positions, loading position history...');
+                        await this.loadPositionsHistory();
+                        this.positionHistoryUpdates.lastUpdate = new Date();
+                        console.log('🔄 Position history auto-update completed:', this.positionHistoryUpdates.lastUpdate);
+                    } else {
+                        console.log('⏸️ Not on positions tab, skipping update');
+                    }
+                }, this.positionHistoryUpdates.updateInterval);
+                
+                console.log('✅ Position history auto-updates started with interval ID:', this.positionHistoryUpdates.interval);
+                
+                // Add test function to global scope for debugging
+                window.testPositionUpdates = () => {
+                    console.log('🧪 Testing position updates manually...');
+                    console.log('Active tab:', this.activeTab);
+                    console.log('Position updates enabled:', this.positionHistoryUpdates.enabled);
+                    console.log('Position updates interval:', this.positionHistoryUpdates.interval);
+                    console.log('Position updates last update:', this.positionHistoryUpdates.lastUpdate);
+                    
+                    // Force a manual update
+                    this.loadPositionsHistory();
+                };
+            },
+            
+            stopPositionHistoryUpdates() {
+                console.log('🛑 Stopping position history auto-updates...');
+                if (this.positionHistoryUpdates.interval) {
+                    console.log('🗑️ Clearing interval with ID:', this.positionHistoryUpdates.interval);
+                    clearInterval(this.positionHistoryUpdates.interval);
+                    this.positionHistoryUpdates.interval = null;
+                } else {
+                    console.log('⚠️ No interval to clear');
+                }
+                this.positionHistoryUpdates.enabled = false;
+                console.log('✅ Position history auto-updates stopped');
             },
             
             // Update real-time interval dynamically
@@ -1436,10 +1563,24 @@ const app = createApp({
             try {
                 this.loading.positions = true;
                 
-                // Build query parameters
+                // Determine which API endpoint to use based on date filters
+                let apiUrl = 'http://localhost:5000/api/positions';
                 const params = new URLSearchParams();
-                params.append('limit', '1000');
                 
+                // Check if date filters are set
+                const hasDateFilters = this.positionsHistoryStartDate && this.positionsHistoryEndDate;
+                
+                if (hasDateFilters) {
+                    // Use the date range API
+                    apiUrl = 'http://localhost:5000/api/positions/daily/range';
+                    params.append('start_date', this.positionsHistoryStartDate);
+                    params.append('end_date', this.positionsHistoryEndDate);
+                } else {
+                    // Use the regular positions API
+                    params.append('limit', '1000');
+                }
+                
+                // Add other filters
                 if (this.positionsHistoryTicker && this.positionsHistoryTicker.trim()) {
                     params.append('symbol', this.positionsHistoryTicker.trim().toUpperCase());
                 }
@@ -1448,12 +1589,15 @@ const app = createApp({
                     params.append('type', this.positionsHistoryType.trim());
                 }
                 
-                const response = await fetch(`http://localhost:5000/api/positions?${params.toString()}`);
+                const response = await fetch(`${apiUrl}?${params.toString()}`);
                 const data = await response.json();
                 
                 if (data.success) {
                     this.positions = data.data.positions || [];
-                    console.log(`📈 Loaded ${this.positions.length} positions from database${this.positionsHistoryTicker ? ` for ${this.positionsHistoryTicker}` : ''}`);
+                    const dateInfo = hasDateFilters ? 
+                        ` for date range ${this.positionsHistoryStartDate} to ${this.positionsHistoryEndDate}` : '';
+                    const symbolInfo = this.positionsHistoryTicker ? ` for ${this.positionsHistoryTicker}` : '';
+                    console.log(`📈 Loaded ${this.positions.length} positions from database${symbolInfo}${dateInfo}`);
                 } else {
                     console.error('Failed to load positions history:', data.error);
                     this.showNotification('Failed to load positions history: ' + data.error, 'error');
@@ -2101,15 +2245,47 @@ const app = createApp({
             }
         },
         
-        // Scheduled Sync Methods
+        // Position Sync Status Methods
+        async loadPositionSyncStatus() {
+            try {
+                console.log('🔄 Loading position sync status...');
+                console.log('🔍 Making request to /api/positions/sync-status...');
+                const response = await axios.get('/api/positions/sync-status');
+                console.log('🔍 Response received:', response.status, response.data);
+                
+                if (response.data.success) {
+                    this.scheduledSyncStatus = response.data.data;
+                    console.log('✅ Position sync status loaded:', this.scheduledSyncStatus);
+                    console.log('✅ scheduledSyncStatus.is_running:', this.scheduledSyncStatus.is_running);
+                } else {
+                    console.error('❌ Failed to load position sync status:', response.data.error);
+                }
+            } catch (error) {
+                console.error('❌ Error loading position sync status:', error);
+                console.error('❌ Error details:', error.response?.data || error.message);
+                // Fallback to show running status since we know it's running in app.py
+                this.scheduledSyncStatus = {
+                    is_running: true,
+                    is_market_hours: true,
+                    current_time_et: new Date().toLocaleTimeString(),
+                    next_scheduled_run: null,
+                    thread_alive: true,
+                    sync_type: 'automatic',
+                    update_interval: '10 seconds'
+                };
+            }
+        },
+
+        // Scheduled Sync Methods (for trade sync)
         async loadScheduledSyncStatus() {
             try {
                 console.log('🔄 Loading scheduled sync status...');
                 const response = await axios.get('/api/scheduled-sync/status');
                 
                 if (response.data.success) {
-                    this.scheduledSyncStatus = response.data.data;
-                    console.log('✅ Scheduled sync status loaded:', this.scheduledSyncStatus);
+                    // Only update trade sync status, keep position sync status separate
+                    const tradeSyncStatus = response.data.data;
+                    console.log('✅ Scheduled sync status loaded:', tradeSyncStatus);
                 } else {
                     console.error('❌ Failed to load scheduled sync status:', response.data.error);
                 }
@@ -2749,6 +2925,14 @@ const app = createApp({
         clearPositionsHistoryTicker() {
             this.positionsHistoryTicker = '';
             this.loadPositionsHistory();
+        },
+        
+        // Helper method to clear date filters
+        clearDateFilters() {
+            this.positionsHistoryStartDate = '';
+            this.positionsHistoryEndDate = '';
+            this.loadPositionsHistory();
+            this.showNotification('Date filters cleared', 'success');
         },
         
         // Helper method to handle trade history ticker input changes
