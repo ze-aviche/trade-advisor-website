@@ -158,7 +158,8 @@ class DASTradeManager:
         
         # Match pattern: %POS AAPL 3 100 117.34 0 0 0 2022/04/07-09:56:43 -245
         # Format: %POS symbol type qty avgcost initqty initprice Realized CreateTime Unrealized
-        position_pattern = r'%POS\s+(\w+)\s+(\d+)\s+(-?\d+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+([\d.-]+)\s+([\d/]+-\d+:\d+:\d+)\s+([\d.-]+)'
+        # Handle symbols with special characters like +SPY^F8M645, +SPY*F8M645
+        position_pattern = r'%POS\s+([^\s]+)\s+(\d+)\s+(-?\d+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+([\d.-]+)\s+([\d/]+-\d+:\d+:\d+)\s+([\d.-]+)'
         match = re.match(position_pattern, line)
         
         if match:

@@ -78,7 +78,7 @@ class DatabaseManager:
                 )
             ''')
             
-            # Create positions table for position history tracking
+            # Create positions table for current position tracking (latest state)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS positions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +98,27 @@ class DatabaseManager:
                 )
             ''')
             
+            # Create daily_positions table for daily position history retention
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS daily_positions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    type INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    avg_cost REAL NOT NULL,
+                    init_quantity INTEGER DEFAULT 0,
+                    init_price REAL DEFAULT 0.0,
+                    realized REAL DEFAULT 0.0,
+                    create_time TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    unrealized REAL DEFAULT 0.0,
+                    snapshot_date DATE NOT NULL,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(symbol, type, snapshot_date)
+                )
+            ''')
+            
             # Create indexes for better query performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date)')
@@ -106,6 +127,10 @@ class DatabaseManager:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_updated ON positions(last_updated)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_symbol ON daily_positions(symbol)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_type ON daily_positions(type)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_date ON daily_positions(snapshot_date)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_symbol_date ON daily_positions(symbol, snapshot_date)')
             
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
@@ -336,10 +361,13 @@ class DatabaseManager:
             return False, f"Database error adding trade: {str(e)}"
     
     def upsert_position(self, position_data):
-        """Upsert position data (insert or update)"""
+        """Upsert position data (insert or update) and save daily snapshot"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Get current date for daily snapshot
+                current_date = datetime.now().strftime('%Y-%m-%d')
                 
                 # Check if position exists
                 cursor.execute('''
@@ -394,6 +422,26 @@ class DatabaseManager:
                         position_data['date'],
                         position_data.get('unrealized', 0.0)
                     ))
+                
+                # Save daily snapshot - upsert to avoid duplicates for the same day
+                cursor.execute('''
+                    INSERT OR REPLACE INTO daily_positions (
+                        symbol, type, quantity, avg_cost, init_quantity, init_price,
+                        realized, create_time, date, unrealized, snapshot_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    position_data['symbol'],
+                    position_data['type'],
+                    position_data['quantity'],
+                    position_data['avg_cost'],
+                    position_data.get('init_quantity', 0),
+                    position_data.get('init_price', 0.0),
+                    position_data.get('realized', 0.0),
+                    position_data['create_time'],
+                    position_data['date'],
+                    position_data.get('unrealized', 0.0),
+                    current_date
+                ))
                 
                 conn.commit()
                 return True, "Position updated successfully"
@@ -748,6 +796,180 @@ class DatabaseManager:
         except Exception as e:
             print(f"Database error recalculating PnL: {e}")
             return False, f"Error recalculating PnL: {str(e)}"
+
+    def get_daily_positions(self, symbol=None, type_filter=None, start_date=None, end_date=None, limit=1000):
+        """Get daily position history with optional filtering"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
+                           realized, create_time, date, unrealized, snapshot_date, 
+                           last_updated, created_at
+                    FROM daily_positions
+                    WHERE 1=1
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
+                
+                if start_date:
+                    query += ' AND snapshot_date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND snapshot_date <= ?'
+                    params.append(end_date)
+                
+                query += ' ORDER BY snapshot_date DESC, symbol ASC LIMIT ?'
+                params.append(limit)
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                positions = []
+                for row in rows:
+                    position = dict(row)
+                    positions.append(position)
+                
+                return positions
+                
+        except Exception as e:
+            print(f"Error getting daily positions: {e}")
+            return []
+    
+    def get_daily_position_summary(self, symbol=None, type_filter=None, start_date=None, end_date=None):
+        """Get daily position summary statistics"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        COUNT(*) as total_snapshots,
+                        COUNT(DISTINCT symbol) as unique_symbols,
+                        COUNT(DISTINCT snapshot_date) as unique_dates,
+                        SUM(CASE WHEN quantity != 0 THEN 1 ELSE 0 END) as total_active_positions,
+                        SUM(quantity) as total_quantity,
+                        SUM(realized) as total_realized,
+                        SUM(unrealized) as total_unrealized,
+                        SUM(quantity * avg_cost) as total_cost_basis
+                    FROM daily_positions
+                    WHERE 1=1
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
+                
+                if start_date:
+                    query += ' AND snapshot_date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND snapshot_date <= ?'
+                    params.append(end_date)
+                
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                
+                if row:
+                    return dict(row)
+                else:
+                    return {
+                        'total_snapshots': 0,
+                        'unique_symbols': 0,
+                        'unique_dates': 0,
+                        'total_active_positions': 0,
+                        'total_quantity': 0,
+                        'total_realized': 0.0,
+                        'total_unrealized': 0.0,
+                        'total_cost_basis': 0.0
+                    }
+                
+        except Exception as e:
+            print(f"Error getting daily position summary: {e}")
+            return {
+                'total_snapshots': 0,
+                'unique_symbols': 0,
+                'unique_dates': 0,
+                'total_active_positions': 0,
+                'total_quantity': 0,
+                'total_realized': 0.0,
+                'total_unrealized': 0.0,
+                'total_cost_basis': 0.0
+            }
+    
+    def get_position_history_by_date(self, date, symbol=None, type_filter=None):
+        """Get all positions for a specific date"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
+                           realized, create_time, date, unrealized, snapshot_date, 
+                           last_updated, created_at
+                    FROM daily_positions
+                    WHERE snapshot_date = ?
+                '''
+                params = [date]
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
+                
+                query += ' ORDER BY symbol ASC'
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                positions = []
+                for row in rows:
+                    position = dict(row)
+                    positions.append(position)
+                
+                return positions
+                
+        except Exception as e:
+            print(f"Error getting position history for date {date}: {e}")
+            return []
+    
+    def get_available_dates(self):
+        """Get list of available dates in daily positions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT DISTINCT snapshot_date 
+                    FROM daily_positions 
+                    ORDER BY snapshot_date DESC
+                ''')
+                
+                rows = cursor.fetchall()
+                dates = [row['snapshot_date'] for row in rows]
+                return dates
+                
+        except Exception as e:
+            print(f"Error getting available dates: {e}")
+            return []
 
 # Global database manager instance
 db_manager = DatabaseManager() 

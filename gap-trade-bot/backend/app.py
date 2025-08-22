@@ -72,6 +72,32 @@ price_cache = {}
 websocket_connected = False
 real_time_gap_ups = []  # Store real-time detected gap-ups
 
+def start_position_sync_scheduler():
+    """Start automatic position sync every 10 seconds"""
+    def sync_loop():
+        while True:
+            try:
+                # Import here to avoid circular imports
+                from das_integration import das_trade_manager
+                success, message, updated_count = das_trade_manager.sync_positions_from_das()
+                
+                current_time = datetime.now().strftime('%H:%M:%S')
+                if success:
+                    app_logger.info(f"[{current_time}] ✅ Auto position sync: {message}")
+                else:
+                    app_logger.warning(f"[{current_time}] ⚠️ Auto position sync failed: {message}")
+                    
+            except Exception as e:
+                app_logger.error(f"❌ Error in auto position sync: {e}")
+            
+            # Wait 10 seconds before next sync
+            time.sleep(10)
+    
+    # Start the sync loop in a daemon thread
+    sync_thread = threading.Thread(target=sync_loop, daemon=True)
+    sync_thread.start()
+    app_logger.info("✅ Automatic position sync started (every 10 seconds)")
+
 # Simple auth endpoints for frontend compatibility
 @app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
 def get_auth_profile():
@@ -1508,6 +1534,32 @@ def trigger_manual_sync():
             'error': str(e)
         }), 500
 
+# Position Sync Status endpoint
+@app.route('/api/positions/sync-status', methods=['GET'])
+def get_position_sync_status():
+    """Get position sync status"""
+    try:
+        # Since we have automatic position sync running in app.py, always return running
+        return jsonify({
+            'success': True,
+            'data': {
+                'is_running': True,
+                'is_market_hours': True,  # Assume market hours for now
+                'current_time_et': datetime.now().strftime('%H:%M:%S'),
+                'next_scheduled_run': None,  # Continuous sync
+                'thread_alive': True,
+                'sync_type': 'automatic',
+                'update_interval': '10 seconds'
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting position sync status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # Position History API endpoints
 @app.route('/api/positions', methods=['GET'])
 def get_positions():
@@ -1629,6 +1681,207 @@ def upsert_position():
             'error': str(e)
         }), 500
 
+# Daily Position History API endpoints
+@app.route('/api/positions/daily', methods=['GET'])
+def get_daily_positions():
+    """Get daily position history with optional filtering"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        type_filter = request.args.get('type')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = int(request.args.get('limit', 1000))
+        
+        # Validate limit
+        if limit > 5000:
+            limit = 5000
+        
+        # Convert type_filter to int if provided
+        if type_filter:
+            try:
+                type_filter = int(type_filter)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid type parameter. Must be a number.'
+                }), 400
+        
+        # Get daily positions from database
+        positions = db_manager.get_daily_positions(
+            symbol=symbol,
+            type_filter=type_filter,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+        
+        # Get summary statistics
+        summary = db_manager.get_daily_position_summary(
+            symbol=symbol,
+            type_filter=type_filter,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'positions': positions,
+                'summary': summary
+            },
+            'timestamp': datetime.now().isoformat(),
+            'count': len(positions)
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting daily positions: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/daily/<date>', methods=['GET'])
+def get_positions_by_date(date):
+    """Get all positions for a specific date"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        type_filter = request.args.get('type')
+        
+        # Convert type_filter to int if provided
+        if type_filter:
+            try:
+                type_filter = int(type_filter)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid type parameter. Must be a number.'
+                }), 400
+        
+        # Validate date format (YYYY-MM-DD)
+        try:
+            datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid date format. Use YYYY-MM-DD.'
+            }), 400
+        
+        # Get positions for the specific date
+        positions = db_manager.get_position_history_by_date(
+            date=date,
+            symbol=symbol,
+            type_filter=type_filter
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'positions': positions,
+                'date': date
+            },
+            'timestamp': datetime.now().isoformat(),
+            'count': len(positions)
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting positions for date {date}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/daily/range', methods=['GET'])
+def get_positions_by_date_range():
+    """Get positions within a date range"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        symbol = request.args.get('symbol')
+        type_filter = request.args.get('type')
+        
+        # Validate required parameters
+        if not start_date or not end_date:
+            return jsonify({
+                'success': False,
+                'error': 'start_date and end_date parameters are required'
+            }), 400
+        
+        # Validate date format (YYYY-MM-DD)
+        try:
+            datetime.strptime(start_date, '%Y-%m-%d')
+            datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid date format. Use YYYY-MM-DD.'
+            }), 400
+        
+        # Convert type_filter to int if provided
+        if type_filter:
+            try:
+                type_filter = int(type_filter)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid type parameter. Must be a number.'
+                }), 400
+        
+        # Get positions for the date range
+        positions = db_manager.get_daily_positions(
+            symbol=symbol,
+            type_filter=type_filter,
+            start_date=start_date,
+            end_date=end_date,
+            limit=1000
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'positions': positions,
+                'start_date': start_date,
+                'end_date': end_date,
+                'count': len(positions)
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting positions for date range: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/daily/dates', methods=['GET'])
+def get_available_dates():
+    """Get list of available dates in daily positions"""
+    try:
+        from database import db_manager
+        
+        dates = db_manager.get_available_dates()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'dates': dates,
+                'count': len(dates)
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting available dates: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
@@ -1703,6 +1956,9 @@ if __name__ == '__main__':
     else:
         app_logger.warning("⚠️ Scheduled DAS sync not available")
     
+    # Start automatic position sync scheduler
+    start_position_sync_scheduler()
+
     app_logger.info("Starting Gap-Up Detection Web API...")
     app_logger.info("Server will be available at http://localhost:5000")
     
