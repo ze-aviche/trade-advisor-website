@@ -156,36 +156,28 @@ class DASTradeManager:
         """Parse a single position line from DAS response"""
         line = line.strip()
         
-        # Match pattern: %POSITION MSFT 100 28.3 0.0 0.0
-        # Format: %POSITION symbol quantity avg_price realized_pnl unrealized_pnl
-        position_pattern = r'%POSITION\s+(\w+)\s+(-?\d+)\s+([\d.]+)\s+([\d.-]+)\s+([\d.-]+)'
+        # Match pattern: %POS AAPL 3 100 117.34 0 0 0 2022/04/07-09:56:43 -245
+        # Format: %POS symbol type qty avgcost initqty initprice Realized CreateTime Unrealized
+        position_pattern = r'%POS\s+(\w+)\s+(\d+)\s+(-?\d+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+([\d.-]+)\s+([\d/]+-\d+:\d+:\d+)\s+([\d.-]+)'
         match = re.match(position_pattern, line)
         
         if match:
-            symbol, quantity, avg_price, realized_pnl, unrealized_pnl = match.groups()
+            symbol, type_val, quantity, avg_cost, init_quantity, init_price, realized, create_time, unrealized = match.groups()
             
-            # Determine position type based on quantity
-            position_type = 'LONG' if int(quantity) > 0 else 'SHORT'
-            
-            # Calculate additional fields
-            quantity_abs = abs(int(quantity))
-            cost_basis = quantity_abs * float(avg_price)
-            market_value = cost_basis + float(unrealized_pnl)
-            unrealized_pnl_pct = (float(unrealized_pnl) / cost_basis * 100) if cost_basis > 0 else 0.0
+            # Extract date from create_time (format: 2022/04/07-09:56:43)
+            date_part = create_time.split('-')[0] if '-' in create_time else create_time.split(' ')[0]
             
             return {
                 'symbol': symbol.upper(),
+                'type': int(type_val),
                 'quantity': int(quantity),
-                'avg_price': float(avg_price),
-                'current_price': float(avg_price),  # Will be updated with real-time price
-                'position_type': position_type,
-                'realized_pnl': float(realized_pnl),
-                'unrealized_pnl': float(unrealized_pnl),
-                'unrealized_pnl_pct': unrealized_pnl_pct,
-                'market_value': market_value,
-                'cost_basis': cost_basis,
-                'profit_target': 0.0,  # Will be set by bot configuration
-                'stop_loss': 0.0       # Will be set by bot configuration
+                'avg_cost': float(avg_cost),
+                'init_quantity': int(init_quantity),
+                'init_price': float(init_price),
+                'realized': float(realized),
+                'create_time': create_time,
+                'date': date_part,
+                'unrealized': float(unrealized)
             }
         
         return None
@@ -196,6 +188,10 @@ class DASTradeManager:
         lines = response.strip().split('\n')
         
         for line in lines:
+            # Skip header and footer lines
+            if line.startswith('#POS') or line.startswith('#POSEND'):
+                continue
+            
             position = self.parse_position_line(line)
             if position:
                 positions.append(position)
@@ -298,15 +294,15 @@ class DASTradeManager:
         return db_manager.get_trade_summary(symbol, start_date, end_date)
     
     def get_position_history(self, symbol: Optional[str] = None, 
-                           position_type: Optional[str] = None, 
-                           limit: int = 100) -> List[Dict]:
+                            type_filter: Optional[int] = None, 
+                            limit: int = 100) -> List[Dict]:
         """Get position history from database"""
-        return db_manager.get_positions(symbol, position_type, limit)
+        return db_manager.get_positions(symbol, type_filter, limit)
     
     def get_position_summary(self, symbol: Optional[str] = None,
-                           position_type: Optional[str] = None) -> Optional[Dict]:
+                            type_filter: Optional[int] = None) -> Optional[Dict]:
         """Get position summary from database"""
-        return db_manager.get_position_summary(symbol, position_type)
+        return db_manager.get_position_summary(symbol, type_filter)
     
     def import_das_trades_text(self, das_trades_text: str) -> Tuple[bool, str, int]:
         """Import trades from DAS trades text"""
@@ -354,10 +350,10 @@ def sync_positions_from_das():
     """Convenience function to sync positions from DAS"""
     return das_trade_manager.sync_positions_from_das()
 
-def get_position_history(symbol=None, position_type=None, limit=100):
+def get_position_history(symbol=None, type_filter=None, limit=100):
     """Convenience function to get position history"""
-    return das_trade_manager.get_position_history(symbol, position_type, limit)
+    return das_trade_manager.get_position_history(symbol, type_filter, limit)
 
-def get_position_summary(symbol=None, position_type=None):
+def get_position_summary(symbol=None, type_filter=None):
     """Convenience function to get position summary"""
-    return das_trade_manager.get_position_summary(symbol, position_type)
+    return das_trade_manager.get_position_summary(symbol, type_filter)

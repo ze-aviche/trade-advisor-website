@@ -43,15 +43,15 @@ def test_positions_api():
     print("\n3. Testing POST /api/positions/upsert")
     test_position = {
         "symbol": "TEST",
+        "type": 3,
         "quantity": 100,
-        "avg_price": 50.0,
-        "position_type": "LONG",
-        "realized_pnl": 0.0,
-        "unrealized_pnl": 500.0,
-        "unrealized_pnl_pct": 10.0,
-        "market_value": 5500.0,
-        "cost_basis": 5000.0,
-        "current_price": 55.0
+        "avg_cost": 50.0,
+        "init_quantity": 0,
+        "init_price": 0.0,
+        "realized": 0.0,
+        "create_time": "2025/08/21-23:30:00",
+        "date": "2025/08/21",
+        "unrealized": 500.0
     }
     
     try:
@@ -67,7 +67,7 @@ def test_positions_api():
     # Test 4: Get positions with filter
     print("\n4. Testing GET /api/positions with filter")
     try:
-        response = requests.get(f"{base_url}/api/positions?symbol=TEST&position_type=LONG")
+        response = requests.get(f"{base_url}/api/positions?symbol=TEST&type=3")
         if response.status_code == 200:
             data = response.json()
             print(f"✅ Success: {data.get('count', 0)} filtered positions found")
@@ -86,15 +86,15 @@ def test_database_positions():
         # Test upsert position
         test_position = {
             "symbol": "AAPL",
+            "type": 3,
             "quantity": 50,
-            "avg_price": 150.0,
-            "position_type": "LONG",
-            "realized_pnl": 100.0,
-            "unrealized_pnl": 250.0,
-            "unrealized_pnl_pct": 3.33,
-            "market_value": 7750.0,
-            "cost_basis": 7500.0,
-            "current_price": 155.0
+            "avg_cost": 150.0,
+            "init_quantity": 0,
+            "init_price": 0.0,
+            "realized": 100.0,
+            "create_time": "2025/08/21-23:30:00",
+            "date": "2025/08/21",
+            "unrealized": 250.0
         }
         
         success, message = db_manager.upsert_position(test_position)
@@ -119,15 +119,16 @@ def test_das_integration():
         from das_integration import das_trade_manager
         
         # Test position parsing
-        test_response = """%POSITION AAPL 100 150.50 50.00 250.00
-%POSITION MSFT -50 300.25 25.00 -125.00
-%POSITION TSLA 200 250.75 0.00 500.00"""
+        test_response = """#POS symb type qty avgcost initqty initprice Realized CreateTime Unrealized 
+%POS AAPL 3 100 117.34 0 0 0 2022/04/07-09:56:43 -245 
+%POS MSFT 2 100 210.39 0 0 0 2022/04/07-09:56:43 110 
+#POSEND"""
         
         positions = das_trade_manager.parse_das_positions_response(test_response)
         print(f"✅ Parsed {len(positions)} positions from DAS response")
         
         for pos in positions:
-            print(f"   {pos['symbol']}: {pos['position_type']} {pos['quantity']} @ ${pos['avg_price']:.2f}")
+            print(f"   {pos['symbol']}: Type {pos['type']} {pos['quantity']} @ ${pos['avg_cost']:.2f}")
         
     except Exception as e:
         print(f"❌ DAS integration test exception: {e}")

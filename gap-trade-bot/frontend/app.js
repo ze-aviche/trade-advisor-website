@@ -139,7 +139,7 @@ const app = createApp({
                 // Positions History
                 positions: [],
                 positionsHistoryTicker: '', // Ticker search filter for positions
-                positionsHistoryType: '', // Position type filter (LONG/SHORT)
+                positionsHistoryType: '', // Position type filter (number)
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
@@ -1445,7 +1445,7 @@ const app = createApp({
                 }
                 
                 if (this.positionsHistoryType && this.positionsHistoryType.trim()) {
-                    params.append('position_type', this.positionsHistoryType.trim().toUpperCase());
+                    params.append('type', this.positionsHistoryType.trim());
                 }
                 
                 const response = await fetch(`http://localhost:5000/api/positions?${params.toString()}`);

@@ -1087,8 +1087,9 @@
                                         <select v-model="positionsHistoryType" @change="loadPositionsHistory" 
                                                 class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                             <option value="">All Types</option>
-                                            <option value="LONG">Long Only</option>
-                                            <option value="SHORT">Short Only</option>
+                                            <option value="1">Type 1</option>
+                                            <option value="2">Type 2</option>
+                                            <option value="3">Type 3</option>
                                         </select>
                                     </div>
                                 </div>
@@ -1127,37 +1128,34 @@
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead class="bg-gray-700">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Symbol</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Quantity</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Avg Price</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Price</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Realized P&L</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unrealized P&L</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Market Value</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Last Updated</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Avg Cost</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Init Qty</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Init Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Realized</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unrealized</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Create Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
                                 <tr v-for="position in positions" :key="position.id">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                                        <span :class="position.position_type === 'LONG' ? 'text-green-400' : 'text-red-400'">
-                                            {{ position.position_type }}
-                                        </span>
-                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.type }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.quantity }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.avg_price.toFixed(2) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.current_price.toFixed(2) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        ${{ position.realized_pnl.toFixed(2) }}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.avg_cost?.toFixed(2) || '0.00' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.init_quantity }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.init_price?.toFixed(2) || '0.00' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.realized >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        ${{ position.realized?.toFixed(2) || '0.00' }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        ${{ position.unrealized_pnl.toFixed(2) }}
-                                        <span class="text-xs text-gray-400">({{ position.unrealized_pnl_pct.toFixed(2) }}%)</span>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="position.unrealized >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        ${{ position.unrealized?.toFixed(2) || '0.00' }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.market_value.toFixed(2) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatDate(position.last_updated) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.create_time }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.date }}</td>
                                 </tr>
                             </tbody>
                         </table>

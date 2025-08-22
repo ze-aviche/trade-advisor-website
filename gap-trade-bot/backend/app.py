@@ -1517,24 +1517,34 @@ def get_positions():
         
         # Get query parameters
         symbol = request.args.get('symbol')
-        position_type = request.args.get('position_type')
+        type_filter = request.args.get('type')
         limit = int(request.args.get('limit', 100))
         
         # Validate limit
         if limit > 1000:
             limit = 1000
         
+        # Convert type_filter to int if provided
+        if type_filter:
+            try:
+                type_filter = int(type_filter)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid type parameter. Must be a number.'
+                }), 400
+        
         # Get positions from database
         positions = db_manager.get_positions(
             symbol=symbol,
-            position_type=position_type,
+            type_filter=type_filter,
             limit=limit
         )
         
         # Get summary statistics
         summary = db_manager.get_position_summary(
             symbol=symbol,
-            position_type=position_type
+            type_filter=type_filter
         )
         
         return jsonify({

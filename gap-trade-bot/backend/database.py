@@ -83,20 +83,18 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS positions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     symbol TEXT NOT NULL,
+                    type INTEGER NOT NULL,
                     quantity INTEGER NOT NULL,
-                    avg_price REAL NOT NULL,
-                    current_price REAL DEFAULT 0.0,
-                    position_type TEXT NOT NULL CHECK (position_type IN ('LONG', 'SHORT')),
-                    realized_pnl REAL DEFAULT 0.0,
-                    unrealized_pnl REAL DEFAULT 0.0,
-                    unrealized_pnl_pct REAL DEFAULT 0.0,
-                    market_value REAL DEFAULT 0.0,
-                    cost_basis REAL DEFAULT 0.0,
-                    profit_target REAL DEFAULT 0.0,
-                    stop_loss REAL DEFAULT 0.0,
+                    avg_cost REAL NOT NULL,
+                    init_quantity INTEGER DEFAULT 0,
+                    init_price REAL DEFAULT 0.0,
+                    realized REAL DEFAULT 0.0,
+                    create_time TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    unrealized REAL DEFAULT 0.0,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(symbol, position_type)
+                    UNIQUE(symbol, type)
                 )
             ''')
             
@@ -106,7 +104,7 @@ class DatabaseManager:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_trade_id ON trades(trade_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(position_type)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_updated ON positions(last_updated)')
             
             conn.commit()
@@ -346,8 +344,8 @@ class DatabaseManager:
                 # Check if position exists
                 cursor.execute('''
                     SELECT id FROM positions 
-                    WHERE symbol = ? AND position_type = ?
-                ''', (position_data['symbol'], position_data['position_type']))
+                    WHERE symbol = ? AND type = ?
+                ''', (position_data['symbol'], position_data['type']))
                 
                 existing = cursor.fetchone()
                 
@@ -356,52 +354,45 @@ class DatabaseManager:
                     cursor.execute('''
                         UPDATE positions SET
                             quantity = ?,
-                            avg_price = ?,
-                            current_price = ?,
-                            realized_pnl = ?,
-                            unrealized_pnl = ?,
-                            unrealized_pnl_pct = ?,
-                            market_value = ?,
-                            cost_basis = ?,
-                            profit_target = ?,
-                            stop_loss = ?,
+                            avg_cost = ?,
+                            init_quantity = ?,
+                            init_price = ?,
+                            realized = ?,
+                            create_time = ?,
+                            date = ?,
+                            unrealized = ?,
                             last_updated = CURRENT_TIMESTAMP
-                        WHERE symbol = ? AND position_type = ?
+                        WHERE symbol = ? AND type = ?
                     ''', (
                         position_data['quantity'],
-                        position_data['avg_price'],
-                        position_data.get('current_price', 0.0),
-                        position_data.get('realized_pnl', 0.0),
-                        position_data.get('unrealized_pnl', 0.0),
-                        position_data.get('unrealized_pnl_pct', 0.0),
-                        position_data.get('market_value', 0.0),
-                        position_data.get('cost_basis', 0.0),
-                        position_data.get('profit_target', 0.0),
-                        position_data.get('stop_loss', 0.0),
+                        position_data['avg_cost'],
+                        position_data.get('init_quantity', 0),
+                        position_data.get('init_price', 0.0),
+                        position_data.get('realized', 0.0),
+                        position_data['create_time'],
+                        position_data['date'],
+                        position_data.get('unrealized', 0.0),
                         position_data['symbol'],
-                        position_data['position_type']
+                        position_data['type']
                     ))
                 else:
                     # Insert new position
                     cursor.execute('''
                         INSERT INTO positions (
-                            symbol, quantity, avg_price, current_price, position_type,
-                            realized_pnl, unrealized_pnl, unrealized_pnl_pct,
-                            market_value, cost_basis, profit_target, stop_loss
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            symbol, type, quantity, avg_cost, init_quantity, init_price,
+                            realized, create_time, date, unrealized
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         position_data['symbol'],
+                        position_data['type'],
                         position_data['quantity'],
-                        position_data['avg_price'],
-                        position_data.get('current_price', 0.0),
-                        position_data['position_type'],
-                        position_data.get('realized_pnl', 0.0),
-                        position_data.get('unrealized_pnl', 0.0),
-                        position_data.get('unrealized_pnl_pct', 0.0),
-                        position_data.get('market_value', 0.0),
-                        position_data.get('cost_basis', 0.0),
-                        position_data.get('profit_target', 0.0),
-                        position_data.get('stop_loss', 0.0)
+                        position_data['avg_cost'],
+                        position_data.get('init_quantity', 0),
+                        position_data.get('init_price', 0.0),
+                        position_data.get('realized', 0.0),
+                        position_data['create_time'],
+                        position_data['date'],
+                        position_data.get('unrealized', 0.0)
                     ))
                 
                 conn.commit()
@@ -410,17 +401,15 @@ class DatabaseManager:
         except Exception as e:
             return False, f"Database error upserting position: {str(e)}"
     
-    def get_positions(self, symbol=None, position_type=None, limit=100):
+    def get_positions(self, symbol=None, type_filter=None, limit=100):
         """Get positions with optional filtering"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 query = '''
-                    SELECT id, symbol, quantity, avg_price, current_price, position_type,
-                           realized_pnl, unrealized_pnl, unrealized_pnl_pct,
-                           market_value, cost_basis, profit_target, stop_loss,
-                           last_updated, created_at
+                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
+                           realized, create_time, date, unrealized, last_updated, created_at
                     FROM positions
                     WHERE 1=1
                 '''
@@ -430,9 +419,9 @@ class DatabaseManager:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
                 
-                if position_type:
-                    query += ' AND position_type = ?'
-                    params.append(position_type.upper())
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
                 
                 query += ' ORDER BY last_updated DESC LIMIT ?'
                 params.append(limit)
@@ -451,7 +440,7 @@ class DatabaseManager:
             print(f"Error getting positions: {e}")
             return []
     
-    def get_position_summary(self, symbol=None, position_type=None):
+    def get_position_summary(self, symbol=None, type_filter=None):
         """Get position summary statistics"""
         try:
             with self.get_connection() as conn:
@@ -460,12 +449,11 @@ class DatabaseManager:
                 query = '''
                     SELECT 
                         COUNT(*) as total_positions,
-                        SUM(CASE WHEN quantity > 0 THEN 1 ELSE 0 END) as active_positions,
+                        SUM(CASE WHEN quantity != 0 THEN 1 ELSE 0 END) as active_positions,
                         SUM(quantity) as total_quantity,
-                        SUM(realized_pnl) as total_realized_pnl,
-                        SUM(unrealized_pnl) as total_unrealized_pnl,
-                        SUM(market_value) as total_market_value,
-                        SUM(cost_basis) as total_cost_basis
+                        SUM(realized) as total_realized,
+                        SUM(unrealized) as total_unrealized,
+                        SUM(quantity * avg_cost) as total_cost_basis
                     FROM positions
                     WHERE 1=1
                 '''
@@ -475,9 +463,9 @@ class DatabaseManager:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
                 
-                if position_type:
-                    query += ' AND position_type = ?'
-                    params.append(position_type.upper())
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
                 
                 cursor.execute(query, params)
                 row = cursor.fetchone()
@@ -489,9 +477,8 @@ class DatabaseManager:
                         'total_positions': 0,
                         'active_positions': 0,
                         'total_quantity': 0,
-                        'total_realized_pnl': 0.0,
-                        'total_unrealized_pnl': 0.0,
-                        'total_market_value': 0.0,
+                        'total_realized': 0.0,
+                        'total_unrealized': 0.0,
                         'total_cost_basis': 0.0
                     }
                 
@@ -501,9 +488,8 @@ class DatabaseManager:
                 'total_positions': 0,
                 'active_positions': 0,
                 'total_quantity': 0,
-                'total_realized_pnl': 0.0,
-                'total_unrealized_pnl': 0.0,
-                'total_market_value': 0.0,
+                'total_realized': 0.0,
+                'total_unrealized': 0.0,
                 'total_cost_basis': 0.0
             }
     
