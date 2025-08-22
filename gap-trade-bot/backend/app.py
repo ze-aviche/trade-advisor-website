@@ -1508,6 +1508,117 @@ def trigger_manual_sync():
             'error': str(e)
         }), 500
 
+# Position History API endpoints
+@app.route('/api/positions', methods=['GET'])
+def get_positions():
+    """Get position history with optional filtering"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        position_type = request.args.get('position_type')
+        limit = int(request.args.get('limit', 100))
+        
+        # Validate limit
+        if limit > 1000:
+            limit = 1000
+        
+        # Get positions from database
+        positions = db_manager.get_positions(
+            symbol=symbol,
+            position_type=position_type,
+            limit=limit
+        )
+        
+        # Get summary statistics
+        summary = db_manager.get_position_summary(
+            symbol=symbol,
+            position_type=position_type
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'positions': positions,
+                'summary': summary
+            },
+            'timestamp': datetime.now().isoformat(),
+            'count': len(positions)
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting positions: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/sync-das', methods=['POST'])
+def sync_positions_from_das():
+    """Sync positions from DAS to database"""
+    try:
+        from das_integration import sync_positions_from_das
+        
+        success, message, count = sync_positions_from_das()
+        
+        return jsonify({
+            'success': success,
+            'message': message,
+            'data': {
+                'synced_count': count
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error syncing positions from DAS: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/upsert', methods=['POST'])
+def upsert_position():
+    """Upsert a position to the database"""
+    try:
+        from database import db_manager
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        # Validate required fields
+        required_fields = ['symbol', 'quantity', 'avg_price', 'position_type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing required field: {field}'
+                }), 400
+        
+        # Upsert position to database
+        success, message = db_manager.upsert_position(data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': message
+            }), 400
+    except Exception as e:
+        app_logger.error(f"Error upserting position: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():

@@ -152,6 +152,56 @@ class DASTradeManager:
         
         return trades
     
+    def parse_position_line(self, line: str) -> Optional[Dict]:
+        """Parse a single position line from DAS response"""
+        line = line.strip()
+        
+        # Match pattern: %POSITION MSFT 100 28.3 0.0 0.0
+        # Format: %POSITION symbol quantity avg_price realized_pnl unrealized_pnl
+        position_pattern = r'%POSITION\s+(\w+)\s+(-?\d+)\s+([\d.]+)\s+([\d.-]+)\s+([\d.-]+)'
+        match = re.match(position_pattern, line)
+        
+        if match:
+            symbol, quantity, avg_price, realized_pnl, unrealized_pnl = match.groups()
+            
+            # Determine position type based on quantity
+            position_type = 'LONG' if int(quantity) > 0 else 'SHORT'
+            
+            # Calculate additional fields
+            quantity_abs = abs(int(quantity))
+            cost_basis = quantity_abs * float(avg_price)
+            market_value = cost_basis + float(unrealized_pnl)
+            unrealized_pnl_pct = (float(unrealized_pnl) / cost_basis * 100) if cost_basis > 0 else 0.0
+            
+            return {
+                'symbol': symbol.upper(),
+                'quantity': int(quantity),
+                'avg_price': float(avg_price),
+                'current_price': float(avg_price),  # Will be updated with real-time price
+                'position_type': position_type,
+                'realized_pnl': float(realized_pnl),
+                'unrealized_pnl': float(unrealized_pnl),
+                'unrealized_pnl_pct': unrealized_pnl_pct,
+                'market_value': market_value,
+                'cost_basis': cost_basis,
+                'profit_target': 0.0,  # Will be set by bot configuration
+                'stop_loss': 0.0       # Will be set by bot configuration
+            }
+        
+        return None
+    
+    def parse_das_positions_response(self, response: str) -> List[Dict]:
+        """Parse complete DAS positions response"""
+        positions = []
+        lines = response.strip().split('\n')
+        
+        for line in lines:
+            position = self.parse_position_line(line)
+            if position:
+                positions.append(position)
+        
+        return positions
+    
     def sync_trades_from_das(self) -> Tuple[bool, str, int]:
         """Sync trades from DAS to database"""
         try:
@@ -193,6 +243,47 @@ class DASTradeManager:
             logger.error(f"Error syncing trades from DAS: {e}")
             return False, str(e), 0
     
+    def sync_positions_from_das(self) -> Tuple[bool, str, int]:
+        """Sync positions from DAS to database"""
+        try:
+            if not self.das_connection.connected:
+                if not self.connect_to_das():
+                    return False, "Failed to connect to DAS", 0
+            
+            # Get positions from DAS
+            das_response = self.das_connection.get_positions()
+            
+            if not das_response:
+                return False, "No response from DAS", 0
+            
+            # Parse positions
+            positions = self.parse_das_positions_response(das_response)
+            
+            if not positions:
+                return True, "No positions found", 0
+            
+            # Upsert positions to database
+            updated_count = 0
+            errors = []
+            
+            for position in positions:
+                success, message = db_manager.upsert_position(position)
+                if success:
+                    updated_count += 1
+                else:
+                    errors.append(f"Position {position['symbol']}: {message}")
+            
+            self.last_sync_time = datetime.now()
+            
+            if errors:
+                logger.warning(f"Some positions failed to sync: {errors}")
+            
+            return True, f"Successfully synced {updated_count} positions", updated_count
+            
+        except Exception as e:
+            logger.error(f"Error syncing positions from DAS: {e}")
+            return False, str(e), 0
+    
     def get_trade_history(self, symbol: Optional[str] = None, 
                          start_date: Optional[str] = None, 
                          end_date: Optional[str] = None, 
@@ -205,6 +296,17 @@ class DASTradeManager:
                          end_date: Optional[str] = None) -> Optional[Dict]:
         """Get trade summary from database"""
         return db_manager.get_trade_summary(symbol, start_date, end_date)
+    
+    def get_position_history(self, symbol: Optional[str] = None, 
+                           position_type: Optional[str] = None, 
+                           limit: int = 100) -> List[Dict]:
+        """Get position history from database"""
+        return db_manager.get_positions(symbol, position_type, limit)
+    
+    def get_position_summary(self, symbol: Optional[str] = None,
+                           position_type: Optional[str] = None) -> Optional[Dict]:
+        """Get position summary from database"""
+        return db_manager.get_position_summary(symbol, position_type)
     
     def import_das_trades_text(self, das_trades_text: str) -> Tuple[bool, str, int]:
         """Import trades from DAS trades text"""
@@ -247,3 +349,15 @@ def get_trade_history(symbol=None, start_date=None, end_date=None, limit=100):
 def get_trade_summary(symbol=None, start_date=None, end_date=None):
     """Convenience function to get trade summary"""
     return das_trade_manager.get_trade_summary(symbol, start_date, end_date)
+
+def sync_positions_from_das():
+    """Convenience function to sync positions from DAS"""
+    return das_trade_manager.sync_positions_from_das()
+
+def get_position_history(symbol=None, position_type=None, limit=100):
+    """Convenience function to get position history"""
+    return das_trade_manager.get_position_history(symbol, position_type, limit)
+
+def get_position_summary(symbol=None, position_type=None):
+    """Convenience function to get position summary"""
+    return das_trade_manager.get_position_summary(symbol, position_type)
