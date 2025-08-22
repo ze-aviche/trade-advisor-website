@@ -1096,13 +1096,7 @@ class TradingBot:
             # Check for duplicate trades to prevent repeated saves
             from database import db_manager
             
-            # Look for recent trades with the same PnL change for this symbol
-            recent_trades = db_manager.get_trades(symbol=symbol, limit=10)
-            for recent_trade in recent_trades:
-                if (abs(recent_trade['pnl'] - round(pnl_change, 2)) < 0.01 and 
-                    recent_trade['trade_time'] == datetime.now().strftime('%H:%M:%S')):
-                    logger.debug(f"Skipping duplicate manual trade for {symbol} with PnL: ${pnl_change:.2f}")
-                    return True  # Return True since we're intentionally skipping
+
             
             # Determine the correct side based on position type
             # For LONG positions: realized PnL comes from selling (S)
@@ -1137,14 +1131,7 @@ class TradingBot:
             logger.info(f"   Price: ${trade_data['price']:.2f}")
             logger.info(f"   PnL: ${trade_data['pnl']:.2f}")
             
-            # Save to database
-            success, message = db_manager.add_trade(trade_data)
-            if success:
-                logger.info(f"Manual trade saved to database: {symbol} PnL change: ${pnl_change:.2f}")
-                return True
-            else:
-                logger.error(f"Failed to save manual trade to database: {message}")
-                return False
+
                 
         except Exception as e:
             logger.error(f"Error saving manual trade: {e}")
@@ -1286,19 +1273,7 @@ class TradingBot:
                     'trade_date': datetime.now().date().isoformat()
                 }
                 
-                # Check if we already have a similar trade recently (avoid duplicates)
-                recent_trades = db_manager.get_trades(symbol=change['symbol'], limit=10)
-                for recent_trade in recent_trades:
-                    if (recent_trade['pnl'] == round(pnl_change, 2) and 
-                        recent_trade['trade_time'] == trade_data['trade_time']):
-                        logger.debug(f"Skipping duplicate trade for {change['symbol']} with PnL: ${pnl_change:.2f}")
-                        return
-                
-                success, message = db_manager.add_trade(trade_data)
-                if success:
-                    logger.info(f"Saved realized PnL change trade: {change['symbol']} Qty: {quantity} @ ${avg_price:.2f}, PnL: ${pnl_change:.2f}")
-                else:
-                    logger.error(f"Failed to save trade: {message}")
+
                     
         except Exception as e:
             logger.error(f"Error saving trade change: {e}")
@@ -1749,40 +1724,8 @@ class TradingBot:
                             # We need to find the corresponding entry trade to calculate P&L
                             current_price = position['avg_price']
                             
-                            # Get the entry trade for this position to calculate P&L
-                            from database import db_manager
-                            entry_trades = db_manager.get_trades(
-                                symbol=position['symbol'], 
-                                limit=100
-                            )
-                            
-                            # Find the most recent entry trade (opposite side)
-                            entry_trade = None
-                            if position['type'] == "LONG":
-                                # For LONG position, find the most recent BUY trade
-                                for trade in entry_trades:
-                                    if trade['side'] == 'B':
-                                        entry_trade = trade
-                                        break
-                            else:
-                                # For SHORT position, find the most recent SELL trade
-                                for trade in entry_trades:
-                                    if trade['side'] in ['S', 'SS']:
-                                        entry_trade = trade
-                                        break
-                            
-                            # Calculate P&L if we found the entry trade
-                            if entry_trade:
-                                entry_price = entry_trade['price']
-                                if position['type'] == "LONG":
-                                    pnl = (current_price - entry_price) * position['quantity']
-                                else:
-                                    pnl = (entry_price - current_price) * position['quantity']
-                                # Round PnL to 2 decimal places
-                                pnl = round(pnl, 2)
-                            else:
-                                # Fallback: use average price as entry price (P&L = 0)
-                                pnl = 0.0
+                            # Use average price as entry price (P&L = 0)
+                            pnl = 0.0
                             
                             # Create trade data for database
                             trade_data = {
@@ -1800,12 +1743,8 @@ class TradingBot:
                                 'trade_date': datetime.now().date().isoformat()
                             }
                             
-                            # Save to database
-                            success, message = db_manager.add_trade(trade_data)
-                            if success:
-                                logger.info(f"💾 Panic exit trade saved to database: {position['symbol']} {position['type']} {position['quantity']} @ ${current_price:.2f}")
-                            else:
-                                logger.error(f"❌ Failed to save panic exit trade to database: {message}")
+                            # Trade data created for logging purposes
+                            logger.info(f"💾 Panic exit trade logged: {position['symbol']} {position['type']} {position['quantity']} @ ${current_price:.2f}")
                                 
                         except Exception as e:
                             logger.error(f"❌ Error saving panic exit trade to database: {e}")

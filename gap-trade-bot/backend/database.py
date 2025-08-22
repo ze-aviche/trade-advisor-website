@@ -57,26 +57,7 @@ class DatabaseManager:
                 )
             ''')
             
-            # Create trades table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS trades (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    trade_id INTEGER NOT NULL,
-                    symbol TEXT NOT NULL,
-                    side TEXT NOT NULL CHECK (side IN ('B', 'S', 'SS')),
-                    quantity INTEGER NOT NULL,
-                    price REAL NOT NULL,
-                    route TEXT NOT NULL,
-                    trade_time TEXT NOT NULL,
-                    order_id INTEGER,
-                    liquidity TEXT,
-                    ecn_fee REAL DEFAULT 0.0,
-                    pnl REAL DEFAULT 0.0,
-                    trade_date DATE NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+
             
             # Create positions table for position history tracking
             cursor.execute('''
@@ -99,10 +80,6 @@ class DatabaseManager:
             ''')
             
             # Create indexes for better query performance
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_trade_id ON trades(trade_id)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_updated ON positions(last_updated)')
@@ -306,34 +283,7 @@ class DatabaseManager:
             print(f"Database error getting all users: {e}")
             return []
 
-    def add_trade(self, trade_data):
-        """Add a new trade to the database"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO trades (
-                        trade_id, symbol, side, quantity, price, route, 
-                        trade_time, order_id, liquidity, ecn_fee, pnl, trade_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    trade_data['trade_id'],
-                    trade_data['symbol'],
-                    trade_data['side'],
-                    trade_data['quantity'],
-                    trade_data['price'],
-                    trade_data['route'],
-                    trade_data['trade_time'],
-                    trade_data.get('order_id'),
-                    trade_data.get('liquidity'),
-                    trade_data.get('ecn_fee', 0.0),
-                    trade_data.get('pnl', 0.0),
-                    trade_data['trade_date']
-                ))
-                conn.commit()
-                return True, "Trade added successfully"
-        except Exception as e:
-            return False, f"Database error adding trade: {str(e)}"
+
     
     def upsert_position(self, position_data):
         """Upsert position data (insert or update)"""
@@ -493,261 +443,13 @@ class DatabaseManager:
                 'total_cost_basis': 0.0
             }
     
-    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100):
-        """Get trades with optional filtering"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                query = '''
-                    SELECT id, trade_id, symbol, side, quantity, price, route, 
-                           trade_time, order_id, liquidity, ecn_fee, pnl, 
-                           trade_date, created_at
-                    FROM trades
-                    WHERE 1=1
-                '''
-                params = []
-                
-                if symbol:
-                    query += ' AND symbol = ?'
-                    params.append(symbol.upper())
-                
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
-                
-                query += ' ORDER BY trade_date DESC, trade_time DESC LIMIT ?'
-                params.append(limit)
-                
-                cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                trades = []
-                for row in rows:
-                    trade = dict(row)
-                    # Convert datetime objects to strings for JSON serialization
-                    if trade['created_at']:
-                        # Check if it's already a string or needs conversion
-                        if hasattr(trade['created_at'], 'isoformat'):
-                            # It's a datetime object
-                            trade['created_at'] = trade['created_at'].isoformat()
-                        elif isinstance(trade['created_at'], str):
-                            # It's already a string, leave as is
-                            pass
-                        else:
-                            # Convert to string using str() as fallback
-                            trade['created_at'] = str(trade['created_at'])
-                    trades.append(trade)
-                
-                return trades
-        except Exception as e:
-            print(f"Database error getting trades: {e}")
-            return []
+
     
-    def get_trade_summary(self, symbol=None, start_date=None, end_date=None):
-        """Get trade summary statistics"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                query = '''
-                    SELECT 
-                        COUNT(*) as total_trades,
-                        COALESCE(SUM(CASE WHEN side = 'B' THEN quantity ELSE 0 END), 0) as total_buy_quantity,
-                        COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN quantity ELSE 0 END), 0) as total_sell_quantity,
-                        COALESCE(SUM(CASE WHEN side = 'B' THEN quantity * price ELSE 0 END), 0) as total_buy_value,
-                        COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN quantity * price ELSE 0 END), 0) as total_sell_value,
-                        COALESCE(SUM(pnl), 0) as total_pnl,
-                        COALESCE(SUM(ecn_fee), 0) as total_fees
-                    FROM trades
-                    WHERE 1=1
-                '''
-                params = []
-                
-                if symbol:
-                    query += ' AND symbol = ?'
-                    params.append(symbol.upper())
-                
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
-                
-                cursor.execute(query, params)
-                row = cursor.fetchone()
-                
-                if row:
-                    summary = dict(row)
-                    
-                    # Ensure all values are numbers, not None
-                    summary['total_trades'] = summary['total_trades'] or 0
-                    summary['total_buy_quantity'] = summary['total_buy_quantity'] or 0
-                    summary['total_sell_quantity'] = summary['total_sell_quantity'] or 0
-                    summary['total_buy_value'] = summary['total_buy_value'] or 0
-                    summary['total_sell_value'] = summary['total_sell_value'] or 0
-                    summary['total_pnl'] = summary['total_pnl'] or 0
-                    summary['total_fees'] = summary['total_fees'] or 0
-                    
-                    # Calculate additional metrics with safe arithmetic
-                    summary['net_quantity'] = summary['total_buy_quantity'] - summary['total_sell_quantity']
-                    summary['net_value'] = summary['total_buy_value'] - summary['total_sell_value']
-                    
-                    # Safe division with zero checks
-                    summary['avg_buy_price'] = (
-                        summary['total_buy_value'] / summary['total_buy_quantity'] 
-                        if summary['total_buy_quantity'] > 0 else 0
-                    )
-                    summary['avg_sell_price'] = (
-                        summary['total_sell_value'] / summary['total_sell_quantity'] 
-                        if summary['total_sell_quantity'] > 0 else 0
-                    )
-                    
-                    return summary
-                return None
-        except Exception as e:
-            print(f"Database error getting trade summary: {e}")
-            return None
+
     
-    def parse_das_trades_data(self, das_trades_text):
-        """Parse DAS trades data and return list of trade dictionaries with calculated PnL"""
-        trades = []
-        lines = das_trades_text.strip().split('\n')
-        
-        # Group trades by symbol to calculate PnL
-        symbol_trades = {}
-        
-        for line in lines:
-            line = line.strip()
-            if line.startswith('%TRADE'):
-                # Parse trade line: %TRADE 1 MSFT B 100 28.3
-                parts = line.split()
-                if len(parts) >= 6:
-                    symbol = parts[2]
-                    if symbol not in symbol_trades:
-                        symbol_trades[symbol] = []
-                    
-                    trade_data = {
-                        'trade_id': int(parts[1]),
-                        'symbol': symbol,
-                        'side': parts[3],
-                        'quantity': int(parts[4]),
-                        'price': float(parts[5]),
-                        'route': '',
-                        'trade_time': '',
-                        'order_id': None,
-                        'liquidity': '',
-                        'ecn_fee': 0.0,
-                        'pnl': 0.0,  # Will be calculated below
-                        'trade_date': datetime.now().date().isoformat()
-                    }
-                    symbol_trades[symbol].append(trade_data)
-        
-        # Calculate PnL for each symbol's trades
-        for symbol, symbol_trade_list in symbol_trades.items():
-            # Sort trades by trade_id to ensure proper order
-            symbol_trade_list.sort(key=lambda x: x['trade_id'])
-            
-            # Calculate PnL for closing trades
-            for i, trade in enumerate(symbol_trade_list):
-                if trade['side'] in ['S', 'SS']:  # Sell trade (closing position)
-                    # Find the corresponding buy trade
-                    for j in range(i-1, -1, -1):  # Look backwards for buy trade
-                        if symbol_trade_list[j]['side'] == 'B':
-                            buy_trade = symbol_trade_list[j]
-                            # Calculate PnL: (sell_price - buy_price) * quantity
-                            pnl = (trade['price'] - buy_trade['price']) * trade['quantity']
-                            trade['pnl'] = round(pnl, 2)
-                            break
-                elif trade['side'] == 'B':  # Buy trade (opening position)
-                    # PnL will be calculated when the corresponding sell trade is processed
-                    trade['pnl'] = 0.0
-        
-        # Flatten the trades back to a single list
-        for symbol_trade_list in symbol_trades.values():
-            trades.extend(symbol_trade_list)
-        
-        return trades
+
     
-    def recalculate_pnl_for_existing_trades(self):
-        """Recalculate PnL for all existing trades in the database using roundtrip logic"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Get all trades grouped by symbol
-                cursor.execute('''
-                    SELECT id, trade_id, symbol, side, quantity, price, trade_date
-                    FROM trades 
-                    ORDER BY symbol, trade_date, trade_time, trade_id
-                ''')
-                all_trades = cursor.fetchall()
-                
-                # Group trades by symbol
-                symbol_trades = {}
-                for trade in all_trades:
-                    symbol = trade['symbol']
-                    if symbol not in symbol_trades:
-                        symbol_trades[symbol] = []
-                    symbol_trades[symbol].append(dict(trade))
-                
-                # Calculate PnL for each symbol's trades using roundtrip logic
-                updates_made = 0
-                for symbol, trades in symbol_trades.items():
-                    # Sort trades by date and time
-                    trades.sort(key=lambda x: (x['trade_date'], x.get('trade_time', ''), x['trade_id']))
-                    
-                    # Separate buy and sell trades
-                    buy_trades = [t for t in trades if t['side'] == 'B']
-                    sell_trades = [t for t in trades if t['side'] in ['S', 'SS']]
-                    
-                    # Calculate total quantities
-                    total_buy_qty = sum(trade['quantity'] for trade in buy_trades)
-                    total_sell_qty = sum(trade['quantity'] for trade in sell_trades)
-                    
-                    # Only calculate PnL if we have complete roundtrips
-                    if total_buy_qty > 0 and total_sell_qty > 0:
-                        # Calculate weighted average buy price
-                        total_buy_value = sum(trade['quantity'] * (trade['price'] or 0) for trade in buy_trades)
-                        avg_buy_price = total_buy_value / total_buy_qty if total_buy_qty > 0 else 0
-                        
-                        # Calculate weighted average sell price
-                        total_sell_value = sum(trade['quantity'] * (trade['price'] or 0) for trade in sell_trades)
-                        avg_sell_price = total_sell_value / total_sell_qty if total_sell_qty > 0 else 0
-                        
-                        # Calculate PnL for the roundtrip
-                        if avg_buy_price > 0 and avg_sell_price > 0:
-                            roundtrip_qty = min(total_buy_qty, total_sell_qty)
-                            pnl = (avg_sell_price - avg_buy_price) * roundtrip_qty
-                            pnl = round(pnl, 2)  # Round to 2 decimal places
-                            
-                            # Update all sell trades with the calculated PnL
-                            for sell_trade in sell_trades:
-                                cursor.execute('''
-                                    UPDATE trades SET pnl = ? WHERE id = ?
-                                ''', (pnl, sell_trade['id']))
-                                updates_made += 1
-                    
-                    # Set PnL to 0 for buy trades (opening positions)
-                    for buy_trade in buy_trades:
-                        cursor.execute('''
-                            UPDATE trades SET pnl = 0.0 WHERE id = ?
-                        ''', (buy_trade['id'],))
-                        updates_made += 1
-                
-                conn.commit()
-                print(f"✅ Recalculated PnL for {updates_made} trades using roundtrip logic")
-                return True, f"Successfully recalculated PnL for {updates_made} trades using roundtrip logic"
-                
-        except Exception as e:
-            print(f"Database error recalculating PnL: {e}")
-            return False, f"Error recalculating PnL: {str(e)}"
+
 
 # Global database manager instance
 db_manager = DatabaseManager() 

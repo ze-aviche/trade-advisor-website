@@ -29,9 +29,6 @@ class ScheduledDASSync:
             return False
             
         try:
-            # Schedule sync every hour during market hours
-            schedule.every().hour.at(":00").do(self.sync_trades_if_market_hours)
-            
             # Start position sync scheduler (every 10 seconds)
             self.start_position_sync_scheduler()
             
@@ -85,26 +82,7 @@ class ScheduledDASSync:
             logger.error(f"Error checking market hours: {e}")
             return False
     
-    def sync_trades_if_market_hours(self):
-        """Sync trades only if it's market hours"""
-        if self.is_market_hours():
-            logger.info("🔄 Market hours detected, syncing trades from DAS...")
-            try:
-                from das_integration import das_trade_manager
-                success, message, added_count = das_trade_manager.sync_trades_from_das()
-                
-                if success:
-                    self.last_sync_time = datetime.now()
-                    logger.info(f"✅ Scheduled sync completed: {message}")
-                else:
-                    logger.error(f"❌ Scheduled sync failed: {message}")
-                    
-            except ImportError as e:
-                logger.error(f"❌ Error importing DAS integration: {e}")
-            except Exception as e:
-                logger.error(f"❌ Error during scheduled sync: {e}")
-        else:
-            logger.info("⏰ Outside market hours, skipping scheduled sync")
+
     
     def sync_positions_if_bot_running(self):
         """Sync positions every 10 seconds if bot is running"""
@@ -149,7 +127,7 @@ class ScheduledDASSync:
         logger.info("🔄 Manual sync triggered...")
         try:
             from das_integration import das_trade_manager
-            success, message, added_count = das_trade_manager.sync_trades_from_das()
+            success, message, updated_count = das_trade_manager.sync_positions_from_das()
             
             if success:
                 self.last_sync_time = datetime.now()
@@ -157,7 +135,7 @@ class ScheduledDASSync:
                 return {
                     'success': True,
                     'message': message,
-                    'synced_count': added_count
+                    'synced_count': updated_count
                 }
             else:
                 logger.error(f"❌ Manual sync failed: {message}")

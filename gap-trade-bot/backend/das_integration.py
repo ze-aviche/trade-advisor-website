@@ -85,9 +85,7 @@ class DASConnection:
             logger.error(f"Error sending command to DAS: {e}")
             return ""
     
-    def get_trades(self) -> str:
-        """Get current trades from DAS"""
-        return self.send_command("GET TRADES")
+
     
     def get_positions(self) -> str:
         """Get current positions from DAS"""
@@ -112,45 +110,7 @@ class DASTradeManager:
         """Disconnect from DAS Trader"""
         self.das_connection.disconnect()
     
-    def parse_trade_line(self, line: str) -> Optional[Dict]:
-        """Parse a single trade line from DAS response"""
-        line = line.strip()
-        
-        # Match pattern: %TRADE 1 MSFT B 100 28.3
-        trade_pattern = r'%TRADE\s+(\d+)\s+(\w+)\s+([BSS]+)\s+(\d+)\s+([\d.]+)'
-        match = re.match(trade_pattern, line)
-        
-        if match:
-            trade_id, symbol, side, quantity, price = match.groups()
-            
-            return {
-                'trade_id': int(trade_id),
-                'symbol': symbol.upper(),
-                'side': side,
-                'quantity': int(quantity),
-                'price': float(price),
-                'route': 'SMAT',  # Default route
-                'trade_time': datetime.now().strftime('%H:%M:%S'),
-                'order_id': None,
-                'liquidity': '',
-                'ecn_fee': 0.0,
-                'pnl': 0.0,
-                'trade_date': datetime.now().date().isoformat()
-            }
-        
-        return None
-    
-    def parse_das_trades_response(self, response: str) -> List[Dict]:
-        """Parse complete DAS trades response"""
-        trades = []
-        lines = response.strip().split('\n')
-        
-        for line in lines:
-            trade = self.parse_trade_line(line)
-            if trade:
-                trades.append(trade)
-        
-        return trades
+
     
     def parse_position_line(self, line: str) -> Optional[Dict]:
         """Parse a single position line from DAS response"""
@@ -198,46 +158,7 @@ class DASTradeManager:
         
         return positions
     
-    def sync_trades_from_das(self) -> Tuple[bool, str, int]:
-        """Sync trades from DAS to database"""
-        try:
-            if not self.das_connection.connected:
-                if not self.connect_to_das():
-                    return False, "Failed to connect to DAS", 0
-            
-            # Get trades from DAS
-            das_response = self.das_connection.get_trades()
-            
-            if not das_response:
-                return False, "No response from DAS", 0
-            
-            # Parse trades
-            trades = self.parse_das_trades_response(das_response)
-            
-            if not trades:
-                return True, "No trades found", 0
-            
-            # Add trades to database
-            added_count = 0
-            errors = []
-            
-            for trade in trades:
-                success, message = db_manager.add_trade(trade)
-                if success:
-                    added_count += 1
-                else:
-                    errors.append(f"Trade {trade['trade_id']}: {message}")
-            
-            self.last_sync_time = datetime.now()
-            
-            if errors:
-                logger.warning(f"Some trades failed to sync: {errors}")
-            
-            return True, f"Successfully synced {added_count} trades", added_count
-            
-        except Exception as e:
-            logger.error(f"Error syncing trades from DAS: {e}")
-            return False, str(e), 0
+
     
     def sync_positions_from_das(self) -> Tuple[bool, str, int]:
         """Sync positions from DAS to database"""
@@ -280,18 +201,7 @@ class DASTradeManager:
             logger.error(f"Error syncing positions from DAS: {e}")
             return False, str(e), 0
     
-    def get_trade_history(self, symbol: Optional[str] = None, 
-                         start_date: Optional[str] = None, 
-                         end_date: Optional[str] = None, 
-                         limit: int = 100) -> List[Dict]:
-        """Get trade history from database"""
-        return db_manager.get_trades(symbol, start_date, end_date, limit)
-    
-    def get_trade_summary(self, symbol: Optional[str] = None,
-                         start_date: Optional[str] = None,
-                         end_date: Optional[str] = None) -> Optional[Dict]:
-        """Get trade summary from database"""
-        return db_manager.get_trade_summary(symbol, start_date, end_date)
+
     
     def get_position_history(self, symbol: Optional[str] = None, 
                             type_filter: Optional[int] = None, 
@@ -304,47 +214,12 @@ class DASTradeManager:
         """Get position summary from database"""
         return db_manager.get_position_summary(symbol, type_filter)
     
-    def import_das_trades_text(self, das_trades_text: str) -> Tuple[bool, str, int]:
-        """Import trades from DAS trades text"""
-        try:
-            trades = db_manager.parse_das_trades_data(das_trades_text)
-            
-            if not trades:
-                return False, "No valid trades found", 0
-            
-            added_count = 0
-            errors = []
-            
-            for trade in trades:
-                success, message = db_manager.add_trade(trade)
-                if success:
-                    added_count += 1
-                else:
-                    errors.append(f"Trade {trade['trade_id']}: {message}")
-            
-            if errors:
-                logger.warning(f"Some trades failed to import: {errors}")
-            
-            return True, f"Successfully imported {added_count} trades", added_count
-            
-        except Exception as e:
-            logger.error(f"Error importing DAS trades: {e}")
-            return False, str(e), 0
+
 
 # Global DAS trade manager instance
 das_trade_manager = DASTradeManager()
 
-def sync_trades_from_das():
-    """Convenience function to sync trades from DAS"""
-    return das_trade_manager.sync_trades_from_das()
 
-def get_trade_history(symbol=None, start_date=None, end_date=None, limit=100):
-    """Convenience function to get trade history"""
-    return das_trade_manager.get_trade_history(symbol, start_date, end_date, limit)
-
-def get_trade_summary(symbol=None, start_date=None, end_date=None):
-    """Convenience function to get trade summary"""
-    return das_trade_manager.get_trade_summary(symbol, start_date, end_date)
 
 def sync_positions_from_das():
     """Convenience function to sync positions from DAS"""
