@@ -44,7 +44,9 @@ const app = createApp({
                 saveGapUpConfig: false,
                 dasConnection: false,
                 dasReconnect: false,
-                botToggle: false
+                botToggle: false,
+                positions: false,
+                syncPositions: false
                 },
                 
                 // Charts
@@ -133,6 +135,11 @@ const app = createApp({
                 // Trade History
                 tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
                 tradeHistoryTicker: '', // Ticker search filter
+                
+                // Positions History
+                positions: [],
+                positionsHistoryTicker: '', // Ticker search filter for positions
+                positionsHistoryType: '', // Position type filter (number)
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
@@ -274,6 +281,9 @@ const app = createApp({
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.loadTradeHistory();
+                } else if (tabName === 'positions') {
+                    console.log('📈 Positions History tab selected - loading positions history...');
+                    this.loadPositionsHistory();
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
                     this.loadGapUps();
@@ -1422,6 +1432,40 @@ const app = createApp({
             }
         },
         
+        async loadPositionsHistory() {
+            try {
+                this.loading.positions = true;
+                
+                // Build query parameters
+                const params = new URLSearchParams();
+                params.append('limit', '1000');
+                
+                if (this.positionsHistoryTicker && this.positionsHistoryTicker.trim()) {
+                    params.append('symbol', this.positionsHistoryTicker.trim().toUpperCase());
+                }
+                
+                if (this.positionsHistoryType && this.positionsHistoryType.trim()) {
+                    params.append('type', this.positionsHistoryType.trim());
+                }
+                
+                const response = await fetch(`http://localhost:5000/api/positions?${params.toString()}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.positions = data.data.positions || [];
+                    console.log(`📈 Loaded ${this.positions.length} positions from database${this.positionsHistoryTicker ? ` for ${this.positionsHistoryTicker}` : ''}`);
+                } else {
+                    console.error('Failed to load positions history:', data.error);
+                    this.showNotification('Failed to load positions history: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading positions history:', error);
+                this.showNotification('Error loading positions history: ' + error.message, 'error');
+            } finally {
+                this.loading.positions = false;
+            }
+        },
+        
         initializeDateRanges() {
             // Check if we should use 2025 dates (since trades are from 2025)
             const use2025Dates = true; // Set to true since trades are from 2025
@@ -1986,6 +2030,33 @@ const app = createApp({
                 this.showNotification('❌ Error syncing from DAS Trader', 'error');
             } finally {
                 this.loading.syncTrades = false;
+            }
+        },
+        
+        async syncPositionsFromDAS() {
+            try {
+                console.log('🔄 Syncing positions from DAS Trader...');
+                this.loading.syncPositions = true;
+                
+                const response = await axios.post('/api/positions/sync-das');
+                
+                if (response.data.success) {
+                    const data = response.data.data;
+                    const message = `✅ Synced ${data.synced_count} positions from DAS Trader`;
+                    this.showNotification(message, 'success');
+                    console.log('✅ DAS positions sync completed successfully:', data);
+                    
+                    // Reload positions history
+                    await this.loadPositionsHistory();
+                } else {
+                    this.showNotification(`❌ Failed to sync positions from DAS: ${response.data.error}`, 'error');
+                    console.error('❌ DAS positions sync failed:', response.data.error);
+                }
+            } catch (error) {
+                console.error('❌ Error syncing positions from DAS:', error);
+                this.showNotification('❌ Error syncing positions from DAS Trader', 'error');
+            } finally {
+                this.loading.syncPositions = false;
             }
         },
         
@@ -2674,11 +2745,25 @@ const app = createApp({
             this.tradeHistoryTicker = '';
         },
         
+        // Helper method to clear positions history for a specific ticker
+        clearPositionsHistoryTicker() {
+            this.positionsHistoryTicker = '';
+            this.loadPositionsHistory();
+        },
+        
         // Helper method to handle trade history ticker input changes
         onTradeHistoryTickerChange() {
             // Auto-load trade history when ticker is entered
             if (this.tradeHistoryTicker.trim()) {
                 this.loadTradeHistory();
+            }
+        },
+        
+        // Helper method to handle positions history ticker input changes
+        onPositionsHistoryTickerChange() {
+            // Auto-load positions history when ticker is entered
+            if (this.positionsHistoryTicker.trim()) {
+                this.loadPositionsHistory();
             }
         },
         
@@ -2736,6 +2821,64 @@ const app = createApp({
                 this.showNotification('Trade history Excel file downloaded successfully', 'success');
             } catch (error) {
                 console.error('Error downloading trade history Excel:', error);
+                this.showNotification('Error downloading Excel file', 'error');
+            }
+        },
+        
+        // Helper method to download positions history as CSV
+        downloadPositionsHistoryCSV() {
+            if (this.positions.length === 0) {
+                this.showNotification('No positions history to export', 'warning');
+                return;
+            }
+            
+            try {
+                const headers = Object.keys(this.positions[0]);
+                const csvContent = [
+                    headers.join(','),
+                    ...this.positions.map(position => 
+                        headers.map(header => {
+                            const value = position[header];
+                            return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
+                        }).join(',')
+                    )
+                ].join('\n');
+                
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `positions_history_${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                this.showNotification('Positions history CSV downloaded successfully', 'success');
+            } catch (error) {
+                console.error('Error downloading positions history CSV:', error);
+                this.showNotification('Error downloading CSV file', 'error');
+            }
+        },
+        
+        // Helper method to download positions history as Excel
+        downloadPositionsHistoryExcel() {
+            if (this.positions.length === 0) {
+                this.showNotification('No positions history to export', 'warning');
+                return;
+            }
+            
+            try {
+                const worksheet = XLSX.utils.json_to_sheet(this.positions);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Positions_History');
+                
+                const filename = `positions_history_${new Date().toISOString().split('T')[0]}.xlsx`;
+                XLSX.writeFile(workbook, filename);
+                
+                this.showNotification('Positions history Excel file downloaded successfully', 'success');
+            } catch (error) {
+                console.error('Error downloading positions history Excel:', error);
                 this.showNotification('Error downloading Excel file', 'error');
             }
         },

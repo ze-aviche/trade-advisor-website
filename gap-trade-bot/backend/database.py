@@ -78,11 +78,34 @@ class DatabaseManager:
                 )
             ''')
             
+            # Create positions table for position history tracking
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS positions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    type INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    avg_cost REAL NOT NULL,
+                    init_quantity INTEGER DEFAULT 0,
+                    init_price REAL DEFAULT 0.0,
+                    realized REAL DEFAULT 0.0,
+                    create_time TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    unrealized REAL DEFAULT 0.0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(symbol, type)
+                )
+            ''')
+            
             # Create indexes for better query performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_trade_id ON trades(trade_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(type)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_updated ON positions(last_updated)')
             
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
@@ -311,6 +334,164 @@ class DatabaseManager:
                 return True, "Trade added successfully"
         except Exception as e:
             return False, f"Database error adding trade: {str(e)}"
+    
+    def upsert_position(self, position_data):
+        """Upsert position data (insert or update)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Check if position exists
+                cursor.execute('''
+                    SELECT id FROM positions 
+                    WHERE symbol = ? AND type = ?
+                ''', (position_data['symbol'], position_data['type']))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing position
+                    cursor.execute('''
+                        UPDATE positions SET
+                            quantity = ?,
+                            avg_cost = ?,
+                            init_quantity = ?,
+                            init_price = ?,
+                            realized = ?,
+                            create_time = ?,
+                            date = ?,
+                            unrealized = ?,
+                            last_updated = CURRENT_TIMESTAMP
+                        WHERE symbol = ? AND type = ?
+                    ''', (
+                        position_data['quantity'],
+                        position_data['avg_cost'],
+                        position_data.get('init_quantity', 0),
+                        position_data.get('init_price', 0.0),
+                        position_data.get('realized', 0.0),
+                        position_data['create_time'],
+                        position_data['date'],
+                        position_data.get('unrealized', 0.0),
+                        position_data['symbol'],
+                        position_data['type']
+                    ))
+                else:
+                    # Insert new position
+                    cursor.execute('''
+                        INSERT INTO positions (
+                            symbol, type, quantity, avg_cost, init_quantity, init_price,
+                            realized, create_time, date, unrealized
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        position_data['symbol'],
+                        position_data['type'],
+                        position_data['quantity'],
+                        position_data['avg_cost'],
+                        position_data.get('init_quantity', 0),
+                        position_data.get('init_price', 0.0),
+                        position_data.get('realized', 0.0),
+                        position_data['create_time'],
+                        position_data['date'],
+                        position_data.get('unrealized', 0.0)
+                    ))
+                
+                conn.commit()
+                return True, "Position updated successfully"
+                
+        except Exception as e:
+            return False, f"Database error upserting position: {str(e)}"
+    
+    def get_positions(self, symbol=None, type_filter=None, limit=100):
+        """Get positions with optional filtering"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
+                           realized, create_time, date, unrealized, last_updated, created_at
+                    FROM positions
+                    WHERE 1=1
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
+                
+                query += ' ORDER BY last_updated DESC LIMIT ?'
+                params.append(limit)
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                positions = []
+                for row in rows:
+                    position = dict(row)
+                    positions.append(position)
+                
+                return positions
+                
+        except Exception as e:
+            print(f"Error getting positions: {e}")
+            return []
+    
+    def get_position_summary(self, symbol=None, type_filter=None):
+        """Get position summary statistics"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        COUNT(*) as total_positions,
+                        SUM(CASE WHEN quantity != 0 THEN 1 ELSE 0 END) as active_positions,
+                        SUM(quantity) as total_quantity,
+                        SUM(realized) as total_realized,
+                        SUM(unrealized) as total_unrealized,
+                        SUM(quantity * avg_cost) as total_cost_basis
+                    FROM positions
+                    WHERE 1=1
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if type_filter is not None:
+                    query += ' AND type = ?'
+                    params.append(type_filter)
+                
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                
+                if row:
+                    return dict(row)
+                else:
+                    return {
+                        'total_positions': 0,
+                        'active_positions': 0,
+                        'total_quantity': 0,
+                        'total_realized': 0.0,
+                        'total_unrealized': 0.0,
+                        'total_cost_basis': 0.0
+                    }
+                
+        except Exception as e:
+            print(f"Error getting position summary: {e}")
+            return {
+                'total_positions': 0,
+                'active_positions': 0,
+                'total_quantity': 0,
+                'total_realized': 0.0,
+                'total_unrealized': 0.0,
+                'total_cost_basis': 0.0
+            }
     
     def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100):
         """Get trades with optional filtering"""

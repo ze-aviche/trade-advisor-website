@@ -32,6 +32,9 @@ class ScheduledDASSync:
             # Schedule sync every hour during market hours
             schedule.every().hour.at(":00").do(self.sync_trades_if_market_hours)
             
+            # Start position sync scheduler (every 10 seconds)
+            self.start_position_sync_scheduler()
+            
             # Start the scheduler in a separate thread
             self.scheduler_thread = threading.Thread(target=self._run_scheduler, daemon=True)
             self.scheduler_thread.start()
@@ -102,6 +105,44 @@ class ScheduledDASSync:
                 logger.error(f"❌ Error during scheduled sync: {e}")
         else:
             logger.info("⏰ Outside market hours, skipping scheduled sync")
+    
+    def sync_positions_if_bot_running(self):
+        """Sync positions every 10 seconds if bot is running"""
+        try:
+            # Check if bot is running by importing the trading bot
+            from bot.trading_bot import trading_bot
+            
+            if trading_bot.running:
+                logger.debug("🤖 Bot is running, syncing positions from DAS...")
+                try:
+                    from das_integration import das_trade_manager
+                    success, message, updated_count = das_trade_manager.sync_positions_from_das()
+                    
+                    if success:
+                        logger.debug(f"✅ Position sync completed: {message}")
+                    else:
+                        logger.warning(f"⚠️ Position sync failed: {message}")
+                        
+                except ImportError as e:
+                    logger.error(f"❌ Error importing DAS integration: {e}")
+            else:
+                logger.debug("🤖 Bot is not running, skipping position sync")
+                
+        except ImportError as e:
+            logger.debug(f"🤖 Bot not available: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error checking bot status: {e}")
+    
+    def start_position_sync_scheduler(self):
+        """Start the position sync scheduler (every 10 seconds)"""
+        try:
+            # Schedule position sync every 10 seconds
+            schedule.every(10).seconds.do(self.sync_positions_if_bot_running)
+            logger.info("✅ Position sync scheduler started (every 10 seconds)")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to start position sync scheduler: {e}")
+            return False
     
     def manual_sync_now(self):
         """Trigger a manual sync immediately"""
