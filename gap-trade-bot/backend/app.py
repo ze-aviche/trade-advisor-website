@@ -76,7 +76,6 @@ real_time_gap_ups = []  # Store real-time detected gap-ups
 entry_bot_running = False
 entry_bot_stats = {
     'positions_entered': 0,
-    'entry_success_rate': 0,
     'active_positions_count': 0
 }
 tracking_symbols = {}  # Store tracking data for each symbol
@@ -218,10 +217,6 @@ def enter_position(symbol, entry_price, entry_params):
         # Update bot statistics
         entry_bot_stats['positions_entered'] += 1
         entry_bot_stats['active_positions_count'] = len(active_positions)
-        
-        # Calculate success rate (mock for now)
-        if entry_bot_stats['positions_entered'] > 0:
-            entry_bot_stats['entry_success_rate'] = 85.0  # Mock success rate
         
         add_entry_bot_log('info', f"✅ Position entered for {symbol} at ${entry_price} - Position ID: {position_id}")
         
@@ -2105,7 +2100,6 @@ def get_entry_bot_status():
         status = {
             'internal_running_state': entry_bot_running,
             'positions_entered': entry_bot_stats['positions_entered'],
-            'entry_success_rate': entry_bot_stats['entry_success_rate'],
             'active_positions_count': entry_bot_stats['active_positions_count']
         }
         
