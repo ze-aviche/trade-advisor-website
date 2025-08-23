@@ -72,6 +72,18 @@ price_cache = {}
 websocket_connected = False
 real_time_gap_ups = []  # Store real-time detected gap-ups
 
+# Entry Bot global variables and data structures
+entry_bot_running = False
+entry_bot_stats = {
+    'positions_entered': 0,
+    'active_positions_count': 0
+}
+tracking_symbols = {}  # Store tracking data for each symbol
+entry_bot_logs = []  # Store debug logs for Entry Bot
+tracking_thread = None  # Background thread for continuous tracking
+tracking_active = False  # Flag to control tracking thread
+active_positions = {}  # Store active positions entered by the bot
+
 def start_position_sync_scheduler():
     """Start automatic position sync every 10 seconds"""
     def sync_loop():
@@ -97,6 +109,199 @@ def start_position_sync_scheduler():
     sync_thread = threading.Thread(target=sync_loop, daemon=True)
     sync_thread.start()
     app_logger.info("✅ Automatic position sync started (every 10 seconds)")
+
+# Entry Bot helper functions
+def add_entry_bot_log(level, message):
+    """Add a log entry to the Entry Bot logs"""
+    global entry_bot_logs
+    timestamp = datetime.now().isoformat()
+    log_entry = {
+        'timestamp': timestamp,
+        'level': level,
+        'message': message
+    }
+    entry_bot_logs.append(log_entry)
+    
+    # Keep only the last 100 logs
+    if len(entry_bot_logs) > 100:
+        entry_bot_logs = entry_bot_logs[-100:]
+    
+    # Also log to the main application logger
+    if level == 'error':
+        app_logger.error(f"Entry Bot: {message}")
+    elif level == 'warning':
+        app_logger.warning(f"Entry Bot: {message}")
+    else:
+        app_logger.info(f"Entry Bot: {message}")
+
+def get_mock_stock_data(symbol):
+    """Get mock stock data for demonstration purposes"""
+    # This would be replaced with real market data API calls
+    import random
+    
+    # Generate realistic mock data
+    base_price = random.uniform(50, 200)
+    current_price = base_price + random.uniform(-5, 5)
+    volume = random.uniform(1, 10)  # in millions
+    dollar_volume = volume * current_price
+    
+    return {
+        'symbol': symbol,
+        'current_price': round(current_price, 2),
+        'volume': round(volume, 2),  # in millions
+        'dollar_volume': round(dollar_volume, 2),  # in millions
+        'timestamp': datetime.now().isoformat()
+    }
+
+def check_entry_conditions(symbol_data, entry_params):
+    """Check if entry conditions are met for a symbol"""
+    try:
+        current_volume = symbol_data['volume']
+        current_dollar_volume = symbol_data['dollar_volume']
+        current_time = datetime.now().time()
+        
+        # Parse entry time (assuming format like "10:00")
+        entry_time_str = entry_params['entry_time']
+        entry_hour, entry_minute = map(int, entry_time_str.split(':'))
+        entry_time = time_class(entry_hour, entry_minute)
+        
+        # Check conditions
+        volume_met = current_volume >= float(entry_params['total_volume'])
+        dollar_volume_met = current_dollar_volume >= float(entry_params['dollar_volume'])
+        time_met = current_time >= entry_time
+        
+        conditions_met = volume_met and dollar_volume_met and time_met
+        
+        return {
+            'conditions_met': conditions_met,
+            'volume_met': volume_met,
+            'dollar_volume_met': dollar_volume_met,
+            'time_met': time_met,
+            'current_volume': current_volume,
+            'current_dollar_volume': current_dollar_volume,
+            'current_time': current_time.strftime('%H:%M:%S'),
+            'entry_time': entry_time_str
+        }
+    except Exception as e:
+        add_entry_bot_log('error', f"Error checking entry conditions for {symbol_data.get('symbol', 'Unknown')}: {e}")
+        return {
+            'conditions_met': False,
+            'volume_met': False,
+            'dollar_volume_met': False,
+            'time_met': False,
+            'error': str(e)
+        }
+
+def enter_position(symbol, entry_price, entry_params):
+    """Enter a position for a symbol at the given price"""
+    global active_positions, entry_bot_stats
+    
+    try:
+        # Generate a unique position ID
+        position_id = f"ENTRY_{symbol}_{int(time.time())}"
+        
+        # Mock position entry (in real implementation, this would be a market order)
+        position = {
+            'position_id': position_id,
+            'symbol': symbol,
+            'entry_price': entry_price,
+            'entry_time': datetime.now().isoformat(),
+            'quantity': 100,  # Mock quantity - in real implementation this would be calculated based on risk
+            'entry_params': entry_params,
+            'status': 'active'
+        }
+        
+        # Store the position
+        active_positions[position_id] = position
+        
+        # Update bot statistics
+        entry_bot_stats['positions_entered'] += 1
+        entry_bot_stats['active_positions_count'] = len(active_positions)
+        
+        add_entry_bot_log('info', f"✅ Position entered for {symbol} at ${entry_price} - Position ID: {position_id}")
+        
+        return True, position_id
+        
+    except Exception as e:
+        add_entry_bot_log('error', f"❌ Failed to enter position for {symbol}: {e}")
+        return False, None
+
+def continuous_tracking_loop():
+    """Background thread function for continuous tracking every 1 second"""
+    global tracking_active, tracking_symbols, active_positions
+    
+    while tracking_active:
+        try:
+            if tracking_symbols:
+                # Log tracking activity
+                symbols_list = list(tracking_symbols.keys())
+                app_logger.info(f"🔄 Continuous tracking check for symbols: {', '.join(symbols_list)}")
+                
+                # Check each symbol's conditions
+                for symbol, params in tracking_symbols.items():
+                    try:
+                        # Skip if we already have an active position for this symbol
+                        if any(pos['symbol'] == symbol for pos in active_positions.values()):
+                            continue
+                        
+                        # Get current market data
+                        current_data = get_mock_stock_data(symbol)
+                        
+                        # Check entry conditions
+                        conditions = check_entry_conditions(current_data, params)
+                        
+                        # Log condition status
+                        if conditions['conditions_met']:
+                            app_logger.info(f"✅ {symbol}: All conditions met! Volume: {conditions['current_volume']}M >= {params['total_volume']}M, Dollar Vol: ${conditions['current_dollar_volume']}M >= ${params['dollar_volume']}M, Time: {conditions['current_time']} >= {conditions['entry_time']}")
+                            
+                            # Enter position at ask price (market order)
+                            entry_price = current_data['current_price']
+                            success, position_id = enter_position(symbol, entry_price, params)
+                            
+                            if success:
+                                # Remove from tracking since position is entered
+                                del tracking_symbols[symbol]
+                                app_logger.info(f"🎯 Position entered for {symbol} - removed from tracking")
+                            else:
+                                app_logger.error(f"❌ Failed to enter position for {symbol}")
+                        else:
+                            app_logger.info(f"⏳ {symbol}: Conditions not met - Volume: {conditions['current_volume']}M/{params['total_volume']}M, Dollar Vol: ${conditions['current_dollar_volume']}M/${params['dollar_volume']}M, Time: {conditions['current_time']}/{conditions['entry_time']}")
+                            
+                    except Exception as e:
+                        app_logger.error(f"❌ Error tracking {symbol}: {e}")
+                
+            # Wait 1 second before next check
+            time.sleep(1)
+            
+        except Exception as e:
+            app_logger.error(f"❌ Error in continuous tracking loop: {e}")
+            time.sleep(1)  # Continue even if there's an error
+
+def start_continuous_tracking():
+    """Start the continuous tracking thread"""
+    global tracking_thread, tracking_active
+    
+    if tracking_active:
+        app_logger.warning("⚠️ Continuous tracking is already active")
+        return
+    
+    tracking_active = True
+    tracking_thread = threading.Thread(target=continuous_tracking_loop, daemon=True)
+    tracking_thread.start()
+    app_logger.info("🚀 Continuous tracking started (every 1 second)")
+
+def stop_continuous_tracking():
+    """Stop the continuous tracking thread"""
+    global tracking_active, tracking_thread
+    
+    if not tracking_active:
+        app_logger.warning("⚠️ Continuous tracking is not active")
+        return
+    
+    tracking_active = False
+    if tracking_thread and tracking_thread.is_alive():
+        tracking_thread.join(timeout=2)  # Wait up to 2 seconds for thread to stop
+    app_logger.info("🛑 Continuous tracking stopped")
 
 # Simple auth endpoints for frontend compatibility
 @app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
@@ -1877,6 +2082,280 @@ def get_available_dates():
         })
     except Exception as e:
         app_logger.error(f"Error getting available dates: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Entry Bot API endpoints
+@app.route('/api/entry-bot/status', methods=['GET'])
+def get_entry_bot_status():
+    """Get Entry Bot status"""
+    try:
+        global entry_bot_running, entry_bot_stats, active_positions
+        
+        # Update active positions count
+        entry_bot_stats['active_positions_count'] = len(active_positions)
+        
+        status = {
+            'internal_running_state': entry_bot_running,
+            'positions_entered': entry_bot_stats['positions_entered'],
+            'active_positions_count': entry_bot_stats['active_positions_count']
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': status,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting entry bot status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/start', methods=['POST'])
+def start_entry_bot():
+    """Start Entry Bot"""
+    try:
+        global entry_bot_running
+        
+        if entry_bot_running:
+            return jsonify({
+                'success': False,
+                'error': 'Entry Bot is already running'
+            }), 400
+        
+        entry_bot_running = True
+        add_entry_bot_log('info', "🚀 Entry Bot started successfully")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Entry Bot started successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error starting entry bot: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/stop', methods=['POST'])
+def stop_entry_bot():
+    """Stop Entry Bot"""
+    try:
+        global entry_bot_running
+        
+        if not entry_bot_running:
+            return jsonify({
+                'success': False,
+                'error': 'Entry Bot is not running'
+            }), 400
+        
+        entry_bot_running = False
+        add_entry_bot_log('info', "🛑 Entry Bot stopped successfully")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Entry Bot stopped successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error stopping entry bot: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/submit-parameters', methods=['POST'])
+def submit_entry_parameters():
+    """Submit Entry Bot parameters"""
+    try:
+        global tracking_symbols
+        
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        symbol = data.get('symbol', '').upper()
+        total_volume = data.get('total_volume')
+        dollar_volume = data.get('dollar_volume')
+        entry_time = data.get('entry_time')
+        
+        if not all([symbol, total_volume, dollar_volume, entry_time]):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required parameters: symbol, total_volume, dollar_volume, entry_time'
+            }), 400
+        
+        # Store the tracking parameters
+        tracking_symbols[symbol] = {
+            'symbol': symbol,
+            'total_volume': float(total_volume),
+            'dollar_volume': float(dollar_volume),
+            'entry_time': entry_time,
+            'submitted_at': datetime.now().isoformat(),
+            'status': 'tracking'
+        }
+        
+        # Start continuous tracking if this is the first symbol
+        if len(tracking_symbols) == 1:
+            start_continuous_tracking()
+        
+        add_entry_bot_log('info', f"📝 Entry parameters submitted for {symbol}: Volume={total_volume}M, Dollar Volume={dollar_volume}M, Time={entry_time}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Entry parameters submitted for {symbol}',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error submitting entry parameters: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/tracking-status', methods=['GET'])
+def get_tracking_status():
+    """Get tracking status for all symbols"""
+    try:
+        global tracking_symbols
+        
+        tracking_status = []
+        
+        for symbol, params in tracking_symbols.items():
+            # Get current market data for the symbol
+            current_data = get_mock_stock_data(symbol)
+            
+            # Check if entry conditions are met
+            conditions = check_entry_conditions(current_data, params)
+            
+            # Create tracking status entry
+            status_entry = {
+                'symbol': symbol,
+                'submitted_at': params['submitted_at'],
+                'entry_parameters': {
+                    'total_volume': params['total_volume'],
+                    'dollar_volume': params['dollar_volume'],
+                    'entry_time': params['entry_time']
+                },
+                'current_data': {
+                    'current_price': current_data['current_price'],
+                    'current_volume': current_data['volume'],
+                    'current_dollar_volume': current_data['dollar_volume'],
+                    'current_time': current_data['timestamp']
+                },
+                'conditions': conditions,
+                'status': params['status']
+            }
+            
+            tracking_status.append(status_entry)
+        
+        return jsonify({
+            'success': True,
+            'tracking_symbols': tracking_status,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting tracking status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/stop-tracking', methods=['POST'])
+def stop_tracking_symbol():
+    """Stop tracking a specific symbol"""
+    try:
+        global tracking_symbols
+        
+        data = request.get_json()
+        
+        if not data or 'symbol' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Symbol not provided'
+            }), 400
+        
+        symbol = data['symbol'].upper()
+        
+        if symbol not in tracking_symbols:
+            return jsonify({
+                'success': False,
+                'error': f'Symbol {symbol} is not being tracked'
+            }), 404
+        
+        # Remove the symbol from tracking
+        del tracking_symbols[symbol]
+        
+        # Stop continuous tracking if no symbols are left
+        if len(tracking_symbols) == 0:
+            stop_continuous_tracking()
+        
+        add_entry_bot_log('info', f"🛑 Stopped tracking for {symbol}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Stopped tracking {symbol}',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error stopping tracking: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/active-positions', methods=['GET'])
+def get_active_positions():
+    """Get active positions entered by the Entry Bot"""
+    try:
+        global active_positions
+        
+        # Convert positions to list format for frontend
+        positions_list = []
+        for position_id, position in active_positions.items():
+            positions_list.append({
+                'position_id': position_id,
+                'symbol': position['symbol'],
+                'entry_price': position['entry_price'],
+                'entry_time': position['entry_time'],
+                'quantity': position['quantity'],
+                'status': position['status']
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': positions_list,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting active positions: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/debug-logs', methods=['GET'])
+def get_debug_logs():
+    """Get debug logs for Entry Bot"""
+    try:
+        global entry_bot_logs
+        
+        return jsonify({
+            'success': True,
+            'logs': entry_bot_logs,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting debug logs: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

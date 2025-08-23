@@ -46,7 +46,13 @@ const app = createApp({
                 dasReconnect: false,
                 botToggle: false,
                 positions: false,
-                syncPositions: false
+                syncPositions: false,
+                            // Entry Bot loading states
+            submitEntry: false,
+            refreshTracking: false,
+            refreshPositions: false,
+            refreshLogs: false,
+            toggleEntryBot: false
                 },
                 
                 // Charts
@@ -178,6 +184,36 @@ const app = createApp({
                 thread_alive: false
             },
             
+            // Entry Bot Data
+            entryBotStatus: {
+                internal_running_state: false,
+                positions_entered: 0,
+                entry_success_rate: 0,
+                active_positions_count: 0
+            },
+            
+            // Entry Form Data
+            entryForm: {
+                symbol: '',
+                totalVolume: '',
+                dollarVolume: '',
+                entryTime: ''
+            },
+            
+            // Tracking Symbols
+            trackingSymbols: [],
+            
+            // Active Positions
+            activePositions: [],
+            
+            // Debug Logs
+            debugLogs: [],
+            
+            // Continuous tracking interval
+            trackingInterval: null,
+            
+
+            
                             // Dashboard chart data - Direct from database
                 dashboardTrades: [],
                 dashboardPnL: [],
@@ -296,16 +332,21 @@ const app = createApp({
                 } else if (tabName === 'bot') {
                     console.log('🤖 Bot tab selected - loading bot status with real-time updates...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadBotStatusWithRealTime();
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadTradeHistory();
                 } else if (tabName === 'positions') {
                     console.log('📈 Positions History tab selected - loading positions history...');
                     console.log('🔍 This is the positions tab handler - starting execution...');
                     
                     try {
+                        // Stop continuous tracking when leaving entry bot tab
+                        this.stopContinuousTracking();
+                        
                         // Load position sync status first
                         console.log('🔄 Loading position sync status...');
                         await this.loadPositionSyncStatus();
@@ -345,14 +386,26 @@ const app = createApp({
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
+                } else if (tabName === 'entry-bot') {
+                    console.log('🤖 Entry Bot tab selected - loading entry bot status...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.loadEntryBotStatus();
+                    this.updateTrackingStatus();
+                    this.updateActivePositions();
+                    this.updateDebugLogs();
+                    // Start continuous tracking every 1 second
+                    this.startContinuousTracking();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // Historical tab is ready for user input, no auto-loading needed
                 } else if (tabName === 'ai-chat') {
                     console.log('🤖 AI Chat tab selected - ready for chat...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // AI chat tab is ready for user interaction
                 }
             },
@@ -3407,6 +3460,275 @@ const app = createApp({
                     });
                 }
             }, 50);
+        },
+        
+        // Entry Bot Methods
+        async toggleEntryBot() {
+            try {
+                this.loading.toggleEntryBot = true;
+                const action = this.entryBotStatus.internal_running_state ? 'stop' : 'start';
+                
+                const response = await axios.post(`/api/entry-bot/${action}`);
+                
+                if (response.data.success) {
+                    this.entryBotStatus.internal_running_state = !this.entryBotStatus.internal_running_state;
+                    this.addDebugLog('info', `Entry bot ${action}ed successfully`);
+                } else {
+                    this.addDebugLog('error', `Failed to ${action} entry bot: ${response.data.message}`);
+                }
+            } catch (error) {
+                console.error('Error toggling entry bot:', error);
+                this.addDebugLog('error', `Error toggling entry bot: ${error.message}`);
+            } finally {
+                this.loading.toggleEntryBot = false;
+            }
+        },
+        
+        async submitEntryParameters() {
+            try {
+                this.loading.submitEntry = true;
+                
+                const entryData = {
+                    symbol: this.entryForm.symbol.toUpperCase(),
+                    total_volume: parseInt(this.entryForm.totalVolume),
+                    dollar_volume: parseInt(this.entryForm.dollarVolume),
+                    entry_time: this.entryForm.entryTime
+                };
+                
+                const response = await axios.post('/api/entry-bot/submit-parameters', entryData);
+                
+                if (response.data.success) {
+                    this.addDebugLog('info', `Entry parameters submitted for ${entryData.symbol}`);
+                    this.updateTrackingStatus();
+                    
+                    // Clear form
+                    this.entryForm = {
+                        symbol: '',
+                        totalVolume: '',
+                        dollarVolume: '',
+                        entryTime: ''
+                    };
+                } else {
+                    this.addDebugLog('error', `Failed to submit entry parameters: ${response.data.message}`);
+                }
+            } catch (error) {
+                console.error('Error submitting entry parameters:', error);
+                this.addDebugLog('error', `Error submitting entry parameters: ${error.message}`);
+            } finally {
+                this.loading.submitEntry = false;
+            }
+        },
+        
+        async refreshTrackingStatus() {
+            try {
+                this.loading.refreshTracking = true;
+                
+                const response = await axios.get('/api/entry-bot/tracking-status');
+                
+                if (response.data.success) {
+                    this.trackingSymbols = response.data.tracking_symbols || [];
+                    this.addDebugLog('info', `Tracking status refreshed: ${this.trackingSymbols.length} symbols`);
+                } else {
+                    this.addDebugLog('error', `Failed to refresh tracking status: ${response.data.message}`);
+                }
+            } catch (error) {
+                console.error('Error refreshing tracking status:', error);
+                this.addDebugLog('error', `Error refreshing tracking status: ${error.message}`);
+            } finally {
+                this.loading.refreshTracking = false;
+            }
+        },
+
+        async refreshActivePositions() {
+            try {
+                this.loading.refreshPositions = true;
+                const response = await axios.get('/api/entry-bot/active-positions');
+                
+                if (response.data.success) {
+                    this.activePositions = response.data.data;
+                    this.addDebugLog('info', `Active positions refreshed - ${this.activePositions.length} positions active`);
+                } else {
+                    this.addDebugLog('error', `Failed to refresh active positions: ${response.data.error}`);
+                }
+            } catch (error) {
+                console.error('Error refreshing active positions:', error);
+                this.addDebugLog('error', `Error refreshing active positions: ${error.message}`);
+            } finally {
+                this.loading.refreshPositions = false;
+            }
+        },
+        
+        async stopTrackingSymbol(symbol) {
+            try {
+                const response = await axios.post('/api/entry-bot/stop-tracking', { symbol });
+                
+                if (response.data.success) {
+                    this.addDebugLog('info', `Stopped tracking ${symbol}`);
+                    this.updateTrackingStatus();
+                } else {
+                    this.addDebugLog('error', `Failed to stop tracking ${symbol}: ${response.data.message}`);
+                }
+            } catch (error) {
+                console.error('Error stopping tracking:', error);
+                this.addDebugLog('error', `Error stopping tracking ${symbol}: ${error.message}`);
+            }
+        },
+        
+        async refreshDebugLogs() {
+            try {
+                this.loading.refreshLogs = true;
+                
+                const response = await axios.get('/api/entry-bot/debug-logs');
+                
+                if (response.data.success) {
+                    this.debugLogs = response.data.logs || [];
+                } else {
+                    this.addDebugLog('error', `Failed to refresh debug logs: ${response.data.message}`);
+                }
+            } catch (error) {
+                console.error('Error refreshing debug logs:', error);
+                this.addDebugLog('error', `Error refreshing debug logs: ${error.message}`);
+            } finally {
+                this.loading.refreshLogs = false;
+            }
+        },
+        
+        clearDebugLogs() {
+            this.debugLogs = [];
+            this.addDebugLog('info', 'Debug logs cleared');
+        },
+        
+        addDebugLog(level, message) {
+            const log = {
+                id: Date.now(),
+                timestamp: new Date().toISOString(),
+                level: level,
+                message: message
+            };
+            
+            this.debugLogs.unshift(log);
+            
+            // Keep only last 100 logs
+            if (this.debugLogs.length > 100) {
+                this.debugLogs = this.debugLogs.slice(0, 100);
+            }
+        },
+        
+        getTrackingStatusColor(status) {
+            switch (status.toLowerCase()) {
+                case 'tracking':
+                    return 'bg-blue-100 text-blue-800';
+                case 'triggered':
+                    return 'bg-green-100 text-green-800';
+                case 'expired':
+                    return 'bg-red-100 text-red-800';
+                case 'paused':
+                    return 'bg-yellow-100 text-yellow-800';
+                default:
+                    return 'bg-gray-100 text-gray-800';
+            }
+        },
+        
+        getConditionsMetColor(conditionsMet) {
+            return conditionsMet ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        },
+        
+        getLogLevelColor(level) {
+            switch (level.toLowerCase()) {
+                case 'error':
+                    return 'text-red-400';
+                case 'warning':
+                    return 'text-yellow-400';
+                case 'info':
+                    return 'text-blue-400';
+                case 'debug':
+                    return 'text-gray-400';
+                default:
+                    return 'text-white';
+            }
+        },
+        
+        formatDateTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        },
+        
+        async loadEntryBotStatus() {
+            try {
+                const response = await axios.get('/api/entry-bot/status');
+                
+                if (response.data.success) {
+                    this.entryBotStatus = response.data.data;
+                    this.addDebugLog('info', 'Entry bot status loaded successfully');
+                } else {
+                    this.addDebugLog('error', `Failed to load entry bot status: ${response.data.error}`);
+                }
+            } catch (error) {
+                console.error('Error loading entry bot status:', error);
+                this.addDebugLog('error', `Error loading entry bot status: ${error.message}`);
+            }
+        },
+        
+        startContinuousTracking() {
+            // Stop any existing tracking interval
+            this.stopContinuousTracking();
+            
+            // Start new tracking interval every 1 second
+            this.trackingInterval = setInterval(() => {
+                // Update tracking status without loading states (smooth updates)
+                this.updateTrackingStatus();
+                // Update active positions without loading states (smooth updates)
+                this.updateActivePositions();
+                // Update debug logs without loading states (smooth updates)
+                this.updateDebugLogs();
+            }, 1000);
+            
+            this.addDebugLog('info', 'Continuous tracking started (every 1 second)');
+        },
+        
+        stopContinuousTracking() {
+            if (this.trackingInterval) {
+                clearInterval(this.trackingInterval);
+                this.trackingInterval = null;
+                this.addDebugLog('info', 'Continuous tracking stopped');
+            }
+        },
+        
+        // Smooth update methods without loading states
+        async updateTrackingStatus() {
+            try {
+                const response = await axios.get('/api/entry-bot/tracking-status');
+                
+                if (response.data.success) {
+                    this.trackingSymbols = response.data.tracking_symbols || [];
+                }
+            } catch (error) {
+                console.error('Error updating tracking status:', error);
+            }
+        },
+        
+        async updateActivePositions() {
+            try {
+                const response = await axios.get('/api/entry-bot/active-positions');
+                
+                if (response.data.success) {
+                    this.activePositions = response.data.data;
+                }
+            } catch (error) {
+                console.error('Error updating active positions:', error);
+            }
+        },
+        
+        async updateDebugLogs() {
+            try {
+                const response = await axios.get('/api/entry-bot/debug-logs');
+                
+                if (response.data.success) {
+                    this.debugLogs = response.data.logs || [];
+                }
+            } catch (error) {
+                console.error('Error updating debug logs:', error);
+            }
         }
         }
     });

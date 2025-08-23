@@ -98,10 +98,15 @@
                         class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
                     <i class="fas fa-history mr-2"></i>Historical
                 </button>
+                <button @click="activeTab = 'entry-bot'; onTabChange('entry-bot')" 
+                        :class="activeTab === 'entry-bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
+                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
+                    <i class="fas fa-play mr-2"></i>Entry Bot
+                </button>
                 <button @click="activeTab = 'bot'; onTabChange('bot')" 
                         :class="activeTab === 'bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
                         class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-robot mr-2"></i>Bot
+                    <i class="fas fa-robot mr-2"></i>Exit Bot
                 </button>
                 <button @click="activeTab = 'trades'; onTabChange('trades')" 
                         :class="activeTab === 'trades' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
@@ -844,6 +849,313 @@
                 </div>
             </div>
 
+            <!-- Entry Bot Tab -->
+            <div v-if="activeTab === 'entry-bot'" class="space-y-6">
+                <!-- Entry Bot Status Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Entry Bot Status</h3>
+                        <div class="flex items-center space-x-4">
+                            <button @click="toggleEntryBot" 
+                                    :disabled="!botStatus.das_connected"
+                                    :class="entryBotStatus.internal_running_state ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'"
+                                    class="px-4 py-2 rounded-md text-sm font-medium disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                <i :class="entryBotStatus.internal_running_state ? 'fas fa-stop' : 'fas fa-play'" class="mr-2"></i>
+                                {{ entryBotStatus.internal_running_state ? 'Stop Entry Bot' : 'Start Entry Bot' }}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Status Cards Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <div class="w-3 h-3 rounded-full" :class="entryBotStatus.internal_running_state ? 'bg-green-400' : 'bg-red-400'"></div>
+                                <span class="text-sm font-medium" :class="entryBotStatus.internal_running_state ? 'text-green-400' : 'text-red-400'">
+                                    {{ entryBotStatus.internal_running_state ? 'Running' : 'Stopped' }}
+                                </span>
+                            </div>
+                            <p class="text-xs text-gray-400">Entry Bot Status</p>
+                            <p v-if="!botStatus.das_connected && entryBotStatus.internal_running_state" class="text-xs text-orange-400 mt-1">
+                                (Paused - DAS Disconnected)
+                            </p>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <div class="w-3 h-3 rounded-full" :class="botStatus.das_connected ? 'bg-green-400' : 'bg-red-400'"></div>
+                                <span class="text-sm font-medium" :class="botStatus.das_connected ? 'text-green-400' : 'text-red-400'">
+                                    {{ botStatus.das_connected ? 'Connected' : 'Disconnected' }}
+                                </span>
+                            </div>
+                            <p class="text-xs text-gray-400">DAS Connection</p>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="text-2xl font-bold text-white">{{ entryBotStatus.positions_entered || 0 }}</div>
+                            <p class="text-xs text-gray-400">Positions Entered</p>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="text-2xl font-bold text-white">{{ entryBotStatus.active_positions_count || 0 }}</div>
+                            <p class="text-xs text-gray-400">Active Positions</p>
+                        </div>
+                    </div>
+                    
+                    <!-- DAS Connection Warning -->
+                    <div v-if="!botStatus.das_connected" class="bg-red-900 border border-red-700 rounded-lg p-4 mt-4">
+                        <div class="flex items-center space-x-3">
+                            <i class="fas fa-exclamation-triangle text-red-400 text-xl"></i>
+                            <div>
+                                <h4 class="text-sm font-medium text-red-100">DAS Trader Not Connected</h4>
+                                <p class="text-xs text-red-200 mt-1">
+                                    The entry bot cannot start without a connection to DAS Trader. Please ensure DAS Trader is running and connected.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- DAS Connection Management -->
+                    <div class="bg-gray-800 rounded-lg p-4 mt-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-md font-medium text-white">DAS Connection Management</h4>
+                            <button @click="checkDasConnection" 
+                                    :disabled="loading.dasConnection"
+                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-xs font-medium">
+                                <i :class="loading.dasConnection ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-1"></i>
+                                {{ loading.dasConnection ? 'Checking...' : 'Check Connection' }}
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 rounded-full" :class="botStatus.das_connected ? 'bg-green-400' : 'bg-red-400'"></div>
+                                <span class="text-sm" :class="botStatus.das_connected ? 'text-green-400' : 'text-red-400'">
+                                    {{ botStatus.das_connected ? 'Connected' : 'Disconnected' }}
+                                </span>
+                            </div>
+                            
+                            <button @click="reconnectDas" 
+                                    :disabled="loading.dasReconnect || botStatus.das_connected"
+                                    class="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-xs font-medium">
+                                <i :class="loading.dasReconnect ? 'fas fa-spinner fa-spin' : 'fas fa-plug'" class="mr-1"></i>
+                                {{ loading.dasReconnect ? 'Reconnecting...' : 'Reconnect to DAS' }}
+                            </button>
+                        </div>
+                        
+                        <p class="text-xs text-gray-400 mt-2">
+                            Use "Check Connection" to verify DAS status or "Reconnect to DAS" to force a new connection.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Entry Parameters Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Entry Parameters</h3>
+                        <button @click="submitEntryParameters" 
+                                :disabled="loading.submitEntry || !entryForm.symbol || !entryForm.totalVolume || !entryForm.dollarVolume || !entryForm.entryTime"
+                                class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium">
+                            <i :class="loading.submitEntry ? 'fas fa-spinner fa-spin' : 'fas fa-paper-plane'" class="mr-2"></i>
+                            {{ loading.submitEntry ? 'Submitting...' : 'Submit Entry Parameters' }}
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <!-- Symbol -->
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Symbol</label>
+                            <input v-model="entryForm.symbol" 
+                                   type="text" 
+                                   placeholder="e.g., AAPL"
+                                   class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        
+                        <!-- Total Volume -->
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Volume (M)</label>
+                            <input v-model="entryForm.totalVolume" 
+                                   type="number" 
+                                   placeholder="e.g., 1.5"
+                                   class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        
+                        <!-- Dollar Volume -->
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Dollar Volume (M)</label>
+                            <input v-model="entryForm.dollarVolume" 
+                                   type="number" 
+                                   placeholder="e.g., 50.0"
+                                   class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        
+                        <!-- Entry Time -->
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Entry Time (ET)</label>
+                            <input v-model="entryForm.entryTime" 
+                                   type="time" 
+                                   class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 p-4 bg-blue-900 border border-blue-700 rounded-lg">
+                        <div class="flex items-center space-x-3">
+                            <i class="fas fa-info-circle text-blue-400"></i>
+                            <div>
+                                <h4 class="text-sm font-medium text-blue-100">Entry Parameters Guide</h4>
+                                <p class="text-xs text-blue-200 mt-1">
+                                    <strong>Symbol:</strong> Stock ticker symbol (e.g., AAPL, TSLA)<br>
+                                    <strong>Total Volume:</strong> Total volume the stock has traded since pre-market open in millions<br>
+                                    <strong>Dollar Volume:</strong> Calculated as Total Volume traded * Current Price of the stock (M)<br>
+                                    <strong>Entry Time:</strong> Time after which the bot should consider entries (e.g., 10:00 AM ET)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Positions Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Active Positions</h3>
+                        <div class="flex items-center space-x-2">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                                <span class="text-sm text-green-400 font-medium">Live Updates</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div v-if="activePositions.length === 0" class="text-center py-8">
+                        <i class="fas fa-chart-line text-gray-500 text-4xl mb-4"></i>
+                        <p class="text-gray-400">No active positions</p>
+                        <p class="text-gray-500 text-sm mt-2">Positions will appear here when entry conditions are met</p>
+                    </div>
+                    
+                    <div v-else class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Quantity</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Position ID</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-800 divide-y divide-gray-700">
+                                <tr v-for="position in activePositions" :key="position.position_id" class="hover:bg-gray-700">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.entry_price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.quantity }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatDateTime(position.entry_time) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                            {{ position.status }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">{{ position.position_id }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tracking Status Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Tracking Status</h3>
+                        <div class="flex items-center space-x-2">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                                <span class="text-sm text-blue-400 font-medium">Tracking...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div v-if="trackingSymbols.length === 0" class="text-center py-8">
+                        <i class="fas fa-search text-2xl text-gray-400"></i>
+                        <p class="mt-2 text-gray-400">No symbols are currently being tracked</p>
+                        <p class="text-sm text-gray-500">Submit entry parameters above to start tracking symbols</p>
+                    </div>
+                    
+                    <div v-else class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Required Volume (M)</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Required Dollar Vol (M)</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Volume (M)</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Dollar Vol (M)</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Conditions Met</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-800 divide-y divide-gray-700">
+                                <tr v-for="symbol in trackingSymbols" :key="symbol.symbol" class="hover:bg-gray-700">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ symbol.symbol }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatNumber(symbol.entry_parameters.total_volume) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ formatNumber(symbol.entry_parameters.dollar_volume) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ symbol.entry_parameters.entry_time }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatNumber(symbol.current_data.current_volume) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ formatNumber(symbol.current_data.current_dollar_volume) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ symbol.conditions.current_time }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span :class="getConditionsMetColor(symbol.conditions.conditions_met)" class="px-2 py-1 rounded text-xs font-medium">
+                                            {{ symbol.conditions.conditions_met ? 'YES' : 'NO' }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <button @click="stopTrackingSymbol(symbol.symbol)" 
+                                                class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-xs font-medium">
+                                            <i class="fas fa-stop mr-1"></i>Stop Tracking
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Debug Logs Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-white">Debug Logs</h3>
+                        <div class="flex items-center space-x-2">
+                            <button @click="clearDebugLogs" 
+                                    class="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-xs font-medium">
+                                <i class="fas fa-trash mr-1"></i>Clear Logs
+                            </button>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+                                <span class="text-sm text-yellow-400 font-medium">Monitoring...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-900 rounded-lg p-4 h-64 overflow-y-auto">
+                        <div v-if="debugLogs.length === 0" class="text-center py-8">
+                            <i class="fas fa-file-alt text-2xl text-gray-400"></i>
+                            <p class="mt-2 text-gray-400">No debug logs available</p>
+                        </div>
+                        
+                        <div v-else class="space-y-2">
+                            <div v-for="log in debugLogs" :key="log.id" 
+                                 class="text-sm font-mono"
+                                 :class="getLogLevelColor(log.level)">
+                                <span class="text-gray-500">[{{ formatDateTime(log.timestamp) }}]</span>
+                                <span class="text-gray-400 mx-2">[{{ log.level.toUpperCase() }}]</span>
+                                <span class="text-white">{{ log.message }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Trade History Tab -->
             <div v-if="activeTab === 'trades'" class="space-y-6">
                 <!-- Header Section -->
@@ -1371,29 +1683,12 @@
                 <!-- Active Positions Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center space-x-3">
-                            <h3 class="text-lg font-medium text-white">Active Positions ({{ botStatus.active_positions_count || 0 }})</h3>
-                            <div v-if="realTimeUpdates.enabled && botStatus.running" class="flex items-center space-x-2">
-                                <div class="w-2 h-2 rounded-full" :class="realTimeUpdates.isUpdating ? 'bg-yellow-400 animate-ping' : 'bg-green-400 animate-pulse'"></div>
-                                <span class="text-xs" :class="realTimeUpdates.isUpdating ? 'text-yellow-400' : 'text-green-400'">
-                                    {{ realTimeUpdates.isUpdating ? 'Updating...' : 'Live Updates' }}
-                                </span>
-                            </div>
-                        </div>
-                        <div class="flex items-center space-x-3">
-                            <div class="flex items-center space-x-2">
-                                <label class="text-xs text-gray-400">Update Interval:</label>
-                                <select v-model="realTimeUpdates.updateInterval" @change="updateRealTimeInterval" 
-                                        class="bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-blue-500 focus:outline-none">
-                                    <option value="1000">1s</option>
-                                    <option value="2000">2s</option>
-                                    <option value="5000">5s</option>
-                                    <option value="10000">10s</option>
-                                </select>
-                            </div>
-                            <button @click="refreshBotPositions" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh Positions
-                            </button>
+                        <h3 class="text-lg font-medium text-white">Active Positions ({{ botStatus.active_positions_count || 0 }})</h3>
+                        <div v-if="realTimeUpdates.enabled && botStatus.running" class="flex items-center space-x-2">
+                            <div class="w-2 h-2 rounded-full" :class="realTimeUpdates.isUpdating ? 'bg-yellow-400 animate-ping' : 'bg-green-400 animate-pulse'"></div>
+                            <span class="text-xs" :class="realTimeUpdates.isUpdating ? 'text-yellow-400' : 'text-green-400'">
+                                {{ realTimeUpdates.isUpdating ? 'Updating...' : 'Live Updates' }}
+                            </span>
                         </div>
                     </div>
                     <div class="overflow-x-auto">
