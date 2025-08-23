@@ -205,6 +205,9 @@ const app = createApp({
             // Debug Logs
             debugLogs: [],
             
+            // Continuous tracking interval
+            trackingInterval: null,
+            
 
             
                             // Dashboard chart data - Direct from database
@@ -325,16 +328,21 @@ const app = createApp({
                 } else if (tabName === 'bot') {
                     console.log('🤖 Bot tab selected - loading bot status with real-time updates...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadBotStatusWithRealTime();
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadTradeHistory();
                 } else if (tabName === 'positions') {
                     console.log('📈 Positions History tab selected - loading positions history...');
                     console.log('🔍 This is the positions tab handler - starting execution...');
                     
                     try {
+                        // Stop continuous tracking when leaving entry bot tab
+                        this.stopContinuousTracking();
+                        
                         // Load position sync status first
                         console.log('🔄 Loading position sync status...');
                         await this.loadPositionSyncStatus();
@@ -374,6 +382,7 @@ const app = createApp({
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
                 } else if (tabName === 'entry-bot') {
                     console.log('🤖 Entry Bot tab selected - loading entry bot status...');
@@ -381,13 +390,17 @@ const app = createApp({
                     this.loadEntryBotStatus();
                     this.refreshTrackingStatus();
                     this.refreshDebugLogs();
+                    // Start continuous tracking every 1 second
+                    this.startContinuousTracking();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // Historical tab is ready for user input, no auto-loading needed
                 } else if (tabName === 'ai-chat') {
                     console.log('🤖 AI Chat tab selected - ready for chat...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // AI chat tab is ready for user interaction
                 }
             },
@@ -3592,6 +3605,10 @@ const app = createApp({
             }
         },
         
+        getConditionsMetColor(conditionsMet) {
+            return conditionsMet ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        },
+        
         getLogLevelColor(level) {
             switch (level.toLowerCase()) {
                 case 'error':
@@ -3625,6 +3642,26 @@ const app = createApp({
             } catch (error) {
                 console.error('Error loading entry bot status:', error);
                 this.addDebugLog('error', `Error loading entry bot status: ${error.message}`);
+            }
+        },
+        
+        startContinuousTracking() {
+            // Stop any existing tracking interval
+            this.stopContinuousTracking();
+            
+            // Start new tracking interval every 1 second
+            this.trackingInterval = setInterval(() => {
+                this.refreshTrackingStatus();
+            }, 1000);
+            
+            this.addDebugLog('info', 'Continuous tracking started (every 1 second)');
+        },
+        
+        stopContinuousTracking() {
+            if (this.trackingInterval) {
+                clearInterval(this.trackingInterval);
+                this.trackingInterval = null;
+                this.addDebugLog('info', 'Continuous tracking stopped');
             }
         }
         }
