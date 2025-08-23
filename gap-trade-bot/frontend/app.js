@@ -47,11 +47,12 @@ const app = createApp({
                 botToggle: false,
                 positions: false,
                 syncPositions: false,
-                // Entry Bot loading states
-                submitEntry: false,
-                refreshTracking: false,
-                refreshLogs: false,
-                toggleEntryBot: false
+                            // Entry Bot loading states
+            submitEntry: false,
+            refreshTracking: false,
+            refreshPositions: false,
+            refreshLogs: false,
+            toggleEntryBot: false
                 },
                 
                 // Charts
@@ -201,6 +202,9 @@ const app = createApp({
             
             // Tracking Symbols
             trackingSymbols: [],
+            
+            // Active Positions
+            activePositions: [],
             
             // Debug Logs
             debugLogs: [],
@@ -388,8 +392,9 @@ const app = createApp({
                     console.log('🤖 Entry Bot tab selected - loading entry bot status...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.loadEntryBotStatus();
-                    this.refreshTrackingStatus();
-                    this.refreshDebugLogs();
+                    this.updateTrackingStatus();
+                    this.updateActivePositions();
+                    this.updateDebugLogs();
                     // Start continuous tracking every 1 second
                     this.startContinuousTracking();
                 } else if (tabName === 'historical') {
@@ -3494,7 +3499,7 @@ const app = createApp({
                 
                 if (response.data.success) {
                     this.addDebugLog('info', `Entry parameters submitted for ${entryData.symbol}`);
-                    this.refreshTrackingStatus();
+                    this.updateTrackingStatus();
                     
                     // Clear form
                     this.entryForm = {
@@ -3533,6 +3538,25 @@ const app = createApp({
                 this.loading.refreshTracking = false;
             }
         },
+
+        async refreshActivePositions() {
+            try {
+                this.loading.refreshPositions = true;
+                const response = await axios.get('/api/entry-bot/active-positions');
+                
+                if (response.data.success) {
+                    this.activePositions = response.data.data;
+                    this.addDebugLog('info', `Active positions refreshed - ${this.activePositions.length} positions active`);
+                } else {
+                    this.addDebugLog('error', `Failed to refresh active positions: ${response.data.error}`);
+                }
+            } catch (error) {
+                console.error('Error refreshing active positions:', error);
+                this.addDebugLog('error', `Error refreshing active positions: ${error.message}`);
+            } finally {
+                this.loading.refreshPositions = false;
+            }
+        },
         
         async stopTrackingSymbol(symbol) {
             try {
@@ -3540,7 +3564,7 @@ const app = createApp({
                 
                 if (response.data.success) {
                     this.addDebugLog('info', `Stopped tracking ${symbol}`);
-                    this.refreshTrackingStatus();
+                    this.updateTrackingStatus();
                 } else {
                     this.addDebugLog('error', `Failed to stop tracking ${symbol}: ${response.data.message}`);
                 }
@@ -3651,7 +3675,12 @@ const app = createApp({
             
             // Start new tracking interval every 1 second
             this.trackingInterval = setInterval(() => {
-                this.refreshTrackingStatus();
+                // Update tracking status without loading states (smooth updates)
+                this.updateTrackingStatus();
+                // Update active positions without loading states (smooth updates)
+                this.updateActivePositions();
+                // Update debug logs without loading states (smooth updates)
+                this.updateDebugLogs();
             }, 1000);
             
             this.addDebugLog('info', 'Continuous tracking started (every 1 second)');
@@ -3662,6 +3691,43 @@ const app = createApp({
                 clearInterval(this.trackingInterval);
                 this.trackingInterval = null;
                 this.addDebugLog('info', 'Continuous tracking stopped');
+            }
+        },
+        
+        // Smooth update methods without loading states
+        async updateTrackingStatus() {
+            try {
+                const response = await axios.get('/api/entry-bot/tracking-status');
+                
+                if (response.data.success) {
+                    this.trackingSymbols = response.data.tracking_symbols || [];
+                }
+            } catch (error) {
+                console.error('Error updating tracking status:', error);
+            }
+        },
+        
+        async updateActivePositions() {
+            try {
+                const response = await axios.get('/api/entry-bot/active-positions');
+                
+                if (response.data.success) {
+                    this.activePositions = response.data.data;
+                }
+            } catch (error) {
+                console.error('Error updating active positions:', error);
+            }
+        },
+        
+        async updateDebugLogs() {
+            try {
+                const response = await axios.get('/api/entry-bot/debug-logs');
+                
+                if (response.data.success) {
+                    this.debugLogs = response.data.logs || [];
+                }
+            } catch (error) {
+                console.error('Error updating debug logs:', error);
             }
         }
         }
