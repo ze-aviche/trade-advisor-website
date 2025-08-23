@@ -1882,6 +1882,182 @@ def get_available_dates():
             'error': str(e)
         }), 500
 
+# Entry Bot API endpoints
+@app.route('/api/entry-bot/status', methods=['GET'])
+def get_entry_bot_status():
+    """Get Entry Bot status"""
+    try:
+        # For now, return mock data - this will be implemented with actual Entry Bot logic
+        status = {
+            'internal_running_state': False,
+            'positions_entered': 0,
+            'entry_success_rate': 0,
+            'active_positions_count': 0
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': status,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting entry bot status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/start', methods=['POST'])
+def start_entry_bot():
+    """Start Entry Bot"""
+    try:
+        app_logger.info("🚀 Starting Entry Bot...")
+        
+        # TODO: Implement actual Entry Bot start logic
+        # For now, just return success
+        
+        return jsonify({
+            'success': True,
+            'message': 'Entry Bot started successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error starting entry bot: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/stop', methods=['POST'])
+def stop_entry_bot():
+    """Stop Entry Bot"""
+    try:
+        app_logger.info("🛑 Stopping Entry Bot...")
+        
+        # TODO: Implement actual Entry Bot stop logic
+        # For now, just return success
+        
+        return jsonify({
+            'success': True,
+            'message': 'Entry Bot stopped successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error stopping entry bot: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/submit-parameters', methods=['POST'])
+def submit_entry_parameters():
+    """Submit Entry Bot parameters"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        symbol = data.get('symbol', '').upper()
+        total_volume = data.get('total_volume')
+        dollar_volume = data.get('dollar_volume')
+        entry_time = data.get('entry_time')
+        
+        if not all([symbol, total_volume, dollar_volume, entry_time]):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required parameters: symbol, total_volume, dollar_volume, entry_time'
+            }), 400
+        
+        app_logger.info(f"📝 Entry parameters submitted for {symbol}: Volume={total_volume}M, Dollar Volume={dollar_volume}M, Time={entry_time}")
+        
+        # TODO: Implement actual parameter storage and tracking logic
+        # For now, just log the parameters
+        
+        return jsonify({
+            'success': True,
+            'message': f'Entry parameters submitted for {symbol}',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error submitting entry parameters: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/tracking-status', methods=['GET'])
+def get_tracking_status():
+    """Get tracking status for all symbols"""
+    try:
+        # TODO: Implement actual tracking status logic
+        # For now, return empty list
+        tracking_symbols = []
+        
+        return jsonify({
+            'success': True,
+            'tracking_symbols': tracking_symbols,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting tracking status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/stop-tracking', methods=['POST'])
+def stop_tracking_symbol():
+    """Stop tracking a specific symbol"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'symbol' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Symbol not provided'
+            }), 400
+        
+        symbol = data['symbol'].upper()
+        app_logger.info(f"🛑 Stopping tracking for {symbol}")
+        
+        # TODO: Implement actual stop tracking logic
+        
+        return jsonify({
+            'success': True,
+            'message': f'Stopped tracking {symbol}',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error stopping tracking: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/entry-bot/debug-logs', methods=['GET'])
+def get_debug_logs():
+    """Get debug logs for Entry Bot"""
+    try:
+        # TODO: Implement actual debug log retrieval
+        # For now, return empty list
+        logs = []
+        
+        return jsonify({
+            'success': True,
+            'logs': logs,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting debug logs: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():

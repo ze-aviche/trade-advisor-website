@@ -378,6 +378,7 @@ const app = createApp({
                 } else if (tabName === 'entry-bot') {
                     console.log('🤖 Entry Bot tab selected - loading entry bot status...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.loadEntryBotStatus();
                     this.refreshTrackingStatus();
                     this.refreshDebugLogs();
                 } else if (tabName === 'historical') {
@@ -3609,6 +3610,22 @@ const app = createApp({
         formatDateTime(timestamp) {
             const date = new Date(timestamp);
             return date.toLocaleString();
+        },
+        
+        async loadEntryBotStatus() {
+            try {
+                const response = await axios.get('/api/entry-bot/status');
+                
+                if (response.data.success) {
+                    this.entryBotStatus = response.data.data;
+                    this.addDebugLog('info', 'Entry bot status loaded successfully');
+                } else {
+                    this.addDebugLog('error', `Failed to load entry bot status: ${response.data.error}`);
+                }
+            } catch (error) {
+                console.error('Error loading entry bot status:', error);
+                this.addDebugLog('error', `Error loading entry bot status: ${error.message}`);
+            }
         }
         }
     });
