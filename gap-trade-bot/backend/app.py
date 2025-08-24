@@ -1580,6 +1580,80 @@ def get_trade_summary():
             'error': str(e)
         }), 500
 
+@app.route('/api/positions/summary', methods=['GET'])
+def get_positions_summary():
+    """Get positions-based summary statistics for dashboard"""
+    try:
+        from database import db_manager
+        
+        # Get positions summary from database
+        summary = db_manager.get_positions_summary()
+        
+        if summary:
+            return jsonify({
+                'success': True,
+                'data': summary,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No positions data found'
+            }), 404
+    except Exception as e:
+        app_logger.error(f"Error getting positions summary: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/pnl-history', methods=['GET'])
+def get_positions_pnl_history():
+    """Get positions-based PnL history for charting"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = int(request.args.get('limit', 100))
+        
+        # Validate limit
+        if limit > 1000:
+            limit = 1000
+        
+        # Get positions PnL history from database
+        positions = db_manager.get_positions_pnl_history(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+        
+        # Get summary statistics
+        summary = db_manager.get_positions_pnl_summary(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'positions': positions,
+                'summary': summary
+            },
+            'timestamp': datetime.now().isoformat(),
+            'count': len(positions)
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting positions PnL history: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/trades/recalculate-pnl', methods=['POST'])
 def recalculate_trade_pnl():
     """Recalculate PnL for all existing trades in the database"""
@@ -2356,6 +2430,103 @@ def get_debug_logs():
         })
     except Exception as e:
         app_logger.error(f"Error getting debug logs: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Positions-based API endpoints (replacing trades endpoints)
+@app.route('/api/positions/total_positions', methods=['GET'])
+def get_total_positions():
+    """Get total count of positions"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # Get total positions count from database
+        total_count = db_manager.get_total_positions_count(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_positions': total_count
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting total positions: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/total_pnl', methods=['GET'])
+def get_total_pnl():
+    """Get total P&L from realized positions"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # Get total P&L from database
+        total_pnl = db_manager.get_total_positions_pnl(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_pnl': total_pnl
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting total P&L: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/positions/winrate', methods=['GET'])
+def get_winrate():
+    """Get win rate from positions"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        symbol = request.args.get('symbol')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # Get win rate from database
+        win_rate = db_manager.get_positions_winrate(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'win_rate': win_rate
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting win rate: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
