@@ -1153,12 +1153,12 @@ class DatabaseManager:
             }
 
     def get_total_positions_count(self, symbol=None, start_date=None, end_date=None):
-        """Get total count of positions"""
+        """Get total count of positions from daily_positions table for historical stats"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                query = 'SELECT COUNT(*) as total FROM positions'
+                query = 'SELECT COUNT(*) as total FROM daily_positions'
                 params = []
                 
                 if symbol:
@@ -1168,11 +1168,11 @@ class DatabaseManager:
                     query += ' WHERE 1=1'
                 
                 if start_date:
-                    query += ' AND date >= ?'
+                    query += ' AND snapshot_date >= ?'
                     params.append(start_date)
                 
                 if end_date:
-                    query += ' AND date <= ?'
+                    query += ' AND snapshot_date <= ?'
                     params.append(end_date)
                 
                 cursor.execute(query, params)
@@ -1184,12 +1184,12 @@ class DatabaseManager:
             return 0
 
     def get_total_positions_pnl(self, symbol=None, start_date=None, end_date=None):
-        """Get total P&L from realized positions"""
+        """Get total P&L from daily_positions table for historical stats"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                query = 'SELECT COALESCE(SUM(realized), 0) as total_pnl FROM positions WHERE realized != 0'
+                query = 'SELECT COALESCE(SUM(realized), 0) as total_pnl FROM daily_positions WHERE realized != 0'
                 params = []
                 
                 if symbol:
@@ -1197,11 +1197,11 @@ class DatabaseManager:
                     params.append(symbol.upper())
                 
                 if start_date:
-                    query += ' AND date >= ?'
+                    query += ' AND snapshot_date >= ?'
                     params.append(start_date)
                 
                 if end_date:
-                    query += ' AND date <= ?'
+                    query += ' AND snapshot_date <= ?'
                     params.append(end_date)
                 
                 cursor.execute(query, params)
@@ -1213,7 +1213,7 @@ class DatabaseManager:
             return 0
 
     def get_positions_winrate(self, symbol=None, start_date=None, end_date=None):
-        """Get win rate from positions"""
+        """Get win rate from daily_positions table for historical stats"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1222,7 +1222,7 @@ class DatabaseManager:
                     SELECT 
                         COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
                         COALESCE(SUM(CASE WHEN realized < 0 THEN 1 ELSE 0 END), 0) as losing_positions
-                    FROM positions
+                    FROM daily_positions
                     WHERE realized != 0
                 '''
                 params = []
@@ -1232,11 +1232,11 @@ class DatabaseManager:
                     params.append(symbol.upper())
                 
                 if start_date:
-                    query += ' AND date >= ?'
+                    query += ' AND snapshot_date >= ?'
                     params.append(start_date)
                 
                 if end_date:
-                    query += ' AND date <= ?'
+                    query += ' AND snapshot_date <= ?'
                     params.append(end_date)
                 
                 cursor.execute(query, params)
@@ -1259,7 +1259,7 @@ class DatabaseManager:
             return 0
 
     def get_daily_pnl_data(self, start_date=None, end_date=None):
-        """Get daily P&L data for charting"""
+        """Get daily P&L data from daily_positions table for charting"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1269,17 +1269,17 @@ class DatabaseManager:
                         date,
                         COALESCE(SUM(realized), 0) as daily_pnl,
                         COUNT(*) as positions_count
-                    FROM positions 
+                    FROM daily_positions 
                     WHERE realized != 0
                 '''
                 params = []
                 
                 if start_date:
-                    query += ' AND date >= ?'
+                    query += ' AND snapshot_date >= ?'
                     params.append(start_date)
                 
                 if end_date:
-                    query += ' AND date <= ?'
+                    query += ' AND snapshot_date <= ?'
                     params.append(end_date)
                 
                 query += '''
@@ -1301,6 +1301,54 @@ class DatabaseManager:
                 return daily_data
         except Exception as e:
             print(f"Database error getting daily P&L data: {e}")
+            return []
+
+    def get_cumulative_pnl_data(self, start_date=None, end_date=None):
+        """Get cumulative P&L data from daily_positions table for growth tracking"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        date,
+                        COALESCE(SUM(realized), 0) as daily_pnl
+                    FROM daily_positions 
+                    WHERE realized != 0
+                '''
+                params = []
+                
+                if start_date:
+                    query += ' AND snapshot_date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND snapshot_date <= ?'
+                    params.append(end_date)
+                
+                query += '''
+                    GROUP BY date 
+                    ORDER BY date ASC
+                '''
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                cumulative_data = []
+                running_total = 0.0
+                
+                for row in rows:
+                    daily_pnl = float(row['daily_pnl'])
+                    running_total += daily_pnl
+                    cumulative_data.append({
+                        'date': row['date'],
+                        'daily_pnl': daily_pnl,
+                        'cumulative_pnl': running_total
+                    })
+                
+                return cumulative_data
+        except Exception as e:
+            print(f"Database error getting cumulative P&L data: {e}")
             return []
 
 # Global database manager instance

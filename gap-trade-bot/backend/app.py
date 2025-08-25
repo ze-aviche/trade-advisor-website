@@ -134,24 +134,160 @@ def add_entry_bot_log(level, message):
     else:
         app_logger.info(f"Entry Bot: {message}")
 
-def get_mock_stock_data(symbol):
-    """Get mock stock data for demonstration purposes"""
-    # This would be replaced with real market data API calls
-    import random
+
+
+# Global DAS connection for reuse
+_das_connection = None
+_das_connection_lock = threading.Lock()
+
+def get_das_connection():
+    """Get or create a DAS connection (singleton pattern)"""
+    global _das_connection
     
-    # Generate realistic mock data
-    base_price = random.uniform(50, 200)
-    current_price = base_price + random.uniform(-5, 5)
-    volume = random.uniform(1, 10)  # in millions
-    dollar_volume = volume * current_price
+    with _das_connection_lock:
+        if _das_connection is None:
+            try:
+                from cmdapi.CMDAPI_PYTHON import Connection
+                _das_connection = Connection()
+                _das_connection.ConnectToServer()
+                app_logger.info("✅ DAS connection established")
+            except Exception as e:
+                app_logger.error(f"❌ Failed to establish DAS connection: {e}")
+                _das_connection = None
+                return None
+        
+        return _das_connection
+
+def close_das_connection():
+    """Close the global DAS connection"""
+    global _das_connection
     
-    return {
-        'symbol': symbol,
-        'current_price': round(current_price, 2),
-        'volume': round(volume, 2),  # in millions
-        'dollar_volume': round(dollar_volume, 2),  # in millions
-        'timestamp': datetime.now().isoformat()
-    }
+    with _das_connection_lock:
+        if _das_connection is not None:
+            try:
+                _das_connection.Disconnect()
+                app_logger.info("🛑 DAS connection closed")
+            except Exception as e:
+                app_logger.error(f"❌ Error closing DAS connection: {e}")
+            finally:
+                _das_connection = None
+
+def get_real_stock_data(symbol):
+    """Get real stock data using DAS CMDAPI Level 1 subscription"""
+    try:
+        from datetime import datetime
+        
+        # Get the shared DAS connection
+        connection = get_das_connection()
+        if connection is None:
+            app_logger.error(f"❌ No DAS connection available for {symbol}")
+            return None
+        
+        # Subscribe to Level 1 data for the symbol
+        subscribe_script = f"SB {symbol.upper()} Lv1\r\n"
+        result = connection.SendScript(bytearray(subscribe_script, encoding="ascii"))
+        
+        if result and result.strip():
+            # Parse the Level 1 response
+            quote_data = _parse_das_level1_response(result, symbol.upper())
+            if quote_data:
+                app_logger.info(f"✅ DAS Level 1 data for {symbol}: Price=${quote_data['current_price']}, Volume={quote_data['volume']}M, Dollar Vol=${quote_data['dollar_volume']}M")
+                return quote_data
+        
+        app_logger.warning(f"No DAS Level 1 data available for {symbol}")
+        return None
+        
+    except Exception as e:
+        app_logger.error(f"Error in get_real_stock_data for {symbol}: {e}")
+        # If there's a connection error, try to reset the connection
+        if "already connected" in str(e) or "10056" in str(e):
+            app_logger.warning("🔄 Resetting DAS connection due to connection error")
+            close_das_connection()
+        return None
+
+def _parse_das_level1_response(response: str, symbol: str):
+    """Parse DAS Level 1 response to extract volume, price, and dollar volume"""
+    try:
+        lines = response.split('\n')
+        for line in lines:
+            line = line.strip()
+            # Look for the $Quote line format: $Quote symbol A:askprice Asz:asksize B:bidprice Bsz:bidsize V:volume L:lastprice Hi:highprice Lo:lowprice op:openprice ycl:yesterdayclose tcl:todayclose PE:primExchange VWAP:vwapValue T:QuoteTime(HHMMSS)
+            if line.startswith('$Quote') and symbol in line:
+                parts = line.split()
+                app_logger.debug(f"Parsing DAS Level 1 line: {line}")
+                
+                # Initialize variables
+                current_price = None
+                volume = None
+                ask_price = None
+                bid_price = None
+                last_price = None
+                
+                for part in parts:
+                    # Extract ask price (A:PRICE)
+                    if part.startswith('A:') and len(part) > 2:
+                        try:
+                            ask_price = float(part[2:])
+                        except ValueError:
+                            continue
+                    
+                    # Extract bid price (B:PRICE)
+                    elif part.startswith('B:') and len(part) > 2:
+                        try:
+                            bid_price = float(part[2:])
+                        except ValueError:
+                            continue
+                    
+                    # Extract last price (L:PRICE)
+                    elif part.startswith('L:') and len(part) > 2:
+                        try:
+                            last_price = float(part[2:])
+                        except ValueError:
+                            continue
+                    
+                    # Extract volume (V:VOLUME)
+                    elif part.startswith('V:') and len(part) > 2:
+                        try:
+                            volume = int(part[2:])
+                        except ValueError:
+                            continue
+                
+                # Determine current price (prefer last price, then ask, then bid)
+                if last_price and last_price > 0:
+                    current_price = last_price
+                elif ask_price and ask_price > 0:
+                    current_price = ask_price
+                elif bid_price and bid_price > 0:
+                    current_price = bid_price
+                else:
+                    app_logger.warning(f"No valid price found in DAS Level 1 data for {symbol}")
+                    return None
+                
+                # Convert volume from shares to millions
+                if volume and volume > 0:
+                    volume_millions = volume / 1_000_000
+                else:
+                    app_logger.warning(f"No valid volume found in DAS Level 1 data for {symbol}")
+                    return None
+                
+                # Calculate dollar volume (volume * current price)
+                dollar_volume_millions = (volume * current_price) / 1_000_000
+                
+                return {
+                    'symbol': symbol.upper(),
+                    'current_price': round(current_price, 2),
+                    'volume': round(volume_millions, 2),  # in millions
+                    'dollar_volume': round(dollar_volume_millions, 2),  # in millions
+                    'timestamp': datetime.now().isoformat(),
+                    'data_source': 'DAS Level 1'
+                }
+        
+        app_logger.warning(f"No valid Level 1 line found for {symbol} in response")
+        return None
+        
+    except Exception as e:
+        app_logger.error(f"Error parsing DAS Level 1 response for {symbol}: {e}")
+        return None
 
 def check_entry_conditions(symbol_data, entry_params):
     """Check if entry conditions are met for a symbol"""
@@ -192,21 +328,92 @@ def check_entry_conditions(symbol_data, entry_params):
             'error': str(e)
         }
 
+def place_das_order(symbol, order_side, route, quantity, order_type, limit_price=None):
+    """Place an order in DAS using CMDAPI"""
+    try:
+        # Import CMDAPI classes
+        from cmdapi.CMDAPI_PYTHON import cmdAPI
+        import uuid
+        
+        # Get the shared DAS connection
+        connection = get_das_connection()
+        if connection is None:
+            add_entry_bot_log('error', f"❌ No DAS connection available for order placement")
+            return False, None, "No DAS connection available"
+        
+        # Generate unique order ID
+        unID = int(uuid.uuid4())
+        
+        # Build the NEWORDER command based on order type
+        if order_type == 'MKT':
+            # Market order: NEWORDER token b/s symbol route share MKT TIF=DAY
+            script = f"NEWORDER {unID} {order_side} {symbol.upper()} {route} {quantity} MKT TIF=DAY"
+        elif order_type == 'LIMIT':
+            # Limit order: NEWORDER token b/s symbol route share price TIF=DAY
+            script = f"NEWORDER {unID} {order_side} {symbol.upper()} {route} {quantity} {limit_price} TIF=DAY"
+        else:
+            raise ValueError(f"Unsupported order type: {order_type}")
+        
+        add_entry_bot_log('info', f"📡 Sending DAS order: {script}")
+        
+        # Send order to DAS
+        result = connection.SendScript(bytearray(script + "\r\n", encoding="ascii"))
+        
+        add_entry_bot_log('info', f"📋 DAS order result: {result}")
+        
+        # Check if order was successful
+        if "SUCCESS" in result.upper() or "ACCEPTED" in result.upper():
+            add_entry_bot_log('info', f"✅ DAS order placed successfully for {symbol}")
+            return True, unID, result
+        else:
+            add_entry_bot_log('error', f"❌ DAS order failed for {symbol}: {result}")
+            return False, None, result
+            
+    except Exception as e:
+        add_entry_bot_log('error', f"❌ Error placing DAS order for {symbol}: {e}")
+        # If there's a connection error, try to reset the connection
+        if "already connected" in str(e) or "10056" in str(e):
+            add_entry_bot_log('warning', "🔄 Resetting DAS connection due to connection error")
+            close_das_connection()
+        return False, None, str(e)
+
 def enter_position(symbol, entry_price, entry_params):
-    """Enter a position for a symbol at the given price"""
+    """Enter a position for a symbol at the given price using DAS"""
     global active_positions, entry_bot_stats
     
     try:
+        # Extract order parameters from entry_params
+        order_side = entry_params.get('order_side', 'B')
+        route = entry_params.get('route', 'SMAT')
+        quantity = entry_params.get('quantity', 100)
+        order_type = entry_params.get('order_type', 'MKT')
+        limit_price = entry_params.get('limit_price')
+        
+        # Place the actual order in DAS
+        success, order_id, result = place_das_order(
+            symbol, order_side, route, quantity, order_type, limit_price
+        )
+        
+        if not success:
+            add_entry_bot_log('error', f"❌ Failed to place DAS order for {symbol}")
+            return False, None
+        
         # Generate a unique position ID
         position_id = f"ENTRY_{symbol}_{int(time.time())}"
         
-        # Mock position entry (in real implementation, this would be a market order)
+        # Store the position details
         position = {
             'position_id': position_id,
+            'order_id': order_id,
             'symbol': symbol,
             'entry_price': entry_price,
             'entry_time': datetime.now().isoformat(),
-            'quantity': 100,  # Mock quantity - in real implementation this would be calculated based on risk
+            'quantity': quantity,
+            'order_side': order_side,
+            'order_type': order_type,
+            'route': route,
+            'limit_price': limit_price,
+            'das_result': result,
             'entry_params': entry_params,
             'status': 'active'
         }
@@ -218,7 +425,7 @@ def enter_position(symbol, entry_price, entry_params):
         entry_bot_stats['positions_entered'] += 1
         entry_bot_stats['active_positions_count'] = len(active_positions)
         
-        add_entry_bot_log('info', f"✅ Position entered for {symbol} at ${entry_price} - Position ID: {position_id}")
+        add_entry_bot_log('info', f"✅ Position entered for {symbol} at ${entry_price} - Position ID: {position_id}, Order ID: {order_id}")
         
         return True, position_id
         
@@ -237,15 +444,21 @@ def continuous_tracking_loop():
                 symbols_list = list(tracking_symbols.keys())
                 app_logger.info(f"🔄 Continuous tracking check for symbols: {', '.join(symbols_list)}")
                 
-                # Check each symbol's conditions
-                for symbol, params in tracking_symbols.items():
+                # Check each symbol's conditions (create a copy to avoid modification during iteration)
+                symbols_to_check = list(tracking_symbols.items())
+                for symbol, params in symbols_to_check:
                     try:
                         # Skip if we already have an active position for this symbol
                         if any(pos['symbol'] == symbol for pos in active_positions.values()):
                             continue
                         
                         # Get current market data
-                        current_data = get_mock_stock_data(symbol)
+                        current_data = get_real_stock_data(symbol)
+                        
+                        # Skip if no data available
+                        if current_data is None:
+                            app_logger.warning(f"⏳ {symbol}: No market data available, skipping check")
+                            continue
                         
                         # Check entry conditions
                         conditions = check_entry_conditions(current_data, params)
@@ -2262,10 +2475,42 @@ def submit_entry_parameters():
         dollar_volume = data.get('dollar_volume')
         entry_time = data.get('entry_time')
         
+        # New DAS order parameters
+        order_side = data.get('order_side', 'B')  # B for Buy, S for Sell
+        route = data.get('route', 'SMAT')  # Default route
+        quantity = data.get('quantity', 100)  # Default quantity
+        order_type = data.get('order_type', 'MKT')  # MKT for Market, LIMIT for Limit orders
+        limit_price = data.get('limit_price')  # Only used for LIMIT orders
+        
         if not all([symbol, total_volume, dollar_volume, entry_time]):
             return jsonify({
                 'success': False,
                 'error': 'Missing required parameters: symbol, total_volume, dollar_volume, entry_time'
+            }), 400
+        
+        # Validate order parameters
+        if order_side not in ['B', 'S']:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid order side. Must be B (Buy) or S (Sell)'
+            }), 400
+        
+        if order_type not in ['MKT', 'LIMIT']:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid order type. Must be MKT (Market) or LIMIT'
+            }), 400
+        
+        if order_type == 'LIMIT' and not limit_price:
+            return jsonify({
+                'success': False,
+                'error': 'Limit price is required for LIMIT orders'
+            }), 400
+        
+        if quantity <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Quantity must be greater than 0'
             }), 400
         
         # Store the tracking parameters
@@ -2274,6 +2519,12 @@ def submit_entry_parameters():
             'total_volume': float(total_volume),
             'dollar_volume': float(dollar_volume),
             'entry_time': entry_time,
+            # DAS order parameters
+            'order_side': order_side,
+            'route': route,
+            'quantity': int(quantity),
+            'order_type': order_type,
+            'limit_price': limit_price,
             'submitted_at': datetime.now().isoformat(),
             'status': 'tracking'
         }
@@ -2306,7 +2557,42 @@ def get_tracking_status():
         
         for symbol, params in tracking_symbols.items():
             # Get current market data for the symbol
-            current_data = get_mock_stock_data(symbol)
+            current_data = get_real_stock_data(symbol)
+            
+            # Handle case where no data is available
+            if current_data is None:
+                status_entry = {
+                    'symbol': symbol,
+                    'submitted_at': params['submitted_at'],
+                    'entry_parameters': {
+                        'total_volume': params['total_volume'],
+                        'dollar_volume': params['dollar_volume'],
+                        'entry_time': params['entry_time']
+                    },
+                    'order_parameters': {
+                        'order_side': params.get('order_side', 'B'),
+                        'route': params.get('route', 'SMAT'),
+                        'quantity': params.get('quantity', 100),
+                        'order_type': params.get('order_type', 'MKT'),
+                        'limit_price': params.get('limit_price')
+                    },
+                    'current_data': {
+                        'current_price': 'N/A',
+                        'current_volume': 'N/A',
+                        'current_dollar_volume': 'N/A',
+                        'current_time': 'N/A'
+                    },
+                    'conditions': {
+                        'conditions_met': False,
+                        'volume_met': False,
+                        'dollar_volume_met': False,
+                        'time_met': False,
+                        'error': 'No market data available'
+                    },
+                    'status': 'no_data'
+                }
+                tracking_status.append(status_entry)
+                continue
             
             # Check if entry conditions are met
             conditions = check_entry_conditions(current_data, params)
@@ -2319,6 +2605,13 @@ def get_tracking_status():
                     'total_volume': params['total_volume'],
                     'dollar_volume': params['dollar_volume'],
                     'entry_time': params['entry_time']
+                },
+                'order_parameters': {
+                    'order_side': params.get('order_side', 'B'),
+                    'route': params.get('route', 'SMAT'),
+                    'quantity': params.get('quantity', 100),
+                    'order_type': params.get('order_type', 'MKT'),
+                    'limit_price': params.get('limit_price')
                 },
                 'current_data': {
                     'current_price': current_data['current_price'],
@@ -2562,6 +2855,36 @@ def get_daily_pnl():
             'error': str(e)
         }), 500
 
+@app.route('/api/positions/cumulative-pnl', methods=['GET'])
+def get_cumulative_pnl():
+    """Get cumulative P&L data for growth tracking"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # Get cumulative P&L data from database
+        cumulative_data = db_manager.get_cumulative_pnl_data(
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'cumulative_pnl': cumulative_data
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting cumulative P&L data: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
@@ -2642,5 +2965,12 @@ if __name__ == '__main__':
     app_logger.info("Starting Gap-Up Detection Web API...")
     app_logger.info("Server will be available at http://localhost:5000")
     
-    # Run the Flask app
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    try:
+        # Run the Flask app
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    except KeyboardInterrupt:
+        app_logger.info("🛑 Shutting down server...")
+    finally:
+        # Clean up DAS connection on shutdown
+        close_das_connection()
+        app_logger.info("✅ Server shutdown complete")

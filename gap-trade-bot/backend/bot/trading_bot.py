@@ -1226,6 +1226,9 @@ class TradingBot:
     def _save_trade_change(self, change: Dict):
         """Save a detected trade change to the database"""
         try:
+            # Import db_manager at the top of the method to avoid scope issues
+            from database import db_manager
+            
             if change['type'] == 'realized_pnl_change':
                 # Only save trades with valid PnL changes and reasonable values
                 pnl_change = change['pnl_change']
@@ -1253,7 +1256,6 @@ class TradingBot:
                 # Use a reasonable price if avg_price is 0
                 if avg_price == 0.0:
                     # Try to get price from recent trades in database
-                    from database import db_manager
                     recent_trades = db_manager.get_trades(symbol=change['symbol'], limit=5)
                     if recent_trades:
                         # Use the most recent trade price
@@ -1538,7 +1540,6 @@ class TradingBot:
         with self._positions_lock:
             # Create a copy of the active positions to avoid iteration issues
             active_positions_copy = dict(self.active_positions)
-            positions_count = self.active_positions_count
         
         # Process the copy outside the lock to avoid blocking
         for symbol, position in active_positions_copy.items():
@@ -1590,11 +1591,14 @@ class TradingBot:
                 'unrealized_pnl_pct': unrealized_pnl_pct
             })
         
+        # Calculate actual count of positions with non-zero size
+        actual_positions_count = len(positions_data)
+        
         return {
             'running': self.is_running,
             'monitoring': self.monitoring,
             'active_positions': positions_data,  # Return active positions data directly
-            'active_positions_count': len(positions_data),  # Use actual count of displayed positions
+            'active_positions_count': actual_positions_count,  # Use actual count of displayed positions
             'last_update': self.last_update.isoformat() if self.last_update else None,
             'profit_target_pct': self.profit_target_pct,
             'stop_loss_pct': self.stop_loss_pct,

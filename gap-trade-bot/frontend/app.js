@@ -73,6 +73,7 @@ const app = createApp({
                     refreshLogs: false,
                     toggleEntryBot: false,
                     dailyPnl: false,
+                    cumulativePnl: false,
                     backtest: false,
                     runBacktest: false,
                     equityChart: false
@@ -220,7 +221,13 @@ const app = createApp({
                 symbol: '',
                 totalVolume: '',
                 dollarVolume: '',
-                entryTime: ''
+                entryTime: '',
+                // New DAS order parameters
+                orderSide: 'B', // B for Buy, S for Sell
+                route: 'SMAT', // Default route
+                quantity: 100, // Default quantity
+                orderType: 'MKT', // MKT for Market, LIMIT for Limit orders
+                limitPrice: '' // Only used for LIMIT orders
             },
             
             // Tracking Symbols
@@ -264,6 +271,10 @@ const app = createApp({
                 dailyPnlData: [],
                 dailyPnlChart: null,
                 dailyPnlChartType: 'bar', // Default to bar chart
+                
+                // Cumulative P&L chart data
+                cumulativePnlData: [],
+                cumulativePnlChart: null,
 
                 // Backtest data
                 backtestConfig: {
@@ -1440,6 +1451,13 @@ const app = createApp({
                         console.error('❌ Failed to load statistics:', pnlData.message || winRateData.message || positionsData.message);
                         this.showNotification('Failed to load statistics', 'error');
                     }
+                    
+                    // Load daily P&L data
+                    await this.loadDailyPnlData();
+                    
+                    // Load cumulative P&L data
+                    await this.loadCumulativePnlData();
+                    
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
                     this.showNotification('Error loading statistics', 'error');
@@ -1473,6 +1491,34 @@ const app = createApp({
                     this.showNotification('Error loading daily P&L data', 'error');
                 } finally {
                     this.loading.dailyPnl = false;
+                }
+            },
+            
+            async loadCumulativePnlData() {
+                console.log('📈 Loading cumulative P&L data...');
+                this.loading.cumulativePnl = true;
+                
+                try {
+                    const response = await fetch('http://localhost:5000/api/positions/cumulative-pnl');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.cumulativePnlData = data.data.cumulative_pnl || [];
+                        console.log('✅ Cumulative P&L data loaded:', this.cumulativePnlData.length, 'days');
+                        
+                        // Update chart with new data
+                        this.$nextTick(() => {
+                            this.updateCumulativePnlChart();
+                        });
+                    } else {
+                        console.error('❌ Failed to load cumulative P&L data:', data.message);
+                        this.showNotification('Failed to load cumulative P&L data', 'error');
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading cumulative P&L data:', error);
+                    this.showNotification('Error loading cumulative P&L data', 'error');
+                } finally {
+                    this.loading.cumulativePnl = false;
                 }
             },
             
@@ -1606,6 +1652,168 @@ const app = createApp({
                 if (this.dailyPnlData && this.dailyPnlData.length > 0) {
                     this.updateDailyPnlChart();
                 }
+            },
+
+            updateCumulativePnlChart() {
+                if (!this.cumulativePnlData || this.cumulativePnlData.length === 0) {
+                    console.log('📈 No cumulative P&L data to display');
+                    return;
+                }
+                
+                const ctx = document.getElementById('cumulativePnlChart');
+                if (!ctx) {
+                    console.error('❌ Cumulative P&L chart canvas not found');
+                    return;
+                }
+                
+                // Destroy existing chart if it exists
+                if (this.cumulativePnlChart) {
+                    this.cumulativePnlChart.destroy();
+                }
+                
+                // Prepare data for chart
+                const labels = this.cumulativePnlData.map(item => item.date);
+                const cumulativeData = this.cumulativePnlData.map(item => item.cumulative_pnl);
+                const dailyData = this.cumulativePnlData.map(item => item.daily_pnl);
+                
+                // Create new chart
+                this.cumulativePnlChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Cumulative P&L',
+                                data: cumulativeData,
+                                borderColor: '#3B82F6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4,
+                                pointBackgroundColor: '#3B82F6',
+                                pointBorderColor: '#3B82F6',
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'Daily P&L',
+                                data: dailyData,
+                                borderColor: '#10B981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.2,
+                                pointBackgroundColor: '#10B981',
+                                pointBorderColor: '#10B981',
+                                pointRadius: 3,
+                                pointHoverRadius: 5,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    color: '#9CA3AF',
+                                    usePointStyle: true,
+                                    padding: 20
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        const value = context.parsed.y;
+                                        const label = context.dataset.label;
+                                        return `${label}: ${new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD'
+                                        }).format(value)}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Date',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    maxRotation: 45
+                                },
+                                grid: {
+                                    color: '#374151'
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Cumulative P&L ($)',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    callback: function(value) {
+                                        return new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }).format(value);
+                                    }
+                                },
+                                grid: {
+                                    color: '#374151'
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Daily P&L ($)',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    callback: function(value) {
+                                        return new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }).format(value);
+                                    }
+                                },
+                                grid: {
+                                    drawOnChartArea: false
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+                
+                console.log('✅ Cumulative P&L chart updated');
             },
 
             // Backtest Methods
@@ -3900,7 +4108,13 @@ const app = createApp({
                     symbol: this.entryForm.symbol.toUpperCase(),
                     total_volume: parseInt(this.entryForm.totalVolume),
                     dollar_volume: parseInt(this.entryForm.dollarVolume),
-                    entry_time: this.entryForm.entryTime
+                    entry_time: this.entryForm.entryTime,
+                    // New DAS order parameters
+                    order_side: this.entryForm.orderSide,
+                    route: this.entryForm.route,
+                    quantity: parseInt(this.entryForm.quantity),
+                    order_type: this.entryForm.orderType,
+                    limit_price: this.entryForm.limitPrice ? parseFloat(this.entryForm.limitPrice) : null
                 };
                 
                 const response = await axios.post('/api/entry-bot/submit-parameters', entryData);
@@ -3914,7 +4128,13 @@ const app = createApp({
                         symbol: '',
                         totalVolume: '',
                         dollarVolume: '',
-                        entryTime: ''
+                        entryTime: '',
+                        // Reset new DAS order parameters
+                        orderSide: 'B',
+                        route: 'SMAT',
+                        quantity: 100,
+                        orderType: 'MKT',
+                        limitPrice: ''
                     };
                 } else {
                     this.addDebugLog('error', `Failed to submit entry parameters: ${response.data.message}`);
