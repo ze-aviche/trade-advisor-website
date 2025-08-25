@@ -2002,8 +2002,8 @@ const app = createApp({
             try {
                 this.loading.positions = true;
                 
-                // Determine which API endpoint to use based on date filters
-                let apiUrl = 'http://localhost:5000/api/positions';
+                // Always use the daily positions API for historical data
+                let apiUrl = 'http://localhost:5000/api/positions/daily';
                 const params = new URLSearchParams();
                 
                 // Check if date filters are set
@@ -2015,7 +2015,7 @@ const app = createApp({
                     params.append('start_date', this.positionsHistoryStartDate);
                     params.append('end_date', this.positionsHistoryEndDate);
                 } else {
-                    // Use the regular positions API
+                    // Use the daily positions API with default limit
                     params.append('limit', '1000');
                 }
                 
