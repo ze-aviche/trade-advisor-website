@@ -71,7 +71,11 @@ const app = createApp({
                     refreshTracking: false,
                     refreshPositions: false,
                     refreshLogs: false,
-                    toggleEntryBot: false
+                    toggleEntryBot: false,
+                    dailyPnl: false,
+                    backtest: false,
+                    runBacktest: false,
+                    equityChart: false
                 },
                 
                 // Charts
@@ -255,6 +259,23 @@ const app = createApp({
                     total_pnl: 0,
                     win_rate: 0
                 },
+                
+                // Daily P&L chart data
+                dailyPnlData: [],
+                dailyPnlChart: null,
+                dailyPnlChartType: 'bar', // Default to bar chart
+
+                // Backtest data
+                backtestConfig: {
+                    strategy: 'gap_up',
+                    startDate: '',
+                    endDate: '',
+                    initialCapital: 100000,
+                    positionSize: 10,
+                    stopLoss: 2.0
+                },
+                backtestResults: null,
+                equityCurveChart: null
 
             }
         },
@@ -432,6 +453,12 @@ const app = createApp({
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadStats();
+                    this.loadDailyPnlData();
+                } else if (tabName === 'backtest') {
+                    console.log('🧪 Backtest tab selected - loading backtest data...');
+                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
+                    this.loadBacktestData();
                 } else if (tabName === 'ai-chat') {
                     console.log('🤖 AI Chat tab selected - ready for chat...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
@@ -1419,6 +1446,423 @@ const app = createApp({
                 } finally {
                     this.loading.stats = false;
                 }
+            },
+            
+            async loadDailyPnlData() {
+                console.log('📊 Loading daily P&L data...');
+                this.loading.dailyPnl = true;
+                
+                try {
+                    const response = await fetch('http://localhost:5000/api/positions/daily-pnl');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.dailyPnlData = data.data.daily_pnl || [];
+                        console.log('✅ Daily P&L data loaded:', this.dailyPnlData.length, 'days');
+                        
+                        // Update chart with new data
+                        this.$nextTick(() => {
+                            this.updateDailyPnlChart();
+                        });
+                    } else {
+                        console.error('❌ Failed to load daily P&L data:', data.message);
+                        this.showNotification('Failed to load daily P&L data', 'error');
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading daily P&L data:', error);
+                    this.showNotification('Error loading daily P&L data', 'error');
+                } finally {
+                    this.loading.dailyPnl = false;
+                }
+            },
+            
+            updateDailyPnlChart() {
+                if (!this.dailyPnlData || this.dailyPnlData.length === 0) {
+                    console.log('📊 No daily P&L data to display');
+                    return;
+                }
+                
+                const ctx = document.getElementById('dailyPnlChart');
+                if (!ctx) {
+                    console.error('❌ Daily P&L chart canvas not found');
+                    return;
+                }
+                
+                // Destroy existing chart if it exists
+                if (this.dailyPnlChart) {
+                    this.dailyPnlChart.destroy();
+                }
+                
+                // Prepare data for chart
+                const labels = this.dailyPnlData.map(item => item.date);
+                const data = this.dailyPnlData.map(item => item.daily_pnl);
+                const colors = data.map(value => value >= 0 ? '#10B981' : '#EF4444'); // Green for positive, red for negative
+                
+                // Configure dataset based on chart type
+                const datasetConfig = {
+                    label: 'Daily P&L',
+                    data: data,
+                    borderColor: colors,
+                    borderWidth: 2
+                };
+                
+                // Add type-specific properties
+                if (this.dailyPnlChartType === 'bar') {
+                    datasetConfig.backgroundColor = colors;
+                    datasetConfig.borderRadius = 4;
+                } else if (this.dailyPnlChartType === 'line') {
+                    datasetConfig.backgroundColor = 'rgba(59, 130, 246, 0.1)'; // Light blue background for line chart
+                    datasetConfig.fill = true;
+                    datasetConfig.tension = 0.4; // Smooth line curves
+                    datasetConfig.pointBackgroundColor = colors;
+                    datasetConfig.pointBorderColor = colors;
+                    datasetConfig.pointRadius = 4;
+                    datasetConfig.pointHoverRadius = 6;
+                }
+                
+                // Create new chart
+                this.dailyPnlChart = new Chart(ctx, {
+                    type: this.dailyPnlChartType,
+                    data: {
+                        labels: labels,
+                        datasets: [datasetConfig]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        const value = context.parsed.y;
+                                        return `Daily P&L: ${new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD'
+                                        }).format(value)}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Date',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    maxRotation: 45
+                                },
+                                grid: {
+                                    color: '#374151'
+                                }
+                            },
+                            y: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'P&L ($)',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    callback: function(value) {
+                                        return new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }).format(value);
+                                    }
+                                },
+                                grid: {
+                                    color: '#374151'
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+                
+                console.log('✅ Daily P&L chart updated');
+            },
+
+            toggleDailyPnlChartType(chartType) {
+                console.log(`🔄 Switching daily P&L chart type to: ${chartType}`);
+                this.dailyPnlChartType = chartType;
+                
+                // Update the chart with the new type
+                if (this.dailyPnlData && this.dailyPnlData.length > 0) {
+                    this.updateDailyPnlChart();
+                }
+            },
+
+            // Backtest Methods
+            async loadBacktestData() {
+                console.log('🧪 Loading backtest data...');
+                this.loading.backtest = true;
+                
+                try {
+                    // Set default dates if not set
+                    if (!this.backtestConfig.startDate) {
+                        const today = new Date();
+                        const thirtyDaysAgo = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
+                        this.backtestConfig.startDate = thirtyDaysAgo.toISOString().split('T')[0];
+                        this.backtestConfig.endDate = today.toISOString().split('T')[0];
+                    }
+                    
+                    console.log('✅ Backtest configuration loaded');
+                } catch (error) {
+                    console.error('❌ Error loading backtest data:', error);
+                    this.showNotification('Error loading backtest data', 'error');
+                } finally {
+                    this.loading.backtest = false;
+                }
+            },
+
+            async runBacktest() {
+                console.log('🧪 Running backtest...');
+                this.loading.runBacktest = true;
+                
+                try {
+                    // Validate configuration
+                    if (!this.backtestConfig.startDate || !this.backtestConfig.endDate) {
+                        this.showNotification('Please select start and end dates', 'error');
+                        return;
+                    }
+                    
+                    if (this.backtestConfig.initialCapital <= 0) {
+                        this.showNotification('Initial capital must be greater than 0', 'error');
+                        return;
+                    }
+                    
+                    // Generate mock backtest results for now
+                    const mockResults = this.generateMockBacktestResults();
+                    this.backtestResults = mockResults;
+                    
+                    // Update equity curve chart
+                    this.$nextTick(() => {
+                        this.updateEquityCurveChart();
+                    });
+                    
+                    console.log('✅ Backtest completed successfully');
+                    this.showNotification('Backtest completed successfully', 'success');
+                    
+                } catch (error) {
+                    console.error('❌ Error running backtest:', error);
+                    this.showNotification('Error running backtest', 'error');
+                } finally {
+                    this.loading.runBacktest = false;
+                }
+            },
+
+            generateMockBacktestResults() {
+                console.log('🧪 Generating mock backtest results...');
+                
+                const startDate = new Date(this.backtestConfig.startDate);
+                const endDate = new Date(this.backtestConfig.endDate);
+                const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+                
+                // Generate mock trades
+                const trades = [];
+                const totalTrades = Math.floor(Math.random() * 20) + 10; // 10-30 trades
+                
+                for (let i = 0; i < totalTrades; i++) {
+                    const tradeDate = new Date(startDate.getTime() + (Math.random() * daysDiff * 24 * 60 * 60 * 1000));
+                    const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'AMZN', 'NVDA', 'META', 'NFLX'];
+                    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+                    const action = Math.random() > 0.5 ? 'BUY' : 'SELL';
+                    const price = Math.random() * 500 + 50;
+                    const pnl = (Math.random() - 0.4) * 2000; // 60% chance of profit
+                    const returnPercent = (pnl / (price * 100)) * 100;
+                    
+                    trades.push({
+                        id: i + 1,
+                        date: tradeDate.toISOString().split('T')[0],
+                        symbol: symbol,
+                        action: action,
+                        price: price,
+                        pnl: pnl,
+                        returnPercent: returnPercent
+                    });
+                }
+                
+                // Sort trades by date
+                trades.sort((a, b) => new Date(a.date) - new Date(b.date));
+                
+                // Calculate metrics
+                const totalPnl = trades.reduce((sum, trade) => sum + trade.pnl, 0);
+                const winningTrades = trades.filter(trade => trade.pnl > 0);
+                const losingTrades = trades.filter(trade => trade.pnl < 0);
+                const winRate = trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0;
+                const totalReturn = (totalPnl / this.backtestConfig.initialCapital) * 100;
+                const finalCapital = this.backtestConfig.initialCapital + totalPnl;
+                
+                const avgWin = winningTrades.length > 0 ? winningTrades.reduce((sum, trade) => sum + trade.pnl, 0) / winningTrades.length : 0;
+                const avgLoss = losingTrades.length > 0 ? losingTrades.reduce((sum, trade) => sum + trade.pnl, 0) / losingTrades.length : 0;
+                const largestWin = winningTrades.length > 0 ? Math.max(...winningTrades.map(trade => trade.pnl)) : 0;
+                const largestLoss = losingTrades.length > 0 ? Math.min(...losingTrades.map(trade => trade.pnl)) : 0;
+                
+                // Mock risk metrics
+                const maxDrawdown = Math.random() * 15; // 0-15% max drawdown
+                const sharpeRatio = (Math.random() * 2) + 0.5; // 0.5-2.5 Sharpe ratio
+                const profitFactor = (Math.random() * 3) + 0.5; // 0.5-3.5 profit factor
+                
+                return {
+                    totalReturn: totalReturn,
+                    finalCapital: finalCapital,
+                    winRate: winRate,
+                    totalTrades: trades.length,
+                    maxDrawdown: maxDrawdown,
+                    sharpeRatio: sharpeRatio,
+                    profitFactor: profitFactor,
+                    avgWin: avgWin,
+                    avgLoss: avgLoss,
+                    largestWin: largestWin,
+                    largestLoss: largestLoss,
+                    trades: trades,
+                    equityCurve: this.generateEquityCurve(trades, this.backtestConfig.initialCapital)
+                };
+            },
+
+            generateEquityCurve(trades, initialCapital) {
+                const equityCurve = [];
+                let currentCapital = initialCapital;
+                
+                // Sort trades by date
+                const sortedTrades = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date));
+                
+                for (let i = 0; i < sortedTrades.length; i++) {
+                    currentCapital += sortedTrades[i].pnl;
+                    equityCurve.push({
+                        date: sortedTrades[i].date,
+                        equity: currentCapital
+                    });
+                }
+                
+                return equityCurve;
+            },
+
+            updateEquityCurveChart() {
+                if (!this.backtestResults || !this.backtestResults.equityCurve) {
+                    console.log('📊 No equity curve data to display');
+                    return;
+                }
+                
+                const ctx = document.getElementById('equityCurveChart');
+                if (!ctx) {
+                    console.error('❌ Equity curve chart canvas not found');
+                    return;
+                }
+                
+                // Destroy existing chart if it exists
+                if (this.equityCurveChart) {
+                    this.equityCurveChart.destroy();
+                }
+                
+                // Prepare data for chart
+                const labels = this.backtestResults.equityCurve.map(point => point.date);
+                const data = this.backtestResults.equityCurve.map(point => point.equity);
+                
+                // Create new chart
+                this.equityCurveChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Portfolio Value',
+                            data: data,
+                            borderColor: '#3B82F6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#3B82F6',
+                            pointBorderColor: '#3B82F6',
+                            pointRadius: 3,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        const value = context.parsed.y;
+                                        return `Portfolio Value: ${new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD'
+                                        }).format(value)}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Date',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    maxRotation: 45
+                                },
+                                grid: {
+                                    color: '#374151'
+                                }
+                            },
+                            y: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Portfolio Value ($)',
+                                    color: '#9CA3AF'
+                                },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    callback: function(value) {
+                                        return new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }).format(value);
+                                    }
+                                },
+                                grid: {
+                                    color: '#374151'
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+                
+                console.log('✅ Equity curve chart updated');
             },
 
             

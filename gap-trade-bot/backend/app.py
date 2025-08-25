@@ -2532,6 +2532,36 @@ def get_winrate():
             'error': str(e)
         }), 500
 
+@app.route('/api/positions/daily-pnl', methods=['GET'])
+def get_daily_pnl():
+    """Get daily P&L data for charting"""
+    try:
+        from database import db_manager
+        
+        # Get query parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # Get daily P&L data from database
+        daily_data = db_manager.get_daily_pnl_data(
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'daily_pnl': daily_data
+            },
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        app_logger.error(f"Error getting daily P&L data: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():

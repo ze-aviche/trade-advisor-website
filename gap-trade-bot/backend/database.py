@@ -1258,5 +1258,50 @@ class DatabaseManager:
             print(f"Database error getting positions win rate: {e}")
             return 0
 
+    def get_daily_pnl_data(self, start_date=None, end_date=None):
+        """Get daily P&L data for charting"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        date,
+                        COALESCE(SUM(realized), 0) as daily_pnl,
+                        COUNT(*) as positions_count
+                    FROM positions 
+                    WHERE realized != 0
+                '''
+                params = []
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                query += '''
+                    GROUP BY date 
+                    ORDER BY date ASC
+                '''
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                daily_data = []
+                for row in rows:
+                    daily_data.append({
+                        'date': row['date'],
+                        'daily_pnl': float(row['daily_pnl']),
+                        'positions_count': row['positions_count']
+                    })
+                
+                return daily_data
+        except Exception as e:
+            print(f"Database error getting daily P&L data: {e}")
+            return []
+
 # Global database manager instance
 db_manager = DatabaseManager() 
