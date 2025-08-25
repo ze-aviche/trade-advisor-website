@@ -74,6 +74,7 @@ const app = createApp({
                     toggleEntryBot: false,
                     dailyPnl: false,
                     cumulativePnl: false,
+                    pieCharts: false,
                     backtest: false,
                     runBacktest: false,
                     equityChart: false
@@ -275,6 +276,22 @@ const app = createApp({
                 // Cumulative P&L chart data
                 cumulativePnlData: [],
                 cumulativePnlChart: null,
+
+                // Pie Chart data
+                pieChartData: {
+                    longShort: [],
+                    symbols: [],
+                    winLoss: [],
+                    monthly: []
+                },
+                pieCharts: {
+                    longShort: null,
+                    symbols: null,
+                    winLoss: null,
+                    monthly: null
+                },
+                pieChartType: 'longShort', // Default pie chart type
+                pieChartSymbolLimit: 10, // Number of symbols to show in pie chart
 
                 // Backtest data
                 backtestConfig: {
@@ -1458,6 +1475,9 @@ const app = createApp({
                     // Load cumulative P&L data
                     await this.loadCumulativePnlData();
                     
+                    // Load pie chart data
+                    await this.loadPieChartData();
+                    
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
                     this.showNotification('Error loading statistics', 'error');
@@ -1814,6 +1834,187 @@ const app = createApp({
                 });
                 
                 console.log('✅ Cumulative P&L chart updated');
+            },
+
+            // Pie Chart Methods
+            async loadPieChartData() {
+                console.log('🥧 Loading pie chart data...');
+                this.loading.pieCharts = true;
+                
+                try {
+                    // Load all pie chart data in parallel
+                    const [longShortResponse, symbolsResponse, winLossResponse, monthlyResponse] = await Promise.all([
+                        fetch('http://localhost:5000/api/positions/pie-chart/long-short'),
+                        fetch(`http://localhost:5000/api/positions/pie-chart/symbols?limit=${this.pieChartSymbolLimit}`),
+                        fetch('http://localhost:5000/api/positions/pie-chart/win-loss'),
+                        fetch('http://localhost:5000/api/positions/pie-chart/monthly')
+                    ]);
+
+                    const [longShortData, symbolsData, winLossData, monthlyData] = await Promise.all([
+                        longShortResponse.json(),
+                        symbolsResponse.json(),
+                        winLossResponse.json(),
+                        monthlyResponse.json()
+                    ]);
+
+                    if (longShortData.success) {
+                        this.pieChartData.longShort = longShortData.data.long_short_pnl || [];
+                    }
+                    if (symbolsData.success) {
+                        this.pieChartData.symbols = symbolsData.data.symbol_pnl || [];
+                    }
+                    if (winLossData.success) {
+                        this.pieChartData.winLoss = winLossData.data.win_loss_pnl || [];
+                    }
+                    if (monthlyData.success) {
+                        this.pieChartData.monthly = monthlyData.data.monthly_pnl || [];
+                    }
+
+                    console.log('✅ Pie chart data loaded successfully');
+                    
+                    // Update the current pie chart
+                    this.$nextTick(() => {
+                        this.updatePieChart();
+                    });
+                    
+                } catch (error) {
+                    console.error('❌ Error loading pie chart data:', error);
+                    this.showNotification('Error loading pie chart data', 'error');
+                } finally {
+                    this.loading.pieCharts = false;
+                }
+            },
+
+            updatePieChart() {
+                const chartId = `${this.pieChartType}PieChart`;
+                const ctx = document.getElementById(chartId);
+                if (!ctx) {
+                    console.error(`❌ Pie chart canvas not found: ${chartId}`);
+                    return;
+                }
+
+                // Destroy existing chart if it exists
+                if (this.pieCharts[this.pieChartType]) {
+                    this.pieCharts[this.pieChartType].destroy();
+                }
+
+                const data = this.pieChartData[this.pieChartType];
+                if (!data || data.length === 0) {
+                    console.log(`📊 No ${this.pieChartType} data to display`);
+                    return;
+                }
+
+                // Generate colors for pie chart
+                const colors = this.generatePieChartColors(data.length);
+                
+                // Prepare chart data
+                const labels = data.map(item => {
+                    switch (this.pieChartType) {
+                        case 'longShort':
+                            return item.position_type;
+                        case 'symbols':
+                            return item.symbol;
+                        case 'winLoss':
+                            return item.trade_result;
+                        case 'monthly':
+                            return item.month;
+                        default:
+                            return item.label || 'Unknown';
+                    }
+                });
+
+                const values = data.map(item => item.total_pnl);
+                const counts = data.map(item => item.position_count);
+
+                // Create new chart
+                this.pieCharts[this.pieChartType] = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: colors,
+                            borderColor: '#374151',
+                            borderWidth: 2,
+                            hoverBorderColor: '#6B7280',
+                            hoverBorderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: '#9CA3AF',
+                                    padding: 20,
+                                    usePointStyle: true,
+                                    generateLabels: (chart) => {
+                                        const data = chart.data;
+                                        if (data.labels.length && data.datasets.length) {
+                                            return data.labels.map((label, i) => {
+                                                const value = data.datasets[0].data[i];
+                                                const count = counts[i];
+                                                const percentage = ((value / values.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+                                                return {
+                                                    text: `${label}: $${value.toLocaleString()} (${percentage}%)`,
+                                                    fillStyle: colors[i],
+                                                    strokeStyle: colors[i],
+                                                    lineWidth: 0,
+                                                    pointStyle: 'circle',
+                                                    hidden: false,
+                                                    index: i
+                                                };
+                                            });
+                                        }
+                                        return [];
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const value = context.parsed;
+                                        const count = counts[context.dataIndex];
+                                        const percentage = ((value / values.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+                                        return [
+                                            `${context.label}: $${value.toLocaleString()}`,
+                                            `Positions: ${count}`,
+                                            `Percentage: ${percentage}%`
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                console.log(`✅ ${this.pieChartType} pie chart updated`);
+            },
+
+            generatePieChartColors(count) {
+                const baseColors = [
+                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+                    '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6366F1',
+                    '#14B8A6', '#FBBF24', '#DC2626', '#A855F7', '#0EA5E9'
+                ];
+                
+                const colors = [];
+                for (let i = 0; i < count; i++) {
+                    colors.push(baseColors[i % baseColors.length]);
+                }
+                return colors;
+            },
+
+            changePieChartType(type) {
+                console.log(`🔄 Switching pie chart type to: ${type}`);
+                this.pieChartType = type;
+                
+                // Update the chart with the new type
+                this.$nextTick(() => {
+                    this.updatePieChart();
+                });
             },
 
             // Backtest Methods

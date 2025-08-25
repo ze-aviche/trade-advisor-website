@@ -2255,6 +2255,109 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Pie Chart Analysis -->
+                    <div class="bg-gray-700 rounded-lg p-6 border border-gray-600 mt-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-lg font-bold text-white">Trading Analysis Pie Charts</h4>
+                            <div class="flex items-center space-x-2">
+                                <!-- Chart Type Selector -->
+                                <div class="flex items-center bg-gray-600 rounded-md p-1">
+                                    <button @click="changePieChartType('longShort')" 
+                                            :class="pieChartType === 'longShort' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
+                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
+                                        <i class="fas fa-chart-pie mr-1"></i>Long/Short
+                                    </button>
+                                    <button @click="changePieChartType('symbols')" 
+                                            :class="pieChartType === 'symbols' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
+                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
+                                        <i class="fas fa-chart-pie mr-1"></i>Symbols
+                                    </button>
+                                    <button @click="changePieChartType('winLoss')" 
+                                            :class="pieChartType === 'winLoss' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
+                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
+                                        <i class="fas fa-chart-pie mr-1"></i>Win/Loss
+                                    </button>
+                                    <button @click="changePieChartType('monthly')" 
+                                            :class="pieChartType === 'monthly' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
+                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
+                                        <i class="fas fa-chart-pie mr-1"></i>Monthly
+                                    </button>
+                                </div>
+                                <button @click="loadPieChartData" 
+                                        :disabled="loading.pieCharts"
+                                        class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                    <i class="fas fa-sync-alt mr-1" :class="loading.pieCharts ? 'fa-spin' : ''"></i>Refresh
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-400">
+                                <span v-if="pieChartType === 'longShort'">P&L breakdown by long vs short positions</span>
+                                <span v-else-if="pieChartType === 'symbols'">P&L breakdown by top performing symbols</span>
+                                <span v-else-if="pieChartType === 'winLoss'">P&L breakdown by winning vs losing trades</span>
+                                <span v-else-if="pieChartType === 'monthly'">P&L breakdown by month</span>
+                            </p>
+                        </div>
+                        
+                        <!-- Chart Container -->
+                        <div class="relative h-80 bg-gray-800 rounded-lg p-4">
+                            <!-- Long/Short Pie Chart -->
+                            <canvas v-if="pieChartType === 'longShort'" id="longShortPieChart" class="w-full h-full"></canvas>
+                            
+                            <!-- Symbols Pie Chart -->
+                            <canvas v-if="pieChartType === 'symbols'" id="symbolsPieChart" class="w-full h-full"></canvas>
+                            
+                            <!-- Win/Loss Pie Chart -->
+                            <canvas v-if="pieChartType === 'winLoss'" id="winLossPieChart" class="w-full h-full"></canvas>
+                            
+                            <!-- Monthly Pie Chart -->
+                            <canvas v-if="pieChartType === 'monthly'" id="monthlyPieChart" class="w-full h-full"></canvas>
+                            
+                            <!-- Loading State -->
+                            <div v-if="loading.pieCharts" class="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75 rounded-lg">
+                                <div class="flex items-center space-x-2">
+                                    <i class="fas fa-spinner fa-spin text-blue-400"></i>
+                                    <span class="text-sm text-gray-400">Loading chart data...</span>
+                                </div>
+                            </div>
+                            
+                            <!-- No Data State -->
+                            <div v-if="!loading.pieCharts && (!pieChartData[pieChartType] || pieChartData[pieChartType].length === 0)" class="absolute inset-0 flex items-center justify-center">
+                                <div class="text-center text-gray-400">
+                                    <i class="fas fa-chart-pie text-4xl mb-2"></i>
+                                    <p class="text-sm">No {{ pieChartType }} data available</p>
+                                    <p class="text-xs">Complete some trades to see your analysis</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Chart Summary -->
+                        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div v-for="item in pieChartData[pieChartType]" :key="item.label || item.symbol || item.position_type || item.trade_result || item.month" 
+                                 class="bg-gray-600 rounded-lg p-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-300">
+                                            {{ item.position_type || item.symbol || item.trade_result || item.month }}
+                                        </div>
+                                        <div class="text-xs text-gray-400">
+                                            {{ item.position_count }} positions
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-sm font-bold" :class="item.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                            ${{ item.total_pnl.toLocaleString() }}
+                                        </div>
+                                        <div class="text-xs text-gray-400">
+                                            {{ ((item.total_pnl / pieChartData[pieChartType].reduce((sum, i) => sum + i.total_pnl, 0)) * 100).toFixed(1) }}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
