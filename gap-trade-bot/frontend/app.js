@@ -3713,9 +3713,9 @@ const app = createApp({
             // Check for gap-up data
             const gapUpDays = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
-                return gapPercent >= 25;
+                return gapPercent >= 0; // No minimum gap requirement
             });
-            console.log('📈 Days with 25%+ gap-ups:', gapUpDays.length);
+                            console.log('📈 Days with gap-ups:', gapUpDays.length);
             
             if (gapUpDays.length > 0) {
                 console.log('📊 Sample gap-up day:', gapUpDays[0]);

@@ -235,8 +235,8 @@ def get_gap_up_stocks():
                     gap_percent = ((current_price - previous_close) / previous_close) * 100
                     logger.info(f"📊 {ticker}: Previous=${previous_close}, Current=${current_price}, Gap={gap_percent:.2f}%")
                     
-                    # Only process stocks with significant gap-up (25% or more)
-                    if gap_percent >= 25.0:
+                    # Process stocks with gap-up (using configurable threshold)
+                    if gap_percent >= 0.0:  # No minimum gap requirement
                         # Simple gap-up detection without strategy tracking
                         stock_info = {
                             'ticker': ticker,
@@ -255,7 +255,7 @@ def get_gap_up_stocks():
                         logger.info(f"✅ Gap-up found: {ticker} - {gap_percent:.2f}% gap")
                     else:
                         gap_too_small += 1
-                        logger.warning(f"❌ {ticker}: Gap {gap_percent:.2f}% < 25.0% threshold")
+                        logger.warning(f"❌ {ticker}: Gap {gap_percent:.2f}% < 0.0% threshold")
                         
             except Exception as e:
                 logger.error(f"❌ Error processing {ticker}: {e}")
@@ -268,7 +268,7 @@ def get_gap_up_stocks():
         logger.info(f"📊 Tickers with price < $0.75: {below_075_count}")
         logger.info(f"📊 Tickers with no previous close: {no_previous_close}")
         logger.info(f"📊 Tickers with no current price: {no_current_price}")
-        logger.info(f"📊 Tickers with gap < 25%: {gap_too_small}")
+        logger.info(f"📊 Tickers with gap < 0%: {gap_too_small}")
         logger.info(f"✅ Final gap-up stocks found: {len(gap_up_stocks)}")
         
 
@@ -317,7 +317,7 @@ def get_gap_up_stocks_for_frontend():
         market_status = check_market_timing()
         
         # Scan the entire market for actual gap-up stocks using delayed data
-        # This is perfect for 7 AM ET login when you want to see what gapped up > 25%
+        # This is perfect for 7 AM ET login when you want to see what gapped up
         logger.info(f"📊 Scanning entire market for gap-up stocks ({DELAYED_DATA_DESCRIPTION})")
         logger.info(f"📊 Looking for stocks with gap >= {GAP_UP_MIN_PERCENTAGE}% (threshold)")
         
@@ -389,7 +389,7 @@ def get_gap_up_stocks_for_frontend():
                     gap_percent = ((current_price - previous_close) / previous_close) * 100
                     logger.info(f"📊 {ticker}: Previous=${previous_close}, Current=${current_price}, Gap={gap_percent:.2f}%")
                     
-                    # Only process stocks with significant gap-up (25% or more as per user requirement)
+                    # Process stocks with gap-up (using configurable threshold)
                     if gap_percent >= GAP_UP_MIN_PERCENTAGE:
                         # Simple gap-up detection without strategy tracking
                         stock_info = {

@@ -212,7 +212,7 @@
                         <div class="bg-gray-600 rounded-lg p-4 mb-4">
                             <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
                             <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Configure Gap Percentage:</strong> Set the minimum gap percentage (default: 25%) to filter stocks</li>
+                                <li><strong>Configure Gap Percentage:</strong> Set the minimum gap percentage (default: 0%) to filter stocks</li>
                                 <li><strong>View Gap-Up Stocks:</strong> The system automatically scans and displays stocks meeting your criteria</li>
                                 <li><strong>Monitor Real-Time:</strong> The list updates automatically every 5 minutes during market hours</li>
                                 <li><strong>Take Action:</strong> Use the "Add to Entry Bot" feature to track promising stocks</li>
@@ -698,7 +698,7 @@
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
-                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of 25%+ gap-up data ({{ getPeriodDescription() }} analysis)</p>
+                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of gap-up data ({{ getPeriodDescription() }} analysis)</p>
                                 </div>
                             </div>
                         </div>
@@ -709,7 +709,7 @@
                                 <div class="flex items-center">
                                     <i class="fas fa-arrow-up text-green-400 text-xl mr-3"></i>
                                     <div>
-                                        <p class="text-sm text-gray-400">25%+ Gap-Up Days</p>
+                                        <p class="text-sm text-gray-400">Gap-Up Days</p>
                                         <p class="text-lg font-semibold text-white">{{ getGapUpDaysCount() }}</p>
                                     </div>
                                 </div>
@@ -736,7 +736,7 @@
                                 <div class="flex items-center">
                                     <i class="fas fa-percentage text-blue-400 text-xl mr-3"></i>
                                     <div>
-                                        <p class="text-sm text-gray-400">Avg 25%+ Gap %</p>
+                                        <p class="text-sm text-gray-400">Avg Gap %</p>
                                         <p class="text-lg font-semibold text-white">{{ getAverageGapPercent() }}%</p>
                                     </div>
                                 </div>
@@ -922,7 +922,7 @@
                     
                     <div v-else-if="historicalTicker && !loading.historical" class="text-center py-8">
                         <i class="fas fa-chart-line text-2xl text-gray-400"></i>
-                        <p class="mt-2 text-gray-400">No 25%+ gap-up data available for {{ historicalTicker.toUpperCase() }}</p>
+                        <p class="mt-2 text-gray-400">No gap-up data available for {{ historicalTicker.toUpperCase() }}</p>
                         <p class="text-sm text-gray-500">This stock may not have had significant gap-ups in the last 3 years</p>
                     </div>
                     
@@ -930,7 +930,7 @@
                         <i class="fas fa-search text-2xl text-gray-400"></i>
                         <p class="mt-2 text-gray-400">Enter a ticker symbol to analyze historical data</p>
                         <p class="text-sm text-gray-500">Example: AAPL, TSLA, NVDA</p>
-                        <p class="text-xs text-gray-600 mt-2">Shows only days with 25%+ gap-ups (3-year analysis)</p>
+                        <p class="text-xs text-gray-600 mt-2">Shows only days with gap-ups (3-year analysis)</p>
                     </div>
                 </div>
             </div>

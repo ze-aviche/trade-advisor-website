@@ -18,7 +18,7 @@ const STRATEGY_CONFIG = {
             availabilityColor: 'text-green-400',
             description: 'Buy when price breaks above day high with volume confirmation',
             conditions: [
-                'Gap up above 25%',
+                'Gap up above 0%',
                 'Price breaks above day high',
                 'Above VWAP',
                 'Sufficient volume'

@@ -391,7 +391,7 @@ def get_batch_daily_data(ticker, start_date, end_date):
 def process_batch_data_to_gap_ups(ticker, daily_data):
     """
     Process batch daily data to extract gap-up information.
-    Returns only days with 25%+ gap-ups.
+    Returns only days with gap-ups (configurable threshold).
     """
     try:
         major_gap_up_data = []
@@ -427,9 +427,9 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                 gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
                 logger.debug(f"📈 Gap calculation for {date_str}: Open={agg.open}, PrevClose={previous_day_close}, Gap={gap_percent}%")
             
-            # Only process if it's a major gap-up (25%+)
-            if gap_percent and gap_percent >= 25:
-                logger.info(f"🚀 Found major gap-up for {ticker} on {date_str}: {gap_percent}%")
+            # Process if it's a gap-up (configurable threshold)
+            if gap_percent and gap_percent >= 0:
+                logger.info(f"🚀 Found gap-up for {ticker} on {date_str}: {gap_percent}%")
                 
                 # Calculate percentages
                 percent_gap_high = None
@@ -495,7 +495,7 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                 
                 major_gap_up_data.append(data_point)
         
-        logger.info(f"📈 Found {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+        logger.info(f"📈 Found {len(major_gap_up_data)} gap-up days for {ticker}")
         return major_gap_up_data
         
     except Exception as e:
@@ -506,7 +506,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
     """
     Get comprehensive historical gap-up data for a stock using intelligent caching.
     Returns detailed gap-up analysis for the specified number of days.
-    Only caches days when stocks actually gap up by 25% or more (gap_percent >= 25).
+    Only caches days when stocks actually gap up (configurable threshold).
     """
     start_time = time.time()
     try:
@@ -704,7 +704,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                             for missing_date in missing_dates:
                                 data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
                                 gap_percent = data_point.get('gap up % at open') if data_point else None
-                                if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
+                                if data_point and gap_percent is not None and gap_percent >= 0:  # No minimum gap requirement
                                     delta_data.append(data_point)
                             
                             # Store new delta data in cache (even if empty)
@@ -752,7 +752,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
         if use_cache:
             if major_gap_up_data:
                 historical_cache.store_historical_data(ticker, major_gap_up_data, from_date, to_date)
-                logger.info(f"💾 Cached {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+                logger.info(f"💾 Cached {len(major_gap_up_data)} gap-up days for {ticker}")
             else:
                 # Cache empty result to avoid re-searching this period
                 historical_cache.store_historical_data(ticker, [], from_date, to_date)
@@ -768,7 +768,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
         })
         
         logger.info(f"✅ Retrieved {len(daily_data)} days of historical data for {ticker}")
-        logger.info(f"📈 Found {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+        logger.info(f"📈 Found {len(major_gap_up_data)} gap-up days for {ticker}")
         
         # Return only gap-up data (never return all historical data)
         return major_gap_up_data[:days]  # Return gap-up data only
@@ -893,8 +893,8 @@ def get_batch_delta_data(ticker, missing_dates):
                 if previous_day_close and agg.open:
                     gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
                 
-                # Only process if it's a major gap-up (25%+)
-                if gap_percent and gap_percent >= 25:
+                # Process if it's a gap-up (configurable threshold)
+                if gap_percent and gap_percent >= 0:
                     # Get premarket data for gap-up days only
                     premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, missing_date)
                     premarket_volume = get_premarket_volume(polygon_client, ticker, missing_date)
