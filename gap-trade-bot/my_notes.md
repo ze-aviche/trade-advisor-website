@@ -36,3 +36,11 @@ position_discovery_interval: 30 seconds
 config_check_interval: 300 seconds (5 minutes)
 
 =====================================================================================================================
+
+GIT 
+
+git rm --cached trading_advisor.db 
+git ls-files | findstr trading_advisor.db
+git status --ignored
+git switch feature/fix-pnl-windows
+Stop-Process -Name "SQLiteStudio" -Force

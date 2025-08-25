@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stats Tab Test</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div id="app">
+        <h1 class="text-2xl font-bold mb-6">Stats Tab Test</h1>
+        
+        <!-- Test Stats Display -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Current Stats Data</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <h3 class="text-lg font-bold text-white">Total P&L</h3>
+                    <p class="text-2xl font-bold" :class="stats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ formatCurrency(stats.total_pnl) }}
+                    </p>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <h3 class="text-lg font-bold text-white">Win Rate</h3>
+                    <p class="text-2xl font-bold" :class="stats.win_rate >= 50 ? 'text-green-400' : 'text-yellow-400'">
+                        {{ formatPercentage(stats.win_rate) }}%
+                    </p>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <h3 class="text-lg font-bold text-white">Total Positions</h3>
+                    <p class="text-2xl font-bold text-white">{{ stats.total_positions }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Test Buttons -->
+        <div class="space-y-4">
+            <button @click="loadStats" 
+                    :disabled="loading.stats"
+                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                <i class="fas fa-sync-alt mr-1" :class="loading.stats ? 'fa-spin' : ''"></i>
+                {{ loading.stats ? 'Loading...' : 'Load Stats' }}
+            </button>
+            
+            <button @click="testEndpoints" 
+                    class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                Test API Endpoints
+            </button>
+        </div>
+        
+        <!-- Test Results -->
+        <div v-if="testResults" class="bg-gray-800 rounded-lg p-6 mt-6">
+            <h3 class="text-lg font-bold mb-4">API Test Results</h3>
+            <pre class="bg-gray-900 p-4 rounded text-sm overflow-auto">{{ JSON.stringify(testResults, null, 2) }}</pre>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    stats: {
+                        total_positions: 0,
+                        total_pnl: 0,
+                        win_rate: 0
+                    },
+                    loading: {
+                        stats: false
+                    },
+                    testResults: null
+                }
+            },
+            
+            methods: {
+                async loadStats() {
+                    console.log('📊 Loading statistics...');
+                    this.loading.stats = true;
+                    
+                    try {
+                        // Load total P&L
+                        const pnlResponse = await fetch('http://localhost:5000/api/positions/total_pnl');
+                        const pnlData = await pnlResponse.json();
+                        
+                        // Load win rate
+                        const winRateResponse = await fetch('http://localhost:5000/api/positions/winrate');
+                        const winRateData = await winRateResponse.json();
+                        
+                        // Load total positions
+                        const positionsResponse = await fetch('http://localhost:5000/api/positions/total_positions');
+                        const positionsData = await positionsResponse.json();
+                        
+                        if (pnlData.success && winRateData.success && positionsData.success) {
+                            this.stats.total_pnl = pnlData.data.total_pnl || 0;
+                            this.stats.win_rate = winRateData.data.win_rate || 0;
+                            this.stats.total_positions = positionsData.data.total_positions || 0;
+                            
+                            console.log('✅ Statistics loaded successfully:');
+                            console.log('   Total P&L:', this.stats.total_pnl);
+                            console.log('   Win Rate:', this.stats.win_rate);
+                            console.log('   Total Positions:', this.stats.total_positions);
+                        } else {
+                            console.error('❌ Failed to load statistics:', pnlData.message || winRateData.message || positionsData.message);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error loading statistics:', error);
+                    } finally {
+                        this.loading.stats = false;
+                    }
+                },
+                
+                async testEndpoints() {
+                    console.log('🧪 Testing API endpoints...');
+                    this.testResults = {};
+                    
+                    try {
+                        // Test total positions
+                        const positionsResponse = await fetch('http://localhost:5000/api/positions/total_positions');
+                        this.testResults.total_positions = await positionsResponse.json();
+                        
+                        // Test total P&L
+                        const pnlResponse = await fetch('http://localhost:5000/api/positions/total_pnl');
+                        this.testResults.total_pnl = await pnlResponse.json();
+                        
+                        // Test win rate
+                        const winRateResponse = await fetch('http://localhost:5000/api/positions/winrate');
+                        this.testResults.win_rate = await winRateResponse.json();
+                        
+                        console.log('✅ API endpoints tested successfully');
+                    } catch (error) {
+                        console.error('❌ Error testing endpoints:', error);
+                        this.testResults.error = error.message;
+                    }
+                },
+                
+                // Format currency
+                formatCurrency(amount) {
+                    if (amount === null || amount === undefined) return '$0.00';
+                    return new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }).format(amount);
+                },
+                
+                // Format percentage
+                formatPercentage(value) {
+                    if (value === null || value === undefined) return '0.00';
+                    return value.toFixed(2);
+                }
+            },
+            
+            mounted() {
+                console.log('🧪 Stats test page loaded');
+                // Auto-load stats on page load
+                this.loadStats();
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

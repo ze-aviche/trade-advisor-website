@@ -1,0 +1,5 @@
+[33m5fbf9e0[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m stash
+[33m3ad1ff5[m Merge pull request #7 from ze-aviche/feature/entry-bot
+[33m8d78d2a[m[33m ([m[1;31morigin/feature/entry-bot[m[33m, [m[1;32mfeature/entry-bot[m[33m)[m removed success rate in the entry bot status
+[33m6655445[m working tracking indicators in entry bot
+[33mdcf731b[m start and stop bot working, entry conditions check, tracking

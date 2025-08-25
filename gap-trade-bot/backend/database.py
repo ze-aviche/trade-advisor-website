@@ -662,6 +662,52 @@ class DatabaseManager:
         except Exception as e:
             print(f"Database error getting trade summary: {e}")
             return None
+
+    def get_positions_summary(self):
+        """Get positions-based summary statistics for dashboard"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Total Positions: count of number of positions in the positions table
+                cursor.execute('SELECT COUNT(*) as total_positions FROM positions')
+                total_positions = cursor.fetchone()['total_positions']
+                
+                # Total P&L: Sum of all realized positions
+                cursor.execute('SELECT COALESCE(SUM(realized), 0) as total_pnl FROM positions')
+                total_pnl = cursor.fetchone()['total_pnl']
+                
+                # Win Rate: (profitable positions) / (total positions with realized P&L)
+                cursor.execute('''
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
+                        COALESCE(SUM(CASE WHEN realized != 0 THEN 1 ELSE 0 END), 0) as total_realized_positions
+                    FROM positions
+                ''')
+                win_rate_data = cursor.fetchone()
+                profitable_positions = win_rate_data['profitable_positions']
+                total_realized_positions = win_rate_data['total_realized_positions']
+                
+                # Calculate win rate percentage
+                win_rate = (profitable_positions / total_realized_positions * 100) if total_realized_positions > 0 else 0
+                
+                # Active positions (positions with quantity > 0)
+                cursor.execute('SELECT COUNT(*) as active_positions FROM positions WHERE quantity > 0')
+                active_positions = cursor.fetchone()['active_positions']
+                
+                summary = {
+                    'total_positions': total_positions,
+                    'total_pnl': total_pnl,
+                    'win_rate': win_rate,
+                    'profitable_positions': profitable_positions,
+                    'total_realized_positions': total_realized_positions,
+                    'active_positions': active_positions
+                }
+                
+                return summary
+        except Exception as e:
+            print(f"Database error getting positions summary: {e}")
+            return None
     
     def parse_das_trades_data(self, das_trades_text):
         """Parse DAS trades data and return list of trade dictionaries with calculated PnL"""
@@ -969,6 +1015,292 @@ class DatabaseManager:
                 
         except Exception as e:
             print(f"Error getting available dates: {e}")
+            return []
+
+    def get_positions_pnl_history(self, symbol=None, start_date=None, end_date=None, limit=100):
+        """Get positions PnL history for charting (similar to trades but using realized field)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
+                           realized, create_time, date, unrealized, last_updated, created_at
+                    FROM positions
+                    WHERE realized != 0
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                query += ' ORDER BY date DESC, last_updated DESC LIMIT ?'
+                params.append(limit)
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                positions = []
+                for row in rows:
+                    position = dict(row)
+                    # Convert datetime objects to strings for JSON serialization
+                    if position['created_at']:
+                        if hasattr(position['created_at'], 'isoformat'):
+                            position['created_at'] = position['created_at'].isoformat()
+                        elif isinstance(position['created_at'], str):
+                            pass
+                        else:
+                            position['created_at'] = str(position['created_at'])
+                    
+                    if position['last_updated']:
+                        if hasattr(position['last_updated'], 'isoformat'):
+                            position['last_updated'] = position['last_updated'].isoformat()
+                        elif isinstance(position['last_updated'], str):
+                            pass
+                        else:
+                            position['last_updated'] = str(position['last_updated'])
+                    
+                    positions.append(position)
+                
+                return positions
+        except Exception as e:
+            print(f"Database error getting positions PnL history: {e}")
+            return []
+
+    def get_positions_pnl_summary(self, symbol=None, start_date=None, end_date=None):
+        """Get positions PnL summary statistics"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        COUNT(*) as total_positions,
+                        COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
+                        COALESCE(SUM(CASE WHEN realized < 0 THEN 1 ELSE 0 END), 0) as losing_positions,
+                        COALESCE(SUM(realized), 0) as total_pnl,
+                        COALESCE(SUM(CASE WHEN realized > 0 THEN realized ELSE 0 END), 0) as total_profits,
+                        COALESCE(SUM(CASE WHEN realized < 0 THEN realized ELSE 0 END), 0) as total_losses
+                    FROM positions
+                    WHERE realized != 0
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                
+                if row:
+                    summary = dict(row)
+                    
+                    # Calculate win rate
+                    total_positions = summary['total_positions'] or 0
+                    profitable_positions = summary['profitable_positions'] or 0
+                    win_rate = (profitable_positions / total_positions * 100) if total_positions > 0 else 0
+                    
+                    summary['win_rate'] = round(win_rate, 2)
+                    
+                    # Ensure all values are numbers, not None
+                    summary['total_positions'] = summary['total_positions'] or 0
+                    summary['profitable_positions'] = summary['profitable_positions'] or 0
+                    summary['losing_positions'] = summary['losing_positions'] or 0
+                    summary['total_pnl'] = summary['total_pnl'] or 0
+                    summary['total_profits'] = summary['total_profits'] or 0
+                    summary['total_losses'] = summary['total_losses'] or 0
+                    
+                    return summary
+                else:
+                    return {
+                        'total_positions': 0,
+                        'profitable_positions': 0,
+                        'losing_positions': 0,
+                        'total_pnl': 0,
+                        'total_profits': 0,
+                        'total_losses': 0,
+                        'win_rate': 0
+                    }
+                
+        except Exception as e:
+            print(f"Database error getting positions PnL summary: {e}")
+            return {
+                'total_positions': 0,
+                'profitable_positions': 0,
+                'losing_positions': 0,
+                'total_pnl': 0,
+                'total_profits': 0,
+                'total_losses': 0,
+                'win_rate': 0
+            }
+
+    def get_total_positions_count(self, symbol=None, start_date=None, end_date=None):
+        """Get total count of positions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = 'SELECT COUNT(*) as total FROM positions'
+                params = []
+                
+                if symbol:
+                    query += ' WHERE symbol = ?'
+                    params.append(symbol.upper())
+                else:
+                    query += ' WHERE 1=1'
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                
+                return row['total'] if row else 0
+        except Exception as e:
+            print(f"Database error getting total positions count: {e}")
+            return 0
+
+    def get_total_positions_pnl(self, symbol=None, start_date=None, end_date=None):
+        """Get total P&L from realized positions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = 'SELECT COALESCE(SUM(realized), 0) as total_pnl FROM positions WHERE realized != 0'
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                
+                return row['total_pnl'] if row else 0
+        except Exception as e:
+            print(f"Database error getting total positions P&L: {e}")
+            return 0
+
+    def get_positions_winrate(self, symbol=None, start_date=None, end_date=None):
+        """Get win rate from positions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
+                        COALESCE(SUM(CASE WHEN realized < 0 THEN 1 ELSE 0 END), 0) as losing_positions
+                    FROM positions
+                    WHERE realized != 0
+                '''
+                params = []
+                
+                if symbol:
+                    query += ' AND symbol = ?'
+                    params.append(symbol.upper())
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                
+                if row:
+                    profitable_positions = row['profitable_positions'] or 0
+                    losing_positions = row['losing_positions'] or 0
+                    total_positions = profitable_positions + losing_positions
+                    
+                    if total_positions > 0:
+                        win_rate = (profitable_positions / total_positions) * 100
+                        return round(win_rate, 2)
+                    else:
+                        return 0
+                else:
+                    return 0
+        except Exception as e:
+            print(f"Database error getting positions win rate: {e}")
+            return 0
+
+    def get_daily_pnl_data(self, start_date=None, end_date=None):
+        """Get daily P&L data for charting"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        date,
+                        COALESCE(SUM(realized), 0) as daily_pnl,
+                        COUNT(*) as positions_count
+                    FROM positions 
+                    WHERE realized != 0
+                '''
+                params = []
+                
+                if start_date:
+                    query += ' AND date >= ?'
+                    params.append(start_date)
+                
+                if end_date:
+                    query += ' AND date <= ?'
+                    params.append(end_date)
+                
+                query += '''
+                    GROUP BY date 
+                    ORDER BY date ASC
+                '''
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                daily_data = []
+                for row in rows:
+                    daily_data.append({
+                        'date': row['date'],
+                        'daily_pnl': float(row['daily_pnl']),
+                        'positions_count': row['positions_count']
+                    })
+                
+                return daily_data
+        except Exception as e:
+            print(f"Database error getting daily P&L data: {e}")
             return []
 
 # Global database manager instance
