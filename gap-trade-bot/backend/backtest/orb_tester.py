@@ -2,27 +2,27 @@
 Opening-Range Breakout (ORB) Backtester
 ---------------------------------------
 - Consumes your daily gappers table (DataFrame or SQL query)
-- Fetches 1‑minute intraday bars from Polygon.io for each (ticker, date)
+- Fetches 1‑minute intraday bars from TimescaleDB ohlcv_1m table for each (ticker, date)
 - Simulates a long ORB breakout with configurable rules
 - Outputs trades + daily/overall stats
 
 Notes
 -----
 • Educational example; validate before using with real money.
-• Requires a Polygon API key (Starter/Developer+ for full historical intraday)
-• Caches downloaded minute bars as Parquet under ./intraday_cache to avoid refetching
+• Uses TimescaleDB ohlcv_1m data instead of Polygon API
+• No external API calls or rate limiting needed
 
 How the strategy works (defaults)
 ---------------------------------
-1) Build a 5‑minute opening range from 09:30:00–09:34:59 (US/Eastern).
-2) Once the range is set (>= 09:35), go LONG when a 1‑min bar CLOSES > opening‑range high (ORH).
+1) Build a 5‑minute opening range from 14:30:00–14:34:59 UTC (9:30-9:34 AM EST).
+2) Once the range is set (>= 14:35 UTC), go LONG when a 1‑min bar CLOSES > opening‑range high (ORH).
 3) Entry price = breakout candle close + slippage.
 4) Stop = opening‑range low (ORL) – stop_buffer_pct.
 5) Position size = risk_per_trade_usd / (entry – stop).
 6) Exit rules (first event wins):
    a) Take‑profit at take_profit_R × initial_risk (e.g., 2R)
-   b) Time stop at time_exit (default 11:00:00)
-   c) End‑of‑day liquidation at 15:59
+   b) Time stop at time_exit (default 16:00 UTC = 11:00 AM EST)
+   c) End‑of‑day liquidation at 21:00 UTC (4:00 PM EST)
 
 You can switch to a trailing stop or different exits by tweaking `manage_position`.
 """
@@ -39,41 +39,35 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import requests
-
-# Ensure parquet support is available
-try:
-    import pyarrow
-except ImportError:
-    print("Warning: pyarrow not found. Parquet caching will not work.")
-    print("Install with: pip install pyarrow")
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # ------------------------
 # Configuration
 # ------------------------
 @dataclass
 class Config:
-    polygon_api_key: str = os.getenv("POLYGON_API_KEY", "5TcX1iTW6Fu2vysfbRbw60oW3PLWsdPT")
-    # Cache folder for 1-min bars
-    cache_dir: Path = Path("intraday_cache")
-    # Rate-limit safety
-    sleep_between_calls_sec: float = 0.25
-    max_retries: int = 3
+    # TimescaleDB connection settings
+    db_host: str = os.getenv("TIMESCALEDB_HOST", "localhost")
+    db_port: int = int(os.getenv("TIMESCALEDB_PORT", "5432"))
+    db_name: str = os.getenv("TIMESCALEDB_NAME", "marketdata")
+    db_user: str = os.getenv("TIMESCALEDB_USER", "ts_user")
+    db_password: str = os.getenv("TIMESCALEDB_PASSWORD", "ts_pass")
+    
+    # Trading session (in UTC)
+    session_start: str = "14:30:00"  # 9:30 AM EST = 14:30 UTC
+    session_end: str = "21:00:00"    # 4:00 PM EST = 21:00 UTC
 
-    # Trading session
-    session_start: str = "09:30:00"  # regular hours start
-    session_end: str = "16:00:00"    # regular hours end
-
-    # Opening range window (minutes from 09:30)
+    # Opening range window (minutes from market open)
     orb_minutes: int = 5
 
     # Strategy params
     slippage_cents: float = 0.01            # add to entry price to simulate fills
     fees_per_share: float = 0.0005          # simplistic fee model
-    stop_buffer_pct: float = 0.0            # e.g., 0.001 = 0.1% below ORL
+    stop_buffer_pct: float = 0.01            # e.g., 0.001 = 0.1% below ORL
     risk_per_trade_usd: float = 100.0       # fixed $ risk per trade
     take_profit_R: float = 2.0              # exit at 2R
-    time_exit: str = "11:00:00"             # time-based exit if still open
+    time_exit: str = "16:00:00"             # time-based exit if still open (11 AM EST = 16:00 UTC)
 
     # Filters
     min_price: float = 1.0
@@ -89,50 +83,86 @@ class Config:
     col_dollar_vol_m: str = "highest_dollar_volume_m"  # optional
 
 CFG = Config()
-CFG.cache_dir.mkdir(exist_ok=True)
 
 # ------------------------
-# Utilities
+# Database Utilities
 # ------------------------
 
-def _session_bounds(date_str: str, start: str, end: str) -> Tuple[str, str]:
-    return f"{date_str}T{start}", f"{date_str}T{end}"
+def get_db_connection(cfg: Config = CFG):
+    """Get a connection to TimescaleDB"""
+    try:
+        conn = psycopg2.connect(
+            host=cfg.db_host,
+            port=cfg.db_port,
+            database=cfg.db_name,
+            user=cfg.db_user,
+            password=cfg.db_password
+        )
+        return conn
+    except Exception as e:
+        print(f"Error connecting to TimescaleDB: {e}")
+        return None
 
-
-def fetch_polygon_1min(ticker: str, date_str: str, cfg: Config = CFG) -> pd.DataFrame:
-    """Fetch 1‑minute bars for a single ticker/date from Polygon, with basic caching.
+def fetch_timescaledb_1min(ticker: str, date_str: str, cfg: Config = CFG) -> pd.DataFrame:
+    """Fetch 1‑minute bars for a single ticker/date from TimescaleDB ohlcv_1m table.
     Returns DataFrame with columns: timestamp, open, high, low, close, volume
     """
-    cache_path = cfg.cache_dir / f"{ticker}_{date_str}.parquet"
-    if cache_path.exists():
-        return pd.read_parquet(cache_path)
-
-    start_iso, end_iso = _session_bounds(date_str, cfg.session_start, cfg.session_end)
-    url = (
-        f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/min/"
-        f"{start_iso}/{end_iso}?adjusted=true&sort=asc&limit=50000&apiKey={cfg.polygon_api_key}"
-    )
-
-    for attempt in range(cfg.max_retries):
-        resp = requests.get(url, timeout=30)
-        if resp.status_code == 200:
-            data = resp.json()
-            if "results" not in data:
-                return pd.DataFrame(columns=["timestamp","open","high","low","close","volume"])  # empty
-
-            df = pd.DataFrame(data["results"]).rename(columns={
-                "t":"timestamp_ms", "o":"open", "h":"high", "l":"low", "c":"close", "v":"volume"
-            })
-            df["timestamp"] = pd.to_datetime(df["timestamp_ms"], unit="ms")
-            df = df[["timestamp","open","high","low","close","volume"]]
-            df.to_parquet(cache_path, index=False)
-            time.sleep(cfg.sleep_between_calls_sec)
-            return df
-        else:
-            time.sleep(1.0 + attempt)
-
-    # give up
-    return pd.DataFrame(columns=["timestamp","open","high","low","close","volume"])  # empty
+    conn = get_db_connection(cfg)
+    if not conn:
+        return pd.DataFrame(columns=["timestamp","open","high","low","close","volume"])
+    
+    try:
+        # Convert date string to proper format for query
+        date_obj = pd.to_datetime(date_str).date()
+        
+        # Query the ohlcv_1m table for the specific ticker and date
+        query = """
+        SELECT 
+            ts as timestamp,
+            open,
+            high,
+            low,
+            close,
+            volume
+        FROM ohlcv_1m 
+        WHERE ticker = %s 
+        AND day = %s
+        AND ts >= %s::timestamp 
+        AND ts <= %s::timestamp
+        ORDER BY ts
+        """
+        
+        # Create session bounds for the query with UTC timezone
+        start_ts = f"{date_obj} {cfg.session_start}+00:00"
+        end_ts = f"{date_obj} {cfg.session_end}+00:00"
+        
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(query, (ticker, date_obj, start_ts, end_ts))
+            results = cursor.fetchall()
+        
+        if not results:
+            return pd.DataFrame(columns=["timestamp","open","high","low","close","volume"])
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(results)
+        
+        # Ensure we have the expected columns and handle timezone
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            # Ensure timestamps are timezone-aware (UTC)
+            if df['timestamp'].dt.tz is None:
+                df['timestamp'] = df['timestamp'].dt.tz_localize('UTC')
+        
+        # Select and reorder columns to match expected format
+        df = df[["timestamp","open","high","low","close","volume"]]
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error fetching data for {ticker} on {date_str}: {e}")
+        return pd.DataFrame(columns=["timestamp","open","high","low","close","volume"])
+    finally:
+        conn.close()
 
 
 def build_opening_range(df_1m: pd.DataFrame, date_str: str, cfg: Config = CFG) -> Tuple[float, float, pd.Timestamp]:
@@ -141,16 +171,24 @@ def build_opening_range(df_1m: pd.DataFrame, date_str: str, cfg: Config = CFG) -
         return np.nan, np.nan, pd.NaT
 
     date = pd.to_datetime(date_str).date()
-    start_ts = pd.Timestamp(f"{date} {cfg.session_start}")
+    # Create timezone-aware timestamps in UTC
+    start_ts = pd.Timestamp(f"{date} {cfg.session_start}", tz='UTC')
     end_ts = start_ts + pd.Timedelta(minutes=cfg.orb_minutes)
+
+    # Debug: Check timestamp types
+    if not df_1m.empty:
+        sample_ts = df_1m["timestamp"].iloc[0]
+        print(f"Debug: Sample timestamp type: {type(sample_ts)}, tz: {getattr(sample_ts, 'tz', 'None')}")
+        print(f"Debug: start_ts type: {type(start_ts)}, tz: {start_ts.tz}")
+        print(f"Debug: end_ts type: {type(end_ts)}, tz: {end_ts.tz}")
 
     mask = (df_1m["timestamp"] >= start_ts) & (df_1m["timestamp"] < end_ts)
     or_bars = df_1m.loc[mask]
     if or_bars.empty:
         return np.nan, np.nan, pd.NaT
 
-    orh = float(or_bars["high"].max())
-    orl = float(or_bars["low"].min())
+    orh = round(float(or_bars["high"].max()), 2)
+    orl = round(float(or_bars["low"].min()), 2)
     or_ready_ts = end_ts  # earliest time a breakout is allowed
     return orh, orl, or_ready_ts
 
@@ -196,15 +234,15 @@ def simulate_orb_long(df_1m: pd.DataFrame, date_str: str, ticker: str, cfg: Conf
             continue
         if row["close"] > orh:
             # Entry at close + slippage
-            entry = float(row["close"]) + cfg.slippage_cents
-            stop = max(1e-4, orl * (1 - cfg.stop_buffer_pct))
-            risk_per_share = max(1e-4, entry - stop)
+            entry = round(float(row["close"]) + cfg.slippage_cents, 2)
+            stop = round(max(1e-4, orl * (1 - cfg.stop_buffer_pct)), 2)
+            risk_per_share = round(max(1e-4, entry - stop), 2)
             shares = max(0, int(math.floor(cfg.risk_per_trade_usd / risk_per_share)))
             if shares <= 0:
                 return None
 
             entry_time = ts
-            target = entry + cfg.take_profit_R * risk_per_share
+            target = round(entry + cfg.take_profit_R * risk_per_share, 2)
 
             # Manage position forward in time, including current bar (since we entered on close)
             exit_price = None
@@ -219,22 +257,22 @@ def simulate_orb_long(df_1m: pd.DataFrame, date_str: str, ticker: str, cfg: Conf
 
                 # 1) Hard stop (if low touches/breaks stop)
                 if bl <= stop:
-                    exit_price = stop - cfg.slippage_cents  # assume slight adverse slip
+                    exit_price = round(stop - cfg.slippage_cents, 2)  # assume slight adverse slip
                     exit_time = ts2
                     reason = "stop"
                     break
 
                 # 2) Take profit target
                 if bh >= target:
-                    exit_price = target  # filled at target
+                    exit_price = round(target, 2)  # filled at target
                     exit_time = ts2
                     reason = "target"
                     break
 
                 # 3) Time exit
-                time_exit_ts = pd.Timestamp(f"{pd.to_datetime(date_str).date()} {cfg.time_exit}")
+                time_exit_ts = pd.Timestamp(f"{pd.to_datetime(date_str).date()} {cfg.time_exit}", tz='UTC')
                 if ts2 >= time_exit_ts:
-                    exit_price = bc - cfg.slippage_cents
+                    exit_price = round(bc - cfg.slippage_cents, 2)
                     exit_time = ts2
                     reason = "time_exit"
                     break
@@ -242,13 +280,13 @@ def simulate_orb_long(df_1m: pd.DataFrame, date_str: str, ticker: str, cfg: Conf
             # If still open by end of day, liquidate
             if exit_price is None:
                 last = df_1m.iloc[-1]
-                exit_price = float(last["close"]) - cfg.slippage_cents
+                exit_price = round(float(last["close"]) - cfg.slippage_cents, 2)
                 exit_time = last["timestamp"]
                 reason = "eod"
 
-            fees = cfg.fees_per_share * shares
-            pnl = (exit_price - entry) * shares - fees
-            R = pnl / cfg.risk_per_trade_usd if cfg.risk_per_trade_usd > 0 else np.nan
+            fees = round(cfg.fees_per_share * shares, 2)
+            pnl = round((exit_price - entry) * shares - fees, 2)
+            R = round(pnl / cfg.risk_per_trade_usd, 2) if cfg.risk_per_trade_usd > 0 else np.nan
 
             trade = Trade(
                 date=date_str,
@@ -287,6 +325,7 @@ def run_backtest(gappers_df: pd.DataFrame, cfg: Config = CFG) -> Tuple[pd.DataFr
     trades: List[Trade] = []
     # Sort by date to make debugging deterministic
     gappers_df = gappers_df.sort_values([cfg.col_date, cfg.col_ticker]).reset_index(drop=True)
+    print("gappers_df.head()", gappers_df.head())
 
     for _, row in gappers_df.iterrows():
         date_str = str(row[cfg.col_date])
@@ -300,7 +339,7 @@ def run_backtest(gappers_df: pd.DataFrame, cfg: Config = CFG) -> Tuple[pd.DataFr
             if row[cfg.col_dollar_vol_m] < cfg.min_dollar_volume_m:
                 continue
 
-        df_1m = fetch_polygon_1min(ticker, date_str, cfg)
+        df_1m = fetch_timescaledb_1min(ticker, date_str, cfg)
         if df_1m.empty:
             continue
 
@@ -321,6 +360,12 @@ def run_backtest(gappers_df: pd.DataFrame, cfg: Config = CFG) -> Tuple[pd.DataFr
         winrate=("pnl", lambda x: (x > 0).mean() if len(x) else np.nan),
         avg_R=("R", "mean")
     ).reset_index()
+    
+    # Round daily stats to 2 decimal places
+    daily["pnl"] = daily["pnl"].round(2)
+    daily["R"] = daily["R"].round(2)
+    daily["winrate"] = daily["winrate"].round(2)
+    daily["avg_R"] = daily["avg_R"].round(2)
 
     overall = pd.DataFrame({
         "metric": [
@@ -328,12 +373,12 @@ def run_backtest(gappers_df: pd.DataFrame, cfg: Config = CFG) -> Tuple[pd.DataFr
         ],
         "value": [
             len(trades_df),
-            float((trades_df["pnl"] > 0).mean()),
-            float(trades_df["pnl"].sum()),
-            float(trades_df["R"].sum()),
-            float(trades_df["R"].mean()),
-            float(trades_df["R"].median()),
-            float(trades_df["pnl"].mean()),
+            round(float((trades_df["pnl"] > 0).mean()), 2),
+            round(float(trades_df["pnl"].sum()), 2),
+            round(float(trades_df["R"].sum()), 2),
+            round(float(trades_df["R"].mean()), 2),
+            round(float(trades_df["R"].median()), 2),
+            round(float(trades_df["pnl"].mean()), 2),
         ]
     })
 
@@ -352,9 +397,12 @@ if __name__ == "__main__":
     ]
     gappers_df = pd.DataFrame(data)
 
-    # IMPORTANT: set your Polygon API key
-    if CFG.polygon_api_key in (None, "", "YOUR_POLYGON_API_KEY"):
-        raise SystemExit("Please set POLYGON_API_KEY environment variable or edit Config.polygon_api_key")
+    # IMPORTANT: Test TimescaleDB connection
+    test_conn = get_db_connection(CFG)
+    if not test_conn:
+        raise SystemExit("Cannot connect to TimescaleDB. Please check your connection settings.")
+    test_conn.close()
+    print("Successfully connected to TimescaleDB")
 
     trades_df, overall = run_backtest(gappers_df, CFG)
 

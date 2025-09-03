@@ -1,0 +1,13 @@
+# TimescaleDB Connection Environment Variables
+# Copy this file to .env and fill in your actual values
+
+# Database connection settings
+TIMESCALEDB_HOST=localhost
+TIMESCALEDB_PORT=5432
+TIMESCALEDB_NAME=marketdata
+TIMESCALEDB_USER=ts_user
+TIMESCALEDB_PASSWORD=ts_password
+
+# Optional: Override default trading session times
+# SESSION_START=09:30:00
+# SESSION_END=16:00:00
