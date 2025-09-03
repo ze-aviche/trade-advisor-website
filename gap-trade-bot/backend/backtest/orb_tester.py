@@ -59,7 +59,7 @@ class Config:
     session_end: str = "21:00:00"    # 4:00 PM EST = 21:00 UTC
 
     # Opening range window (minutes from market open)
-    orb_minutes: int = 5
+    orb_minutes: int = 15
 
     # Strategy params
     slippage_cents: float = 0.01            # add to entry price to simulate fills
@@ -174,13 +174,6 @@ def build_opening_range(df_1m: pd.DataFrame, date_str: str, cfg: Config = CFG) -
     # Create timezone-aware timestamps in UTC
     start_ts = pd.Timestamp(f"{date} {cfg.session_start}", tz='UTC')
     end_ts = start_ts + pd.Timedelta(minutes=cfg.orb_minutes)
-
-    # Debug: Check timestamp types
-    if not df_1m.empty:
-        sample_ts = df_1m["timestamp"].iloc[0]
-        print(f"Debug: Sample timestamp type: {type(sample_ts)}, tz: {getattr(sample_ts, 'tz', 'None')}")
-        print(f"Debug: start_ts type: {type(start_ts)}, tz: {start_ts.tz}")
-        print(f"Debug: end_ts type: {type(end_ts)}, tz: {end_ts.tz}")
 
     mask = (df_1m["timestamp"] >= start_ts) & (df_1m["timestamp"] < end_ts)
     or_bars = df_1m.loc[mask]
@@ -351,6 +344,11 @@ def run_backtest(gappers_df: pd.DataFrame, cfg: Config = CFG) -> Tuple[pd.DataFr
         return pd.DataFrame(), pd.DataFrame()
 
     trades_df = pd.DataFrame([asdict(t) for t in trades])
+    
+    # Convert UTC timestamps to EST for better readability
+    if not trades_df.empty and 'entry_time' in trades_df.columns:
+        trades_df['entry_time'] = pd.to_datetime(trades_df['entry_time']).dt.tz_convert('US/Eastern')
+        trades_df['exit_time'] = pd.to_datetime(trades_df['exit_time']).dt.tz_convert('US/Eastern')
 
     # Daily and overall stats
     daily = trades_df.groupby("date").agg(

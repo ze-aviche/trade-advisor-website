@@ -20,7 +20,7 @@ def test_orb_with_gap_data():
     
     # Use historical dates instead of future dates
     # Let's try to find some recent historical data
-    gap_data = get_gap_data_from_db(start_date="2024-01-01", end_date="2024-12-31")
+    gap_data = get_gap_data_from_db(start_date="2024-01-01", end_date="2025-09-01")
     
     if not gap_data:
         print("❌ No gap data found in database for 2024. Trying 2023...")
@@ -66,8 +66,9 @@ def test_orb_with_gap_data():
     test_config.min_price = 1.0  # Minimum price filter
     test_config.min_dollar_volume_m = 1.0  # Minimum dollar volume filter
     
-    # For testing, let's use a smaller sample to avoid API rate limits
-    test_sample = gappers_df.head(3)  # Test with first 3 gaps
+    # Since we're using TimescaleDB, we can test with a larger sample
+    # No API rate limits or costs to worry about!
+    test_sample = gappers_df.head(25)  # Test with first 25 gaps
     print(f"\n🧪 Testing ORB strategy on {len(test_sample)} sample gaps...")
     print("Sample tickers and dates:")
     for _, row in test_sample.iterrows():
@@ -80,7 +81,7 @@ def test_orb_with_gap_data():
         if trades_df.empty:
             print("❌ No trades were generated. This could be due to:")
             print("   - No breakouts occurred in the sample")
-            print("   - API rate limits or data availability")
+            print("   - TimescaleDB data availability or connectivity")
             print("   - Strategy filters being too restrictive")
             print("   - No intraday data available for these dates")
         else:
@@ -98,6 +99,11 @@ def test_orb_with_gap_data():
             trades_path = out_dir / "orb_trades_test.csv"
             overall_path = out_dir / "orb_overall_test.csv"
             
+            # Ensure timestamps are in EST before saving
+            if not trades_df.empty:
+                trades_df['entry_time'] = pd.to_datetime(trades_df['entry_time']).dt.tz_convert('US/Eastern')
+                trades_df['exit_time'] = pd.to_datetime(trades_df['exit_time']).dt.tz_convert('US/Eastern')
+            
             trades_df.to_csv(trades_path, index=False)
             overall.to_csv(overall_path, index=False)
             
@@ -108,7 +114,7 @@ def test_orb_with_gap_data():
     except Exception as e:
         print(f"❌ Error running ORB backtest: {e}")
         print("This could be due to:")
-        print("   - API key issues")
+        print("   - TimescaleDB connection issues")
         print("   - Network connectivity")
         print("   - Missing dependencies")
         print("   - Data format issues")
