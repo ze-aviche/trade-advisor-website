@@ -1,0 +1,11 @@
+[33mcommit 086d95b45991cf49eb768d5aec714bd99c40f76f[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m
+Author: Abhilash <chabhilashraju@gmail.com>
+Date:   Tue Sep 2 23:17:23 2025 -0500
+
+    backsql removed
+
+[33mcommit c40b71013e1cb37a3a88c72cb2ea016078b46e1c[m
+Author: Abhilash <chabhilashraju@gmail.com>
+Date:   Tue Sep 2 22:49:02 2025 -0500
+
+    added readme files for timescaledb and fixed issue with querying timescaledb
