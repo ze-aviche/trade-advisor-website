@@ -206,6 +206,7 @@ def get_daily_high_low_data(ticker, polygon_client, date_str):
 def get_premarket_volume(polygon_client, ticker, date_str):
     """
     Fetches premarket volume for a given ticker and date (4:00 AM to 9:30 AM EST).
+    Returns volume in millions.
     """
     try:
         est_timezone = pytz.timezone('America/New_York')
@@ -229,9 +230,9 @@ def get_premarket_volume(polygon_client, ticker, date_str):
             logger.debug(f"⚠️ No premarket volume data found for {ticker} on {date_str}")
             return 0.0
         
-        premarket_total_volume = sum(bar.volume for bar in aggs_list)
-        logger.debug(f"📊 Premarket volume for {ticker} on {date_str}: {premarket_total_volume}")
-        return premarket_total_volume
+        premarket_total_volume_millions = sum(bar.volume for bar in aggs_list) / 1_000_000
+        logger.debug(f"📊 Premarket volume (millions) for {ticker} on {date_str}: {premarket_total_volume_millions}")
+        return round(premarket_total_volume_millions, 2)
         
     except Exception as e:
         logger.error(f"❌ Error fetching premarket volume for {ticker} on {date_str}: {e}")
