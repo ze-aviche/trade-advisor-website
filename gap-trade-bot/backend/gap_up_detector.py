@@ -236,7 +236,7 @@ def get_gap_up_stocks():
                     logger.info(f"📊 {ticker}: Previous=${previous_close}, Current=${current_price}, Gap={gap_percent:.2f}%")
                     
                     # Only process stocks with significant gap-up (25% or more)
-                    if gap_percent >= 25.0:
+                    if gap_percent >= 5.0:
                         # Simple gap-up detection without strategy tracking
                         stock_info = {
                             'ticker': ticker,
@@ -255,7 +255,7 @@ def get_gap_up_stocks():
                         logger.info(f"✅ Gap-up found: {ticker} - {gap_percent:.2f}% gap")
                     else:
                         gap_too_small += 1
-                        logger.warning(f"❌ {ticker}: Gap {gap_percent:.2f}% < 25.0% threshold")
+                        logger.warning(f"❌ {ticker}: Gap {gap_percent:.2f}% < 5.0% threshold")
                         
             except Exception as e:
                 logger.error(f"❌ Error processing {ticker}: {e}")

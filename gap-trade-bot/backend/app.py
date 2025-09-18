@@ -630,7 +630,7 @@ def gap_ups_config():
         if request.method == 'GET':
             # Get current configuration
             import config as config_module
-            min_percentage = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 15.0)
+            min_percentage = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 5.0)
             
             return jsonify({
                 'success': True,
@@ -641,7 +641,7 @@ def gap_ups_config():
         else:
             # POST - Update configuration
             data = request.get_json()
-            min_percentage = data.get('min_percentage', 25.0)
+            min_percentage = data.get('min_percentage', 5.0)
             
             # Validate input
             if not isinstance(min_percentage, (int, float)) or min_percentage < 0:
