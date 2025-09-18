@@ -152,17 +152,95 @@ def parse_naslost_from_lines(lines: List[str]) -> List[str]:
     return []
 
 
+def fetch_historical_data_for_nasgain_stocks(nasgain_stocks: List[str], days: int = 365, use_cache: bool = True) -> Dict[str, List[Dict]]:
+    """
+    Fetch historical gap-up data for all NASGain stocks
+    
+    Args:
+        nasgain_stocks: List of stock symbols from NASGain
+        days: Number of days to fetch historical data for (default: 365)
+        use_cache: Whether to use caching (default: True)
+        
+    Returns:
+        Dictionary with ticker as key and historical data as value
+    """
+    try:
+        # Import historical_data functions
+        from historical_data import get_historical_gap_up_data, fetch_multiple_stocks_parallel
+        
+        logger.info(f"📊 Fetching historical data for {len(nasgain_stocks)} NASGain stocks")
+        logger.info(f"📅 Fetching {days} days of historical data")
+        logger.info(f"💾 Using cache: {use_cache}")
+        
+        # Use parallel processing for better performance
+        results = fetch_multiple_stocks_parallel(nasgain_stocks, days=days, use_cache=use_cache)
+        
+        # Filter out None results and log summary
+        valid_results = {ticker: data for ticker, data in results.items() if data is not None}
+        failed_tickers = [ticker for ticker, data in results.items() if data is None]
+        
+        logger.info(f"✅ Successfully fetched data for {len(valid_results)} tickers")
+        if failed_tickers:
+            logger.warning(f"⚠️ Failed to fetch data for {len(failed_tickers)} tickers: {failed_tickers}")
+        
+        # Log summary for each ticker
+        for ticker, data in valid_results.items():
+            if data:
+                logger.info(f"📈 {ticker}: Found {len(data)} gap-up days (25%+)")
+            else:
+                logger.info(f"📊 {ticker}: No gap-up days found in the specified period")
+        
+        return valid_results
+        
+    except ImportError as e:
+        logger.error(f"❌ Error importing historical_data module: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"❌ Error fetching historical data for NASGain stocks: {e}")
+        return {}
+
+
+def get_nasgain_with_historical_data(days: int = 365, use_cache: bool = True) -> Dict[str, List[Dict]]:
+    """
+    Get NASGain stocks and their historical data in one call
+    
+    Args:
+        days: Number of days to fetch historical data for (default: 365)
+        use_cache: Whether to use caching (default: True)
+        
+    Returns:
+        Dictionary with ticker as key and historical data as value
+    """
+    try:
+        # Get NASGain stocks
+        lines = get_toplist()
+        nasgain_stocks = parse_nasgain_from_lines(lines)
+        
+        if not nasgain_stocks:
+            logger.warning("⚠️ No NASGain stocks found")
+            return {}
+        
+        logger.info(f"📈 Found {len(nasgain_stocks)} NASGain stocks: {nasgain_stocks}")
+        
+        # Fetch historical data for all NASGain stocks
+        historical_data = fetch_historical_data_for_nasgain_stocks(nasgain_stocks, days, use_cache)
+        
+        return historical_data
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting NASGain stocks with historical data: {e}")
+        return {}
+
+
 def main():
     """Main function for testing the NASGain scanner"""
-    print("📈 NASDAQ Gainer Scanner")
-    print("=" * 50)
-    
-    scanner = NASGainScanner()
+    print("📈 NASDAQ Gainer Scanner with Historical Data")
+    print("=" * 60)
     
     try:
-        # Get raw TopList data
+        # Get raw TopList data using standalone function
         print("\n🔍 Getting raw SB TopList output...")
-        lines = scanner.get_toplist_lines()
+        lines = get_toplist()
         if lines:
             print(f"✅ Received {len(lines)} lines from TopList:")
             for line in lines:
@@ -181,33 +259,62 @@ def main():
                 print(f"  {i:2d}. {stock}")
         else:
             print("❌ No NASGain stocks found")
+            return
         
-        # Parse NASActive stocks from the lines
-        print("\n📊 Parsing NASActive stocks from lines...")
-        nasactive_stocks = parse_nasactive_from_lines(lines)
+        # Fetch historical data for NASGain stocks
+        print(f"\n📊 Fetching historical data for {len(nasgain_stocks)} NASGain stocks...")
+        print("⏳ This may take a few moments...")
         
-        if nasactive_stocks:
-            print(f"✅ Found {len(nasactive_stocks)} NASActive stocks:")
-            for i, stock in enumerate(nasactive_stocks, 1):
-                print(f"  {i:2d}. {stock}")
+        historical_data = fetch_historical_data_for_nasgain_stocks(nasgain_stocks, days=30, use_cache=True)
+        
+        if historical_data:
+            print(f"\n✅ Successfully fetched historical data for {len(historical_data)} stocks:")
+            print("-" * 60)
+            
+            for ticker, data in historical_data.items():
+                if data:
+                    print(f"📈 {ticker}: {len(data)} gap-up days (25%+)")
+                    # Show first few gap-up days
+                    for i, day_data in enumerate(data[:3], 1):
+                        gap_percent = day_data.get('gap up % at open', 'N/A')
+                        date = day_data.get('date', 'N/A')
+                        print(f"    {i}. {date}: {gap_percent}% gap")
+                    if len(data) > 3:
+                        print(f"    ... and {len(data) - 3} more gap-up days")
+                else:
+                    print(f"📊 {ticker}: No gap-up days found in the last 30 days")
+                print()
         else:
-            print("❌ No NASActive stocks found")
+            print("❌ No historical data retrieved")
         
-        # Parse NASLost stocks from the lines
-        print("\n📉 Parsing NASLost stocks from lines...")
-        naslost_stocks = parse_naslost_from_lines(lines)
+        # Parse other stock types for completeness
+        # print("\n📊 Parsing NASActive stocks from lines...")
+        # nasactive_stocks = parse_nasactive_from_lines(lines)
         
-        if naslost_stocks:
-            print(f"✅ Found {len(naslost_stocks)} NASLost stocks:")
-            for i, stock in enumerate(naslost_stocks, 1):
-                print(f"  {i:2d}. {stock}")
-        else:
-            print("❌ No NASLost stocks found")
+        # if nasactive_stocks:
+        #     print(f"✅ Found {len(nasactive_stocks)} NASActive stocks:")
+        #     for i, stock in enumerate(nasactive_stocks[:10], 1):  # Show first 10
+        #         print(f"  {i:2d}. {stock}")
+        #     if len(nasactive_stocks) > 10:
+        #         print(f"  ... and {len(nasactive_stocks) - 10} more")
+        # else:
+        #     print("❌ No NASActive stocks found")
+        
+        # # Parse NASLost stocks from the lines
+        # print("\n📉 Parsing NASLost stocks from lines...")
+        # naslost_stocks = parse_naslost_from_lines(lines)
+        
+        # if naslost_stocks:
+        #     print(f"✅ Found {len(naslost_stocks)} NASLost stocks:")
+        #     for i, stock in enumerate(naslost_stocks[:10], 1):  # Show first 10
+        #         print(f"  {i:2d}. {stock}")
+        #     if len(naslost_stocks) > 10:
+        #         print(f"  ... and {len(naslost_stocks) - 10} more")
+        # else:
+        #     print("❌ No NASLost stocks found")
             
     except Exception as e:
         print(f"❌ Error: {e}")
-    finally:
-        scanner.disconnect_from_das()
 
 
 if __name__ == "__main__":
