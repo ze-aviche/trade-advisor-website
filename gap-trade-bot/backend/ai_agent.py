@@ -208,9 +208,69 @@ class ClaudeAIAgent:
             return {"symbol": symbol, "error": str(e)}
 
     def _get_earnings_calendar(self, symbol: Optional[str] = None) -> Dict[str, Any]:
-        query = f"{symbol} earnings date estimate analyst" if symbol else "stock earnings calendar this week"
-        result = self._web_search(query)
-        return {"symbol": symbol, "earnings_info": result.get("results", []), "query": query}
+        if symbol:
+            # Specific ticker: try Polygon reference then fall back to web search
+            polygon_info = {}
+            if self.polygon_api_key:
+                try:
+                    resp = requests.get(
+                        f"https://api.polygon.io/v3/reference/tickers/{symbol.upper()}",
+                        params={"apiKey": self.polygon_api_key},
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        d = resp.json().get("results", {})
+                        polygon_info = {
+                            "company_name": d.get("name"),
+                            "market_cap": d.get("market_cap"),
+                            "description": (d.get("description") or "")[:200]
+                        }
+                except Exception:
+                    pass
+            search = self._web_search(f"{symbol} earnings date estimate analyst forecast")
+            return {
+                "symbol": symbol.upper(),
+                "polygon_reference": polygon_info,
+                "web_results": search.get("results", [])
+            }
+
+        # General calendar: fetch next 5 days from Nasdaq public earnings API
+        earnings = []
+        today = datetime.now()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json, text/plain, */*"
+        }
+        for delta in range(5):
+            date_str = (today + timedelta(days=delta)).strftime("%Y-%m-%d")
+            try:
+                resp = requests.get(
+                    "https://api.nasdaq.com/api/calendar/earnings",
+                    params={"date": date_str},
+                    headers=headers,
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    rows = resp.json().get("data", {}).get("rows") or []
+                    for row in rows[:15]:
+                        earnings.append({
+                            "date": date_str,
+                            "symbol": row.get("symbol"),
+                            "company": row.get("name"),
+                            "time": row.get("time"),
+                            "eps_forecast": row.get("epsForecast"),
+                            "last_year_eps": row.get("lastYearEPS"),
+                            "fiscal_quarter": row.get("fiscalQuarterEnding")
+                        })
+            except Exception:
+                pass
+
+        if earnings:
+            return {"earnings_next_5_days": earnings, "total": len(earnings)}
+
+        # Fallback to web search if Nasdaq API fails
+        result = self._web_search("upcoming earnings calendar this week major stocks")
+        return {"earnings_info": result.get("results", []), "note": "Live API unavailable, showing web search results"}
 
     def _dispatch_tool(self, name: str, inputs: Dict) -> str:
         if name == "web_search":
