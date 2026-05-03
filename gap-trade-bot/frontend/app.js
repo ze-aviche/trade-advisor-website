@@ -48,6 +48,7 @@ const app = createApp({
                 
                 // UI state
                 activeTab: localStorage.getItem('activeTab') || 'about',
+                mobileMenuOpen: false,
                 loading: {
                     stats: false,
                     gapUps: false,
@@ -373,6 +374,7 @@ const app = createApp({
             
             // Handle tab changes
             async onTabChange(tabName) {
+                this.mobileMenuOpen = false;
                 console.log(`🔄 Tab changed to: ${tabName}`);
                 console.log(`🔍 Current activeTab value: ${this.activeTab}`);
                 console.log(`🔍 Previous activeTab value: ${this.activeTab}`);

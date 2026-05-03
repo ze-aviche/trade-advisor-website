@@ -39,100 +39,78 @@
 <body class="bg-gray-900 text-white">
     <div id="app">
         <!-- Header -->
-        <div class="bg-gray-900 border-b border-gray-700 px-6 py-4">
+        <div class="bg-gray-900 border-b border-gray-700 px-4 py-3 md:px-6 md:py-4">
             <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-4">
-                    <!-- Accentor Trading Bot Logo -->
-                    <div class="flex items-center space-x-3 logo-container">
-                        <div class="relative">
-                            <!-- New Accentor AI Trading Bot Logo -->
-                            <img src="accentor-trading-bot-logo.png" alt="Accentor AI Trading Bot" width="48" height="48" class="drop-shadow-lg logo-svg">
-                            
-                            <!-- Animated pulse effect -->
-                            <div class="absolute inset-0 rounded-lg bg-blue-500 opacity-10 animate-pulse"></div>
-                        </div>
-                        
-                        <!-- Logo text -->
-                        <div class="flex flex-col">
-                            <h1 class="text-2xl font-bold text-white tracking-tight">
-                                <span class="bg-gradient-to-r from-blue-400 via-green-400 to-yellow-400 bg-clip-text text-transparent logo-text-gradient">
-                                    Accentor
-                                </span>
-                            </h1>
-                            <p class="text-xs text-gray-400 font-medium tracking-wide uppercase">
-                                AI Trading Bot
-                            </p>
-                        </div>
+                <div class="flex items-center space-x-3 logo-container">
+                    <div class="relative">
+                        <img src="accentor-trading-bot-logo.png" alt="Accentor AI Trading Bot" width="36" height="36" class="md:w-12 md:h-12 drop-shadow-lg logo-svg">
+                        <div class="absolute inset-0 rounded-lg bg-blue-500 opacity-10 animate-pulse"></div>
+                    </div>
+                    <div class="flex flex-col">
+                        <h1 class="text-lg md:text-2xl font-bold text-white tracking-tight">
+                            <span class="bg-gradient-to-r from-blue-400 via-green-400 to-yellow-400 bg-clip-text text-transparent logo-text-gradient">
+                                Accentor
+                            </span>
+                        </h1>
+                        <p class="hidden sm:block text-xs text-gray-400 font-medium tracking-wide uppercase">AI Trading Bot</p>
                     </div>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <div class="flex items-center space-x-2 text-gray-400">
+                <div class="flex items-center space-x-2 md:space-x-4">
+                    <div class="hidden sm:flex items-center space-x-2 text-gray-400">
                         <i class="fas fa-user-circle"></i>
                         <span class="text-sm">{{ user ? user.username : 'Guest' }}</span>
                     </div>
-                    <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 md:px-4 rounded-md text-sm font-medium">
+                        <i class="fas fa-sync-alt"></i>
+                        <span class="hidden sm:inline ml-2">Refresh</span>
                     </button>
-                    <button @click="logout" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-sm font-medium">
-                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    <button @click="logout" class="bg-red-600 hover:bg-red-700 px-3 py-2 md:px-4 rounded-md text-sm font-medium">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span class="hidden sm:inline ml-2">Logout</span>
                     </button>
                 </div>
             </div>
         </div>
 
         <!-- Navigation Tabs -->
-        <div class="bg-gray-800 border-b border-gray-700 px-6 py-2">
-            <div class="flex items-center space-x-8">
-                <button @click="activeTab = 'about'; onTabChange('about')" 
-                        :class="activeTab === 'about' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-info-circle mr-2"></i>About
+        <div class="bg-gray-800 border-b border-gray-700 px-4 py-2">
+            <!-- Desktop: horizontal tab row -->
+            <div class="hidden md:flex items-center space-x-1 overflow-x-auto">
+                <button @click="onTabChange('about')" :class="activeTab === 'about' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-info-circle mr-1"></i>About</button>
+                <button @click="onTabChange('gap-ups')" :class="activeTab === 'gap-ups' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-arrow-up mr-1"></i>Gap-Ups</button>
+                <button @click="onTabChange('historical')" :class="activeTab === 'historical' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-history mr-1"></i>Historical</button>
+                <button @click="onTabChange('entry-bot')" :class="activeTab === 'entry-bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-play mr-1"></i>Entry Bot</button>
+                <button @click="onTabChange('bot')" :class="activeTab === 'bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>Exit Bot</button>
+                <button @click="onTabChange('trades')" :class="activeTab === 'trades' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-exchange-alt mr-1"></i>Trade History</button>
+                <button @click="onTabChange('positions')" :class="activeTab === 'positions' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-line mr-1"></i>Positions</button>
+                <button @click="onTabChange('stats')" :class="activeTab === 'stats' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-bar mr-1"></i>Stats</button>
+                <button @click="onTabChange('backtest')" :class="activeTab === 'backtest' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-flask mr-1"></i>Backtest</button>
+                <button @click="onTabChange('ai-chat')" :class="activeTab === 'ai-chat' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>AI Chat</button>
+            </div>
+
+            <!-- Mobile: hamburger toggle -->
+            <div class="flex md:hidden items-center justify-between py-1">
+                <span class="text-blue-400 text-sm font-medium">
+                    <i class="fas fa-layer-group mr-2 text-gray-400"></i>
+                    {{ {'about':'About','gap-ups':'Gap-Ups','historical':'Historical','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat'}[activeTab] || 'Menu' }}
+                </span>
+                <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-gray-400 hover:text-white p-1 rounded">
+                    <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'" class="text-lg"></i>
                 </button>
-                <button @click="activeTab = 'gap-ups'; onTabChange('gap-ups')" 
-                        :class="activeTab === 'gap-ups' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-arrow-up mr-2"></i>Gap-Ups
-                </button>
-                <button @click="activeTab = 'historical'; onTabChange('historical')" 
-                        :class="activeTab === 'historical' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-history mr-2"></i>Historical
-                </button>
-                <button @click="activeTab = 'entry-bot'; onTabChange('entry-bot')" 
-                        :class="activeTab === 'entry-bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-play mr-2"></i>Entry Bot
-                </button>
-                <button @click="activeTab = 'bot'; onTabChange('bot')" 
-                        :class="activeTab === 'bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-robot mr-2"></i>Exit Bot
-                </button>
-                <button @click="activeTab = 'trades'; onTabChange('trades')" 
-                        :class="activeTab === 'trades' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-exchange-alt mr-2"></i>Trade History
-                </button>
-                <button @click="activeTab = 'positions'; onTabChange('positions')" 
-                        :class="activeTab === 'positions' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-chart-line mr-2"></i>Positions History
-                </button>
-                <button @click="activeTab = 'stats'; onTabChange('stats')" 
-                        :class="activeTab === 'stats' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-chart-bar mr-2"></i>Stats
-                </button>
-                <button @click="activeTab = 'backtest'; onTabChange('backtest')" 
-                        :class="activeTab === 'backtest' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-flask mr-2"></i>Backtest
-                </button>
-                <button @click="activeTab = 'ai-chat'; onTabChange('ai-chat')" 
-                        :class="activeTab === 'ai-chat' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'"
-                        class="px-3 py-2 border-b-2 font-medium text-sm transition-colors">
-                    <i class="fas fa-robot mr-2"></i>AI Chat
-                </button>
+            </div>
+
+            <!-- Mobile: dropdown grid -->
+            <div v-if="mobileMenuOpen" class="md:hidden border-t border-gray-700 mt-2 pt-2 grid grid-cols-2 gap-1">
+                <button @click="onTabChange('about')" :class="activeTab === 'about' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-info-circle mr-2 w-4"></i>About</button>
+                <button @click="onTabChange('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
+                <button @click="onTabChange('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical</button>
+                <button @click="onTabChange('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot</button>
+                <button @click="onTabChange('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot</button>
+                <button @click="onTabChange('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History</button>
+                <button @click="onTabChange('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions</button>
+                <button @click="onTabChange('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats</button>
+                <button @click="onTabChange('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest</button>
+                <button @click="onTabChange('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>AI Chat</button>
             </div>
         </div>
 
@@ -2170,7 +2148,7 @@
                         </div>
                         
                         <!-- Chart Container -->
-                        <div class="relative h-80 bg-gray-800 rounded-lg p-4">
+                        <div class="relative h-56 md:h-80 bg-gray-800 rounded-lg p-4">
                             <canvas id="dailyPnlChart" class="w-full h-full"></canvas>
                             
                             <!-- Loading State -->
@@ -2222,7 +2200,7 @@
                         </div>
                         
                         <!-- Chart Container -->
-                        <div class="relative h-80 bg-gray-800 rounded-lg p-4">
+                        <div class="relative h-56 md:h-80 bg-gray-800 rounded-lg p-4">
                             <canvas id="cumulativePnlChart" class="w-full h-full"></canvas>
                             
                             <!-- Loading State -->
@@ -2302,7 +2280,7 @@
                         </div>
                         
                         <!-- Chart Container -->
-                        <div class="relative h-80 bg-gray-800 rounded-lg p-4">
+                        <div class="relative h-56 md:h-80 bg-gray-800 rounded-lg p-4">
                             <!-- Long/Short Pie Chart -->
                             <canvas v-if="pieChartType === 'longShort'" id="longShortPieChart" class="w-full h-full"></canvas>
                             
