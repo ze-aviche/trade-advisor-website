@@ -153,6 +153,14 @@ class DatabaseManager:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
                 except sqlite3.OperationalError:
                     pass  # column already exists
+
+            # If no admin exists yet, promote the earliest-registered user
+            cursor.execute("SELECT COUNT(*) as cnt FROM users WHERE role = 'admin'")
+            if cursor.fetchone()['cnt'] == 0:
+                cursor.execute("UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users)")
+                if cursor.rowcount:
+                    print("✅ Promoted earliest user to admin role")
+
             conn.commit()
 
     def _get_user_count(self):
