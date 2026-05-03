@@ -1,3 +1,6 @@
+# Screenshots
+frontend/Screenshot*.png
+
 # Environment variables and API keys
 .env
 *.env
