@@ -61,6 +61,12 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import trading bot: {e}")
     BOT_AVAILABLE = False
 
+# Feature flag: set to True to re-enable DAS Trader integration
+DAS_ENABLED = False
+if not DAS_ENABLED:
+    BOT_AVAILABLE = False
+    SCHEDULED_SYNC_AVAILABLE = False
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gap-up-detection-web-2024'
 CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
@@ -143,7 +149,10 @@ _das_connection_lock = threading.Lock()
 def get_das_connection():
     """Get or create a DAS connection (singleton pattern)"""
     global _das_connection
-    
+
+    if not DAS_ENABLED:
+        return None
+
     with _das_connection_lock:
         if _das_connection is None:
             try:
@@ -174,9 +183,12 @@ def close_das_connection():
 
 def get_real_stock_data(symbol):
     """Get real stock data using DAS CMDAPI Level 1 subscription"""
+    if not DAS_ENABLED:
+        return None
+
     try:
         from datetime import datetime
-        
+
         # Get the shared DAS connection
         connection = get_das_connection()
         if connection is None:
@@ -330,6 +342,9 @@ def check_entry_conditions(symbol_data, entry_params):
 
 def place_das_order(symbol, order_side, route, quantity, order_type, limit_price=None):
     """Place an order in DAS using CMDAPI"""
+    if not DAS_ENABLED:
+        return False, None, "DAS integration is disabled"
+
     try:
         # Import CMDAPI classes
         from cmdapi.CMDAPI_PYTHON import cmdAPI
@@ -1716,6 +1731,9 @@ def add_trade():
 @app.route('/api/trades/import-das', methods=['POST'])
 def import_das_trades():
     """Import trades from DAS trades data"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         from database import db_manager
         
@@ -1902,6 +1920,9 @@ def recalculate_trade_pnl():
 @app.route('/api/trades/sync-das', methods=['POST'])
 def sync_trades_from_das():
     """Sync trades from DAS Trader"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         from das_integration import das_trade_manager
         
@@ -2031,17 +2052,17 @@ def trigger_manual_sync():
 def get_position_sync_status():
     """Get position sync status"""
     try:
-        # Since we have automatic position sync running in app.py, always return running
         return jsonify({
             'success': True,
             'data': {
-                'is_running': True,
-                'is_market_hours': True,  # Assume market hours for now
+                'is_running': False,
+                'is_market_hours': False,
                 'current_time_et': datetime.now().strftime('%H:%M:%S'),
-                'next_scheduled_run': None,  # Continuous sync
-                'thread_alive': True,
-                'sync_type': 'automatic',
-                'update_interval': '10 seconds'
+                'next_scheduled_run': None,
+                'thread_alive': False,
+                'sync_type': 'disabled',
+                'update_interval': 'N/A',
+                'reason': 'DAS integration is disabled'
             },
             'timestamp': datetime.now().isoformat()
         })
@@ -2110,6 +2131,9 @@ def get_positions():
 @app.route('/api/positions/sync-das', methods=['POST'])
 def sync_positions_from_das():
     """Sync positions from DAS to database"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         from das_integration import sync_positions_from_das
         
@@ -2459,6 +2483,9 @@ def stop_entry_bot():
 @app.route('/api/entry-bot/submit-parameters', methods=['POST'])
 def submit_entry_parameters():
     """Submit Entry Bot parameters"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         global tracking_symbols
         
@@ -3071,18 +3098,20 @@ if __name__ == '__main__':
     update_thread = threading.Thread(target=update_real_time_gap_ups, daemon=True)
     update_thread.start()
     
-    # Start scheduled DAS sync service
-    if SCHEDULED_SYNC_AVAILABLE:
-        try:
-            start_scheduled_sync()
-            app_logger.info("✅ Scheduled DAS sync service started")
-        except Exception as e:
-            app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
+    # DAS Trader integration is disabled — skip DAS sync services
+    if DAS_ENABLED:
+        if SCHEDULED_SYNC_AVAILABLE:
+            try:
+                start_scheduled_sync()
+                app_logger.info("✅ Scheduled DAS sync service started")
+            except Exception as e:
+                app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
+        else:
+            app_logger.warning("⚠️ Scheduled DAS sync not available")
+
+        start_position_sync_scheduler()
     else:
-        app_logger.warning("⚠️ Scheduled DAS sync not available")
-    
-    # Start automatic position sync scheduler
-    start_position_sync_scheduler()
+        app_logger.info("ℹ️ DAS integration disabled — skipping DAS sync services")
 
     app_logger.info("Starting Gap-Up Detection Web API...")
     app_logger.info("Server will be available at http://localhost:5000")
