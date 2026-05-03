@@ -10,7 +10,7 @@ import random
 import threading
 import time
 from datetime import datetime, timedelta, time as time_class
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
@@ -61,10 +61,20 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import trading bot: {e}")
     BOT_AVAILABLE = False
 
+# Feature flag: set to True to re-enable DAS Trader integration
+DAS_ENABLED = False
+if not DAS_ENABLED:
+    BOT_AVAILABLE = False
+    SCHEDULED_SYNC_AVAILABLE = False
+
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'gap-up-detection-web-2024'
-CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gap-up-detection-web-2024')
+
+_cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:5000').split(',')
+CORS(app, origins=_cors_origins)
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode='eventlet')
 
 # Global variables for real-time data
 active_stocks = set()
@@ -143,7 +153,10 @@ _das_connection_lock = threading.Lock()
 def get_das_connection():
     """Get or create a DAS connection (singleton pattern)"""
     global _das_connection
-    
+
+    if not DAS_ENABLED:
+        return None
+
     with _das_connection_lock:
         if _das_connection is None:
             try:
@@ -174,9 +187,12 @@ def close_das_connection():
 
 def get_real_stock_data(symbol):
     """Get real stock data using DAS CMDAPI Level 1 subscription"""
+    if not DAS_ENABLED:
+        return None
+
     try:
         from datetime import datetime
-        
+
         # Get the shared DAS connection
         connection = get_das_connection()
         if connection is None:
@@ -330,6 +346,9 @@ def check_entry_conditions(symbol_data, entry_params):
 
 def place_das_order(symbol, order_side, route, quantity, order_type, limit_price=None):
     """Place an order in DAS using CMDAPI"""
+    if not DAS_ENABLED:
+        return False, None, "DAS integration is disabled"
+
     try:
         # Import CMDAPI classes
         from cmdapi.CMDAPI_PYTHON import cmdAPI
@@ -516,39 +535,85 @@ def stop_continuous_tracking():
         tracking_thread.join(timeout=2)  # Wait up to 2 seconds for thread to stop
     app_logger.info("🛑 Continuous tracking stopped")
 
-# Simple auth endpoints for frontend compatibility
-@app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
-def get_auth_profile():
-    """Get user profile - dummy endpoint for frontend compatibility"""
-    if request.method == 'OPTIONS':
-        # Handle preflight request
-        response = jsonify({'status': 'ok'})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-        return response
-    
+# Frontend serving
+@app.route('/')
+def serve_index():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+@app.route('/login')
+def serve_login():
+    return send_from_directory(FRONTEND_DIR, 'login.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(FRONTEND_DIR, filename)
+
+# Auth endpoints
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Register a new user"""
     try:
-        # Return dummy user data for now
-        user_data = {
-            'id': 1,
-            'username': 'demo_user',
-            'email': 'demo@example.com',
-            'role': 'user',
-            'authenticated': True
-        }
-        
-        return jsonify({
-            'success': True,
-            'data': user_data,
-            'timestamp': datetime.now().isoformat()
-        })
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        success, message = auth_manager.register_user(
+            data.get('username', ''),
+            data.get('email', ''),
+            data.get('password', '')
+        )
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error registering user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login a user and return a session token"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        success, result = auth_manager.login_user(
+            data.get('username', ''),
+            data.get('password', '')
+        )
+        if success:
+            return jsonify({'success': True, 'data': result})
+        return jsonify({'success': False, 'error': result}), 401
+    except Exception as e:
+        app_logger.error(f"Error logging in: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Logout a user by invalidating their session token"""
+    try:
+        session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        auth_manager.logout_user(session_token)
+        return jsonify({'success': True, 'message': 'Logged out successfully'})
+    except Exception as e:
+        app_logger.error(f"Error logging out: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/profile', methods=['GET'])
+def get_auth_profile():
+    """Get the profile of the currently authenticated user"""
+    try:
+        session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        user = auth_manager.get_user_by_session(session_token)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid or expired session'}), 401
+        return jsonify({'success': True, 'data': user, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting auth profile: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')
 def health_check():
@@ -1716,6 +1781,9 @@ def add_trade():
 @app.route('/api/trades/import-das', methods=['POST'])
 def import_das_trades():
     """Import trades from DAS trades data"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         from database import db_manager
         
@@ -1902,6 +1970,9 @@ def recalculate_trade_pnl():
 @app.route('/api/trades/sync-das', methods=['POST'])
 def sync_trades_from_das():
     """Sync trades from DAS Trader"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         from das_integration import das_trade_manager
         
@@ -2031,17 +2102,17 @@ def trigger_manual_sync():
 def get_position_sync_status():
     """Get position sync status"""
     try:
-        # Since we have automatic position sync running in app.py, always return running
         return jsonify({
             'success': True,
             'data': {
-                'is_running': True,
-                'is_market_hours': True,  # Assume market hours for now
+                'is_running': False,
+                'is_market_hours': False,
                 'current_time_et': datetime.now().strftime('%H:%M:%S'),
-                'next_scheduled_run': None,  # Continuous sync
-                'thread_alive': True,
-                'sync_type': 'automatic',
-                'update_interval': '10 seconds'
+                'next_scheduled_run': None,
+                'thread_alive': False,
+                'sync_type': 'disabled',
+                'update_interval': 'N/A',
+                'reason': 'DAS integration is disabled'
             },
             'timestamp': datetime.now().isoformat()
         })
@@ -2110,6 +2181,9 @@ def get_positions():
 @app.route('/api/positions/sync-das', methods=['POST'])
 def sync_positions_from_das():
     """Sync positions from DAS to database"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         from das_integration import sync_positions_from_das
         
@@ -2459,6 +2533,9 @@ def stop_entry_bot():
 @app.route('/api/entry-bot/submit-parameters', methods=['POST'])
 def submit_entry_parameters():
     """Submit Entry Bot parameters"""
+    if not DAS_ENABLED:
+        return jsonify({'success': False, 'error': 'DAS integration is disabled'}), 503
+
     try:
         global tracking_symbols
         
@@ -3071,25 +3148,27 @@ if __name__ == '__main__':
     update_thread = threading.Thread(target=update_real_time_gap_ups, daemon=True)
     update_thread.start()
     
-    # Start scheduled DAS sync service
-    if SCHEDULED_SYNC_AVAILABLE:
-        try:
-            start_scheduled_sync()
-            app_logger.info("✅ Scheduled DAS sync service started")
-        except Exception as e:
-            app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
+    # DAS Trader integration is disabled — skip DAS sync services
+    if DAS_ENABLED:
+        if SCHEDULED_SYNC_AVAILABLE:
+            try:
+                start_scheduled_sync()
+                app_logger.info("✅ Scheduled DAS sync service started")
+            except Exception as e:
+                app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
+        else:
+            app_logger.warning("⚠️ Scheduled DAS sync not available")
+
+        start_position_sync_scheduler()
     else:
-        app_logger.warning("⚠️ Scheduled DAS sync not available")
-    
-    # Start automatic position sync scheduler
-    start_position_sync_scheduler()
+        app_logger.info("ℹ️ DAS integration disabled — skipping DAS sync services")
 
     app_logger.info("Starting Gap-Up Detection Web API...")
     app_logger.info("Server will be available at http://localhost:5000")
     
     try:
         # Run the Flask app
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
     except KeyboardInterrupt:
         app_logger.info("🛑 Shutting down server...")
     finally:

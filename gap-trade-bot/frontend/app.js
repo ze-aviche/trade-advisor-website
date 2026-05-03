@@ -8,7 +8,7 @@ const { createApp } = Vue;
 console.log('✅ Vue.js loaded successfully');
 
 // Configure axios base URL
-axios.defaults.baseURL = 'http://localhost:5000';
+axios.defaults.baseURL = '';
 
 const app = createApp({
         data() {
@@ -48,6 +48,7 @@ const app = createApp({
                 
                 // UI state
                 activeTab: localStorage.getItem('activeTab') || 'about',
+                mobileMenuOpen: false,
                 loading: {
                     stats: false,
                     gapUps: false,
@@ -361,28 +362,19 @@ const app = createApp({
             checkAuth() {
                 const sessionToken = localStorage.getItem('session_token');
                 const user = localStorage.getItem('user');
-                
+
                 if (!sessionToken || !user) {
-                    // For testing, create a mock session
-                    console.log('No session found, creating mock session for testing...');
-                    localStorage.setItem('session_token', 'mock-session-token');
-                    localStorage.setItem('user', JSON.stringify({
-                        username: 'testuser',
-                        email: 'test@example.com'
-                    }));
-                    
-                    // Initialize app directly for testing
-                    this.user = { username: 'testuser', email: 'test@example.com' };
-                    this.initializeApp();
+                    window.location.href = '/login';
                     return;
                 }
-                
+
                 // Validate session with backend
                 this.validateSession();
             },
             
             // Handle tab changes
             async onTabChange(tabName) {
+                this.mobileMenuOpen = false;
                 console.log(`🔄 Tab changed to: ${tabName}`);
                 console.log(`🔍 Current activeTab value: ${this.activeTab}`);
                 console.log(`🔍 Previous activeTab value: ${this.activeTab}`);
@@ -497,7 +489,7 @@ const app = createApp({
             
             async validateSession() {
                 try {
-                    const response = await fetch('http://localhost:5000/api/auth/profile', {
+                    const response = await fetch('/api/auth/profile', {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('session_token')}`
                         }
@@ -511,7 +503,7 @@ const app = createApp({
                         // Session invalid, redirect to login
                         localStorage.removeItem('session_token');
                         localStorage.removeItem('user');
-                        window.location.href = '/login.html';
+                        window.location.href = '/login';
                         return false;
                     }
                 } catch (error) {
@@ -523,7 +515,7 @@ const app = createApp({
             logout() {
                 localStorage.removeItem('session_token');
                 localStorage.removeItem('user');
-                window.location.href = '/login.html';
+                window.location.href = '/login';
             },
             
             async initializeApp() {
@@ -1220,9 +1212,9 @@ const app = createApp({
                     
                     // Load fresh stats from positions endpoints
                     const [totalPositionsRes, totalPnlRes, winRateRes] = await Promise.all([
-                        fetch(`http://localhost:5000/api/positions/total_positions?t=${Date.now()}`),
-                        fetch(`http://localhost:5000/api/positions/total_pnl?t=${Date.now()}`),
-                        fetch(`http://localhost:5000/api/positions/winrate?t=${Date.now()}`)
+                        fetch(`/api/positions/total_positions?t=${Date.now()}`),
+                        fetch(`/api/positions/total_pnl?t=${Date.now()}`),
+                        fetch(`/api/positions/winrate?t=${Date.now()}`)
                     ]);
                     
                     if (totalPositionsRes.ok && totalPnlRes.ok && winRateRes.ok) {
@@ -1342,7 +1334,7 @@ const app = createApp({
             async loadGapUpConfig() {
                 try {
                     console.log('⚙️ Loading gap-up configuration...');
-                    const response = await fetch('http://localhost:5000/api/gap-ups/config');
+                    const response = await fetch('/api/gap-ups/config');
                     const data = await response.json();
                     
                     if (data.success) {
@@ -1360,7 +1352,7 @@ const app = createApp({
             async saveGapUpConfig() {
                 try {
                     console.log('💾 Saving gap-up configuration...');
-                    const response = await fetch('http://localhost:5000/api/gap-ups/config', {
+                    const response = await fetch('/api/gap-ups/config', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1398,7 +1390,7 @@ const app = createApp({
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         console.log(`📈 Gap-ups loading attempt ${attempt}/${maxRetries}...`);
-                        const response = await fetch('http://localhost:5000/api/gap-ups', {
+                        const response = await fetch('/api/gap-ups', {
                             signal: AbortSignal.timeout(10000) // 10 second timeout
                         });
                         
@@ -1444,15 +1436,15 @@ const app = createApp({
                 
                 try {
                     // Load total P&L
-                    const pnlResponse = await fetch('http://localhost:5000/api/positions/total_pnl');
+                    const pnlResponse = await fetch('/api/positions/total_pnl');
                     const pnlData = await pnlResponse.json();
                     
                     // Load win rate
-                    const winRateResponse = await fetch('http://localhost:5000/api/positions/winrate');
+                    const winRateResponse = await fetch('/api/positions/winrate');
                     const winRateData = await winRateResponse.json();
                     
                     // Load total positions
-                    const positionsResponse = await fetch('http://localhost:5000/api/positions/total_positions');
+                    const positionsResponse = await fetch('/api/positions/total_positions');
                     const positionsData = await positionsResponse.json();
                     
                     if (pnlData.success && winRateData.success && positionsData.success) {
@@ -1491,7 +1483,7 @@ const app = createApp({
                 this.loading.dailyPnl = true;
                 
                 try {
-                    const response = await fetch('http://localhost:5000/api/positions/daily-pnl');
+                    const response = await fetch('/api/positions/daily-pnl');
                     const data = await response.json();
                     
                     if (data.success) {
@@ -1519,7 +1511,7 @@ const app = createApp({
                 this.loading.cumulativePnl = true;
                 
                 try {
-                    const response = await fetch('http://localhost:5000/api/positions/cumulative-pnl');
+                    const response = await fetch('/api/positions/cumulative-pnl');
                     const data = await response.json();
                     
                     if (data.success) {
@@ -1844,10 +1836,10 @@ const app = createApp({
                 try {
                     // Load all pie chart data in parallel
                     const [longShortResponse, symbolsResponse, winLossResponse, monthlyResponse] = await Promise.all([
-                        fetch('http://localhost:5000/api/positions/pie-chart/long-short'),
-                        fetch(`http://localhost:5000/api/positions/pie-chart/symbols?limit=${this.pieChartSymbolLimit}`),
-                        fetch('http://localhost:5000/api/positions/pie-chart/win-loss'),
-                        fetch('http://localhost:5000/api/positions/pie-chart/monthly')
+                        fetch('/api/positions/pie-chart/long-short'),
+                        fetch(`/api/positions/pie-chart/symbols?limit=${this.pieChartSymbolLimit}`),
+                        fetch('/api/positions/pie-chart/win-loss'),
+                        fetch('/api/positions/pie-chart/monthly')
                     ]);
 
                     const [longShortData, symbolsData, winLossData, monthlyData] = await Promise.all([
@@ -2280,7 +2272,7 @@ const app = createApp({
                     console.log('🔄 Loading fresh dashboard positions data...');
                     
                     // Load positions data for charts and analytics
-                    const response = await fetch(`http://localhost:5000/api/positions/pnl-history?t=${Date.now()}`);
+                    const response = await fetch(`/api/positions/pnl-history?t=${Date.now()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2372,7 +2364,7 @@ const app = createApp({
                     params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
                     }
                     
-                    const response = await fetch(`http://localhost:5000/api/trades?${params.toString()}`);
+                    const response = await fetch(`/api/trades?${params.toString()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2412,7 +2404,7 @@ const app = createApp({
                 this.loading.positions = true;
                 
                 // Always use the daily positions API for historical data
-                let apiUrl = 'http://localhost:5000/api/positions/daily';
+                let apiUrl = '/api/positions/daily';
                 const params = new URLSearchParams();
                 
                 // Check if date filters are set
@@ -2420,7 +2412,7 @@ const app = createApp({
                 
                 if (hasDateFilters) {
                     // Use the date range API
-                    apiUrl = 'http://localhost:5000/api/positions/daily/range';
+                    apiUrl = '/api/positions/daily/range';
                     params.append('start_date', this.positionsHistoryStartDate);
                     params.append('end_date', this.positionsHistoryEndDate);
                 } else {
@@ -3404,7 +3396,7 @@ const app = createApp({
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
                     console.log(`🔍 Backend connectivity attempt ${attempt}/${maxRetries}...`);
-                    const response = await fetch('http://localhost:5000/api/health', {
+                    const response = await fetch('/api/health', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json'
@@ -3446,7 +3438,7 @@ const app = createApp({
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
                     console.log(`🔍 Backend readiness check ${attempt}/${maxAttempts}...`);
-                    const response = await fetch('http://localhost:5000/api/health', {
+                    const response = await fetch('/api/health', {
                         signal: AbortSignal.timeout(3000) // 3 second timeout
                     });
                     
@@ -3512,7 +3504,7 @@ const app = createApp({
                 this.loading.historical = true;
                 
                 // Use the correct endpoint format: /api/historical-data/<ticker>
-                const response = await fetch(`http://localhost:5000/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}`);
+                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}`);
                 const data = await response.json();
                 
                 if (data.success) {
@@ -3992,7 +3984,7 @@ const app = createApp({
         // Helper method to invalidate gap-ups cache
         async invalidateGapUpsCache() {
             try {
-                const response = await fetch('http://localhost:5000/api/cache/invalidate-gap-ups', {
+                const response = await fetch('/api/cache/invalidate-gap-ups', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -4033,7 +4025,7 @@ const app = createApp({
                 
                 console.log('🚨 Executing panic exit...');
                 
-                const response = await fetch('http://localhost:5000/api/bot/panic-exit', {
+                const response = await fetch('/api/bot/panic-exit', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

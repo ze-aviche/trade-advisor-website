@@ -9,9 +9,13 @@ import json
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
-# Use absolute path to ensure consistency
+# Use DATABASE_PATH env var if set (e.g. Render persistent disk at /data),
+# otherwise fall back to a local file next to this script.
 script_dir = os.path.dirname(os.path.abspath(__file__))
-DATABASE_FILE = os.path.join(script_dir, 'trading_advisor.db')
+DATABASE_FILE = os.environ.get(
+    'DATABASE_PATH',
+    os.path.join(script_dir, 'trading_advisor.db')
+)
 
 class DatabaseManager:
     def __init__(self):

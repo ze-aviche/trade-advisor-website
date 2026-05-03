@@ -77,7 +77,7 @@ web_config = config
 # Note: Stock list removed - system will use alternative methods for gap-up detection
 
 # Gap-up detection settings
-GAP_UP_MIN_PERCENTAGE = 5  # Minimum gap percentage to consider (25% for significant gaps)
+GAP_UP_MIN_PERCENTAGE = 10  # Minimum gap percentage to consider (25% for significant gaps)
 GAP_UP_MIN_PRICE = 0.5      # Minimum stock price to consider
 GAP_UP_UPDATE_INTERVAL = 100  # Update interval in seconds (5 minutes)
 
