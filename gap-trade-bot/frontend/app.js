@@ -4195,6 +4195,8 @@ const app = createApp({
             try {
                 const response = await axios.post('/api/ai-agent/chat', {
                     message: message
+                }, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
                 });
                 
                 if (response.data.success) {
@@ -4238,8 +4240,15 @@ const app = createApp({
             }
         },
         
-        clearAIChatHistory() {
+        async clearAIChatHistory() {
             this.aiChatMessages = [];
+            try {
+                await axios.post('/api/ai-agent/clear-history', {}, {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                });
+            } catch (e) {
+                console.warn('Could not clear server-side chat history:', e);
+            }
             this.showNotification('Chat history cleared successfully', 'success');
         },
         
