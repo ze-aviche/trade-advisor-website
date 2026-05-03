@@ -55,21 +55,51 @@
                         <p class="hidden sm:block text-xs text-gray-400 font-medium tracking-wide uppercase">AI Trading Bot</p>
                     </div>
                 </div>
-                <div class="flex items-center space-x-2 md:space-x-4">
-                    <div class="hidden sm:flex items-center space-x-2 text-gray-400">
-                        <i class="fas fa-user-circle"></i>
-                        <span class="text-sm">{{ user ? user.username : 'Guest' }}</span>
-                        <span v-if="user && user.role === 'admin'" class="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full font-medium">Admin</span>
-                        <span v-else-if="user && user.role === 'developer'" class="text-xs bg-green-700 text-white px-2 py-0.5 rounded-full font-medium">Dev</span>
-                    </div>
-                    <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-3 py-2 md:px-4 rounded-md text-sm font-medium">
+                <div class="flex items-center space-x-2 md:space-x-3">
+                    <button @click="refreshData" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm text-gray-300 transition-colors">
                         <i class="fas fa-sync-alt"></i>
-                        <span class="hidden sm:inline ml-2">Refresh</span>
+                        <span class="hidden sm:inline ml-1">Refresh</span>
                     </button>
-                    <button @click="logout" class="bg-red-600 hover:bg-red-700 px-3 py-2 md:px-4 rounded-md text-sm font-medium">
-                        <i class="fas fa-sign-out-alt"></i>
-                        <span class="hidden sm:inline ml-2">Logout</span>
-                    </button>
+
+                    <!-- Profile dropdown -->
+                    <div class="relative">
+                        <button @click="profileMenuOpen = !profileMenuOpen"
+                                class="flex items-center space-x-2 bg-gray-700 hover:bg-gray-600 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors">
+                            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                                {{ user ? user.username[0].toUpperCase() : 'G' }}
+                            </div>
+                            <div class="hidden sm:block text-left">
+                                <div class="text-sm text-white font-medium leading-tight">{{ user ? user.username : 'Guest' }}</div>
+                                <div :class="tierBadgeClass" class="text-xs px-1.5 py-0.5 rounded-full font-medium leading-tight mt-0.5 inline-block">{{ tierLabel }}</div>
+                            </div>
+                            <i class="fas fa-chevron-down text-gray-400 text-xs hidden sm:block"></i>
+                        </button>
+
+                        <!-- Backdrop -->
+                        <div v-if="profileMenuOpen" @click="profileMenuOpen = false" class="fixed inset-0 z-40"></div>
+
+                        <!-- Dropdown menu -->
+                        <div v-if="profileMenuOpen" class="absolute right-0 top-full mt-1 w-56 bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50 overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-700">
+                                <div class="text-sm font-semibold text-white">{{ user ? user.username : '' }}</div>
+                                <div class="text-xs text-gray-400 truncate">{{ user ? user.email : '' }}</div>
+                                <div :class="tierBadgeClass" class="text-xs px-2 py-0.5 rounded-full font-medium mt-1.5 inline-block">{{ tierLabel }}</div>
+                            </div>
+                            <div class="py-1">
+                                <button @click="onTabChange('account'); profileMenuOpen = false"
+                                        class="w-full flex items-center px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                    <i class="fas fa-crown text-yellow-400 mr-3 w-4"></i>
+                                    <span>{{ isStaff ? 'My Account' : 'Manage Subscription' }}</span>
+                                </button>
+                            </div>
+                            <div class="border-t border-gray-700 py-1">
+                                <button @click="logout(); profileMenuOpen = false"
+                                        class="w-full flex items-center px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 transition-colors">
+                                    <i class="fas fa-sign-out-alt mr-3 w-4"></i>Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -78,25 +108,25 @@
         <div class="bg-gray-800 border-b border-gray-700 px-4 py-2">
             <!-- Desktop: horizontal tab row -->
             <div class="hidden md:flex items-center space-x-1 overflow-x-auto">
-                <button @click="onTabChange('about')" :class="activeTab === 'about' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-info-circle mr-1"></i>About</button>
-                <button @click="onTabChange('gap-ups')" :class="activeTab === 'gap-ups' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-arrow-up mr-1"></i>Gap-Ups</button>
-                <button @click="onTabChange('historical')" :class="activeTab === 'historical' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-history mr-1"></i>Historical</button>
-                <button @click="onTabChange('entry-bot')" :class="activeTab === 'entry-bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-play mr-1"></i>Entry Bot</button>
-                <button @click="onTabChange('bot')" :class="activeTab === 'bot' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>Exit Bot</button>
-                <button @click="onTabChange('trades')" :class="activeTab === 'trades' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-exchange-alt mr-1"></i>Trade History</button>
-                <button @click="onTabChange('positions')" :class="activeTab === 'positions' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-line mr-1"></i>Positions</button>
-                <button @click="onTabChange('stats')" :class="activeTab === 'stats' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-bar mr-1"></i>Stats</button>
-                <button @click="onTabChange('backtest')" :class="activeTab === 'backtest' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-flask mr-1"></i>Backtest</button>
-                <button @click="onTabChange('ai-chat')" :class="activeTab === 'ai-chat' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>AI Chat</button>
-                <button @click="onTabChange('help')" :class="activeTab === 'help' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-question-circle mr-1"></i>Help</button>
-                <button v-if="isAdmin" @click="onTabChange('admin')" :class="activeTab === 'admin' ? 'text-yellow-400 border-yellow-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-shield-alt mr-1"></i>Admin</button>
+                <button @click="handleTabClick('about')" :class="activeTab === 'about' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-info-circle mr-1"></i>About</button>
+                <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-arrow-up mr-1"></i>Gap-Ups</button>
+                <button @click="handleTabClick('historical')" :class="[activeTab === 'historical' ? 'text-blue-400 border-blue-400' : canAccessTab('historical') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-history mr-1"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('entry-bot')" :class="[activeTab === 'entry-bot' ? 'text-blue-400 border-blue-400' : canAccessTab('entry-bot') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-play mr-1"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('bot')" :class="[activeTab === 'bot' ? 'text-blue-400 border-blue-400' : canAccessTab('bot') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('trades')" :class="[activeTab === 'trades' ? 'text-blue-400 border-blue-400' : canAccessTab('trades') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-exchange-alt mr-1"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('positions')" :class="[activeTab === 'positions' ? 'text-blue-400 border-blue-400' : canAccessTab('positions') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-line mr-1"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('stats')" :class="[activeTab === 'stats' ? 'text-blue-400 border-blue-400' : canAccessTab('stats') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-bar mr-1"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('backtest')" :class="[activeTab === 'backtest' ? 'text-blue-400 border-blue-400' : canAccessTab('backtest') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-flask mr-1"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-1"></i></button>
+                <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>AI Chat</button>
+                <button @click="handleTabClick('help')" :class="activeTab === 'help' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-question-circle mr-1"></i>Help</button>
+                <button v-if="isStaff" @click="onTabChange('admin')" :class="activeTab === 'admin' ? 'text-yellow-400 border-yellow-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-shield-alt mr-1"></i>Admin</button>
             </div>
 
             <!-- Mobile: hamburger toggle -->
             <div class="flex md:hidden items-center justify-between py-1">
                 <span class="text-blue-400 text-sm font-medium">
                     <i class="fas fa-layer-group mr-2 text-gray-400"></i>
-                    {{ {'about':'About','gap-ups':'Gap-Ups','historical':'Historical','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','admin':'Admin'}[activeTab] || 'Menu' }}
+                    {{ {'about':'About','gap-ups':'Gap-Ups','historical':'Historical','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','admin':'Admin','account':'My Account'}[activeTab] || 'Menu' }}
                 </span>
                 <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-gray-400 hover:text-white p-1 rounded">
                     <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'" class="text-lg"></i>
@@ -105,18 +135,19 @@
 
             <!-- Mobile: dropdown grid -->
             <div v-if="mobileMenuOpen" class="md:hidden border-t border-gray-700 mt-2 pt-2 grid grid-cols-2 gap-1">
-                <button @click="onTabChange('about')" :class="activeTab === 'about' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-info-circle mr-2 w-4"></i>About</button>
-                <button @click="onTabChange('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
-                <button @click="onTabChange('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical</button>
-                <button @click="onTabChange('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot</button>
-                <button @click="onTabChange('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot</button>
-                <button @click="onTabChange('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History</button>
-                <button @click="onTabChange('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions</button>
-                <button @click="onTabChange('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats</button>
-                <button @click="onTabChange('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest</button>
-                <button @click="onTabChange('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>AI Chat</button>
-                <button @click="onTabChange('help')" :class="activeTab === 'help' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-question-circle mr-2 w-4"></i>Help</button>
-                <button v-if="isAdmin" @click="onTabChange('admin')" :class="activeTab === 'admin' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-shield-alt mr-2 w-4"></i>Admin</button>
+                <button @click="handleTabClick('about')" :class="activeTab === 'about' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-info-circle mr-2 w-4"></i>About</button>
+                <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
+                <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : canAccessTab('entry-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : canAccessTab('bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : canAccessTab('stats') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : canAccessTab('backtest') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>AI Chat</button>
+                <button @click="handleTabClick('help')" :class="activeTab === 'help' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-question-circle mr-2 w-4"></i>Help</button>
+                <button @click="onTabChange('account'); mobileMenuOpen = false" :class="activeTab === 'account' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-crown mr-2 w-4 text-yellow-400"></i>My Account</button>
+                <button v-if="isStaff" @click="onTabChange('admin')" :class="activeTab === 'admin' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-shield-alt mr-2 w-4"></i>Admin</button>
             </div>
         </div>
 
@@ -2642,114 +2673,241 @@
                 </div>
             </div>
 
-            <!-- Admin Tab -->
-            <div v-if="activeTab === 'admin' && isAdmin" class="space-y-6">
-                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
-                    <div class="flex items-center justify-between mb-6">
-                        <div>
-                            <h2 class="text-xl font-bold text-white flex items-center">
-                                <i class="fas fa-shield-alt text-yellow-400 mr-3"></i>User Management
-                            </h2>
-                            <p class="text-gray-400 text-sm mt-1">Manage user roles and account status</p>
+            <!-- Account / Subscription Tab -->
+            <div v-if="activeTab === 'account'" class="space-y-6 max-w-4xl mx-auto">
+                <!-- Staff account view -->
+                <div v-if="isStaff" class="bg-gray-800 rounded-xl p-8 shadow-lg text-center">
+                    <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl font-bold text-white mx-auto mb-4">
+                        {{ user ? user.username[0].toUpperCase() : '' }}
+                    </div>
+                    <h2 class="text-2xl font-bold text-white mb-1">{{ user ? user.username : '' }}</h2>
+                    <p class="text-gray-400 mb-4">{{ user ? user.email : '' }}</p>
+                    <span :class="tierBadgeClass" class="text-sm px-4 py-1.5 rounded-full font-semibold">{{ tierLabel }}</span>
+                    <div class="mt-6 bg-gray-700 rounded-xl p-6 text-left">
+                        <h3 class="text-white font-semibold mb-3 flex items-center"><i class="fas fa-infinity text-blue-400 mr-2"></i>Full Platform Access</h3>
+                        <p class="text-gray-400 text-sm">Staff accounts have unrestricted access to all features and are not subject to subscription tiers.</p>
+                    </div>
+                </div>
+
+                <!-- Regular user subscription view -->
+                <div v-else class="space-y-6">
+                    <!-- Current plan banner -->
+                    <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <p class="text-gray-400 text-sm mb-1">Current Plan</p>
+                                <div class="flex items-center gap-3">
+                                    <h2 class="text-2xl font-bold text-white">{{ tierLabel }}</h2>
+                                    <span :class="user && user.subscription_status === 'active' ? 'bg-green-900 text-green-300' : 'bg-gray-700 text-gray-400'" class="text-xs px-2 py-1 rounded-full font-medium">
+                                        {{ user ? user.subscription_status : '' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <button v-if="user && user.subscription_tier !== 'basic'" @click="cancelSubscription()"
+                                    :disabled="subscriptionLoading"
+                                    class="text-red-400 hover:text-red-300 text-sm border border-red-800 hover:border-red-600 px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
+                                Cancel Subscription
+                            </button>
                         </div>
-                        <button @click="loadAdminUsers()" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm text-gray-300 transition-colors">
+                    </div>
+
+                    <!-- Plan cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <!-- Basic -->
+                        <div :class="user && user.subscription_tier === 'basic' ? 'ring-2 ring-gray-400' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                            <div class="mb-4">
+                                <span class="bg-gray-600 text-gray-200 text-xs px-2 py-1 rounded-full font-medium">Basic</span>
+                                <div class="mt-3 text-2xl font-bold text-white">Free</div>
+                            </div>
+                            <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>About</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Gap-Ups</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>AI Chat</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Help</li>
+                            </ul>
+                            <div v-if="user && user.subscription_tier === 'basic'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg">Current Plan</div>
+                        </div>
+                        <!-- Beginner -->
+                        <div :class="user && user.subscription_tier === 'beginner' ? 'ring-2 ring-green-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                            <div class="mb-4">
+                                <span class="bg-green-700 text-white text-xs px-2 py-1 rounded-full font-medium">Beginner Trader</span>
+                                <div class="mt-3 text-2xl font-bold text-white">$5<span class="text-sm text-gray-400 font-normal">/mo</span></div>
+                            </div>
+                            <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Basic</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Historical Data</li>
+                            </ul>
+                            <button v-if="user && user.subscription_tier === 'beginner'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
+                            <button v-else-if="user && ['basic'].includes(user.subscription_tier)" @click="upgradeSubscription('beginner')" :disabled="subscriptionLoading" class="bg-green-700 hover:bg-green-600 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
+                        </div>
+                        <!-- Advanced -->
+                        <div :class="user && user.subscription_tier === 'advanced' ? 'ring-2 ring-blue-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col relative">
+                            <div class="absolute -top-3 left-1/2 -translate-x-1/2"><span class="bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-semibold">Popular</span></div>
+                            <div class="mb-4">
+                                <span class="bg-blue-700 text-white text-xs px-2 py-1 rounded-full font-medium">Advanced Trader</span>
+                                <div class="mt-3 text-2xl font-bold text-white">$10<span class="text-sm text-gray-400 font-normal">/mo</span></div>
+                            </div>
+                            <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Beginner</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Entry Bot & Exit Bot</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Trade History</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Positions & Stats</li>
+                            </ul>
+                            <button v-if="user && user.subscription_tier === 'advanced'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
+                            <button v-else-if="user && ['basic','beginner'].includes(user.subscription_tier)" @click="upgradeSubscription('advanced')" :disabled="subscriptionLoading" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
+                        </div>
+                        <!-- Yogi -->
+                        <div :class="user && user.subscription_tier === 'yogi' ? 'ring-2 ring-yellow-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                            <div class="mb-4">
+                                <span class="bg-yellow-600 text-white text-xs px-2 py-1 rounded-full font-medium">Yogi Trader</span>
+                                <div class="mt-3 text-2xl font-bold text-white">$25<span class="text-sm text-gray-400 font-normal">/mo</span></div>
+                            </div>
+                            <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Advanced</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Backtest Engine</li>
+                            </ul>
+                            <button v-if="user && user.subscription_tier === 'yogi'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
+                            <button v-else-if="user && ['basic','beginner','advanced'].includes(user.subscription_tier)" @click="upgradeSubscription('yogi')" :disabled="subscriptionLoading" class="bg-yellow-600 hover:bg-yellow-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Tab -->
+            <div v-if="activeTab === 'admin' && isStaff" class="space-y-6">
+                <!-- Add User (both staff) -->
+                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <h3 class="text-white font-semibold mb-4 flex items-center"><i class="fas fa-user-plus text-blue-400 mr-2"></i>Add New User</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <input v-model="adminAddUserForm.username" type="text" placeholder="Username"
+                               class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <input v-model="adminAddUserForm.email" type="email" placeholder="Email"
+                               class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <input v-model="adminAddUserForm.password" type="password" placeholder="Password"
+                               class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="mt-3 flex items-center gap-3">
+                        <button @click="adminSubmitAddUser()" :disabled="adminAddUserLoading"
+                                class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
+                            <i :class="adminAddUserLoading ? 'fas fa-spinner fa-spin' : 'fas fa-plus'" class="mr-1"></i>Create User
+                        </button>
+                        <span v-if="adminAddUserError" class="text-red-400 text-sm">{{ adminAddUserError }}</span>
+                        <span v-if="adminAddUserSuccess" class="text-green-400 text-sm">{{ adminAddUserSuccess }}</span>
+                    </div>
+                    <p class="text-gray-500 text-xs mt-2">New users are created with the Basic (free) tier.</p>
+                </div>
+
+                <!-- Users table -->
+                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center justify-between mb-5">
+                        <h3 class="text-white font-semibold flex items-center"><i class="fas fa-users text-blue-400 mr-2"></i>All Users <span class="text-gray-500 text-sm font-normal ml-2">({{ adminUsers.length }})</span></h3>
+                        <button @click="loadAdminUsers()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm text-gray-300 transition-colors">
                             <i :class="adminLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-1"></i>Refresh
                         </button>
                     </div>
 
-                    <!-- Loading -->
-                    <div v-if="adminLoading" class="text-center py-8">
-                        <i class="fas fa-spinner fa-spin text-blue-400 text-2xl"></i>
-                        <p class="text-gray-400 mt-2">Loading users...</p>
-                    </div>
+                    <div v-if="adminLoading" class="text-center py-8"><i class="fas fa-spinner fa-spin text-blue-400 text-2xl"></i></div>
 
-                    <!-- Users table -->
-                    <div v-else-if="adminUsers.length > 0" class="overflow-x-auto">
+                    <div v-else class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
-                                <tr class="border-b border-gray-700">
-                                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Username</th>
-                                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Email</th>
-                                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Role</th>
-                                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Status</th>
-                                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Last Login</th>
-                                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Actions</th>
+                                <tr class="border-b border-gray-700 text-left">
+                                    <th class="py-3 px-3 text-gray-400 font-medium">User</th>
+                                    <th class="py-3 px-3 text-gray-400 font-medium">System Role</th>
+                                    <th class="py-3 px-3 text-gray-400 font-medium">Subscription</th>
+                                    <th class="py-3 px-3 text-gray-400 font-medium">Status</th>
+                                    <th class="py-3 px-3 text-gray-400 font-medium">Last Login</th>
+                                    <th v-if="isSuperAdmin" class="py-3 px-3 text-gray-400 font-medium">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="u in adminUsers" :key="u.id" class="border-b border-gray-700 hover:bg-gray-750">
-                                    <td class="py-3 px-4 text-white font-medium">
-                                        {{ u.username }}
-                                        <span v-if="user && u.id === user.id" class="text-xs text-gray-500 ml-1">(you)</span>
+                                <tr v-for="u in adminUsers" :key="u.id" class="border-b border-gray-700 hover:bg-gray-750 transition-colors">
+                                    <td class="py-3 px-3">
+                                        <div class="text-white font-medium">{{ u.username }} <span v-if="user && u.id === user.id" class="text-gray-500 text-xs">(you)</span></div>
+                                        <div class="text-gray-500 text-xs">{{ u.email }}</div>
                                     </td>
-                                    <td class="py-3 px-4 text-gray-300">{{ u.email }}</td>
-                                    <td class="py-3 px-4">
-                                        <select :value="u.role"
-                                                @change="updateUserRole(u.id, $event.target.value); u.role = $event.target.value"
-                                                :disabled="user && u.id === user.id"
-                                                class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
-                                            <option value="admin">Admin</option>
-                                            <option value="developer">Developer</option>
+                                    <td class="py-3 px-3">
+                                        <select v-if="isSuperAdmin && !(user && u.id === user.id)"
+                                                :value="u.system_role || ''"
+                                                @change="adminUpdateSystemRole(u.id, $event.target.value || null); u.system_role = $event.target.value || null"
+                                                class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                            <option value="">User</option>
+                                            <option value="dev_master">Dev Master</option>
+                                            <option value="super_admin">Super Admin</option>
                                         </select>
-                                    </td>
-                                    <td class="py-3 px-4">
-                                        <span :class="u.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'"
-                                              class="text-xs px-2 py-1 rounded-full font-medium">
-                                            {{ u.is_active ? 'Active' : 'Inactive' }}
+                                        <span v-else>
+                                            <span v-if="u.system_role === 'super_admin'" class="bg-red-800 text-red-200 text-xs px-2 py-0.5 rounded-full">Super Admin</span>
+                                            <span v-else-if="u.system_role === 'dev_master'" class="bg-purple-800 text-purple-200 text-xs px-2 py-0.5 rounded-full">Dev Master</span>
+                                            <span v-else class="text-gray-500 text-xs">—</span>
                                         </span>
                                     </td>
-                                    <td class="py-3 px-4 text-gray-400 text-xs">
-                                        {{ u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never' }}
+                                    <td class="py-3 px-3">
+                                        <div v-if="!u.system_role">
+                                            <select v-if="isSuperAdmin"
+                                                    :value="u.subscription_tier || 'basic'"
+                                                    @change="adminUpdateSubscriptionTier(u.id, $event.target.value); u.subscription_tier = $event.target.value"
+                                                    class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                                <option value="basic">Basic (Free)</option>
+                                                <option value="beginner">Beginner ($5)</option>
+                                                <option value="advanced">Advanced ($10)</option>
+                                                <option value="yogi">Yogi ($25)</option>
+                                            </select>
+                                            <span v-else class="text-gray-300 text-xs capitalize">{{ u.subscription_tier || 'basic' }}</span>
+                                            <div class="text-xs mt-0.5" :class="u.subscription_status === 'active' ? 'text-green-500' : 'text-gray-500'">{{ u.subscription_status || 'active' }}</div>
+                                        </div>
+                                        <span v-else class="text-gray-500 text-xs">N/A</span>
                                     </td>
-                                    <td class="py-3 px-4">
-                                        <button @click="toggleUserActive(u.id, !!u.is_active)"
-                                                :disabled="user && u.id === user.id"
-                                                :class="u.is_active ? 'bg-red-700 hover:bg-red-600' : 'bg-green-700 hover:bg-green-600'"
-                                                class="text-white text-xs px-3 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                            {{ u.is_active ? 'Deactivate' : 'Activate' }}
-                                        </button>
+                                    <td class="py-3 px-3">
+                                        <span :class="u.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" class="text-xs px-2 py-0.5 rounded-full">{{ u.is_active ? 'Active' : 'Inactive' }}</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-gray-400 text-xs">{{ u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never' }}</td>
+                                    <td v-if="isSuperAdmin" class="py-3 px-3">
+                                        <div v-if="!(user && u.id === user.id)" class="flex gap-2 flex-wrap">
+                                            <button v-if="!u.system_role && u.subscription_tier !== 'basic'" @click="adminCancelUserSubscription(u.id)"
+                                                    class="bg-orange-800 hover:bg-orange-700 text-white text-xs px-2 py-1 rounded transition-colors">Cancel Sub</button>
+                                            <button @click="toggleUserActive(u.id, !!u.is_active)"
+                                                    :class="u.is_active ? 'bg-red-800 hover:bg-red-700' : 'bg-green-800 hover:bg-green-700'"
+                                                    class="text-white text-xs px-2 py-1 rounded transition-colors">
+                                                {{ u.is_active ? 'Deactivate' : 'Activate' }}
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-
-                    <div v-else class="text-center py-8 text-gray-400">
-                        <i class="fas fa-users text-3xl mb-2"></i>
-                        <p>No users found.</p>
-                    </div>
-                </div>
-
-                <!-- Role legend -->
-                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
-                    <h3 class="text-white font-semibold mb-4">Role Permissions</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="bg-gray-700 rounded-lg p-4">
-                            <div class="flex items-center mb-2">
-                                <span class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-medium mr-2">Admin</span>
-                                <span class="text-white font-medium">Full Access</span>
-                            </div>
-                            <ul class="text-gray-400 text-sm space-y-1">
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>All trading tabs</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>User management panel</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Change user roles</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Activate / deactivate accounts</li>
-                            </ul>
-                        </div>
-                        <div class="bg-gray-700 rounded-lg p-4">
-                            <div class="flex items-center mb-2">
-                                <span class="bg-green-700 text-white text-xs px-2 py-0.5 rounded-full font-medium mr-2">Developer</span>
-                                <span class="text-white font-medium">Trading Access</span>
-                            </div>
-                            <ul class="text-gray-400 text-sm space-y-1">
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>All trading tabs</li>
-                                <li><i class="fas fa-times text-red-400 mr-2"></i>No user management panel</li>
-                            </ul>
-                        </div>
-                    </div>
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Upgrade Modal -->
+    <div v-if="upgradeModal.show" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 px-4">
+        <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-700">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-yellow-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-lock text-yellow-400 text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">{{ upgradeModal.tabLabel }} is locked</h3>
+                <p class="text-gray-400 text-sm">Requires <span class="text-white font-semibold">{{ upgradeModal.requiredPlan }}</span></p>
+            </div>
+            <div class="bg-gray-700 rounded-xl p-4 mb-6 text-center">
+                <div class="text-3xl font-bold text-white">{{ upgradeModal.requiredPrice }}</div>
+                <div class="text-gray-400 text-sm">per month</div>
+            </div>
+            <div class="flex gap-3">
+                <button @click="upgradeSubscription(upgradeModal.requiredTier)"
+                        :disabled="subscriptionLoading"
+                        class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50">
+                    <i v-if="subscriptionLoading" class="fas fa-spinner fa-spin mr-2"></i>Upgrade Now
+                </button>
+                <button @click="upgradeModal.show = false; onTabChange('account')"
+                        class="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 py-3 rounded-xl font-medium transition-colors">
+                    View Plans
+                </button>
+            </div>
+            <button @click="upgradeModal.show = false" class="w-full text-gray-500 hover:text-gray-400 text-sm mt-3 py-1 transition-colors">Maybe later</button>
+        </div>
     </div>
 
     <!-- Import DAS Data Modal -->
