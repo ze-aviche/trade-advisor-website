@@ -62,6 +62,16 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import trading bot: {e}")
     BOT_AVAILABLE = False
 
+# Import Claude AI Agent
+try:
+    from ai_agent import ClaudeAIAgent
+    _ai_agent = ClaudeAIAgent()
+    AI_AGENT_AVAILABLE = True
+except Exception as e:
+    app_logger.warning(f"Warning: Could not initialize Claude AI Agent: {e}")
+    _ai_agent = None
+    AI_AGENT_AVAILABLE = False
+
 # Feature flag: set to True to re-enable DAS Trader integration
 DAS_ENABLED = False
 if not DAS_ENABLED:
@@ -1663,169 +1673,83 @@ def debug_config():
 
 # AI Agent endpoints
 @app.route('/api/ai-agent/start-session', methods=['POST'])
+@require_auth
 def start_ai_session():
     """Start AI agent session"""
-    try:
-        # Import AI agent
-        try:
-            from ai_agent import GoogleAIAgent
-            ai_agent = GoogleAIAgent()
-            session_id = 'session_' + str(int(time.time()))
-            
-            return jsonify({
-                'success': True,
-                'data': {
-                    'session_id': session_id,
-                    'status': 'active',
-                    'message': 'AI Agent session started successfully'
-                },
-                'timestamp': datetime.now().isoformat()
-            })
-        except ImportError as e:
-            app_logger.error(f"AI Agent module not available: {e}")
-            return jsonify({
-                'success': False,
-                'error': 'AI Agent module not available. Please check dependencies.'
-            }), 500
-        except ValueError as e:
-            app_logger.error(f"AI Agent configuration error: {e}")
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-            
-    except Exception as e:
-        app_logger.error(f"Error starting AI session: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI Agent not available. Check ANTHROPIC_API_KEY.'}), 500
+    return jsonify({
+        'success': True,
+        'data': {'status': 'active', 'message': 'AI Agent ready'},
+        'timestamp': datetime.now().isoformat()
+    })
 
 @app.route('/api/ai-agent/chat', methods=['POST'])
+@require_auth
 def ai_chat():
     """Handle AI chat messages"""
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI Agent not available. Check ANTHROPIC_API_KEY.'}), 500
     try:
         data = request.get_json()
-        message = data.get('message', '')
-        session_id = data.get('session_id', '')
-        
+        message = data.get('message', '').strip()
         if not message:
-            return jsonify({
-                'success': False,
-                'error': 'Message is required'
-            }), 400
-        
-        # Import and use AI agent
-        try:
-            from ai_agent import GoogleAIAgent
-            ai_agent = GoogleAIAgent()
-            
-            # Process the message
-            result = ai_agent.process_message(message, session_id)
-            
-            if result['success']:
-                return jsonify({
-                    'success': True,
-                    'data': {
-                        'response': result['response'],
-                        'session_id': session_id,
-                        'tools_used': result.get('tools_used', []),
-                        'symbols_analyzed': result.get('symbols_analyzed', [])
-                    }
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': result.get('error', 'Unknown error'),
-                    'session_id': session_id
-                }), 500
-                
-        except ImportError as e:
-            app_logger.error(f"AI Agent module not available: {e}")
-            return jsonify({
-                'success': False,
-                'error': 'AI Agent module not available. Please check dependencies.'
-            }), 500
-        except ValueError as e:
-            app_logger.error(f"AI Agent configuration error: {e}")
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-            
-    except Exception as e:
-        app_logger.error(f"Error in AI chat: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+            return jsonify({'success': False, 'error': 'Message is required'}), 400
 
-@app.route('/api/ai-agent/history', methods=['GET'])
-def get_ai_history():
-    """Get AI conversation history"""
-    try:
-        session_id = request.args.get('session_id', '')
-        
-        try:
-            from ai_agent import GoogleAIAgent
-            ai_agent = GoogleAIAgent()
-            history = ai_agent.get_conversation_history(session_id)
-            
+        user_id = str(request.user.get('id', request.user.get('username', 'unknown')))
+        result = _ai_agent.process_message(message, user_id)
+
+        if result['success']:
             return jsonify({
                 'success': True,
                 'data': {
-                    'history': history,
-                    'session_id': session_id
-                },
-                'timestamp': datetime.now().isoformat()
+                    'response': result['response'],
+                    'tools_used': result.get('tools_used', []),
+                    'user_id': user_id
+                }
             })
-        except ImportError as e:
-            app_logger.error(f"AI Agent module not available: {e}")
-            return jsonify({
-                'success': False,
-                'error': 'AI Agent module not available. Please check dependencies.'
-            }), 500
-            
+        else:
+            return jsonify({'success': False, 'error': result.get('error', 'Unknown error')}), 500
+
+    except Exception as e:
+        app_logger.error(f"Error in AI chat: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ai-agent/history', methods=['GET'])
+@require_auth
+def get_ai_history():
+    """Get AI conversation history for the current user"""
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI Agent not available.'}), 500
+    try:
+        user_id = str(request.user.get('id', request.user.get('username', 'unknown')))
+        history = _ai_agent.get_conversation_history(user_id)
+        return jsonify({
+            'success': True,
+            'data': {'history': history, 'user_id': user_id},
+            'timestamp': datetime.now().isoformat()
+        })
     except Exception as e:
         app_logger.error(f"Error getting AI history: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/ai-agent/clear-history', methods=['POST'])
+@require_auth
 def clear_ai_history():
-    """Clear AI conversation history"""
+    """Clear AI conversation history for the current user"""
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI Agent not available.'}), 500
     try:
-        data = request.get_json()
-        session_id = data.get('session_id', '')
-        
-        try:
-            from ai_agent import GoogleAIAgent
-            ai_agent = GoogleAIAgent()
-            success = ai_agent.clear_conversation_history(session_id)
-            
-            return jsonify({
-                'success': success,
-                'data': {
-                    'session_id': session_id,
-                    'message': 'Conversation history cleared successfully' if success else 'Failed to clear history'
-                },
-                'timestamp': datetime.now().isoformat()
-            })
-        except ImportError as e:
-            app_logger.error(f"AI Agent module not available: {e}")
-            return jsonify({
-                'success': False,
-                'error': 'AI Agent module not available. Please check dependencies.'
-            }), 500
-            
+        user_id = str(request.user.get('id', request.user.get('username', 'unknown')))
+        success = _ai_agent.clear_conversation_history(user_id)
+        return jsonify({
+            'success': success,
+            'data': {'message': 'Conversation history cleared' if success else 'Failed to clear history'},
+            'timestamp': datetime.now().isoformat()
+        })
     except Exception as e:
         app_logger.error(f"Error clearing AI history: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Strategies endpoints
 @app.route('/api/strategies/get')

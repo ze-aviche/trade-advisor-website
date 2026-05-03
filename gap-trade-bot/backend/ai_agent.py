@@ -1,376 +1,352 @@
 import os
 import json
-import time
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import logging
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import anthropic
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
-class GoogleAIAgent:
-    """Google AI Agent for stock market analysis and news gathering"""
+# Per-user conversation history (in-memory, keyed by user_id)
+_conversation_histories: Dict[str, List[Dict]] = {}
+
+SYSTEM_PROMPT = """You are an expert trading advisor specializing in gap trading strategies. \
+You help traders analyze stocks, identify gap setups, interpret news catalysts, and evaluate \
+technical conditions.
+
+Use your tools to fetch real data before answering questions about specific tickers. \
+Be specific, data-driven, and actionable. Clearly state when data is unavailable or limited. \
+Keep responses concise but thorough — traders value clarity over length."""
+
+TOOLS = [
+    {
+        "name": "web_search",
+        "description": "Search the web for current market news or general trading information using DuckDuckGo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The search query"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_stock_news",
+        "description": "Fetch recent news articles for a specific stock symbol.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Stock ticker symbol, e.g. AAPL"},
+                "days": {"type": "integer", "description": "Days of history to search (default 7)"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_market_data",
+        "description": "Get real-time quote snapshot for a stock from Polygon.io, including price, volume, and today's gap.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Stock ticker symbol, e.g. AAPL"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_technical_analysis",
+        "description": "Fetch recent daily OHLCV bars and compute basic technical indicators (SMA10, SMA20, recent gaps) for a stock.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Stock ticker symbol"},
+                "days": {"type": "integer", "description": "Trading days of history to fetch (default 20)"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_earnings_calendar",
+        "description": "Look up upcoming or recent earnings dates and estimates for a stock.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Stock ticker symbol (optional)"}
+            },
+            "required": []
+        }
+    }
+]
+
+
+class ClaudeAIAgent:
+    """Claude-powered trading advisor using Anthropic API with native tool use"""
 
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize the Google AI Agent"""
-        self.api_key = api_key or os.getenv('GOOGLE_AI_API_KEY')  # Fixed: correct env var name
+        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
         if not self.api_key:
-            raise ValueError("Google AI API key is required. Set GOOGLE_AI_API_KEY environment variable.")
-        
-        # Configure Google AI
-        genai.configure(api_key=self.api_key)
-        
-        # Initialize the model
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Configure safety settings
-        self.safety_settings = {
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        }
-        
-        # Initialize conversation history
-        self.conversation_history = []
-        
-        # Available tools
-        self.tools = {
-            'google_search': self.google_search,
-            'get_stock_news': self.get_stock_news,
-            'get_market_data': self.get_market_data,
-            'analyze_sentiment': self.analyze_sentiment,
-            'get_earnings_calendar': self.get_earnings_calendar,
-            'get_technical_analysis': self.get_technical_analysis
-        }
-        
-        logger.info("Google AI Agent initialized successfully")
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.polygon_api_key = os.getenv('POLYGON_API_KEY')
+        self.model = "claude-haiku-4-5-20251001"
+        logger.info("Claude AI Agent initialized")
 
-    def google_search(self, query: str, num_results: int = 5) -> Dict[str, Any]:
-        """Perform a web search using DuckDuckGo Instant Answer API"""
+    # ── Tool implementations ────────────────────────────────────────────────
+
+    def _web_search(self, query: str) -> Dict[str, Any]:
         try:
-            # Use DuckDuckGo Instant Answer API as a free alternative to Google Search
-            url = "https://api.duckduckgo.com/"
-            params = {
-                'q': query,
-                'format': 'json',
-                'no_html': '1',
-                'skip_disambig': '1'
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
+            resp = requests.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json", "no_html": "1", "skip_disambig": "1"},
+                timeout=10
+            )
+            resp.raise_for_status()
+            data = resp.json()
             results = []
-            
-            # Extract abstract if available
-            if data.get('Abstract'):
+            if data.get("Abstract"):
                 results.append({
-                    'title': data.get('Heading', 'Abstract'),
-                    'snippet': data.get('Abstract'),
-                    'url': data.get('AbstractURL', ''),
-                    'source': 'DuckDuckGo Abstract'
+                    "title": data.get("Heading", ""),
+                    "snippet": data["Abstract"],
+                    "url": data.get("AbstractURL", "")
                 })
-            
-            # Extract related topics
-            for topic in data.get('RelatedTopics', [])[:num_results-1]:
-                if isinstance(topic, dict) and topic.get('Text'):
+            for topic in data.get("RelatedTopics", [])[:4]:
+                if isinstance(topic, dict) and topic.get("Text"):
                     results.append({
-                        'title': topic.get('Text', '').split(' - ')[0] if ' - ' in topic.get('Text', '') else 'Related Topic',
-                        'snippet': topic.get('Text', ''),
-                        'url': topic.get('FirstURL', ''),
-                        'source': 'DuckDuckGo Related'
+                        "title": topic["Text"].split(" - ")[0],
+                        "snippet": topic["Text"],
+                        "url": topic.get("FirstURL", "")
                     })
-            
-            return {
-                'success': True,
-                'query': query,
-                'results': results[:num_results],
-                'total_results': len(results)
-            }
-            
+            return {"query": query, "results": results}
         except Exception as e:
-            logger.error(f"Error in google_search: {e}")
+            return {"query": query, "error": str(e), "results": []}
+
+    def _get_stock_news(self, symbol: str, days: int = 7) -> Dict[str, Any]:
+        result = self._web_search(f"{symbol} stock news last {days} days earnings announcement")
+        return {"symbol": symbol, "news": result.get("results", []), "query": result.get("query")}
+
+    def _get_market_data(self, symbol: str) -> Dict[str, Any]:
+        if not self.polygon_api_key:
+            return {"symbol": symbol, "error": "POLYGON_API_KEY not configured"}
+        try:
+            url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/{symbol.upper()}"
+            resp = requests.get(url, params={"apiKey": self.polygon_api_key}, timeout=10)
+            resp.raise_for_status()
+            ticker = resp.json().get("ticker", {})
+            day = ticker.get("day", {})
+            prev_day = ticker.get("prevDay", {})
+            last_trade = ticker.get("lastTrade", {})
+            last_quote = ticker.get("lastQuote", {})
+            prev_close = prev_day.get("c")
+            today_open = day.get("o")
+            gap_pct = None
+            if prev_close and today_open and prev_close != 0:
+                gap_pct = round(((today_open - prev_close) / prev_close) * 100, 2)
             return {
-                'success': False,
-                'error': str(e),
-                'query': query,
-                'results': []
+                "symbol": symbol.upper(),
+                "current_price": last_trade.get("p") or last_quote.get("P"),
+                "today_open": today_open,
+                "today_high": day.get("h"),
+                "today_low": day.get("l"),
+                "today_close": day.get("c"),
+                "today_volume": day.get("v"),
+                "prev_close": prev_close,
+                "gap_percent": gap_pct,
+                "change_percent": ticker.get("todaysChangePerc")
+            }
+        except Exception as e:
+            return {"symbol": symbol, "error": str(e)}
+
+    def _get_technical_analysis(self, symbol: str, days: int = 20) -> Dict[str, Any]:
+        if not self.polygon_api_key:
+            return {"symbol": symbol, "error": "POLYGON_API_KEY not configured"}
+        try:
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=days + 14)).strftime("%Y-%m-%d")
+            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/day/{start}/{end}"
+            resp = requests.get(
+                url,
+                params={"adjusted": "true", "sort": "asc", "limit": 50, "apiKey": self.polygon_api_key},
+                timeout=10
+            )
+            resp.raise_for_status()
+            bars = resp.json().get("results", [])
+            if not bars:
+                return {"symbol": symbol, "error": "No price data returned from Polygon"}
+            closes = [b["c"] for b in bars]
+            sma10 = round(sum(closes[-10:]) / min(len(closes), 10), 2)
+            sma20 = round(sum(closes[-20:]) / min(len(closes), 20), 2)
+            gaps = []
+            for i in range(1, len(bars)):
+                pc = bars[i - 1]["c"]
+                if pc:
+                    gap = round(((bars[i]["o"] - pc) / pc) * 100, 2)
+                    if abs(gap) >= 1:
+                        gaps.append({
+                            "date": datetime.fromtimestamp(bars[i]["t"] / 1000).strftime("%Y-%m-%d"),
+                            "gap_pct": gap
+                        })
+            recent = [
+                {
+                    "date": datetime.fromtimestamp(b["t"] / 1000).strftime("%Y-%m-%d"),
+                    "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b["v"]
+                }
+                for b in bars[-5:]
+            ]
+            return {
+                "symbol": symbol.upper(),
+                "bars_fetched": len(bars),
+                "sma10": sma10,
+                "sma20": sma20,
+                "latest_close": closes[-1],
+                "range_high": max(closes),
+                "range_low": min(closes),
+                "recent_gaps": gaps[-5:],
+                "recent_bars": recent
+            }
+        except Exception as e:
+            return {"symbol": symbol, "error": str(e)}
+
+    def _get_earnings_calendar(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        if symbol:
+            # Specific ticker: try Polygon reference then fall back to web search
+            polygon_info = {}
+            if self.polygon_api_key:
+                try:
+                    resp = requests.get(
+                        f"https://api.polygon.io/v3/reference/tickers/{symbol.upper()}",
+                        params={"apiKey": self.polygon_api_key},
+                        timeout=10
+                    )
+                    if resp.status_code == 200:
+                        d = resp.json().get("results", {})
+                        polygon_info = {
+                            "company_name": d.get("name"),
+                            "market_cap": d.get("market_cap"),
+                            "description": (d.get("description") or "")[:200]
+                        }
+                except Exception:
+                    pass
+            search = self._web_search(f"{symbol} earnings date estimate analyst forecast")
+            return {
+                "symbol": symbol.upper(),
+                "polygon_reference": polygon_info,
+                "web_results": search.get("results", [])
             }
 
-    def get_stock_news(self, symbol: str, days: int = 7) -> Dict[str, Any]:
-        """Get recent news for a stock symbol"""
-        try:
-            query = f"{symbol} stock news last {days} days"
-            search_results = self.google_search(query, num_results=8)
-            
-            if not search_results['success']:
-                return search_results
-            
-            # Filter and enhance results
-            news_results = []
-            for result in search_results['results']:
-                if any(keyword in result['title'].lower() or keyword in result['snippet'].lower() 
-                      for keyword in ['news', 'earnings', 'report', 'announcement', 'update']):
-                    news_results.append(result)
-            
-            return {
-                'success': True,
-                'symbol': symbol,
-                'news_count': len(news_results),
-                'news': news_results,
-                'search_query': query
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in get_stock_news: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'symbol': symbol,
-                'news': []
-            }
-
-    def get_market_data(self, symbol: str) -> Dict[str, Any]:
-        """Get market data for a stock symbol (placeholder for real API integration)"""
-        try:
-            # This is a placeholder - in a real implementation, you'd integrate with
-            # a market data API like Alpha Vantage, Yahoo Finance, or Polygon
-            query = f"{symbol} stock price market data"
-            search_results = self.google_search(query, num_results=3)
-            
-            return {
-                'success': True,
-                'symbol': symbol,
-                'message': f"Market data for {symbol} would be fetched from a real API",
-                'search_results': search_results.get('results', []),
-                'note': 'This is a placeholder. Integrate with a real market data API for live prices.'
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in get_market_data: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'symbol': symbol
-            }
-
-    def analyze_sentiment(self, text: str) -> Dict[str, Any]:
-        """Analyze sentiment of text using Google AI"""
-        try:
-            prompt = f"""
-            Analyze the sentiment of the following text and provide:
-            1. Overall sentiment (positive, negative, neutral)
-            2. Confidence score (0-100)
-            3. Key emotional indicators
-            4. Brief explanation
-            
-            Text: {text}
-            
-            Respond in JSON format:
-            {{
-                "sentiment": "positive/negative/neutral",
-                "confidence": 85,
-                "emotional_indicators": ["optimistic", "confident"],
-                "explanation": "Brief explanation of the sentiment analysis"
-            }}
-            """
-            
-            response = self.model.generate_content(prompt)
-            
-            # Try to parse JSON response
+        # General calendar: fetch next 5 days from Nasdaq public earnings API
+        earnings = []
+        today = datetime.now()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json, text/plain, */*"
+        }
+        for delta in range(5):
+            date_str = (today + timedelta(days=delta)).strftime("%Y-%m-%d")
             try:
-                result = json.loads(response.text)
-                return {
-                    'success': True,
-                    'text': text[:100] + "..." if len(text) > 100 else text,
-                    'analysis': result
-                }
-            except json.JSONDecodeError:
-                # If JSON parsing fails, return the raw response
-                return {
-                    'success': True,
-                    'text': text[:100] + "..." if len(text) > 100 else text,
-                    'analysis': {
-                        'sentiment': 'neutral',
-                        'confidence': 50,
-                        'emotional_indicators': [],
-                        'explanation': response.text
+                resp = requests.get(
+                    "https://api.nasdaq.com/api/calendar/earnings",
+                    params={"date": date_str},
+                    headers=headers,
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    rows = resp.json().get("data", {}).get("rows") or []
+                    for row in rows[:15]:
+                        earnings.append({
+                            "date": date_str,
+                            "symbol": row.get("symbol"),
+                            "company": row.get("name"),
+                            "time": row.get("time"),
+                            "eps_forecast": row.get("epsForecast"),
+                            "last_year_eps": row.get("lastYearEPS"),
+                            "fiscal_quarter": row.get("fiscalQuarterEnding")
+                        })
+            except Exception:
+                pass
+
+        if earnings:
+            return {"earnings_next_5_days": earnings, "total": len(earnings)}
+
+        # Fallback to web search if Nasdaq API fails
+        result = self._web_search("upcoming earnings calendar this week major stocks")
+        return {"earnings_info": result.get("results", []), "note": "Live API unavailable, showing web search results"}
+
+    def _dispatch_tool(self, name: str, inputs: Dict) -> str:
+        if name == "web_search":
+            return json.dumps(self._web_search(inputs["query"]))
+        if name == "get_stock_news":
+            return json.dumps(self._get_stock_news(inputs["symbol"], inputs.get("days", 7)))
+        if name == "get_market_data":
+            return json.dumps(self._get_market_data(inputs["symbol"]))
+        if name == "get_technical_analysis":
+            return json.dumps(self._get_technical_analysis(inputs["symbol"], inputs.get("days", 20)))
+        if name == "get_earnings_calendar":
+            return json.dumps(self._get_earnings_calendar(inputs.get("symbol")))
+        return json.dumps({"error": f"Unknown tool: {name}"})
+
+    # ── Main entry point ────────────────────────────────────────────────────
+
+    def process_message(self, message: str, user_id: str = "anonymous") -> Dict[str, Any]:
+        history = _conversation_histories.setdefault(user_id, [])
+
+        # Build messages from stored history + new user message
+        messages = [{"role": m["role"], "content": m["content"]} for m in history]
+        messages.append({"role": "user", "content": message})
+
+        tools_used = []
+
+        try:
+            while True:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=SYSTEM_PROMPT,
+                    tools=TOOLS,
+                    messages=messages
+                )
+
+                if response.stop_reason == "tool_use":
+                    tool_results = []
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            tools_used.append(block.name)
+                            result_str = self._dispatch_tool(block.name, block.input)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result_str
+                            })
+                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({"role": "user", "content": tool_results})
+                else:
+                    final_text = next(
+                        (b.text for b in response.content if hasattr(b, "text")), ""
+                    )
+                    # Persist simple text turns to history
+                    history.append({"role": "user", "content": message})
+                    history.append({"role": "assistant", "content": final_text})
+                    # Cap history to last 40 messages (~20 turns) to control token usage
+                    if len(history) > 40:
+                        _conversation_histories[user_id] = history[-40:]
+                    return {
+                        "success": True,
+                        "response": final_text,
+                        "tools_used": list(set(tools_used)),
+                        "user_id": user_id
                     }
-                }
-                
-        except Exception as e:
-            logger.error(f"Error in analyze_sentiment: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'text': text[:100] + "..." if len(text) > 100 else text
-            }
 
-    def get_earnings_calendar(self, symbol: str = None) -> Dict[str, Any]:
-        """Get earnings calendar information"""
-        try:
-            if symbol:
-                query = f"{symbol} earnings calendar 2024"
-            else:
-                query = "stock earnings calendar this week"
-            
-            search_results = self.google_search(query, num_results=6)
-            
-            return {
-                'success': True,
-                'symbol': symbol,
-                'earnings_info': search_results.get('results', []),
-                'search_query': query
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in get_earnings_calendar: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'symbol': symbol,
-                'earnings_info': []
-            }
-
-    def get_technical_analysis(self, symbol: str) -> Dict[str, Any]:
-        """Get technical analysis insights for a stock"""
-        try:
-            query = f"{symbol} technical analysis chart patterns"
-            search_results = self.google_search(query, num_results=5)
-            
-            return {
-                'success': True,
-                'symbol': symbol,
-                'technical_analysis': search_results.get('results', []),
-                'search_query': query
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in get_technical_analysis: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'symbol': symbol,
-                'technical_analysis': []
-            }
-
-    def process_message(self, message: str, session_id: str = None) -> Dict[str, Any]:
-        """Process a user message and return AI response with tool usage"""
-        try:
-            # Add user message to history
-            self.conversation_history.append({
-                'role': 'user',
-                'content': message,
-                'timestamp': datetime.now().isoformat(),
-                'session_id': session_id
-            })
-            
-            # Analyze message to determine which tools to use
-            tools_used = []
-            symbols_analyzed = []
-            tool_results = {}
-            
-            # Simple keyword-based tool selection (in a real implementation, you'd use AI to determine this)
-            message_lower = message.lower()
-            
-            # Check for stock symbols (simple pattern matching)
-            import re
-            stock_symbols = re.findall(r'\b[A-Z]{1,5}\b', message.upper())
-            symbols_analyzed = [sym for sym in stock_symbols if len(sym) >= 2 and len(sym) <= 5]
-            
-            # Determine which tools to use based on keywords
-            if any(word in message_lower for word in ['search', 'find', 'look up']):
-                tools_used.append('google_search')
-                tool_results['google_search'] = self.google_search(message, num_results=3)
-            
-            if any(word in message_lower for word in ['news', 'latest', 'update']) and symbols_analyzed:
-                tools_used.append('get_stock_news')
-                for symbol in symbols_analyzed[:2]:  # Limit to 2 symbols
-                    tool_results[f'get_stock_news_{symbol}'] = self.get_stock_news(symbol)
-            
-            if any(word in message_lower for word in ['price', 'market', 'data']) and symbols_analyzed:
-                tools_used.append('get_market_data')
-                for symbol in symbols_analyzed[:2]:
-                    tool_results[f'get_market_data_{symbol}'] = self.get_market_data(symbol)
-            
-            if any(word in message_lower for word in ['sentiment', 'feel', 'mood', 'tone']):
-                tools_used.append('analyze_sentiment')
-                tool_results['analyze_sentiment'] = self.analyze_sentiment(message)
-            
-            if any(word in message_lower for word in ['earnings', 'quarterly', 'financial']):
-                tools_used.append('get_earnings_calendar')
-                symbol = symbols_analyzed[0] if symbols_analyzed else None
-                tool_results['get_earnings_calendar'] = self.get_earnings_calendar(symbol)
-            
-            if any(word in message_lower for word in ['technical', 'chart', 'pattern', 'indicator']):
-                tools_used.append('get_technical_analysis')
-                for symbol in symbols_analyzed[:2]:
-                    tool_results[f'get_technical_analysis_{symbol}'] = self.get_technical_analysis(symbol)
-            
-            # Generate AI response based on tool results
-            response_prompt = f"""
-            You are a helpful AI assistant for stock market analysis. A user asked: "{message}"
-            
-            Tools used: {', '.join(tools_used) if tools_used else 'None'}
-            Symbols analyzed: {', '.join(symbols_analyzed) if symbols_analyzed else 'None'}
-            
-            Tool results:
-            {json.dumps(tool_results, indent=2) if tool_results else 'No tools were used'}
-            
-            Please provide a helpful, informative response based on the available information.
-            If tools were used, summarize the key findings. If no tools were used, provide general guidance.
-            Keep your response conversational and informative.
-            """
-            
-            response = self.model.generate_content(response_prompt)
-            
-            # Add AI response to history
-            self.conversation_history.append({
-                'role': 'assistant',
-                'content': response.text,
-                'timestamp': datetime.now().isoformat(),
-                'session_id': session_id,
-                'tools_used': tools_used,
-                'symbols_analyzed': symbols_analyzed
-            })
-            
-            return {
-                'success': True,
-                'response': response.text,
-                'tools_used': tools_used,
-                'symbols_analyzed': symbols_analyzed,
-                'tool_results': tool_results,
-                'session_id': session_id
-            }
-            
         except Exception as e:
             logger.error(f"Error in process_message: {e}")
             return {
-                'success': False,
-                'error': str(e),
-                'response': f"I encountered an error while processing your request: {str(e)}"
+                "success": False,
+                "error": str(e),
+                "response": f"I encountered an error processing your request: {str(e)}"
             }
 
-    def get_conversation_history(self, session_id: str = None) -> List[Dict[str, Any]]:
-        """Get conversation history, optionally filtered by session_id"""
-        if session_id:
-            return [msg for msg in self.conversation_history if msg.get('session_id') == session_id]
-        return self.conversation_history
+    def get_conversation_history(self, user_id: str) -> List[Dict]:
+        return _conversation_histories.get(user_id, [])
 
-    def clear_conversation_history(self, session_id: str = None) -> bool:
-        """Clear conversation history, optionally filtered by session_id"""
-        try:
-            if session_id:
-                self.conversation_history = [msg for msg in self.conversation_history if msg.get('session_id') != session_id]
-            else:
-                self.conversation_history = []
-            logger.info("Conversation history cleared")
-            return True
-        except Exception as e:
-            logger.error(f"Error clearing conversation history: {e}")
-            return False
+    def clear_conversation_history(self, user_id: str) -> bool:
+        _conversation_histories.pop(user_id, None)
+        return True
