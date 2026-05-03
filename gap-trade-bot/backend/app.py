@@ -62,6 +62,16 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import trading bot: {e}")
     BOT_AVAILABLE = False
 
+# Import Stripe manager
+try:
+    from stripe_manager import StripeManager
+    stripe_mgr = StripeManager()
+    STRIPE_AVAILABLE = True
+except Exception as e:
+    app_logger.warning(f"Warning: Stripe not available: {e}")
+    stripe_mgr = None
+    STRIPE_AVAILABLE = False
+
 # Import Claude AI Agent
 try:
     from ai_agent import ClaudeAIAgent
@@ -628,6 +638,7 @@ def get_auth_profile():
             'system_role': user.get('system_role'),
             'subscription_tier': user.get('subscription_tier', 'basic'),
             'subscription_status': user.get('subscription_status', 'active'),
+            'has_billing_account': bool(user.get('stripe_customer_id')),
             'is_active': user.get('is_active', 1),
             'preferences': user.get('preferences', {}),
             'created_at': str(user.get('created_at', '')),
@@ -745,43 +756,163 @@ def get_subscription():
             'subscription_tier': user.get('subscription_tier', 'basic'),
             'subscription_status': user.get('subscription_status', 'active'),
             'system_role': user.get('system_role'),
+            'has_billing_account': bool(user.get('stripe_customer_id')),
+            'stripe_available': STRIPE_AVAILABLE,
         }})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/subscription/upgrade', methods=['PUT'])
+@app.route('/api/stripe/create-checkout-session', methods=['POST'])
 @require_auth
-def upgrade_subscription():
-    """Self-service subscription upgrade"""
+def stripe_create_checkout():
+    """Start a Stripe Checkout flow for a subscription upgrade"""
+    if not STRIPE_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Stripe is not configured on this server'}), 503
     try:
-        from database import db_manager
         user = request.user
         if user.get('system_role'):
-            return jsonify({'success': False, 'error': 'Staff accounts do not use subscriptions'}), 400
+            return jsonify({'success': False, 'error': 'Staff accounts do not use paid subscriptions'}), 400
         data = request.get_json()
-        new_tier = data.get('tier', 'basic')
-        tier_order = ['basic', 'beginner', 'advanced', 'yogi']
-        current_tier = user.get('subscription_tier', 'basic')
-        if tier_order.index(new_tier) <= tier_order.index(current_tier):
-            return jsonify({'success': False, 'error': 'Select a higher tier to upgrade'}), 400
-        success, message = db_manager.update_user_subscription(user['id'], new_tier, 'active')
-        if success:
-            return jsonify({'success': True, 'message': message, 'tier': new_tier})
-        return jsonify({'success': False, 'error': message}), 400
+        tier = data.get('tier', '')
+        if tier not in ('beginner', 'advanced', 'yogi'):
+            return jsonify({'success': False, 'error': f"Invalid tier: {tier}"}), 400
+
+        base_url = request.host_url.rstrip('/')
+        result = stripe_mgr.create_checkout_session(
+            user_id=user['id'],
+            email=user['email'],
+            username=user['username'],
+            tier=tier,
+            success_url=f"{base_url}/?payment=success",
+            cancel_url=f"{base_url}/?payment=cancelled",
+            existing_customer_id=user.get('stripe_customer_id')
+        )
+        # Pre-emptively store the customer ID so we can link the webhook
+        db_manager.update_stripe_customer_id(user['id'], result['customer_id'])
+
+        return jsonify({'success': True, 'url': result['url']})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
+        app_logger.error(f"Stripe checkout error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/stripe/create-portal-session', methods=['POST'])
+@require_auth
+def stripe_create_portal():
+    """Open the Stripe Customer Portal for self-service billing management"""
+    if not STRIPE_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Stripe is not configured on this server'}), 503
+    try:
+        user = request.user
+        customer_id = user.get('stripe_customer_id')
+        if not customer_id:
+            return jsonify({'success': False, 'error': 'No billing account found. Please subscribe first.'}), 400
+
+        base_url = request.host_url.rstrip('/')
+        result = stripe_mgr.create_portal_session(
+            customer_id=customer_id,
+            return_url=f"{base_url}/?tab=account"
+        )
+        return jsonify({'success': True, 'url': result['url']})
+    except Exception as e:
+        app_logger.error(f"Stripe portal error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/stripe/webhook', methods=['POST'])
+def stripe_webhook():
+    """Stripe webhook — verifies signature, updates subscription state in DB"""
+    if not STRIPE_AVAILABLE:
+        return jsonify({'error': 'Stripe not configured'}), 503
+
+    payload = request.get_data()
+    sig_header = request.headers.get('Stripe-Signature', '')
+
+    try:
+        event = stripe_mgr.construct_webhook_event(payload, sig_header)
+    except Exception as e:
+        app_logger.warning(f"Stripe webhook signature error: {e}")
+        return jsonify({'error': str(e)}), 400
+
+    etype = event['type']
+    obj = event['data']['object']
+
+    try:
+        if etype == 'checkout.session.completed':
+            user_id = int(obj['metadata'].get('user_id', 0))
+            tier = obj['metadata'].get('tier', 'basic')
+            customer_id = obj.get('customer')
+            subscription_id = obj.get('subscription')
+            if user_id:
+                db_manager.update_stripe_customer_id(user_id, customer_id)
+                db_manager.update_user_subscription(user_id, tier, 'active', subscription_id)
+                app_logger.info(f"Checkout completed: user {user_id} → {tier}")
+
+        elif etype == 'customer.subscription.updated':
+            customer_id = obj.get('customer')
+            user = db_manager.get_user_by_stripe_customer_id(customer_id)
+            if user:
+                tier = stripe_mgr.tier_from_subscription(obj) or 'basic'
+                raw_status = obj.get('status', 'active')
+                # Map Stripe statuses to our internal statuses
+                status_map = {'active': 'active', 'past_due': 'past_due',
+                              'unpaid': 'past_due', 'canceled': 'cancelled',
+                              'incomplete': 'incomplete', 'trialing': 'active'}
+                status = status_map.get(raw_status, raw_status)
+                db_manager.update_user_subscription(user['id'], tier, status, obj['id'])
+                app_logger.info(f"Subscription updated: user {user['id']} → {tier} ({status})")
+
+        elif etype == 'customer.subscription.deleted':
+            customer_id = obj.get('customer')
+            user = db_manager.get_user_by_stripe_customer_id(customer_id)
+            if user:
+                db_manager.cancel_user_subscription(user['id'])
+                app_logger.info(f"Subscription deleted: user {user['id']} reverted to basic")
+
+        elif etype == 'invoice.payment_failed':
+            customer_id = obj.get('customer')
+            user = db_manager.get_user_by_stripe_customer_id(customer_id)
+            if user:
+                db_manager.update_user_subscription(
+                    user['id'], user.get('subscription_tier', 'basic'), 'past_due'
+                )
+                app_logger.warning(f"Payment failed: user {user['id']} marked past_due")
+
+        elif etype == 'invoice.payment_succeeded':
+            customer_id = obj.get('customer')
+            user = db_manager.get_user_by_stripe_customer_id(customer_id)
+            if user and user.get('subscription_status') == 'past_due':
+                db_manager.update_user_subscription(
+                    user['id'], user.get('subscription_tier', 'basic'), 'active'
+                )
+                app_logger.info(f"Payment recovered: user {user['id']} reactivated")
+
+    except Exception as e:
+        app_logger.error(f"Error processing Stripe webhook {etype}: {e}")
+        # Return 200 so Stripe doesn't retry — we logged the error
+        return jsonify({'received': True, 'warning': str(e)})
+
+    return jsonify({'received': True})
 
 
 @app.route('/api/subscription/cancel', methods=['PUT'])
 @require_auth
 def cancel_subscription():
-    """Self-service subscription cancellation"""
+    """Cancel subscription — redirects paid users to Stripe Portal, clears free users directly"""
     try:
-        from database import db_manager
         user = request.user
         if user.get('system_role'):
             return jsonify({'success': False, 'error': 'Staff accounts do not use subscriptions'}), 400
+        # If they have a Stripe customer, tell the frontend to use the portal instead
+        if user.get('stripe_customer_id') and STRIPE_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'use_portal': True,
+                'error': 'Please manage your subscription via the billing portal'
+            }), 400
         success, message = db_manager.cancel_user_subscription(user['id'])
         if success:
             return jsonify({'success': True, 'message': message})

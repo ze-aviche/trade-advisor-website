@@ -365,10 +365,26 @@ const app = createApp({
 
         mounted() {
             console.log('🎯 Vue.js app mounted successfully');
-        
+
+            // Handle Stripe payment redirect-back
+            const urlParams = new URLSearchParams(window.location.search);
+            const payment = urlParams.get('payment');
+            const tabParam = urlParams.get('tab');
+            if (payment || tabParam) {
+                // Clean up the URL immediately
+                window.history.replaceState({}, '', window.location.pathname);
+                if (payment === 'success') {
+                    // Defer notification until auth is resolved and user data refreshed
+                    this._pendingPaymentNotification = 'success';
+                } else if (payment === 'cancelled') {
+                    this._pendingPaymentNotification = 'cancelled';
+                }
+                if (tabParam) this.activeTab = tabParam;
+            }
+
         // Force close any stuck modals immediately
         this.forceCloseStuckModals();
-        
+
             this.checkAuth();
             
             // Add page load event listener for automatic refresh
@@ -586,28 +602,50 @@ const app = createApp({
             async upgradeSubscription(tier) {
                 this.subscriptionLoading = true;
                 try {
-                    const response = await fetch('/api/subscription/upgrade', {
-                        method: 'PUT',
-                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                    const response = await fetch('/api/stripe/create-checkout-session', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`,
+                            'Content-Type': 'application/json'
+                        },
                         body: JSON.stringify({ tier })
                     });
                     const data = await response.json();
-                    if (data.success) {
-                        this.user.subscription_tier = tier;
-                        this.user.subscription_status = 'active';
-                        this.upgradeModal.show = false;
+                    if (data.success && data.url) {
+                        window.location.href = data.url;
                     } else {
-                        alert(data.error || 'Upgrade failed');
+                        this.showNotification(data.error || 'Could not start checkout. Please try again.', 'error');
                     }
                 } catch (e) {
                     console.error(e);
+                    this.showNotification('Failed to connect to billing service.', 'error');
+                } finally {
+                    this.subscriptionLoading = false;
+                }
+            },
+
+            async manageSubscription() {
+                this.subscriptionLoading = true;
+                try {
+                    const response = await fetch('/api/stripe/create-portal-session', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                    });
+                    const data = await response.json();
+                    if (data.success && data.url) {
+                        window.location.href = data.url;
+                    } else {
+                        this.showNotification(data.error || 'Could not open billing portal.', 'error');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.showNotification('Failed to open billing portal.', 'error');
                 } finally {
                     this.subscriptionLoading = false;
                 }
             },
 
             async cancelSubscription() {
-                if (!confirm('Cancel your subscription? You will be moved to the free Basic plan immediately.')) return;
                 this.subscriptionLoading = true;
                 try {
                     const response = await fetch('/api/subscription/cancel', {
@@ -615,11 +653,15 @@ const app = createApp({
                         headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
                     });
                     const data = await response.json();
-                    if (data.success) {
+                    if (data.use_portal) {
+                        // Has Stripe billing — manage via portal
+                        await this.manageSubscription();
+                    } else if (data.success) {
                         this.user.subscription_tier = 'basic';
                         this.user.subscription_status = 'cancelled';
+                        this.showNotification('Subscription cancelled.', 'success');
                     } else {
-                        alert(data.error || 'Cancellation failed');
+                        this.showNotification(data.error || 'Cancellation failed', 'error');
                     }
                 } catch (e) {
                     console.error(e);
@@ -751,6 +793,15 @@ const app = createApp({
                     if (response.ok) {
                         const userData = await response.json();
                         this.user = userData.data;
+                        // Show Stripe redirect-back notification now that user data is fresh
+                        if (this._pendingPaymentNotification === 'success') {
+                            this._pendingPaymentNotification = null;
+                            this.showNotification('Payment successful! Your subscription is now active.', 'success');
+                            this.activeTab = 'account';
+                        } else if (this._pendingPaymentNotification === 'cancelled') {
+                            this._pendingPaymentNotification = null;
+                            this.showNotification('Checkout cancelled — no changes were made.', 'info');
+                        }
                         return true;
                     } else {
                         localStorage.removeItem('session_token');
