@@ -164,8 +164,27 @@ const app = createApp({
                 
                 // User data
                 user: null,
+                profileMenuOpen: false,
+
+                // Admin
                 adminUsers: [],
                 adminLoading: false,
+                adminAddUserForm: { username: '', email: '', password: '' },
+                adminAddUserLoading: false,
+                adminAddUserError: '',
+                adminAddUserSuccess: '',
+
+                // Subscription / account page
+                subscriptionLoading: false,
+
+                // Upgrade modal
+                upgradeModal: {
+                    show: false,
+                    tabLabel: '',
+                    requiredPlan: '',
+                    requiredPrice: '',
+                    requiredTier: ''
+                },
                 
                 // Historical data
                 historicalTicker: '',
@@ -314,8 +333,33 @@ const app = createApp({
 
         
         computed: {
+            isSuperAdmin() {
+                return this.user && this.user.system_role === 'super_admin';
+            },
+            isDevMaster() {
+                return this.user && this.user.system_role === 'dev_master';
+            },
+            isStaff() {
+                return this.user && (this.user.system_role === 'super_admin' || this.user.system_role === 'dev_master');
+            },
             isAdmin() {
-                return this.user && this.user.role === 'admin';
+                return this.isSuperAdmin;
+            },
+            tierLabel() {
+                if (!this.user) return '';
+                const sr = this.user.system_role;
+                if (sr === 'super_admin') return 'Super Admin';
+                if (sr === 'dev_master') return 'Dev Master';
+                const labels = { basic: 'Basic', beginner: 'Beginner Trader', advanced: 'Advanced Trader', yogi: 'Yogi Trader' };
+                return labels[this.user.subscription_tier] || 'Basic';
+            },
+            tierBadgeClass() {
+                if (!this.user) return '';
+                const sr = this.user.system_role;
+                if (sr === 'super_admin') return 'bg-red-700 text-white';
+                if (sr === 'dev_master') return 'bg-purple-700 text-white';
+                const classes = { basic: 'bg-gray-600 text-gray-200', beginner: 'bg-green-700 text-white', advanced: 'bg-blue-700 text-white', yogi: 'bg-yellow-600 text-white' };
+                return classes[this.user.subscription_tier] || classes.basic;
             }
         },
 
@@ -493,12 +537,163 @@ const app = createApp({
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // AI chat tab is ready for user interaction
                 } else if (tabName === 'admin') {
-                    if (this.isAdmin) {
+                    if (this.isStaff) {
                         this.loadAdminUsers();
                     } else {
                         this.activeTab = 'about';
                     }
+                } else if (tabName === 'account') {
+                    // account page loads from user object already in state
                 }
+            },
+
+            // ── Tab access control ──────────────────────────────────────
+            canAccessTab(tab) {
+                if (!this.user) return false;
+                if (this.isStaff) return true;
+                if (tab === 'admin') return false;
+                const tierMap = {
+                    basic:    ['about', 'gap-ups', 'ai-chat', 'help'],
+                    beginner: ['about', 'gap-ups', 'ai-chat', 'help', 'historical'],
+                    advanced: ['about', 'gap-ups', 'ai-chat', 'help', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
+                    yogi:     ['about', 'gap-ups', 'ai-chat', 'help', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
+                };
+                return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
+            },
+
+            handleTabClick(tab) {
+                if (this.canAccessTab(tab)) {
+                    this.onTabChange(tab);
+                    return;
+                }
+                const upgrades = {
+                    historical: { plan: 'Beginner Trader', price: '$5/month', tier: 'beginner' },
+                    'entry-bot': { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
+                    bot:         { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
+                    trades:      { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
+                    positions:   { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
+                    stats:       { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
+                    backtest:    { plan: 'Yogi Trader',     price: '$25/month', tier: 'yogi' },
+                };
+                const labels = { historical: 'Historical', 'entry-bot': 'Entry Bot', bot: 'Exit Bot', trades: 'Trade History', positions: 'Positions', stats: 'Stats', backtest: 'Backtest' };
+                const info = upgrades[tab];
+                if (info) {
+                    this.upgradeModal = { show: true, tabLabel: labels[tab] || tab, requiredPlan: info.plan, requiredPrice: info.price, requiredTier: info.tier };
+                }
+            },
+
+            // ── Subscription self-service ───────────────────────────────
+            async upgradeSubscription(tier) {
+                this.subscriptionLoading = true;
+                try {
+                    const response = await fetch('/api/subscription/upgrade', {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tier })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.user.subscription_tier = tier;
+                        this.user.subscription_status = 'active';
+                        this.upgradeModal.show = false;
+                    } else {
+                        alert(data.error || 'Upgrade failed');
+                    }
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    this.subscriptionLoading = false;
+                }
+            },
+
+            async cancelSubscription() {
+                if (!confirm('Cancel your subscription? You will be moved to the free Basic plan immediately.')) return;
+                this.subscriptionLoading = true;
+                try {
+                    const response = await fetch('/api/subscription/cancel', {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.user.subscription_tier = 'basic';
+                        this.user.subscription_status = 'cancelled';
+                    } else {
+                        alert(data.error || 'Cancellation failed');
+                    }
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    this.subscriptionLoading = false;
+                }
+            },
+
+            // ── Admin user management ───────────────────────────────────
+            async adminSubmitAddUser() {
+                this.adminAddUserError = '';
+                this.adminAddUserSuccess = '';
+                const f = this.adminAddUserForm;
+                if (!f.username || !f.email || !f.password) { this.adminAddUserError = 'All fields are required'; return; }
+                this.adminAddUserLoading = true;
+                try {
+                    const response = await fetch('/api/admin/users', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify(f)
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.adminAddUserSuccess = `User "${f.username}" created successfully.`;
+                        this.adminAddUserForm = { username: '', email: '', password: '' };
+                        await this.loadAdminUsers();
+                    } else {
+                        this.adminAddUserError = data.error || 'Failed to create user';
+                    }
+                } catch (e) {
+                    this.adminAddUserError = 'Network error';
+                } finally {
+                    this.adminAddUserLoading = false;
+                }
+            },
+
+            async adminUpdateSystemRole(userId, systemRole) {
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/system-role`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ system_role: systemRole || null })
+                    });
+                    const data = await response.json();
+                    if (!data.success) { alert(data.error || 'Failed'); await this.loadAdminUsers(); }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminUpdateSubscriptionTier(userId, tier) {
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/subscription`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tier, status: 'active' })
+                    });
+                    const data = await response.json();
+                    if (!data.success) { alert(data.error || 'Failed'); await this.loadAdminUsers(); }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminCancelUserSubscription(userId) {
+                if (!confirm('Cancel this user\'s subscription and revert to Basic?')) return;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/subscription`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tier: 'basic', status: 'cancelled' })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        const u = this.adminUsers.find(u => u.id === userId);
+                        if (u) { u.subscription_tier = 'basic'; u.subscription_status = 'cancelled'; }
+                    } else { alert(data.error || 'Failed'); }
+                } catch (e) { console.error(e); }
             },
 
             async loadAdminUsers() {
@@ -519,23 +714,7 @@ const app = createApp({
             },
 
             async updateUserRole(userId, role) {
-                try {
-                    const response = await fetch(`/api/admin/users/${userId}/role`, {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ role })
-                    });
-                    const data = await response.json();
-                    if (!data.success) {
-                        alert(data.error || 'Failed to update role');
-                        await this.loadAdminUsers();
-                    }
-                } catch (error) {
-                    console.error('Error updating role:', error);
-                }
+                await this.adminUpdateSystemRole(userId, role || null);
             },
 
             async toggleUserActive(userId, currentActive) {

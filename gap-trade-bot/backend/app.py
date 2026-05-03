@@ -615,7 +615,9 @@ def get_auth_profile():
             'id': user.get('id'),
             'username': user.get('username'),
             'email': user.get('email'),
-            'role': user.get('role', 'developer'),
+            'system_role': user.get('system_role'),
+            'subscription_tier': user.get('subscription_tier', 'basic'),
+            'subscription_status': user.get('subscription_status', 'active'),
             'is_active': user.get('is_active', 1),
             'preferences': user.get('preferences', {}),
             'created_at': str(user.get('created_at', '')),
@@ -629,9 +631,9 @@ def get_auth_profile():
 
 # Admin endpoints
 @app.route('/api/admin/users', methods=['GET'])
-@require_role('admin')
+@require_role('super_admin', 'dev_master')
 def admin_list_users():
-    """List all users (admin only)"""
+    """List all users — super_admin and dev_master"""
     try:
         from database import db_manager
         users = db_manager.get_all_users()
@@ -641,35 +643,76 @@ def admin_list_users():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/admin/users/<int:user_id>/role', methods=['PUT'])
-@require_role('admin')
-def admin_update_role(user_id):
-    """Change a user's role (admin only)"""
+@app.route('/api/admin/users', methods=['POST'])
+@require_role('super_admin', 'dev_master')
+def admin_add_user():
+    """Add a new user — super_admin and dev_master (always basic tier)"""
     try:
         from database import db_manager
+        from auth import auth_manager as _am
         data = request.get_json()
-        new_role = data.get('role', '')
-        # Prevent admin from demoting themselves
-        if request.user.get('id') == user_id and new_role != 'admin':
-            return jsonify({'success': False, 'error': 'Cannot change your own role'}), 400
-        success, message = db_manager.update_user_role(user_id, new_role)
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip()
+        password = data.get('password', '').strip()
+        if not username or not email or not password:
+            return jsonify({'success': False, 'error': 'username, email and password are required'}), 400
+        if len(password) < 6:
+            return jsonify({'success': False, 'error': 'Password must be at least 6 characters'}), 400
+        password_hash = _am.hash_password(password)
+        success, message = db_manager.create_user(username, email, password_hash)
         if success:
             return jsonify({'success': True, 'message': message})
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
-        app_logger.error(f"Error updating user role: {e}")
+        app_logger.error(f"Error adding user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/system-role', methods=['PUT'])
+@require_role('super_admin')
+def admin_update_system_role(user_id):
+    """Change a user's system role — super_admin only"""
+    try:
+        from database import db_manager
+        data = request.get_json()
+        new_role = data.get('system_role')  # None, 'super_admin', or 'dev_master'
+        if request.user.get('id') == user_id:
+            return jsonify({'success': False, 'error': 'Cannot change your own system role'}), 400
+        success, message = db_manager.update_user_system_role(user_id, new_role)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating system role: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/subscription', methods=['PUT'])
+@require_role('super_admin')
+def admin_update_subscription(user_id):
+    """Change a user's subscription tier — super_admin only"""
+    try:
+        from database import db_manager
+        data = request.get_json()
+        tier = data.get('tier', 'basic')
+        status = data.get('status', 'active')
+        success, message = db_manager.update_user_subscription(user_id, tier, status)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating subscription: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/admin/users/<int:user_id>/active', methods=['PUT'])
-@require_role('admin')
+@require_role('super_admin')
 def admin_update_active(user_id):
-    """Activate or deactivate a user (admin only)"""
+    """Activate or deactivate a user — super_admin only"""
     try:
         from database import db_manager
         data = request.get_json()
         is_active = data.get('is_active', True)
-        # Prevent admin from deactivating themselves
         if request.user.get('id') == user_id and not is_active:
             return jsonify({'success': False, 'error': 'Cannot deactivate your own account'}), 400
         success, message = db_manager.update_user_active_status(user_id, is_active)
@@ -677,7 +720,63 @@ def admin_update_active(user_id):
             return jsonify({'success': True, 'message': message})
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
-        app_logger.error(f"Error updating user active status: {e}")
+        app_logger.error(f"Error updating active status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Subscription self-service endpoints
+@app.route('/api/subscription', methods=['GET'])
+@require_auth
+def get_subscription():
+    """Get current user's subscription info"""
+    try:
+        user = request.user
+        return jsonify({'success': True, 'data': {
+            'subscription_tier': user.get('subscription_tier', 'basic'),
+            'subscription_status': user.get('subscription_status', 'active'),
+            'system_role': user.get('system_role'),
+        }})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/subscription/upgrade', methods=['PUT'])
+@require_auth
+def upgrade_subscription():
+    """Self-service subscription upgrade"""
+    try:
+        from database import db_manager
+        user = request.user
+        if user.get('system_role'):
+            return jsonify({'success': False, 'error': 'Staff accounts do not use subscriptions'}), 400
+        data = request.get_json()
+        new_tier = data.get('tier', 'basic')
+        tier_order = ['basic', 'beginner', 'advanced', 'yogi']
+        current_tier = user.get('subscription_tier', 'basic')
+        if tier_order.index(new_tier) <= tier_order.index(current_tier):
+            return jsonify({'success': False, 'error': 'Select a higher tier to upgrade'}), 400
+        success, message = db_manager.update_user_subscription(user['id'], new_tier, 'active')
+        if success:
+            return jsonify({'success': True, 'message': message, 'tier': new_tier})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/subscription/cancel', methods=['PUT'])
+@require_auth
+def cancel_subscription():
+    """Self-service subscription cancellation"""
+    try:
+        from database import db_manager
+        user = request.user
+        if user.get('system_role'):
+            return jsonify({'success': False, 'error': 'Staff accounts do not use subscriptions'}), 400
+        success, message = db_manager.cancel_user_subscription(user['id'])
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')

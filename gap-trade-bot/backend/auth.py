@@ -83,10 +83,12 @@ class AuthManager:
             return True, {
                 'session_token': session_token,
                 'user': {
-                    'user_id': str(user['id']),
+                    'id': user['id'],
                     'username': user['username'],
                     'email': user['email'],
-                    'role': user.get('role', 'developer'),
+                    'system_role': user.get('system_role'),
+                    'subscription_tier': user.get('subscription_tier', 'basic'),
+                    'subscription_status': user.get('subscription_status', 'active'),
                     'preferences': user.get('preferences', {})
                 }
             }
@@ -179,8 +181,8 @@ def require_auth(f):
     return decorated_function
 
 
-def require_role(*roles):
-    """Decorator to require one of the given roles (also enforces authentication)"""
+def require_role(*system_roles):
+    """Decorator to require one of the given system_roles (super_admin, dev_master)"""
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -196,7 +198,7 @@ def require_role(*roles):
             if not user:
                 return jsonify({'success': False, 'error': 'Authentication required'}), 401
 
-            if user.get('role') not in roles:
+            if user.get('system_role') not in system_roles:
                 return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
 
             request.user = user
