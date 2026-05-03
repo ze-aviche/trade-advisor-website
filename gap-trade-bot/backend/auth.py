@@ -66,14 +66,18 @@ class AuthManager:
         password_hash = self.hash_password(password)
         if user['password_hash'] != password_hash:
             return False, "Invalid username or password"
-        
+
+        # Check account is active
+        if not user.get('is_active', 1):
+            return False, "Account is deactivated. Contact an administrator."
+
         # Update last login
         db_manager.update_last_login(username)
-        
+
         # Generate session token
         session_token = self.generate_session_token()
         expires_at = datetime.now() + timedelta(seconds=self.session_timeout)
-        
+
         # Create session in database
         if db_manager.create_session(session_token, username, expires_at):
             return True, {
@@ -82,7 +86,8 @@ class AuthManager:
                     'user_id': str(user['id']),
                     'username': user['username'],
                     'email': user['email'],
-                    'preferences': user['preferences']
+                    'role': user.get('role', 'developer'),
+                    'preferences': user.get('preferences', {})
                 }
             }
         else:
@@ -160,16 +165,41 @@ def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
-        
+
         if not session_token:
             session_token = request.cookies.get('session_token')
-        
+
         valid, session_data = auth_manager.validate_session(session_token)
         if not valid:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
-        
-        # Add user info to request
+
         request.user = auth_manager.get_user_by_session(session_token)
         return f(*args, **kwargs)
-    
-    return decorated_function 
+
+    return decorated_function
+
+
+def require_role(*roles):
+    """Decorator to require one of the given roles (also enforces authentication)"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+            if not session_token:
+                session_token = request.cookies.get('session_token')
+
+            valid, _ = auth_manager.validate_session(session_token)
+            if not valid:
+                return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+            user = auth_manager.get_user_by_session(session_token)
+            if not user:
+                return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+            if user.get('role') not in roles:
+                return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
+
+            request.user = user
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator 

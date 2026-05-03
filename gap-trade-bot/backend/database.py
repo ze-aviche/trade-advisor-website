@@ -138,7 +138,32 @@ class DatabaseManager:
             
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
-    
+
+        self._migrate_schema()
+
+    def _migrate_schema(self):
+        """Add new columns to existing tables without data loss"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for column, definition in [
+                ('role', "TEXT DEFAULT 'developer'"),
+                ('is_active', 'INTEGER DEFAULT 1'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+            conn.commit()
+
+    def _get_user_count(self):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT COUNT(*) as cnt FROM users')
+                return cursor.fetchone()['cnt']
+        except Exception:
+            return 0
+
     def migrate_existing_users(self):
         """Migrate existing users from JSON file to database"""
         users_file = 'users.json'
@@ -177,22 +202,24 @@ class DatabaseManager:
         except Exception as e:
             print(f"⚠️ Error migrating users: {e}")
     
-    def create_user(self, username, email, password_hash, preferences=None):
-        """Create a new user"""
+    def create_user(self, username, email, password_hash, role=None, preferences=None):
+        """Create a new user. First user automatically becomes admin."""
         if preferences is None:
             preferences = {
                 "gap_threshold": 25.0,
                 "notifications_enabled": True,
                 "theme": "dark"
             }
-        
+        if role is None:
+            role = 'admin' if self._get_user_count() == 0 else 'developer'
+
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO users (username, email, password_hash, preferences)
-                    VALUES (?, ?, ?, ?)
-                ''', (username, email, password_hash, json.dumps(preferences)))
+                    INSERT INTO users (username, email, password_hash, role, is_active, preferences)
+                    VALUES (?, ?, ?, ?, 1, ?)
+                ''', (username, email, password_hash, role, json.dumps(preferences)))
                 conn.commit()
                 return True, "User created successfully"
         except sqlite3.IntegrityError:
@@ -200,13 +227,32 @@ class DatabaseManager:
         except Exception as e:
             return False, f"Database error: {str(e)}"
     
+    def get_user_by_id(self, user_id):
+        """Get user by ID"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, username, email, password_hash, role, is_active, created_at, last_login, preferences
+                    FROM users WHERE id = ?
+                ''', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    user = dict(row)
+                    user['preferences'] = json.loads(user['preferences'])
+                    return user
+                return None
+        except Exception as e:
+            print(f"Database error getting user by id: {e}")
+            return None
+
     def get_user_by_username(self, username):
         """Get user by username"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT id, username, email, password_hash, created_at, last_login, preferences
+                    SELECT id, username, email, password_hash, role, is_active, created_at, last_login, preferences
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
@@ -321,19 +367,40 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT id, username, email, created_at, last_login, preferences
-                    FROM users ORDER BY created_at DESC
+                    SELECT id, username, email, role, is_active, created_at, last_login
+                    FROM users ORDER BY created_at ASC
                 ''')
                 rows = cursor.fetchall()
-                users = []
-                for row in rows:
-                    user = dict(row)
-                    user['preferences'] = json.loads(user['preferences'])
-                    users.append(user)
-                return users
+                return [dict(row) for row in rows]
         except Exception as e:
             print(f"Database error getting all users: {e}")
             return []
+
+    def update_user_role(self, user_id, role):
+        """Update a user's role"""
+        if role not in ('admin', 'developer'):
+            return False, "Invalid role"
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET role = ? WHERE id = ?', (role, user_id))
+                conn.commit()
+                return True, "Role updated"
+        except Exception as e:
+            print(f"Database error updating role: {e}")
+            return False, str(e)
+
+    def update_user_active_status(self, user_id, is_active):
+        """Activate or deactivate a user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET is_active = ? WHERE id = ?', (1 if is_active else 0, user_id))
+                conn.commit()
+                return True, "Status updated"
+        except Exception as e:
+            print(f"Database error updating active status: {e}")
+            return False, str(e)
 
     def add_trade(self, trade_data):
         """Add a new trade to the database"""

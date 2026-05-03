@@ -38,12 +38,13 @@ except ImportError as e:
 
 # Import auth functions (these should always be available)
 try:
-    from auth import auth_manager, require_auth
+    from auth import auth_manager, require_auth, require_role
 except ImportError as e:
     app_logger.warning(f"Warning: Could not import auth: {e}")
-    # Create dummy auth functions if import fails
     auth_manager = None
-    require_auth = lambda f: f  # No-op decorator
+    require_auth = lambda f: f
+    def require_role(*roles):
+        return lambda f: f
 
 # Import scheduled DAS sync
 try:
@@ -610,9 +611,73 @@ def get_auth_profile():
         user = auth_manager.get_user_by_session(session_token)
         if not user:
             return jsonify({'success': False, 'error': 'Invalid or expired session'}), 401
-        return jsonify({'success': True, 'data': user, 'timestamp': datetime.now().isoformat()})
+        safe_user = {
+            'id': user.get('id'),
+            'username': user.get('username'),
+            'email': user.get('email'),
+            'role': user.get('role', 'developer'),
+            'is_active': user.get('is_active', 1),
+            'preferences': user.get('preferences', {}),
+            'created_at': str(user.get('created_at', '')),
+            'last_login': str(user.get('last_login', '')),
+        }
+        return jsonify({'success': True, 'data': safe_user})
     except Exception as e:
         app_logger.error(f"Error getting auth profile: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Admin endpoints
+@app.route('/api/admin/users', methods=['GET'])
+@require_role('admin')
+def admin_list_users():
+    """List all users (admin only)"""
+    try:
+        from database import db_manager
+        users = db_manager.get_all_users()
+        return jsonify({'success': True, 'data': users})
+    except Exception as e:
+        app_logger.error(f"Error listing users: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/role', methods=['PUT'])
+@require_role('admin')
+def admin_update_role(user_id):
+    """Change a user's role (admin only)"""
+    try:
+        from database import db_manager
+        data = request.get_json()
+        new_role = data.get('role', '')
+        # Prevent admin from demoting themselves
+        if request.user.get('id') == user_id and new_role != 'admin':
+            return jsonify({'success': False, 'error': 'Cannot change your own role'}), 400
+        success, message = db_manager.update_user_role(user_id, new_role)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating user role: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/active', methods=['PUT'])
+@require_role('admin')
+def admin_update_active(user_id):
+    """Activate or deactivate a user (admin only)"""
+    try:
+        from database import db_manager
+        data = request.get_json()
+        is_active = data.get('is_active', True)
+        # Prevent admin from deactivating themselves
+        if request.user.get('id') == user_id and not is_active:
+            return jsonify({'success': False, 'error': 'Cannot deactivate your own account'}), 400
+        success, message = db_manager.update_user_active_status(user_id, is_active)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating user active status: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')

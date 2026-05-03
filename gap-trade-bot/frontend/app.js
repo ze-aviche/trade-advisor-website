@@ -164,6 +164,8 @@ const app = createApp({
                 
                 // User data
                 user: null,
+                adminUsers: [],
+                adminLoading: false,
                 
                 // Historical data
                 historicalTicker: '',
@@ -311,6 +313,12 @@ const app = createApp({
         
 
         
+        computed: {
+            isAdmin() {
+                return this.user && this.user.role === 'admin';
+            }
+        },
+
         mounted() {
             console.log('🎯 Vue.js app mounted successfully');
         
@@ -484,9 +492,75 @@ const app = createApp({
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // AI chat tab is ready for user interaction
+                } else if (tabName === 'admin') {
+                    if (this.isAdmin) {
+                        this.loadAdminUsers();
+                    } else {
+                        this.activeTab = 'about';
+                    }
                 }
             },
-            
+
+            async loadAdminUsers() {
+                this.adminLoading = true;
+                try {
+                    const response = await fetch('/api/admin/users', {
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.adminUsers = data.data;
+                    }
+                } catch (error) {
+                    console.error('Error loading admin users:', error);
+                } finally {
+                    this.adminLoading = false;
+                }
+            },
+
+            async updateUserRole(userId, role) {
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/role`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ role })
+                    });
+                    const data = await response.json();
+                    if (!data.success) {
+                        alert(data.error || 'Failed to update role');
+                        await this.loadAdminUsers();
+                    }
+                } catch (error) {
+                    console.error('Error updating role:', error);
+                }
+            },
+
+            async toggleUserActive(userId, currentActive) {
+                const newActive = !currentActive;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/active`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ is_active: newActive })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        const u = this.adminUsers.find(u => u.id === userId);
+                        if (u) u.is_active = newActive ? 1 : 0;
+                    } else {
+                        alert(data.error || 'Failed to update status');
+                    }
+                } catch (error) {
+                    console.error('Error toggling active status:', error);
+                }
+            },
+
             async validateSession() {
                 try {
                     const response = await fetch('/api/auth/profile', {
@@ -494,13 +568,12 @@ const app = createApp({
                             'Authorization': `Bearer ${localStorage.getItem('session_token')}`
                         }
                     });
-                    
+
                     if (response.ok) {
                         const userData = await response.json();
-                        this.user = userData;
+                        this.user = userData.data;
                         return true;
                     } else {
-                        // Session invalid, redirect to login
                         localStorage.removeItem('session_token');
                         localStorage.removeItem('user');
                         window.location.href = '/login';
