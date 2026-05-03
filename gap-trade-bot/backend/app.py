@@ -10,7 +10,7 @@ import random
 import threading
 import time
 from datetime import datetime, timedelta, time as time_class
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
@@ -67,10 +67,14 @@ if not DAS_ENABLED:
     BOT_AVAILABLE = False
     SCHEDULED_SYNC_AVAILABLE = False
 
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'gap-up-detection-web-2024'
-CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gap-up-detection-web-2024')
+
+_cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:5000').split(',')
+CORS(app, origins=_cors_origins)
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode='eventlet')
 
 # Global variables for real-time data
 active_stocks = set()
@@ -531,39 +535,85 @@ def stop_continuous_tracking():
         tracking_thread.join(timeout=2)  # Wait up to 2 seconds for thread to stop
     app_logger.info("🛑 Continuous tracking stopped")
 
-# Simple auth endpoints for frontend compatibility
-@app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
-def get_auth_profile():
-    """Get user profile - dummy endpoint for frontend compatibility"""
-    if request.method == 'OPTIONS':
-        # Handle preflight request
-        response = jsonify({'status': 'ok'})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-        return response
-    
+# Frontend serving
+@app.route('/')
+def serve_index():
+    return send_from_directory(FRONTEND_DIR, 'index.html')
+
+@app.route('/login')
+def serve_login():
+    return send_from_directory(FRONTEND_DIR, 'login.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(FRONTEND_DIR, filename)
+
+# Auth endpoints
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Register a new user"""
     try:
-        # Return dummy user data for now
-        user_data = {
-            'id': 1,
-            'username': 'demo_user',
-            'email': 'demo@example.com',
-            'role': 'user',
-            'authenticated': True
-        }
-        
-        return jsonify({
-            'success': True,
-            'data': user_data,
-            'timestamp': datetime.now().isoformat()
-        })
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        success, message = auth_manager.register_user(
+            data.get('username', ''),
+            data.get('email', ''),
+            data.get('password', '')
+        )
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error registering user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login a user and return a session token"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        success, result = auth_manager.login_user(
+            data.get('username', ''),
+            data.get('password', '')
+        )
+        if success:
+            return jsonify({'success': True, 'data': result})
+        return jsonify({'success': False, 'error': result}), 401
+    except Exception as e:
+        app_logger.error(f"Error logging in: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Logout a user by invalidating their session token"""
+    try:
+        session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        auth_manager.logout_user(session_token)
+        return jsonify({'success': True, 'message': 'Logged out successfully'})
+    except Exception as e:
+        app_logger.error(f"Error logging out: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/profile', methods=['GET'])
+def get_auth_profile():
+    """Get the profile of the currently authenticated user"""
+    try:
+        session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        user = auth_manager.get_user_by_session(session_token)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid or expired session'}), 401
+        return jsonify({'success': True, 'data': user, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting auth profile: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')
 def health_check():
@@ -3118,7 +3168,7 @@ if __name__ == '__main__':
     
     try:
         # Run the Flask app
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
     except KeyboardInterrupt:
         app_logger.info("🛑 Shutting down server...")
     finally:

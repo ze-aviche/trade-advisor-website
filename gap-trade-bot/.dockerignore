@@ -1,0 +1,36 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Environment and secrets
+backend/.env
+backend/das_config.json
+
+# Database (managed by docker-compose volume)
+backend/*.db
+backend/*.sqlite
+
+# Logs
+backend/logs/
+logs/
+
+# Dev/test files
+backend/backtest/
+backend/cmdapi/CMDAPI_USAGE_GUIDE.md
+frontend/Screenshot*.png
+frontend/test-stats.html
+frontend/debug.html
+frontend/frontend.log
+
+# Git
+.git/
+.gitignore
+
+# Misc
+my_notes.md
+postman_collection.json
+*.bak
+*.tmp

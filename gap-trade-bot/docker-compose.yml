@@ -1,0 +1,16 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - backend/.env
+    environment:
+      - FLASK_ENV=production
+      - CORS_ORIGINS=http://localhost:5000
+    volumes:
+      # Persist the SQLite database across container restarts
+      - ./backend/trading_advisor.db:/app/backend/trading_advisor.db
+      # Persist logs
+      - ./backend/logs:/app/backend/logs
+    restart: unless-stopped
