@@ -15,244 +15,389 @@
                 <div class="mx-auto h-16 w-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-4">
                     <i class="fas fa-chart-line text-white text-2xl"></i>
                 </div>
-                <h2 class="text-3xl font-bold text-white mb-2">Trading Advisor</h2>
+                <h2 class="text-3xl font-bold text-white mb-2">Accentor AI Trading Bot</h2>
                 <p class="text-gray-400">Sign in to access your dashboard</p>
             </div>
 
             <!-- Login Form -->
-            <div v-if="!showRegister" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
+            <div v-if="activeView === 'login'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
                 <form @submit.prevent="login" class="space-y-6">
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
-                        <input 
-                            v-model="loginForm.username" 
-                            type="text" 
-                            required
-                            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter your username">
+                        <input v-model="loginForm.username" type="text" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="Enter your username">
                     </div>
-                    
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
-                        <input 
-                            v-model="loginForm.password" 
-                            type="password" 
-                            required
-                            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter your password">
+                        <input v-model="loginForm.password" type="password" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="Enter your password">
                     </div>
-                    
                     <div v-if="error" class="bg-red-500 bg-opacity-20 border border-red-500 rounded-lg p-3">
                         <p class="text-red-300 text-sm">{{ error }}</p>
                     </div>
-                    
-                    <button 
-                        type="submit" 
-                        :disabled="loading"
-                        class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="submit" :disabled="loading"
+                            class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
                         <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
                         <i v-else class="fas fa-sign-in-alt mr-2"></i>
                         {{ loading ? 'Signing in...' : 'Sign In' }}
                     </button>
                 </form>
-                
-                <div class="mt-6 text-center">
-                    <p class="text-gray-400 text-sm">
-                        Don't have an account? 
-                        <button @click="showRegister = true" class="text-blue-400 hover:text-blue-300 font-medium">
-                            Register here
-                        </button>
+                <div class="mt-6 flex justify-between items-center text-sm">
+                    <button @click="switchView('forgot')" class="text-gray-400 hover:text-gray-300">Forgot password?</button>
+                    <p class="text-gray-400">
+                        No account?
+                        <button @click="switchView('register')" class="text-blue-400 hover:text-blue-300 font-medium ml-1">Register</button>
                     </p>
                 </div>
             </div>
 
             <!-- Register Form -->
-            <div v-if="showRegister" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
-                <form @submit.prevent="register" class="space-y-6">
+            <div v-if="activeView === 'register'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
+                <form @submit.prevent="register" class="space-y-5">
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
-                        <input 
-                            v-model="registerForm.username" 
-                            type="text" 
-                            required
-                            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Choose a username">
+                        <input v-model="registerForm.username" type="text" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Choose a username">
                     </div>
-                    
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
-                        <input 
-                            v-model="registerForm.email" 
-                            type="email" 
-                            required
-                            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter your email">
+                        <input v-model="registerForm.email" type="email" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter your email">
                     </div>
-                    
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
-                        <input 
-                            v-model="registerForm.password" 
-                            type="password" 
-                            required
-                            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Choose a password">
+                        <input v-model="registerForm.password" type="password" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Choose a password">
+                        <!-- Strength indicator -->
+                        <div v-if="registerForm.password" class="mt-2">
+                            <div class="flex gap-1 mb-1">
+                                <div class="h-1 flex-1 rounded-full transition-colors"
+                                     :class="pwStrength >= 1 ? (pwStrength === 1 ? 'bg-red-500' : pwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                <div class="h-1 flex-1 rounded-full transition-colors"
+                                     :class="pwStrength >= 2 ? (pwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                <div class="h-1 flex-1 rounded-full transition-colors"
+                                     :class="pwStrength >= 3 ? 'bg-green-500' : 'bg-gray-600'"></div>
+                            </div>
+                            <p class="text-xs" :class="pwStrength === 1 ? 'text-red-400' : pwStrength === 2 ? 'text-yellow-400' : 'text-green-400'">
+                                {{ pwStrengthLabel }}
+                            </p>
+                            <ul class="text-xs text-gray-500 mt-1 space-y-0.5">
+                                <li :class="registerForm.password.length >= 8 ? 'text-green-400' : 'text-gray-500'">
+                                    <i :class="registerForm.password.length >= 8 ? 'fas fa-check' : 'fas fa-times'" class="mr-1"></i>At least 8 characters
+                                </li>
+                                <li :class="/[A-Z]/.test(registerForm.password) ? 'text-green-400' : 'text-gray-500'">
+                                    <i :class="/[A-Z]/.test(registerForm.password) ? 'fas fa-check' : 'fas fa-times'" class="mr-1"></i>At least one uppercase letter
+                                </li>
+                                <li :class="/[0-9]/.test(registerForm.password) ? 'text-green-400' : 'text-gray-500'">
+                                    <i :class="/[0-9]/.test(registerForm.password) ? 'fas fa-check' : 'fas fa-times'" class="mr-1"></i>At least one number
+                                </li>
+                            </ul>
+                        </div>
                     </div>
-                    
                     <div>
                         <label class="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
-                        <input 
-                            v-model="registerForm.confirmPassword" 
-                            type="password" 
-                            required
-                            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Confirm your password">
+                        <input v-model="registerForm.confirmPassword" type="password" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Confirm your password">
                     </div>
-                    
                     <div v-if="error" class="bg-red-500 bg-opacity-20 border border-red-500 rounded-lg p-3">
                         <p class="text-red-300 text-sm">{{ error }}</p>
                     </div>
-                    
                     <div v-if="success" class="bg-green-500 bg-opacity-20 border border-green-500 rounded-lg p-3">
                         <p class="text-green-300 text-sm">{{ success }}</p>
                     </div>
-                    
-                    <button 
-                        type="submit" 
-                        :disabled="loading"
-                        class="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="submit" :disabled="loading"
+                            class="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
                         <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
                         <i v-else class="fas fa-user-plus mr-2"></i>
                         {{ loading ? 'Creating account...' : 'Create Account' }}
                     </button>
                 </form>
-                
                 <div class="mt-6 text-center">
                     <p class="text-gray-400 text-sm">
-                        Already have an account? 
-                        <button @click="showRegister = false" class="text-blue-400 hover:text-blue-300 font-medium">
-                            Sign in here
-                        </button>
+                        Already have an account?
+                        <button @click="switchView('login')" class="text-blue-400 hover:text-blue-300 font-medium ml-1">Sign in</button>
                     </p>
                 </div>
             </div>
+
+            <!-- Forgot Password Form -->
+            <div v-if="activeView === 'forgot'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
+                <h3 class="text-white font-semibold text-lg mb-2">Reset your password</h3>
+                <p class="text-gray-400 text-sm mb-6">Enter your email address to generate a reset token.</p>
+                <form @submit.prevent="forgotPassword" class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
+                        <input v-model="forgotForm.email" type="email" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter your registered email">
+                    </div>
+                    <div v-if="error" class="bg-red-500 bg-opacity-20 border border-red-500 rounded-lg p-3">
+                        <p class="text-red-300 text-sm">{{ error }}</p>
+                    </div>
+                    <!-- Show reset token if returned -->
+                    <div v-if="resetToken" class="bg-blue-500 bg-opacity-20 border border-blue-500 rounded-lg p-4 space-y-3">
+                        <p class="text-blue-300 text-sm font-medium">Reset token generated. Copy it and use it below.</p>
+                        <div class="flex items-center gap-2">
+                            <code class="bg-gray-900 text-green-400 text-xs rounded px-3 py-2 flex-1 break-all select-all">{{ resetToken }}</code>
+                            <button type="button" @click="copyToken" class="text-gray-400 hover:text-white">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <button type="button" @click="switchView('reset')"
+                                class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition duration-200">
+                            Continue to Reset Password
+                        </button>
+                    </div>
+                    <button v-else type="submit" :disabled="loading"
+                            class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
+                        <i v-else class="fas fa-key mr-2"></i>
+                        {{ loading ? 'Generating...' : 'Generate Reset Token' }}
+                    </button>
+                </form>
+                <div class="mt-6 text-center">
+                    <button @click="switchView('login')" class="text-gray-400 hover:text-gray-300 text-sm">
+                        <i class="fas fa-arrow-left mr-1"></i>Back to Sign In
+                    </button>
+                </div>
+            </div>
+
+            <!-- Reset Password Form -->
+            <div v-if="activeView === 'reset'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
+                <h3 class="text-white font-semibold text-lg mb-2">Set new password</h3>
+                <p class="text-gray-400 text-sm mb-6">Paste your reset token and choose a new password.</p>
+                <form @submit.prevent="resetPassword" class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Reset Token</label>
+                        <input v-model="resetForm.token" type="text" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                               placeholder="Paste your reset token">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                        <input v-model="resetForm.password" type="password" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Choose a new password">
+                        <!-- Strength indicator -->
+                        <div v-if="resetForm.password" class="mt-2">
+                            <div class="flex gap-1 mb-1">
+                                <div class="h-1 flex-1 rounded-full transition-colors"
+                                     :class="resetPwStrength >= 1 ? (resetPwStrength === 1 ? 'bg-red-500' : resetPwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                <div class="h-1 flex-1 rounded-full transition-colors"
+                                     :class="resetPwStrength >= 2 ? (resetPwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                <div class="h-1 flex-1 rounded-full transition-colors"
+                                     :class="resetPwStrength >= 3 ? 'bg-green-500' : 'bg-gray-600'"></div>
+                            </div>
+                            <p class="text-xs" :class="resetPwStrength === 1 ? 'text-red-400' : resetPwStrength === 2 ? 'text-yellow-400' : 'text-green-400'">
+                                {{ resetPwStrengthLabel }}
+                            </p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                        <input v-model="resetForm.confirmPassword" type="password" required
+                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Confirm new password">
+                    </div>
+                    <div v-if="error" class="bg-red-500 bg-opacity-20 border border-red-500 rounded-lg p-3">
+                        <p class="text-red-300 text-sm">{{ error }}</p>
+                    </div>
+                    <div v-if="success" class="bg-green-500 bg-opacity-20 border border-green-500 rounded-lg p-3">
+                        <p class="text-green-300 text-sm">{{ success }}</p>
+                    </div>
+                    <button type="submit" :disabled="loading || !!success"
+                            class="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
+                        <i v-else class="fas fa-lock mr-2"></i>
+                        {{ loading ? 'Resetting...' : 'Reset Password' }}
+                    </button>
+                </form>
+                <div class="mt-6 text-center">
+                    <button @click="switchView('login')" class="text-gray-400 hover:text-gray-300 text-sm">
+                        <i class="fas fa-arrow-left mr-1"></i>Back to Sign In
+                    </button>
+                </div>
+            </div>
+
         </div>
     </div>
 
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script>
         const { createApp } = Vue;
-        
+
         createApp({
             data() {
                 return {
-                    showRegister: false,
+                    activeView: 'login', // login | register | forgot | reset
                     loading: false,
                     error: '',
                     success: '',
-                    loginForm: {
-                        username: '',
-                        password: ''
-                    },
-                    registerForm: {
-                        username: '',
-                        email: '',
-                        password: '',
-                        confirmPassword: ''
-                    }
+                    resetToken: '',
+                    loginForm: { username: '', password: '' },
+                    registerForm: { username: '', email: '', password: '', confirmPassword: '' },
+                    forgotForm: { email: '' },
+                    resetForm: { token: '', password: '', confirmPassword: '' }
+                };
+            },
+            computed: {
+                pwStrength() {
+                    const p = this.registerForm.password;
+                    if (!p) return 0;
+                    const long = p.length >= 8;
+                    const upper = /[A-Z]/.test(p);
+                    const num = /[0-9]/.test(p);
+                    if (!long) return 1;
+                    if (long && (upper && num)) return 3;
+                    return 2;
+                },
+                pwStrengthLabel() {
+                    return ['', 'Weak', 'Medium', 'Strong'][this.pwStrength] || '';
+                },
+                resetPwStrength() {
+                    const p = this.resetForm.password;
+                    if (!p) return 0;
+                    const long = p.length >= 8;
+                    const upper = /[A-Z]/.test(p);
+                    const num = /[0-9]/.test(p);
+                    if (!long) return 1;
+                    if (long && upper && num) return 3;
+                    return 2;
+                },
+                resetPwStrengthLabel() {
+                    return ['', 'Weak', 'Medium', 'Strong'][this.resetPwStrength] || '';
                 }
             },
             methods: {
+                switchView(view) {
+                    this.activeView = view;
+                    this.error = '';
+                    this.success = '';
+                    this.resetToken = '';
+                },
+
                 async login() {
                     this.loading = true;
                     this.error = '';
-                    
                     try {
                         const response = await fetch('/api/auth/login', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                username: this.loginForm.username,
-                                password: this.loginForm.password
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username: this.loginForm.username, password: this.loginForm.password })
                         });
-                        
                         const data = await response.json();
-                        
                         if (data.success) {
-                            // Store session token
                             localStorage.setItem('session_token', data.data.session_token);
                             localStorage.setItem('user', JSON.stringify(data.data.user));
-                            
-                            // Redirect to dashboard
                             window.location.href = '/';
                         } else {
                             this.error = data.error || 'Login failed';
                         }
-                    } catch (error) {
+                    } catch {
                         this.error = 'Network error. Please try again.';
-                        console.error('Login error:', error);
                     } finally {
                         this.loading = false;
                     }
                 },
-                
+
                 async register() {
                     this.loading = true;
                     this.error = '';
                     this.success = '';
-                    
-                    // Validate passwords match
                     if (this.registerForm.password !== this.registerForm.confirmPassword) {
                         this.error = 'Passwords do not match';
                         this.loading = false;
                         return;
                     }
-                    
-                    // Validate password length
-                    if (this.registerForm.password.length < 6) {
-                        this.error = 'Password must be at least 6 characters';
-                        this.loading = false;
-                        return;
-                    }
-                    
+                    const p = this.registerForm.password;
+                    if (p.length < 8) { this.error = 'Password must be at least 8 characters'; this.loading = false; return; }
+                    if (!/[A-Z]/.test(p)) { this.error = 'Password must contain at least one uppercase letter'; this.loading = false; return; }
+                    if (!/[0-9]/.test(p)) { this.error = 'Password must contain at least one number'; this.loading = false; return; }
                     try {
                         const response = await fetch('/api/auth/register', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                username: this.registerForm.username,
-                                email: this.registerForm.email,
-                                password: this.registerForm.password
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username: this.registerForm.username, email: this.registerForm.email, password: p })
                         });
-                        
                         const data = await response.json();
-                        
                         if (data.success) {
                             this.success = 'Account created successfully! You can now sign in.';
-                            this.registerForm = {
-                                username: '',
-                                email: '',
-                                password: '',
-                                confirmPassword: ''
-                            };
-                            
-                            // Switch to login form after 2 seconds
-                            setTimeout(() => {
-                                this.showRegister = false;
-                                this.success = '';
-                            }, 2000);
+                            this.registerForm = { username: '', email: '', password: '', confirmPassword: '' };
+                            setTimeout(() => { this.switchView('login'); }, 2000);
                         } else {
                             this.error = data.error || 'Registration failed';
                         }
-                    } catch (error) {
+                    } catch {
                         this.error = 'Network error. Please try again.';
-                        console.error('Registration error:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async forgotPassword() {
+                    this.loading = true;
+                    this.error = '';
+                    this.resetToken = '';
+                    try {
+                        const response = await fetch('/api/auth/forgot-password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: this.forgotForm.email })
+                        });
+                        const data = await response.json();
+                        if (data.success && data.reset_token) {
+                            this.resetToken = data.reset_token;
+                            this.resetForm.token = data.reset_token;
+                        } else if (data.success) {
+                            this.error = 'No account found for that email or account is inactive.';
+                        } else {
+                            this.error = data.error || 'Request failed';
+                        }
+                    } catch {
+                        this.error = 'Network error. Please try again.';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                copyToken() {
+                    navigator.clipboard.writeText(this.resetToken).catch(() => {});
+                },
+
+                async resetPassword() {
+                    this.loading = true;
+                    this.error = '';
+                    this.success = '';
+                    if (this.resetForm.password !== this.resetForm.confirmPassword) {
+                        this.error = 'Passwords do not match';
+                        this.loading = false;
+                        return;
+                    }
+                    const p = this.resetForm.password;
+                    if (p.length < 8) { this.error = 'Password must be at least 8 characters'; this.loading = false; return; }
+                    if (!/[A-Z]/.test(p)) { this.error = 'Password must contain at least one uppercase letter'; this.loading = false; return; }
+                    if (!/[0-9]/.test(p)) { this.error = 'Password must contain at least one number'; this.loading = false; return; }
+                    try {
+                        const response = await fetch('/api/auth/reset-password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token: this.resetForm.token, password: p })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            this.success = data.message || 'Password reset successfully.';
+                            setTimeout(() => { this.switchView('login'); }, 2500);
+                        } else {
+                            this.error = data.error || 'Reset failed';
+                        }
+                    } catch {
+                        this.error = 'Network error. Please try again.';
                     } finally {
                         this.loading = false;
                     }
@@ -261,4 +406,4 @@
         }).mount('#app');
     </script>
 </body>
-</html> 
+</html>

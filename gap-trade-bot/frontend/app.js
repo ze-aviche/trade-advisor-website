@@ -339,8 +339,15 @@ const app = createApp({
             isDevMaster() {
                 return this.user && this.user.system_role === 'dev_master';
             },
+            isBotAdmin() {
+                return this.user && this.user.system_role === 'bot_admin';
+            },
             isStaff() {
-                return this.user && (this.user.system_role === 'super_admin' || this.user.system_role === 'dev_master');
+                return this.user && (
+                    this.user.system_role === 'super_admin' ||
+                    this.user.system_role === 'dev_master' ||
+                    this.user.system_role === 'bot_admin'
+                );
             },
             isAdmin() {
                 return this.isSuperAdmin;
@@ -735,6 +742,41 @@ const app = createApp({
                         const u = this.adminUsers.find(u => u.id === userId);
                         if (u) { u.subscription_tier = 'basic'; u.subscription_status = 'cancelled'; }
                     } else { alert(data.error || 'Failed'); }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminDeleteUser(userId, username) {
+                if (!confirm(`Permanently delete user "${username}"? This cannot be undone.`)) return;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.adminUsers = this.adminUsers.filter(u => u.id !== userId);
+                        this.showNotification(`User "${username}" deleted.`, 'success');
+                    } else {
+                        alert(data.error || 'Failed to delete user');
+                    }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminResetUserPassword(userId, username) {
+                const newPassword = prompt(`Set new password for "${username}":\n(min 8 chars, 1 uppercase, 1 number)`);
+                if (!newPassword) return;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/password`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: newPassword })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification(`Password updated for "${username}".`, 'success');
+                    } else {
+                        alert(data.error || 'Failed to reset password');
+                    }
                 } catch (e) { console.error(e); }
             },
 
