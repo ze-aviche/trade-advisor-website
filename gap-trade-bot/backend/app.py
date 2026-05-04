@@ -834,18 +834,22 @@ def stripe_webhook():
     sig_header = request.headers.get('Stripe-Signature', '')
 
     try:
-        event = stripe_mgr.construct_webhook_event(payload, sig_header)
+        # Verify signature — raises on failure
+        stripe_mgr.construct_webhook_event(payload, sig_header)
     except Exception as e:
         app_logger.warning(f"Stripe webhook signature error: {e}")
         return jsonify({'error': str(e)}), 400
 
-    etype = event['type']
-    obj = event['data']['object']
+    # Use raw JSON for data access — avoids Stripe SDK v10 typed-object issues
+    event_dict = json.loads(payload)
+    etype = event_dict['type']
+    obj = event_dict['data']['object']
 
     try:
         if etype == 'checkout.session.completed':
-            user_id = int(obj['metadata'].get('user_id', 0))
-            tier = obj['metadata'].get('tier', 'basic')
+            metadata = obj.get('metadata') or {}
+            user_id = int(metadata.get('user_id', 0))
+            tier = metadata.get('tier', 'basic')
             customer_id = obj.get('customer')
             subscription_id = obj.get('subscription')
             if user_id:
@@ -857,14 +861,23 @@ def stripe_webhook():
             customer_id = obj.get('customer')
             user = db_manager.get_user_by_stripe_customer_id(customer_id)
             if user:
-                tier = stripe_mgr.tier_from_subscription(obj) or 'basic'
+                # Determine tier from price ID in subscription items
+                items = obj.get('items', {}).get('data', [])
+                tier = 'basic'
+                for item in items:
+                    price_id = item.get('price', {}).get('id', '')
+                    from stripe_manager import _PRICE_TIER_MAP
+                    if price_id in _PRICE_TIER_MAP:
+                        tier = _PRICE_TIER_MAP[price_id]
+                        break
+                if tier == 'basic':
+                    tier = (obj.get('metadata') or {}).get('tier', 'basic')
                 raw_status = obj.get('status', 'active')
-                # Map Stripe statuses to our internal statuses
                 status_map = {'active': 'active', 'past_due': 'past_due',
                               'unpaid': 'past_due', 'canceled': 'cancelled',
                               'incomplete': 'incomplete', 'trialing': 'active'}
                 status = status_map.get(raw_status, raw_status)
-                db_manager.update_user_subscription(user['id'], tier, status, obj['id'])
+                db_manager.update_user_subscription(user['id'], tier, status, obj.get('id'))
                 app_logger.info(f"Subscription updated: user {user['id']} → {tier} ({status})")
 
         elif etype == 'customer.subscription.deleted':
@@ -893,8 +906,7 @@ def stripe_webhook():
                 app_logger.info(f"Payment recovered: user {user['id']} reactivated")
 
     except Exception as e:
-        app_logger.error(f"Error processing Stripe webhook {etype}: {e}")
-        # Return 200 so Stripe doesn't retry — we logged the error
+        app_logger.error(f"Error processing Stripe webhook {etype}: {e}", exc_info=True)
         return jsonify({'received': True, 'warning': str(e)})
 
     return jsonify({'received': True})
