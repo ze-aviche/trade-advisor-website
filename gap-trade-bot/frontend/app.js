@@ -796,8 +796,16 @@ const app = createApp({
                         // Show Stripe redirect-back notification now that user data is fresh
                         if (this._pendingPaymentNotification === 'success') {
                             this._pendingPaymentNotification = null;
-                            this.showNotification('Payment successful! Your subscription is now active.', 'success');
                             this.activeTab = 'account';
+                            if (this.user.subscription_tier === 'basic') {
+                                // Webhook may still be processing — retry once after 3s
+                                setTimeout(async () => {
+                                    await this.validateSession();
+                                    this.showNotification('Payment successful! Your subscription is now active.', 'success');
+                                }, 3000);
+                            } else {
+                                this.showNotification('Payment successful! Your subscription is now active.', 'success');
+                            }
                         } else if (this._pendingPaymentNotification === 'cancelled') {
                             this._pendingPaymentNotification = null;
                             this.showNotification('Checkout cancelled — no changes were made.', 'info');
