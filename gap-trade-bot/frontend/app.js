@@ -174,6 +174,15 @@ const app = createApp({
                 adminAddUserError: '',
                 adminAddUserSuccess: '',
 
+                // Account tab sub-section
+                accountSection: 'subscription',
+
+                // Profile / Manage Info
+                profileForm: { email: '', first_name: '', last_name: '', address: '', profession: '', annual_income_range: '' },
+                profileLoading: false,
+                profileError: '',
+                profileSuccess: '',
+
                 // Change password
                 changePwForm: { current: '', newPw: '', confirm: '' },
                 changePwLoading: false,
@@ -472,6 +481,7 @@ const app = createApp({
                 
                 // Update the activeTab value
                 this.activeTab = tabName;
+                if (tabName === 'account') this.accountSection = 'subscription';
                 
                 // Save the active tab to localStorage for persistence across page refreshes
                 localStorage.setItem('activeTab', tabName);
@@ -665,6 +675,49 @@ const app = createApp({
                     this.showNotification('Failed to open billing portal.', 'error');
                 } finally {
                     this.subscriptionLoading = false;
+                }
+            },
+
+            initProfileForm() {
+                if (!this.user) return;
+                this.profileForm = {
+                    email: this.user.email || '',
+                    first_name: this.user.first_name || '',
+                    last_name: this.user.last_name || '',
+                    address: this.user.address || '',
+                    profession: this.user.profession || '',
+                    annual_income_range: this.user.annual_income_range || ''
+                };
+                this.profileError = '';
+                this.profileSuccess = '';
+            },
+
+            async saveProfile() {
+                this.profileError = '';
+                this.profileSuccess = '';
+                if (!this.profileForm.email || !this.profileForm.email.includes('@')) {
+                    this.profileError = 'Valid email is required';
+                    return;
+                }
+                this.profileLoading = true;
+                try {
+                    const response = await fetch('/api/auth/profile', {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.profileForm)
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.profileSuccess = 'Profile updated successfully.';
+                        // Refresh user data so header reflects changes
+                        await this.validateSession();
+                    } else {
+                        this.profileError = data.error || 'Failed to update profile';
+                    }
+                } catch (e) {
+                    this.profileError = 'Network error';
+                } finally {
+                    this.profileLoading = false;
                 }
             },
 

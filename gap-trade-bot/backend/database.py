@@ -156,6 +156,11 @@ class DatabaseManager:
                 ('stripe_subscription_id', 'TEXT DEFAULT NULL'),
                 ('reset_token', 'TEXT DEFAULT NULL'),
                 ('reset_token_expires_at', 'TIMESTAMP DEFAULT NULL'),
+                ('first_name', 'TEXT DEFAULT NULL'),
+                ('last_name', 'TEXT DEFAULT NULL'),
+                ('address', 'TEXT DEFAULT NULL'),
+                ('profession', 'TEXT DEFAULT NULL'),
+                ('annual_income_range', 'TEXT DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -221,7 +226,27 @@ class DatabaseManager:
         except Exception as e:
             print(f"⚠️ Error migrating users: {e}")
     
-    def create_user(self, username, email, password_hash, system_role=None, subscription_tier='basic', preferences=None):
+    def update_user_profile(self, user_id, first_name=None, last_name=None, email=None,
+                             address=None, profession=None, annual_income_range=None):
+        """Update editable profile fields for a user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''UPDATE users SET first_name=?, last_name=?, email=?,
+                       address=?, profession=?, annual_income_range=? WHERE id=?''',
+                    (first_name, last_name, email, address, profession, annual_income_range, user_id)
+                )
+                conn.commit()
+                return True, "Profile updated"
+        except sqlite3.IntegrityError:
+            return False, "Email is already in use by another account"
+        except Exception as e:
+            return False, str(e)
+
+    def create_user(self, username, email, password_hash, system_role=None, subscription_tier='basic',
+                    preferences=None, first_name=None, last_name=None, address=None,
+                    profession=None, annual_income_range=None):
         """Create a new user. First user automatically becomes super_admin."""
         if preferences is None:
             preferences = {"gap_threshold": 25.0, "notifications_enabled": True, "theme": "dark"}
@@ -235,9 +260,11 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO users (username, email, password_hash, system_role, subscription_tier,
-                                       subscription_status, is_active, preferences)
-                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?)
-                ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences)))
+                                       subscription_status, is_active, preferences,
+                                       first_name, last_name, address, profession, annual_income_range)
+                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?)
+                ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences),
+                      first_name, last_name, address, profession, annual_income_range))
                 conn.commit()
                 return True, "User created successfully"
         except sqlite3.IntegrityError:
@@ -253,7 +280,8 @@ class DatabaseManager:
                 cursor.execute('''
                     SELECT id, username, email, password_hash, system_role, subscription_tier,
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
-                           preferences, stripe_customer_id, stripe_subscription_id
+                           preferences, stripe_customer_id, stripe_subscription_id,
+                           first_name, last_name, address, profession, annual_income_range
                     FROM users WHERE id = ?
                 ''', (user_id,))
                 row = cursor.fetchone()
@@ -274,7 +302,8 @@ class DatabaseManager:
                 cursor.execute('''
                     SELECT id, username, email, password_hash, system_role, subscription_tier,
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
-                           preferences, stripe_customer_id, stripe_subscription_id
+                           preferences, stripe_customer_id, stripe_subscription_id,
+                           first_name, last_name, address, profession, annual_income_range
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()

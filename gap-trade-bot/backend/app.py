@@ -581,7 +581,12 @@ def register():
         success, message = auth_manager.register_user(
             data.get('username', ''),
             data.get('email', ''),
-            data.get('password', '')
+            data.get('password', ''),
+            first_name=data.get('first_name', '').strip() or None,
+            last_name=data.get('last_name', '').strip() or None,
+            address=data.get('address', '').strip() or None,
+            profession=data.get('profession', '').strip() or None,
+            annual_income_range=data.get('annual_income_range', '').strip() or None,
         )
         if success:
             return jsonify({'success': True, 'message': message})
@@ -643,6 +648,11 @@ def get_auth_profile():
             'preferences': user.get('preferences', {}),
             'created_at': str(user.get('created_at', '')),
             'last_login': str(user.get('last_login', '')),
+            'first_name': user.get('first_name') or '',
+            'last_name': user.get('last_name') or '',
+            'address': user.get('address') or '',
+            'profession': user.get('profession') or '',
+            'annual_income_range': user.get('annual_income_range') or '',
         }
         return jsonify({'success': True, 'data': safe_user})
     except Exception as e:
@@ -788,6 +798,34 @@ def admin_reset_user_password(user_id):
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
         app_logger.error(f"Error resetting user password: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/profile', methods=['PUT'])
+@require_auth
+def update_auth_profile():
+    """Update editable profile fields for the authenticated user"""
+    try:
+        from database import db_manager
+        user = request.user
+        data = request.get_json() or {}
+        email = (data.get('email') or '').strip()
+        if not email or '@' not in email:
+            return jsonify({'success': False, 'error': 'Valid email is required'}), 400
+        success, message = db_manager.update_user_profile(
+            user['id'],
+            first_name=(data.get('first_name') or '').strip() or None,
+            last_name=(data.get('last_name') or '').strip() or None,
+            email=email,
+            address=(data.get('address') or '').strip() or None,
+            profession=(data.get('profession') or '').strip() or None,
+            annual_income_range=(data.get('annual_income_range') or '').strip() or None,
+        )
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating profile: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

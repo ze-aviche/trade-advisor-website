@@ -25,35 +25,32 @@ class AuthManager:
         """Generate a secure session token"""
         return secrets.token_urlsafe(32)
     
-    def register_user(self, username, email, password):
+    def register_user(self, username, email, password, first_name=None, last_name=None,
+                       address=None, profession=None, annual_income_range=None):
         """Register a new user"""
-        # Validate input
         if not username or not email or not password:
             return False, "All fields are required"
-        
         if len(username) < 3:
             return False, "Username must be at least 3 characters"
-        
         if len(password) < 8:
             return False, "Password must be at least 8 characters"
         if not any(c.isupper() for c in password):
             return False, "Password must contain at least one uppercase letter"
         if not any(c.isdigit() for c in password):
             return False, "Password must contain at least one number"
-        
-        if not '@' in email:
+        if '@' not in email:
             return False, "Invalid email format"
-        
-        # Hash password
+
         password_hash = self.hash_password(password)
-        
-        # Create user in database
-        success, message = db_manager.create_user(username, email, password_hash)
-        
+        success, message = db_manager.create_user(
+            username, email, password_hash,
+            first_name=first_name, last_name=last_name,
+            address=address, profession=profession,
+            annual_income_range=annual_income_range
+        )
         if success:
             return True, "User registered successfully"
-        else:
-            return False, message
+        return False, message
     
     def login_user(self, username, password):
         """Login a user"""
