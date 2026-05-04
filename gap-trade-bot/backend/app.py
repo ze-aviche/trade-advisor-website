@@ -770,6 +770,7 @@ def stripe_create_checkout():
     if not STRIPE_AVAILABLE:
         return jsonify({'success': False, 'error': 'Stripe is not configured on this server'}), 503
     try:
+        from database import db_manager
         user = request.user
         if user.get('system_role'):
             return jsonify({'success': False, 'error': 'Staff accounts do not use paid subscriptions'}), 400
@@ -828,6 +829,7 @@ def stripe_webhook():
     if not STRIPE_AVAILABLE:
         return jsonify({'error': 'Stripe not configured'}), 503
 
+    from database import db_manager
     payload = request.get_data()
     sig_header = request.headers.get('Stripe-Signature', '')
 
@@ -903,6 +905,7 @@ def stripe_webhook():
 def cancel_subscription():
     """Cancel subscription — redirects paid users to Stripe Portal, clears free users directly"""
     try:
+        from database import db_manager
         user = request.user
         if user.get('system_role'):
             return jsonify({'success': False, 'error': 'Staff accounts do not use subscriptions'}), 400
