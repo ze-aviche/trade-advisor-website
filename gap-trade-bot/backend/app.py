@@ -791,6 +791,40 @@ def admin_reset_user_password(user_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/auth/change-password', methods=['PUT'])
+@require_auth
+def change_password():
+    """Change password for the authenticated user — requires current password"""
+    try:
+        from database import db_manager
+        from auth import auth_manager as _am
+        user = request.user
+        data = request.get_json() or {}
+        current_password = (data.get('current_password') or '').strip()
+        new_password = (data.get('new_password') or '').strip()
+        if not current_password or not new_password:
+            return jsonify({'success': False, 'error': 'Current and new password are required'}), 400
+        # Verify current password
+        full_user = db_manager.get_user_by_id(user['id'])
+        if not full_user or full_user['password_hash'] != _am.hash_password(current_password):
+            return jsonify({'success': False, 'error': 'Current password is incorrect'}), 400
+        # Validate new password strength
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+        if not any(c.isupper() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one uppercase letter'}), 400
+        if not any(c.isdigit() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one number'}), 400
+        password_hash = _am.hash_password(new_password)
+        success, message = db_manager.update_user_password(user['id'], password_hash)
+        if success:
+            return jsonify({'success': True, 'message': 'Password updated successfully'})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error changing password: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/auth/forgot-password', methods=['POST'])
 def forgot_password():
     """Generate a password-reset token for the given email"""

@@ -174,6 +174,12 @@ const app = createApp({
                 adminAddUserError: '',
                 adminAddUserSuccess: '',
 
+                // Change password
+                changePwForm: { current: '', newPw: '', confirm: '' },
+                changePwLoading: false,
+                changePwError: '',
+                changePwSuccess: '',
+
                 // Subscription / account page
                 subscriptionLoading: false,
 
@@ -333,6 +339,16 @@ const app = createApp({
 
         
         computed: {
+            changePwStrength() {
+                const p = this.changePwForm.newPw;
+                if (!p) return 0;
+                if (p.length < 8) return 1;
+                if (/[A-Z]/.test(p) && /[0-9]/.test(p)) return 3;
+                return 2;
+            },
+            changePwStrengthLabel() {
+                return ['', 'Weak', 'Medium', 'Strong'][this.changePwStrength] || '';
+            },
             isSuperAdmin() {
                 return this.user && this.user.system_role === 'super_admin';
             },
@@ -649,6 +665,36 @@ const app = createApp({
                     this.showNotification('Failed to open billing portal.', 'error');
                 } finally {
                     this.subscriptionLoading = false;
+                }
+            },
+
+            async changePassword() {
+                this.changePwError = '';
+                this.changePwSuccess = '';
+                const { current, newPw, confirm } = this.changePwForm;
+                if (!current || !newPw || !confirm) { this.changePwError = 'All fields are required'; return; }
+                if (newPw !== confirm) { this.changePwError = 'New passwords do not match'; return; }
+                if (newPw.length < 8) { this.changePwError = 'Password must be at least 8 characters'; return; }
+                if (!/[A-Z]/.test(newPw)) { this.changePwError = 'Password must contain at least one uppercase letter'; return; }
+                if (!/[0-9]/.test(newPw)) { this.changePwError = 'Password must contain at least one number'; return; }
+                this.changePwLoading = true;
+                try {
+                    const response = await fetch('/api/auth/change-password', {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ current_password: current, new_password: newPw })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.changePwSuccess = 'Password updated successfully.';
+                        this.changePwForm = { current: '', newPw: '', confirm: '' };
+                    } else {
+                        this.changePwError = data.error || 'Failed to update password';
+                    }
+                } catch (e) {
+                    this.changePwError = 'Network error';
+                } finally {
+                    this.changePwLoading = false;
                 }
             },
 

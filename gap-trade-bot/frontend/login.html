@@ -126,103 +126,21 @@
                 </div>
             </div>
 
-            <!-- Forgot Password Form -->
-            <div v-if="activeView === 'forgot'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
-                <h3 class="text-white font-semibold text-lg mb-2">Reset your password</h3>
-                <p class="text-gray-400 text-sm mb-6">Enter your email address to generate a reset token.</p>
-                <form @submit.prevent="forgotPassword" class="space-y-5">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
-                        <input v-model="forgotForm.email" type="email" required
-                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                               placeholder="Enter your registered email">
-                    </div>
-                    <div v-if="error" class="bg-red-500 bg-opacity-20 border border-red-500 rounded-lg p-3">
-                        <p class="text-red-300 text-sm">{{ error }}</p>
-                    </div>
-                    <!-- Show reset token if returned -->
-                    <div v-if="resetToken" class="bg-blue-500 bg-opacity-20 border border-blue-500 rounded-lg p-4 space-y-3">
-                        <p class="text-blue-300 text-sm font-medium">Reset token generated. Copy it and use it below.</p>
-                        <div class="flex items-center gap-2">
-                            <code class="bg-gray-900 text-green-400 text-xs rounded px-3 py-2 flex-1 break-all select-all">{{ resetToken }}</code>
-                            <button type="button" @click="copyToken" class="text-gray-400 hover:text-white">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                        <button type="button" @click="switchView('reset')"
-                                class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition duration-200">
-                            Continue to Reset Password
-                        </button>
-                    </div>
-                    <button v-else type="submit" :disabled="loading"
-                            class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
-                        <i v-else class="fas fa-key mr-2"></i>
-                        {{ loading ? 'Generating...' : 'Generate Reset Token' }}
-                    </button>
-                </form>
-                <div class="mt-6 text-center">
-                    <button @click="switchView('login')" class="text-gray-400 hover:text-gray-300 text-sm">
-                        <i class="fas fa-arrow-left mr-1"></i>Back to Sign In
-                    </button>
+            <!-- Forgot Password -->
+            <div v-if="activeView === 'forgot'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20 text-center">
+                <div class="w-14 h-14 bg-blue-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-lock text-blue-400 text-xl"></i>
                 </div>
-            </div>
-
-            <!-- Reset Password Form -->
-            <div v-if="activeView === 'reset'" class="bg-white bg-opacity-10 backdrop-blur-lg rounded-lg p-8 border border-white border-opacity-20">
-                <h3 class="text-white font-semibold text-lg mb-2">Set new password</h3>
-                <p class="text-gray-400 text-sm mb-6">Paste your reset token and choose a new password.</p>
-                <form @submit.prevent="resetPassword" class="space-y-5">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-2">Reset Token</label>
-                        <input v-model="resetForm.token" type="text" required
-                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                               placeholder="Paste your reset token">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
-                        <input v-model="resetForm.password" type="password" required
-                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                               placeholder="Choose a new password">
-                        <!-- Strength indicator -->
-                        <div v-if="resetForm.password" class="mt-2">
-                            <div class="flex gap-1 mb-1">
-                                <div class="h-1 flex-1 rounded-full transition-colors"
-                                     :class="resetPwStrength >= 1 ? (resetPwStrength === 1 ? 'bg-red-500' : resetPwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
-                                <div class="h-1 flex-1 rounded-full transition-colors"
-                                     :class="resetPwStrength >= 2 ? (resetPwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
-                                <div class="h-1 flex-1 rounded-full transition-colors"
-                                     :class="resetPwStrength >= 3 ? 'bg-green-500' : 'bg-gray-600'"></div>
-                            </div>
-                            <p class="text-xs" :class="resetPwStrength === 1 ? 'text-red-400' : resetPwStrength === 2 ? 'text-yellow-400' : 'text-green-400'">
-                                {{ resetPwStrengthLabel }}
-                            </p>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
-                        <input v-model="resetForm.confirmPassword" type="password" required
-                               class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                               placeholder="Confirm new password">
-                    </div>
-                    <div v-if="error" class="bg-red-500 bg-opacity-20 border border-red-500 rounded-lg p-3">
-                        <p class="text-red-300 text-sm">{{ error }}</p>
-                    </div>
-                    <div v-if="success" class="bg-green-500 bg-opacity-20 border border-green-500 rounded-lg p-3">
-                        <p class="text-green-300 text-sm">{{ success }}</p>
-                    </div>
-                    <button type="submit" :disabled="loading || !!success"
-                            class="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
-                        <i v-else class="fas fa-lock mr-2"></i>
-                        {{ loading ? 'Resetting...' : 'Reset Password' }}
-                    </button>
-                </form>
-                <div class="mt-6 text-center">
-                    <button @click="switchView('login')" class="text-gray-400 hover:text-gray-300 text-sm">
-                        <i class="fas fa-arrow-left mr-1"></i>Back to Sign In
-                    </button>
-                </div>
+                <h3 class="text-white font-semibold text-lg mb-2">Forgot your password?</h3>
+                <p class="text-gray-400 text-sm mb-4">
+                    Password resets require identity verification. Please contact your administrator and ask them to reset your password from the Admin panel.
+                </p>
+                <p class="text-gray-500 text-xs mb-6">
+                    Once you have a new password, you can change it yourself from the Account tab after signing in.
+                </p>
+                <button @click="switchView('login')" class="text-blue-400 hover:text-blue-300 text-sm">
+                    <i class="fas fa-arrow-left mr-1"></i>Back to Sign In
+                </button>
             </div>
 
         </div>
@@ -235,43 +153,24 @@
         createApp({
             data() {
                 return {
-                    activeView: 'login', // login | register | forgot | reset
+                    activeView: 'login', // login | register | forgot
                     loading: false,
                     error: '',
                     success: '',
-                    resetToken: '',
                     loginForm: { username: '', password: '' },
-                    registerForm: { username: '', email: '', password: '', confirmPassword: '' },
-                    forgotForm: { email: '' },
-                    resetForm: { token: '', password: '', confirmPassword: '' }
+                    registerForm: { username: '', email: '', password: '', confirmPassword: '' }
                 };
             },
             computed: {
                 pwStrength() {
                     const p = this.registerForm.password;
                     if (!p) return 0;
-                    const long = p.length >= 8;
-                    const upper = /[A-Z]/.test(p);
-                    const num = /[0-9]/.test(p);
-                    if (!long) return 1;
-                    if (long && (upper && num)) return 3;
+                    if (p.length < 8) return 1;
+                    if (/[A-Z]/.test(p) && /[0-9]/.test(p)) return 3;
                     return 2;
                 },
                 pwStrengthLabel() {
                     return ['', 'Weak', 'Medium', 'Strong'][this.pwStrength] || '';
-                },
-                resetPwStrength() {
-                    const p = this.resetForm.password;
-                    if (!p) return 0;
-                    const long = p.length >= 8;
-                    const upper = /[A-Z]/.test(p);
-                    const num = /[0-9]/.test(p);
-                    if (!long) return 1;
-                    if (long && upper && num) return 3;
-                    return 2;
-                },
-                resetPwStrengthLabel() {
-                    return ['', 'Weak', 'Medium', 'Strong'][this.resetPwStrength] || '';
                 }
             },
             methods: {
@@ -279,7 +178,6 @@
                     this.activeView = view;
                     this.error = '';
                     this.success = '';
-                    this.resetToken = '';
                 },
 
                 async login() {
@@ -340,68 +238,6 @@
                     }
                 },
 
-                async forgotPassword() {
-                    this.loading = true;
-                    this.error = '';
-                    this.resetToken = '';
-                    try {
-                        const response = await fetch('/api/auth/forgot-password', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email: this.forgotForm.email })
-                        });
-                        const data = await response.json();
-                        if (data.success && data.reset_token) {
-                            this.resetToken = data.reset_token;
-                            this.resetForm.token = data.reset_token;
-                        } else if (data.success) {
-                            this.error = 'No account found for that email or account is inactive.';
-                        } else {
-                            this.error = data.error || 'Request failed';
-                        }
-                    } catch {
-                        this.error = 'Network error. Please try again.';
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-
-                copyToken() {
-                    navigator.clipboard.writeText(this.resetToken).catch(() => {});
-                },
-
-                async resetPassword() {
-                    this.loading = true;
-                    this.error = '';
-                    this.success = '';
-                    if (this.resetForm.password !== this.resetForm.confirmPassword) {
-                        this.error = 'Passwords do not match';
-                        this.loading = false;
-                        return;
-                    }
-                    const p = this.resetForm.password;
-                    if (p.length < 8) { this.error = 'Password must be at least 8 characters'; this.loading = false; return; }
-                    if (!/[A-Z]/.test(p)) { this.error = 'Password must contain at least one uppercase letter'; this.loading = false; return; }
-                    if (!/[0-9]/.test(p)) { this.error = 'Password must contain at least one number'; this.loading = false; return; }
-                    try {
-                        const response = await fetch('/api/auth/reset-password', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ token: this.resetForm.token, password: p })
-                        });
-                        const data = await response.json();
-                        if (data.success) {
-                            this.success = data.message || 'Password reset successfully.';
-                            setTimeout(() => { this.switchView('login'); }, 2500);
-                        } else {
-                            this.error = data.error || 'Reset failed';
-                        }
-                    } catch {
-                        this.error = 'Network error. Please try again.';
-                    } finally {
-                        this.loading = false;
-                    }
-                }
             }
         }).mount('#app');
     </script>

@@ -2802,6 +2802,45 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Change Password (all users) -->
+                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <h3 class="text-white font-semibold mb-4 flex items-center">
+                        <i class="fas fa-lock text-blue-400 mr-2"></i>Change Password
+                    </h3>
+                    <div class="max-w-sm space-y-3">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Current Password</label>
+                            <input v-model="changePwForm.current" type="password" placeholder="Enter current password"
+                                   class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">New Password</label>
+                            <input v-model="changePwForm.newPw" type="password" placeholder="Min 8 chars, 1 uppercase, 1 number"
+                                   class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <div v-if="changePwForm.newPw" class="mt-1.5">
+                                <div class="flex gap-1 mb-1">
+                                    <div class="h-1 flex-1 rounded-full transition-colors" :class="changePwStrength >= 1 ? (changePwStrength === 1 ? 'bg-red-500' : changePwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                    <div class="h-1 flex-1 rounded-full transition-colors" :class="changePwStrength >= 2 ? (changePwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                    <div class="h-1 flex-1 rounded-full transition-colors" :class="changePwStrength >= 3 ? 'bg-green-500' : 'bg-gray-600'"></div>
+                                </div>
+                                <p class="text-xs" :class="changePwStrength === 1 ? 'text-red-400' : changePwStrength === 2 ? 'text-yellow-400' : 'text-green-400'">{{ changePwStrengthLabel }}</p>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Confirm New Password</label>
+                            <input v-model="changePwForm.confirm" type="password" placeholder="Confirm new password"
+                                   class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div v-if="changePwError" class="text-red-400 text-xs">{{ changePwError }}</div>
+                        <div v-if="changePwSuccess" class="text-green-400 text-xs">{{ changePwSuccess }}</div>
+                        <button @click="changePassword()" :disabled="changePwLoading"
+                                class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
+                            <i :class="changePwLoading ? 'fas fa-spinner fa-spin' : 'fas fa-key'" class="mr-1.5"></i>
+                            {{ changePwLoading ? 'Updating...' : 'Update Password' }}
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Admin Tab -->
