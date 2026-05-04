@@ -152,6 +152,8 @@ class DatabaseManager:
                 ('subscription_tier', "TEXT DEFAULT 'basic'"),
                 ('subscription_status', "TEXT DEFAULT 'active'"),
                 ('subscription_expires_at', 'TIMESTAMP DEFAULT NULL'),
+                ('stripe_customer_id', 'TEXT DEFAULT NULL'),
+                ('stripe_subscription_id', 'TEXT DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -248,7 +250,8 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, username, email, password_hash, system_role, subscription_tier,
-                           subscription_status, subscription_expires_at, is_active, created_at, last_login, preferences
+                           subscription_status, subscription_expires_at, is_active, created_at, last_login,
+                           preferences, stripe_customer_id, stripe_subscription_id
                     FROM users WHERE id = ?
                 ''', (user_id,))
                 row = cursor.fetchone()
@@ -268,7 +271,8 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, username, email, password_hash, system_role, subscription_tier,
-                           subscription_status, subscription_expires_at, is_active, created_at, last_login, preferences
+                           subscription_status, subscription_expires_at, is_active, created_at, last_login,
+                           preferences, stripe_customer_id, stripe_subscription_id
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
@@ -406,35 +410,71 @@ class DatabaseManager:
         except Exception as e:
             return False, str(e)
 
-    def update_user_subscription(self, user_id, tier, status='active'):
-        """Change a user's subscription tier"""
+    def update_user_subscription(self, user_id, tier, status='active', subscription_id=None):
+        """Change a user's subscription tier, optionally recording the Stripe subscription ID"""
         if tier not in ('basic', 'beginner', 'advanced', 'yogi'):
             return False, "Invalid subscription tier"
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    'UPDATE users SET subscription_tier = ?, subscription_status = ? WHERE id = ?',
-                    (tier, status, user_id)
-                )
+                if subscription_id:
+                    cursor.execute(
+                        'UPDATE users SET subscription_tier=?, subscription_status=?, stripe_subscription_id=? WHERE id=?',
+                        (tier, status, subscription_id, user_id)
+                    )
+                else:
+                    cursor.execute(
+                        'UPDATE users SET subscription_tier=?, subscription_status=? WHERE id=?',
+                        (tier, status, user_id)
+                    )
                 conn.commit()
                 return True, "Subscription updated"
         except Exception as e:
             return False, str(e)
 
     def cancel_user_subscription(self, user_id):
-        """Cancel a user's subscription and revert to basic"""
+        """Revert a user to free Basic tier and clear Stripe subscription ID"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE users SET subscription_tier = 'basic', subscription_status = 'cancelled' WHERE id = ?",
+                    "UPDATE users SET subscription_tier='basic', subscription_status='cancelled', "
+                    "stripe_subscription_id=NULL WHERE id=?",
                     (user_id,)
                 )
                 conn.commit()
                 return True, "Subscription cancelled"
         except Exception as e:
             return False, str(e)
+
+    def update_stripe_customer_id(self, user_id, customer_id):
+        """Store the Stripe customer ID for a user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET stripe_customer_id=? WHERE id=?', (customer_id, user_id))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error storing stripe_customer_id: {e}")
+            return False
+
+    def get_user_by_stripe_customer_id(self, customer_id):
+        """Look up a user by their Stripe customer ID (used in webhook handling)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT id, username, email, subscription_tier, subscription_status, '
+                    'stripe_customer_id, stripe_subscription_id, system_role '
+                    'FROM users WHERE stripe_customer_id=?',
+                    (customer_id,)
+                )
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            print(f"Error looking up user by stripe_customer_id: {e}")
+            return None
 
     def update_user_active_status(self, user_id, is_active):
         """Activate or deactivate a user"""
