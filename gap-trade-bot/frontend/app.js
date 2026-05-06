@@ -990,7 +990,7 @@ const app = createApp({
             logout() {
                 localStorage.removeItem('session_token');
                 localStorage.removeItem('user');
-                window.location.href = '/login';
+                window.location.href = '/';
             },
             
             async initializeApp() {

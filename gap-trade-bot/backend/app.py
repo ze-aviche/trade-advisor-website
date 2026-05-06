@@ -558,7 +558,11 @@ def stop_continuous_tracking():
 
 # Frontend serving
 @app.route('/')
-def serve_index():
+def serve_landing():
+    return send_from_directory(FRONTEND_DIR, 'landing.html')
+
+@app.route('/app')
+def serve_app():
     return send_from_directory(FRONTEND_DIR, 'index.html')
 
 @app.route('/login')

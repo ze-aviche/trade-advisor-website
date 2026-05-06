@@ -36,10 +36,10 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='shieldGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%231E40AF;stop-opacity:1' /><stop offset='100%' style='stop-color:%233B82F6;stop-opacity:1' /></linearGradient><linearGradient id='chartGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%2310B981;stop-opacity:1' /><stop offset='100%' style='stop-color:%23059669;stop-opacity:1' /></linearGradient><linearGradient id='accentGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%23F59E0B;stop-opacity:1' /><stop offset='100%' style='stop-color:%23D97706;stop-opacity:1' /></linearGradient></defs><path d='M16 3 L24 6 L24 13 C24 19 20 22 16 26 C12 22 8 19 8 13 L8 6 Z' fill='url(%23shieldGradient)' stroke='%23E5E7EB' stroke-width='1'/><path d='M12 12 L14 10 L16 12 L18 9 L20 11 L22 8 L24 10' stroke='url(%23chartGradient)' stroke-width='1.5' stroke-linecap='round' fill='none'/><path d='M13 19 L16 16 L19 19' stroke='url(%23accentGradient)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='16' cy='21' r='2' fill='url(%23accentGradient)' opacity='0.8'/></svg>">
 </head>
-<body class="bg-gray-900 text-white">
+<body class="bg-[#0d1117] text-white">
     <div id="app">
         <!-- Header -->
-        <div class="bg-gray-900 border-b border-gray-700 px-4 py-3 md:px-6 md:py-4">
+        <div class="bg-[#0d1117] border-b border-gray-800 px-4 py-3 md:px-6 md:py-4">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3 logo-container">
                     <div class="relative">
@@ -56,7 +56,7 @@
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 md:space-x-3">
-                    <button @click="refreshData" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm text-gray-300 transition-colors">
+                    <button @click="refreshData" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-2 rounded-xl text-sm text-gray-300 transition-colors">
                         <i class="fas fa-sync-alt"></i>
                         <span class="hidden sm:inline ml-1">Refresh</span>
                     </button>
@@ -64,7 +64,7 @@
                     <!-- Profile dropdown -->
                     <div class="relative">
                         <button @click="profileMenuOpen = !profileMenuOpen"
-                                class="flex items-center space-x-2 bg-gray-700 hover:bg-gray-600 px-2 py-1.5 md:px-3 md:py-2 rounded-lg transition-colors">
+                                class="flex items-center space-x-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-2 py-1.5 md:px-3 md:py-2 rounded-xl transition-colors">
                             <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
                                 {{ user ? user.username[0].toUpperCase() : 'G' }}
                             </div>
@@ -79,8 +79,8 @@
                         <div v-if="profileMenuOpen" @click="profileMenuOpen = false" class="fixed inset-0 z-40"></div>
 
                         <!-- Dropdown menu -->
-                        <div v-if="profileMenuOpen" class="absolute right-0 top-full mt-1 w-56 bg-gray-800 rounded-xl shadow-2xl border border-gray-700 z-50 overflow-hidden">
-                            <div class="px-4 py-3 border-b border-gray-700">
+                        <div v-if="profileMenuOpen" class="absolute right-0 top-full mt-1 w-56 bg-[#161b22] rounded-xl shadow-2xl border border-gray-800 z-50 overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-800">
                                 <div class="text-sm font-semibold text-white">{{ user ? user.username : '' }}</div>
                                 <div class="text-xs text-gray-400 truncate">{{ user ? user.email : '' }}</div>
                                 <div :class="tierBadgeClass" class="text-xs px-2 py-0.5 rounded-full font-medium mt-1.5 inline-block">{{ tierLabel }}</div>
@@ -112,7 +112,7 @@
         </div>
 
         <!-- Navigation Tabs -->
-        <div class="bg-gray-800 border-b border-gray-700 px-4 py-2">
+        <div class="bg-[#161b22] border-b border-gray-800 px-4 py-2">
             <!-- Desktop: horizontal tab row -->
             <div class="hidden md:flex items-center space-x-1 overflow-x-auto">
                 <button @click="handleTabClick('about')" :class="activeTab === 'about' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-info-circle mr-1"></i>About</button>
