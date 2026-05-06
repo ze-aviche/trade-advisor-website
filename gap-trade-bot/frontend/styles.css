@@ -1,5 +1,118 @@
 /* Custom styles for Trading Advisor Dashboard */
 
+/* ═══════════════════════════════════════════════════════
+   THEME SYSTEM — dark (default) / light mode
+   Toggle by adding/removing class "light" on <html>
+   ═══════════════════════════════════════════════════════ */
+
+/* Smooth theme transitions */
+body, body * {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+}
+
+/* ── Light mode overrides ── */
+html.light body { background-color: #f8fafc; color: #0f172a; }
+
+/* Backgrounds */
+html.light .bg-\[#0d1117\]   { background-color: #f8fafc !important; }
+html.light .bg-\[#161b22\]   { background-color: #f1f5f9 !important; }
+html.light .bg-gray-900      { background-color: #f1f5f9 !important; }
+html.light .bg-gray-800      { background-color: #ffffff !important; }
+html.light .bg-gray-700      { background-color: #f1f5f9 !important; }
+html.light .bg-gray-600      { background-color: #e2e8f0 !important; }
+html.light .bg-gray-800\/50  { background-color: rgba(255,255,255,0.95) !important; }
+html.light .bg-gray-800\/30  { background-color: rgba(248,250,252,0.6) !important; }
+html.light .bg-gray-700\/50  { background-color: rgba(241,245,249,0.95) !important; }
+
+/* Borders */
+html.light .border-gray-800  { border-color: #e2e8f0 !important; }
+html.light .border-gray-700  { border-color: #e2e8f0 !important; }
+html.light .border-gray-600  { border-color: #cbd5e1 !important; }
+
+/* Text */
+html.light .text-white       { color: #0f172a !important; }
+html.light .text-gray-100    { color: #1e293b !important; }
+html.light .text-gray-200    { color: #334155 !important; }
+html.light .text-gray-300    { color: #475569 !important; }
+html.light .text-gray-400    { color: #64748b !important; }
+html.light .text-gray-500    { color: #94a3b8 !important; }
+
+/* Hover states */
+html.light .hover\:bg-gray-700:hover  { background-color: #f1f5f9 !important; }
+html.light .hover\:bg-gray-600:hover  { background-color: #e2e8f0 !important; }
+html.light .hover\:text-white:hover   { color: #0f172a !important; }
+
+/* Form inputs */
+html.light input,
+html.light select,
+html.light textarea {
+    background-color: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+}
+html.light input::placeholder,
+html.light textarea::placeholder { color: #94a3b8 !important; }
+
+/* Tables */
+html.light .table-container          { border-color: #e2e8f0 !important; }
+html.light .table-container th       { background-color: #f1f5f9 !important; color: #334155 !important; border-color: #e2e8f0 !important; }
+html.light .table-container td       { border-color: #e2e8f0 !important; color: #334155 !important; }
+html.light .table-container tr:hover { background-color: #f8fafc !important; }
+html.light .historical-table-container th       { background-color: #f1f5f9 !important; color: #334155 !important; border-color: #e2e8f0 !important; }
+html.light .historical-table-container td       { border-color: #e2e8f0 !important; color: #334155 !important; }
+html.light .historical-table-container tr:hover { background-color: #f8fafc !important; }
+
+/* Dropdown/modals */
+html.light .modal-content { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
+
+/* Scrollbars */
+html.light ::-webkit-scrollbar-track { background: #e2e8f0; }
+html.light ::-webkit-scrollbar-thumb { background: #94a3b8; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+html.light .historical-table-container { scrollbar-color: #94a3b8 #e2e8f0; }
+
+/* ═══════════════════════════════════════════════════════
+   LANDING PAGE STYLE CARD IMPROVEMENTS (dark mode)
+   Target major content cards via compound class selectors
+   ═══════════════════════════════════════════════════════ */
+
+/* Major section cards (have both bg-gray-800 and shadow-lg) */
+.bg-gray-800.shadow-lg {
+    background-color: rgba(31, 41, 55, 0.55) !important;
+    border: 1px solid rgba(55, 65, 81, 0.5) !important;
+    border-radius: 1rem !important;
+}
+
+/* Inner feature/detail cards */
+.bg-gray-700.rounded-lg,
+.bg-gray-700.rounded-xl {
+    background-color: rgba(55, 65, 81, 0.5) !important;
+    border: 1px solid rgba(75, 85, 99, 0.4) !important;
+}
+
+/* Light mode: reset card improvements */
+html.light .bg-gray-800.shadow-lg      { background-color: #ffffff !important; border-color: #e2e8f0 !important; box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important; }
+html.light .bg-gray-700.rounded-lg,
+html.light .bg-gray-700.rounded-xl     { background-color: #f8fafc !important; border-color: #e2e8f0 !important; }
+
+/* Theme toggle button base style */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+html:not(.light) .theme-toggle { background: #1f2937; border-color: #374151; color: #d1d5db; }
+html:not(.light) .theme-toggle:hover { background: #374151; border-color: #4b5563; color: #ffffff; }
+html.light .theme-toggle { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+html.light .theme-toggle:hover { background: #e2e8f0; border-color: #94a3b8; color: #0f172a; }
+
 /* Logo animations and effects */
 @keyframes logoGlow {
     0%, 100% {

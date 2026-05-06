@@ -165,6 +165,7 @@ const app = createApp({
                 // User data
                 user: null,
                 profileMenuOpen: false,
+                darkMode: localStorage.getItem('theme') !== 'light',
 
                 // Admin
                 adminUsers: [],
@@ -987,6 +988,17 @@ const app = createApp({
                 }
             },
             
+            toggleTheme() {
+                this.darkMode = !this.darkMode;
+                if (this.darkMode) {
+                    document.documentElement.classList.remove('light');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.add('light');
+                    localStorage.setItem('theme', 'light');
+                }
+            },
+
             logout() {
                 localStorage.removeItem('session_token');
                 localStorage.removeItem('user');

@@ -33,6 +33,9 @@
     <!-- Custom styles -->
     <link rel="stylesheet" href="styles.css">
     
+    <!-- Early theme apply (prevents flash of wrong theme) -->
+    <script>(function(){if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');})()</script>
+
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='shieldGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%231E40AF;stop-opacity:1' /><stop offset='100%' style='stop-color:%233B82F6;stop-opacity:1' /></linearGradient><linearGradient id='chartGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%2310B981;stop-opacity:1' /><stop offset='100%' style='stop-color:%23059669;stop-opacity:1' /></linearGradient><linearGradient id='accentGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%23F59E0B;stop-opacity:1' /><stop offset='100%' style='stop-color:%23D97706;stop-opacity:1' /></linearGradient></defs><path d='M16 3 L24 6 L24 13 C24 19 20 22 16 26 C12 22 8 19 8 13 L8 6 Z' fill='url(%23shieldGradient)' stroke='%23E5E7EB' stroke-width='1'/><path d='M12 12 L14 10 L16 12 L18 9 L20 11 L22 8 L24 10' stroke='url(%23chartGradient)' stroke-width='1.5' stroke-linecap='round' fill='none'/><path d='M13 19 L16 16 L19 19' stroke='url(%23accentGradient)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='16' cy='21' r='2' fill='url(%23accentGradient)' opacity='0.8'/></svg>">
 </head>
@@ -59,6 +62,9 @@
                     <button @click="refreshData" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-2 rounded-xl text-sm text-gray-300 transition-colors">
                         <i class="fas fa-sync-alt"></i>
                         <span class="hidden sm:inline ml-1">Refresh</span>
+                    </button>
+                    <button @click="toggleTheme" class="theme-toggle" :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+                        <i :class="darkMode ? 'fas fa-sun text-yellow-400' : 'fas fa-moon text-blue-400'" class="text-sm"></i>
                     </button>
 
                     <!-- Profile dropdown -->

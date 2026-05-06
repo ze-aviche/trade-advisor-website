@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Accentor AI Trading Bot</title>
+    <script>(function(){if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');})()</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-[#0d1117] min-h-screen">
     <div id="app" class="flex min-h-screen">
@@ -79,7 +81,7 @@
         </div>
 
         <!-- ── RIGHT PANEL — Form area ── -->
-        <div class="flex-1 flex flex-col min-h-screen overflow-y-auto bg-[#0d1117]">
+        <div class="flex-1 flex flex-col min-h-screen overflow-y-auto bg-[#0d1117] relative">
 
             <!-- Mobile top bar -->
             <div class="lg:hidden flex items-center justify-between px-6 py-4 border-b border-gray-800">
@@ -89,6 +91,16 @@
                     </div>
                     <span class="text-white font-bold text-sm">Accentor AI</span>
                 </div>
+                <button onclick="toggleLoginTheme()" class="theme-toggle" title="Toggle dark/light mode">
+                    <i id="login-theme-icon" class="fas fa-sun text-yellow-400 text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Desktop theme toggle (top-right corner) -->
+            <div class="hidden lg:block absolute top-5 right-6 z-10">
+                <button onclick="toggleLoginTheme()" class="theme-toggle" title="Toggle dark/light mode">
+                    <i id="login-theme-icon-desktop" class="fas fa-sun text-yellow-400 text-sm"></i>
+                </button>
             </div>
 
             <!-- ── LOGIN VIEW ── -->
@@ -470,6 +482,26 @@
                 }
             },
         }).mount('#app');
+    </script>
+    <script>
+        function toggleLoginTheme() {
+            const isLight = document.documentElement.classList.toggle('light');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            const iconClass = isLight ? 'fas fa-moon text-blue-400 text-sm' : 'fas fa-sun text-yellow-400 text-sm';
+            const m = document.getElementById('login-theme-icon');
+            const d = document.getElementById('login-theme-icon-desktop');
+            if (m) m.className = iconClass;
+            if (d) d.className = iconClass;
+        }
+        (function() {
+            const iconClass = localStorage.getItem('theme') === 'light'
+                ? 'fas fa-moon text-blue-400 text-sm'
+                : 'fas fa-sun text-yellow-400 text-sm';
+            const m = document.getElementById('login-theme-icon');
+            const d = document.getElementById('login-theme-icon-desktop');
+            if (m) m.className = iconClass;
+            if (d) d.className = iconClass;
+        })();
     </script>
 </body>
 </html>
