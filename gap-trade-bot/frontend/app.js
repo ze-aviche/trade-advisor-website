@@ -379,6 +379,21 @@ const app = createApp({
             isAdmin() {
                 return this.isSuperAdmin;
             },
+            lockedTabInfo() {
+                const map = {
+                    historical:  { label: 'Historical Data',  plan: 'Beginner Trader', price: '$5/mo',  tier: 'beginner', icon: 'fa-history',      color: 'blue'   },
+                    'entry-bot': { label: 'Entry Bot',         plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play',         color: 'green'  },
+                    bot:         { label: 'Exit Bot',          plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot',        color: 'green'  },
+                    trades:      { label: 'Trade History',     plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-exchange-alt', color: 'purple' },
+                    positions:   { label: 'Positions',         plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-line',   color: 'purple' },
+                    stats:       { label: 'Stats',             plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-bar',    color: 'purple' },
+                    backtest:    { label: 'Backtest',          plan: 'Yogi Trader',     price: '$25/mo', tier: 'yogi',     icon: 'fa-flask',        color: 'yellow' },
+                };
+                const info = map[this.activeTab];
+                if (info && !this.canAccessTab(this.activeTab)) return info;
+                return null;
+            },
+
             filteredAdminUsers() {
                 const q = (this.adminSearchQuery || '').toLowerCase().trim();
                 if (!q) return this.adminUsers;
@@ -625,24 +640,8 @@ const app = createApp({
             },
 
             handleTabClick(tab) {
-                if (this.canAccessTab(tab)) {
-                    this.onTabChange(tab);
-                    return;
-                }
-                const upgrades = {
-                    historical: { plan: 'Beginner Trader', price: '$5/month', tier: 'beginner' },
-                    'entry-bot': { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    bot:         { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    trades:      { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    positions:   { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    stats:       { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    backtest:    { plan: 'Yogi Trader',     price: '$25/month', tier: 'yogi' },
-                };
-                const labels = { historical: 'Historical', 'entry-bot': 'Entry Bot', bot: 'Exit Bot', trades: 'Trade History', positions: 'Positions', stats: 'Stats', backtest: 'Backtest' };
-                const info = upgrades[tab];
-                if (info) {
-                    this.upgradeModal = { show: true, tabLabel: labels[tab] || tab, requiredPlan: info.plan, requiredPrice: info.price, requiredTier: info.tier };
-                }
+                // Always allow navigation; locked tabs show inline upgrade card
+                this.onTabChange(tab);
             },
 
             // ── Subscription self-service ───────────────────────────────

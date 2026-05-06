@@ -91,16 +91,6 @@
                     </div>
                     <span class="text-white font-bold text-sm">Accentor AI</span>
                 </div>
-                <button onclick="toggleLoginTheme()" class="theme-toggle" title="Toggle dark/light mode">
-                    <i id="login-theme-icon" class="fas fa-sun text-yellow-400 text-sm"></i>
-                </button>
-            </div>
-
-            <!-- Desktop theme toggle (top-right corner) -->
-            <div class="hidden lg:block absolute top-5 right-6 z-10">
-                <button onclick="toggleLoginTheme()" class="theme-toggle" title="Toggle dark/light mode">
-                    <i id="login-theme-icon-desktop" class="fas fa-sun text-yellow-400 text-sm"></i>
-                </button>
             </div>
 
             <!-- ── LOGIN VIEW ── -->
@@ -482,26 +472,6 @@
                 }
             },
         }).mount('#app');
-    </script>
-    <script>
-        function toggleLoginTheme() {
-            const isLight = document.documentElement.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            const iconClass = isLight ? 'fas fa-moon text-blue-400 text-sm' : 'fas fa-sun text-yellow-400 text-sm';
-            const m = document.getElementById('login-theme-icon');
-            const d = document.getElementById('login-theme-icon-desktop');
-            if (m) m.className = iconClass;
-            if (d) d.className = iconClass;
-        }
-        (function() {
-            const iconClass = localStorage.getItem('theme') === 'light'
-                ? 'fas fa-moon text-blue-400 text-sm'
-                : 'fas fa-sun text-yellow-400 text-sm';
-            const m = document.getElementById('login-theme-icon');
-            const d = document.getElementById('login-theme-icon-desktop');
-            if (m) m.className = iconClass;
-            if (d) d.className = iconClass;
-        })();
     </script>
 </body>
 </html>

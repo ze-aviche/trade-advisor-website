@@ -62,9 +62,6 @@
 
             <!-- CTA -->
             <div class="flex items-center gap-3">
-                <button id="theme-toggle-btn" onclick="toggleTheme()" class="theme-toggle" title="Toggle dark/light mode">
-                    <i id="theme-icon" class="fas fa-sun text-yellow-400 text-sm"></i>
-                </button>
                 <span id="nav-cta-loading" class="text-gray-600 text-xs">...</span>
                 <a id="nav-signup" href="/login?view=register" class="hidden bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all shadow-lg shadow-blue-600/20">
                     Sign Up
@@ -818,21 +815,6 @@
     </footer>
 
     <script>
-        // Theme toggle
-        function toggleTheme() {
-            const isLight = document.documentElement.classList.toggle('light');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-            document.getElementById('theme-icon').className = isLight
-                ? 'fas fa-moon text-blue-400 text-sm'
-                : 'fas fa-sun text-yellow-400 text-sm';
-        }
-        // Sync icon with current theme
-        (function() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.getElementById('theme-icon').className = 'fas fa-moon text-blue-400 text-sm';
-            }
-        })();
-
         // Show correct CTA based on session
         (function () {
             const token = localStorage.getItem('session_token');

@@ -59,13 +59,6 @@
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 md:space-x-3">
-                    <button @click="refreshData" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-2 rounded-xl text-sm text-gray-300 transition-colors">
-                        <i class="fas fa-sync-alt"></i>
-                        <span class="hidden sm:inline ml-1">Refresh</span>
-                    </button>
-                    <button @click="toggleTheme" class="theme-toggle" :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
-                        <i :class="darkMode ? 'fas fa-sun text-yellow-400' : 'fas fa-moon text-blue-400'" class="text-sm"></i>
-                    </button>
 
                     <!-- Profile dropdown -->
                     <div class="relative">
@@ -214,6 +207,37 @@
 
         <!-- Main Content -->
         <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+
+            <!-- ── Inline Upgrade Card (shown when a locked tab is active) ── -->
+            <div v-if="lockedTabInfo" class="flex items-center justify-center min-h-[60vh] px-4">
+                <div class="bg-gray-800 shadow-lg rounded-2xl p-10 max-w-md w-full text-center border border-gray-700">
+                    <!-- Icon -->
+                    <div class="w-20 h-20 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mx-auto mb-6">
+                        <i class="fas fa-lock text-yellow-400 text-3xl"></i>
+                    </div>
+                    <!-- Title -->
+                    <h2 class="text-2xl font-bold text-white mb-2">{{ lockedTabInfo.label }}</h2>
+                    <p class="text-gray-400 text-sm mb-6">This feature requires a higher subscription plan to access.</p>
+                    <!-- Plan badge -->
+                    <div class="bg-gray-700 rounded-xl px-5 py-4 mb-8 inline-block">
+                        <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Required Plan</div>
+                        <div class="text-white font-bold text-lg">{{ lockedTabInfo.plan }}</div>
+                        <div class="text-blue-400 font-semibold text-sm mt-0.5">{{ lockedTabInfo.price }}</div>
+                    </div>
+                    <!-- Actions -->
+                    <div class="space-y-3">
+                        <button @click="onTabChange('account')"
+                            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-600/20">
+                            <i class="fas fa-arrow-up mr-2 text-sm"></i>Upgrade Plan
+                        </button>
+                        <button @click="onTabChange('about')"
+                            class="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium py-2.5 rounded-xl transition-colors text-sm">
+                            Back to Dashboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- About Tab -->
             <div v-if="activeTab === 'about'" class="space-y-6">
                 <!-- Welcome Section -->
@@ -699,7 +723,7 @@
             </div>
 
             <!-- Historical Data Tab -->
-            <div v-if="activeTab === 'historical'" class="space-y-6">
+            <div v-if="activeTab === 'historical' && canAccessTab('historical')" class="space-y-6">
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
                         <div>
@@ -993,7 +1017,7 @@
             </div>
 
             <!-- Entry Bot Tab -->
-            <div v-if="activeTab === 'entry-bot'" class="space-y-6">
+            <div v-if="activeTab === 'entry-bot' && canAccessTab('entry-bot')" class="space-y-6">
                 <!-- Entry Bot Status Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -1365,7 +1389,7 @@
             </div>
 
             <!-- Trade History Tab -->
-            <div v-if="activeTab === 'trades'" class="space-y-6">
+            <div v-if="activeTab === 'trades' && canAccessTab('trades')" class="space-y-6">
                 <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
@@ -1536,7 +1560,7 @@
             </div>
 
             <!-- Positions History Tab -->
-            <div v-if="activeTab === 'positions'" class="space-y-6">
+            <div v-if="activeTab === 'positions' && canAccessTab('positions')" class="space-y-6">
                 <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
@@ -1711,7 +1735,7 @@
             </div>
 
             <!-- Bot Tab -->
-            <div v-if="activeTab === 'bot'" class="space-y-6">
+            <div v-if="activeTab === 'bot' && canAccessTab('bot')" class="space-y-6">
                 <!-- Bot Status Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -2055,7 +2079,7 @@
             </div>
 
             <!-- Stats Tab -->
-            <div v-if="activeTab === 'stats'" class="space-y-6">
+            <div v-if="activeTab === 'stats' && canAccessTab('stats')" class="space-y-6">
                 <!-- Stats Overview -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
@@ -2419,7 +2443,7 @@
             </div>
 
             <!-- Backtest Tab -->
-            <div v-if="activeTab === 'backtest'" class="space-y-6">
+            <div v-if="activeTab === 'backtest' && canAccessTab('backtest')" class="space-y-6">
                 <!-- Backtest Overview -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
