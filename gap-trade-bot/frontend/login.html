@@ -463,7 +463,12 @@
                     }
                 },
 
-            }
+            mounted() {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('view') === 'register') {
+                    this.activeView = 'register';
+                }
+            },
         }).mount('#app');
     </script>
 </body>

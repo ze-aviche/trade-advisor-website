@@ -61,6 +61,9 @@
             <!-- CTA -->
             <div class="flex items-center gap-3">
                 <span id="nav-cta-loading" class="text-gray-600 text-xs">...</span>
+                <a id="nav-signup" href="/login?view=register" class="hidden border border-gray-600 hover:border-blue-500 text-gray-300 hover:text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all">
+                    Sign Up
+                </a>
                 <a id="nav-signin" href="/login" class="hidden bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-all shadow-lg shadow-blue-600/20">
                     Sign In <i class="fas fa-arrow-right ml-1 text-xs"></i>
                 </a>
@@ -814,6 +817,7 @@
         (function () {
             const token = localStorage.getItem('session_token');
             const loadingEl = document.getElementById('nav-cta-loading');
+            const signupEl = document.getElementById('nav-signup');
             const signinEl = document.getElementById('nav-signin');
             const dashboardEl = document.getElementById('nav-dashboard');
             loadingEl.classList.add('hidden');
@@ -824,6 +828,7 @@
                 const botCta = document.getElementById('bottom-cta');
                 if (botCta) { botCta.innerHTML = 'Go to Dashboard <i class="fas fa-arrow-right text-xs"></i>'; botCta.href = '/app'; }
             } else {
+                signupEl.classList.remove('hidden');
                 signinEl.classList.remove('hidden');
             }
         })();
