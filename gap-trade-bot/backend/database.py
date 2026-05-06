@@ -287,7 +287,7 @@ class DatabaseManager:
                 row = cursor.fetchone()
                 if row:
                     user = dict(row)
-                    user['preferences'] = json.loads(user['preferences'])
+                    user['preferences'] = json.loads(user['preferences'] or '{}')
                     return user
                 return None
         except Exception as e:
@@ -307,10 +307,10 @@ class DatabaseManager:
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
-                
+
                 if row:
                     user = dict(row)
-                    user['preferences'] = json.loads(user['preferences'])
+                    user['preferences'] = json.loads(user['preferences'] or '{}')
                     return user
                 return None
         except Exception as e:

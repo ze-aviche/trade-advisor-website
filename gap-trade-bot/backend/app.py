@@ -582,11 +582,11 @@ def register():
             data.get('username', ''),
             data.get('email', ''),
             data.get('password', ''),
-            first_name=data.get('first_name', '').strip() or None,
-            last_name=data.get('last_name', '').strip() or None,
-            address=data.get('address', '').strip() or None,
-            profession=data.get('profession', '').strip() or None,
-            annual_income_range=data.get('annual_income_range', '').strip() or None,
+            first_name=(data.get('first_name') or '').strip() or None,
+            last_name=(data.get('last_name') or '').strip() or None,
+            address=(data.get('address') or '').strip() or None,
+            profession=(data.get('profession') or '').strip() or None,
+            annual_income_range=(data.get('annual_income_range') or '').strip() or None,
         )
         if success:
             return jsonify({'success': True, 'message': message})
