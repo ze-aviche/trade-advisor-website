@@ -569,6 +569,26 @@ def serve_app():
 def serve_login():
     return send_from_directory(FRONTEND_DIR, 'login.html')
 
+
+@app.route('/api/contact', methods=['POST'])
+def contact():
+    """Store a contact form submission and log it"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        name = (data.get('name') or '').strip()
+        email = (data.get('email') or '').strip()
+        subject = (data.get('subject') or '').strip()
+        message = (data.get('message') or '').strip()
+        if not name or not email or not message:
+            return jsonify({'success': False, 'error': 'Name, email, and message are required'}), 400
+        app_logger.info(f"Contact form: from={email!r} name={name!r} subject={subject!r} message={message[:120]!r}")
+        return jsonify({'success': True, 'message': 'Message received'})
+    except Exception as e:
+        app_logger.error(f"Contact form error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/<path:filename>')
 def serve_static(filename):
     return send_from_directory(FRONTEND_DIR, filename)

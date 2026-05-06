@@ -18,6 +18,9 @@
                         linear-gradient(135deg, #3b82f6, #8b5cf6) border-box;
             border: 1px solid transparent;
         }
+        .res-tab.active { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #93c5fd; }
+        .res-panel { display: none; }
+        .res-panel.active { display: block; }
     </style>
 </head>
 <body class="bg-[#0d1117] text-white antialiased">
@@ -33,12 +36,26 @@
                 <span class="font-bold text-white text-base tracking-tight">Accentor <span class="text-blue-400">AI</span></span>
             </a>
 
-            <!-- Desktop nav links -->
-            <div class="hidden md:flex items-center gap-6 text-sm text-gray-400">
-                <a href="#features" class="hover:text-white transition-colors">Features</a>
-                <a href="#how-it-works" class="hover:text-white transition-colors">How it Works</a>
-                <a href="#platform" class="hover:text-white transition-colors">Platform</a>
-                <a href="#faq" class="hover:text-white transition-colors">FAQ</a>
+            <!-- Desktop nav links — solid pill tabs -->
+            <div class="hidden lg:flex items-center gap-1.5 text-xs font-medium">
+                <a href="#features" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-300 hover:bg-blue-500/20 hover:border-blue-400/50 transition-all">
+                    <i class="fas fa-bolt text-[10px]"></i>Features
+                </a>
+                <a href="#how-it-works" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/25 text-green-300 hover:bg-green-500/20 hover:border-green-400/50 transition-all">
+                    <i class="fas fa-route text-[10px]"></i>How it Works
+                </a>
+                <a href="#platform" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/25 text-purple-300 hover:bg-purple-500/20 hover:border-purple-400/50 transition-all">
+                    <i class="fas fa-th-large text-[10px]"></i>Platform
+                </a>
+                <a href="#resources" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-yellow-300 hover:bg-yellow-500/20 hover:border-yellow-400/50 transition-all">
+                    <i class="fas fa-book-open text-[10px]"></i>Resources
+                </a>
+                <a href="#faq" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-all">
+                    <i class="fas fa-question-circle text-[10px]"></i>FAQ
+                </a>
+                <a href="#contact" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/10 border border-pink-500/25 text-pink-300 hover:bg-pink-500/20 hover:border-pink-400/50 transition-all">
+                    <i class="fas fa-envelope text-[10px]"></i>Contact
+                </a>
             </div>
 
             <!-- CTA -->
@@ -51,18 +68,20 @@
                     Dashboard <i class="fas fa-arrow-right ml-1 text-xs"></i>
                 </a>
                 <!-- Mobile menu toggle -->
-                <button id="mobile-menu-btn" class="md:hidden text-gray-400 hover:text-white p-1">
+                <button id="mobile-menu-btn" class="lg:hidden text-gray-400 hover:text-white p-1">
                     <i class="fas fa-bars text-lg"></i>
                 </button>
             </div>
         </div>
 
         <!-- Mobile nav menu -->
-        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-800 bg-[#0d1117] px-5 py-4 space-y-3 text-sm text-gray-400">
-            <a href="#features" class="block hover:text-white transition-colors">Features</a>
-            <a href="#how-it-works" class="block hover:text-white transition-colors">How it Works</a>
-            <a href="#platform" class="block hover:text-white transition-colors">Platform</a>
-            <a href="#faq" class="block hover:text-white transition-colors">FAQ</a>
+        <div id="mobile-menu" class="hidden lg:hidden border-t border-gray-800 bg-[#0d1117] px-5 py-4 grid grid-cols-2 gap-2 text-xs font-medium">
+            <a href="#features" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-300"><i class="fas fa-bolt w-3"></i>Features</a>
+            <a href="#how-it-works" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/25 text-green-300"><i class="fas fa-route w-3"></i>How it Works</a>
+            <a href="#platform" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/25 text-purple-300"><i class="fas fa-th-large w-3"></i>Platform</a>
+            <a href="#resources" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-yellow-300"><i class="fas fa-book-open w-3"></i>Resources</a>
+            <a href="#faq" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/25 text-cyan-300"><i class="fas fa-question-circle w-3"></i>FAQ</a>
+            <a href="#contact" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-pink-500/10 border border-pink-500/25 text-pink-300"><i class="fas fa-envelope w-3"></i>Contact</a>
         </div>
     </nav>
 
@@ -368,6 +387,331 @@
         </div>
     </section>
 
+    <!-- ── RESOURCES ── -->
+    <section id="resources" class="py-24 px-5 sm:px-8 border-t border-gray-800">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-14">
+                <p class="text-yellow-400 text-xs font-semibold uppercase tracking-widest mb-3">Trading Knowledge Base</p>
+                <h2 class="text-4xl font-bold text-white mb-4">Learn to trade with confidence</h2>
+                <p class="text-gray-400 max-w-2xl mx-auto">Whether you're brand new or refining your edge, these guides cover the fundamentals every trader needs to know.</p>
+            </div>
+
+            <!-- Resource tab selector -->
+            <div class="flex flex-wrap gap-2 justify-center mb-10">
+                <button class="res-tab active flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-700 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:border-blue-500/40" data-tab="day-trading">
+                    <i class="fas fa-bolt text-yellow-400 text-xs"></i>Day Trading
+                </button>
+                <button class="res-tab flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-700 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:border-blue-500/40" data-tab="swing-trading">
+                    <i class="fas fa-wave-square text-green-400 text-xs"></i>Swing Trading
+                </button>
+                <button class="res-tab flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-700 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:border-blue-500/40" data-tab="gap-trading">
+                    <i class="fas fa-arrow-up text-blue-400 text-xs"></i>Gap Trading
+                </button>
+                <button class="res-tab flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-700 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:border-blue-500/40" data-tab="technical-analysis">
+                    <i class="fas fa-chart-line text-purple-400 text-xs"></i>Technical Analysis
+                </button>
+                <button class="res-tab flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-700 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:border-blue-500/40" data-tab="risk">
+                    <i class="fas fa-shield-alt text-red-400 text-xs"></i>Risk & Psychology
+                </button>
+                <button class="res-tab flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-700 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:border-blue-500/40" data-tab="market-structure">
+                    <i class="fas fa-building-columns text-cyan-400 text-xs"></i>Market Structure
+                </button>
+            </div>
+
+            <!-- ── Day Trading Panel ── -->
+            <div class="res-panel active" id="panel-day-trading">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-gray-800/50 border border-yellow-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-yellow-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-bolt text-yellow-400"></i></div>
+                            <h3 class="text-white font-semibold">What is Day Trading?</h3>
+                        </div>
+                        <p class="text-gray-400 text-sm leading-relaxed mb-4">Day trading is the practice of buying and selling financial instruments within the same trading day. All positions are closed before the market closes, eliminating overnight risk.</p>
+                        <ul class="space-y-2 text-sm text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-yellow-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Profit from intraday price movements — up or down</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-yellow-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Requires real-time Level 2 data and fast execution</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-yellow-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Most activity occurs in the first and last hours of the session</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-yellow-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Pattern Day Trader rule: accounts under $25k are limited to 3 round trips per 5 days</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-800/50 border border-yellow-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-yellow-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-crosshairs text-yellow-400"></i></div>
+                            <h3 class="text-white font-semibold">Key Day Trading Strategies</h3>
+                        </div>
+                        <div class="space-y-3 text-sm">
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-yellow-300 font-medium mb-0.5">Momentum Trading</p><p class="text-gray-500">Buy stocks with strong upward momentum and high volume; exit when momentum stalls.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-yellow-300 font-medium mb-0.5">Scalping</p><p class="text-gray-500">Make dozens of small trades capturing tiny price movements throughout the day.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-yellow-300 font-medium mb-0.5">Breakout Trading</p><p class="text-gray-500">Enter when price breaks through a key resistance level on elevated volume.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-yellow-300 font-medium mb-0.5">Reversal Trading</p><p class="text-gray-500">Identify overextended moves and trade the snapback — high risk, high reward.</p></div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-yellow-500/20 rounded-2xl p-6 md:col-span-2">
+                        <h3 class="text-white font-semibold mb-4">Essential Day Trading Metrics</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                            <div class="bg-gray-900/60 rounded-xl p-4 text-center"><p class="text-yellow-400 font-bold text-lg mb-1">2:1</p><p class="text-gray-500 text-xs">Minimum reward-to-risk ratio to aim for on every trade</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-4 text-center"><p class="text-yellow-400 font-bold text-lg mb-1">&gt;50%</p><p class="text-gray-500 text-xs">Win rate needed at 2:1 R/R to be consistently profitable</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-4 text-center"><p class="text-yellow-400 font-bold text-lg mb-1">1–2%</p><p class="text-gray-500 text-xs">Max account risk per trade (position sizing rule)</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-4 text-center"><p class="text-yellow-400 font-bold text-lg mb-1">10×</p><p class="text-gray-500 text-xs">Average volume vs normal as a minimum for viable setups</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Swing Trading Panel ── -->
+            <div class="res-panel" id="panel-swing-trading">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-gray-800/50 border border-green-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-wave-square text-green-400"></i></div>
+                            <h3 class="text-white font-semibold">What is Swing Trading?</h3>
+                        </div>
+                        <p class="text-gray-400 text-sm leading-relaxed mb-4">Swing trading captures multi-day price moves (typically 2–14 days) within a larger trend. Traders hold positions overnight and through weekends, targeting larger percentage gains than day traders.</p>
+                        <ul class="space-y-2 text-sm text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-green-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>No PDT rule restrictions — can trade with any account size</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-green-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Less screen time than day trading — check charts once or twice daily</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-green-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Targets 5–20%+ moves over several days to weeks</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-green-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Exposed to overnight gap risk — always use a stop</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-800/50 border border-green-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-search-dollar text-green-400"></i></div>
+                            <h3 class="text-white font-semibold">Finding Swing Setups</h3>
+                        </div>
+                        <div class="space-y-3 text-sm">
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-green-300 font-medium mb-0.5">Trend Following</p><p class="text-gray-500">Buy pullbacks in a strong uptrend at key moving averages (20 EMA, 50 SMA).</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-green-300 font-medium mb-0.5">Flag & Pennant Breakouts</p><p class="text-gray-500">After a strong move, price consolidates briefly then breaks out with renewed volume.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-green-300 font-medium mb-0.5">Earnings Momentum</p><p class="text-gray-500">Stocks that gap up on strong earnings often continue higher over the next few weeks.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-green-300 font-medium mb-0.5">Sector Rotation</p><p class="text-gray-500">Follow money rotating into leading sectors — trade the strongest stocks in hot groups.</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Gap Trading Panel ── -->
+            <div class="res-panel" id="panel-gap-trading">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-gray-800/50 border border-blue-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-arrow-up text-blue-400"></i></div>
+                            <h3 class="text-white font-semibold">What is Gap Trading?</h3>
+                        </div>
+                        <p class="text-gray-400 text-sm leading-relaxed mb-4">A gap occurs when a stock opens significantly higher (gap-up) or lower (gap-down) than its previous close, leaving a visible "gap" on the chart. Gap-ups driven by catalysts like earnings or major news are among the highest-probability setups in trading.</p>
+                        <ul class="space-y-2 text-sm text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-blue-500/60 text-[6px] mt-1.5 flex-shrink-0"></i><strong class="text-gray-300">Breakaway gap:</strong> Signals start of a new trend — most powerful type</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-blue-500/60 text-[6px] mt-1.5 flex-shrink-0"></i><strong class="text-gray-300">Continuation gap:</strong> Occurs mid-trend, confirms the direction</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-blue-500/60 text-[6px] mt-1.5 flex-shrink-0"></i><strong class="text-gray-300">Exhaustion gap:</strong> Late in a trend — signals possible reversal</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-circle text-blue-500/60 text-[6px] mt-1.5 flex-shrink-0"></i>Volume is the most important confirmation factor for any gap</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-800/50 border border-blue-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-robot text-blue-400"></i></div>
+                            <h3 class="text-white font-semibold">How Accentor Uses Gap Data</h3>
+                        </div>
+                        <div class="space-y-3 text-sm">
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Pre-Market Scan</p><p class="text-gray-500">Accentor scans for stocks gapping above your minimum threshold (default 25%) before and at market open.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Volume Confirmation</p><p class="text-gray-500">Entry Bot only triggers when intraday volume confirms institutional participation.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Automated Entry Window</p><p class="text-gray-500">Define exact entry time windows (e.g. 9:35–10:00 AM ET) to catch the strongest early momentum.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Historical Gap Analysis</p><p class="text-gray-500">Browse years of gap-up data to refine your gap threshold and entry timing.</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Technical Analysis Panel ── -->
+            <div class="res-panel" id="panel-technical-analysis">
+                <div class="grid md:grid-cols-3 gap-5">
+                    <div class="bg-gray-800/50 border border-purple-500/20 rounded-2xl p-5">
+                        <i class="fas fa-chart-line text-purple-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Moving Averages</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed mb-3">Smooth price data to identify trend direction. The 9 EMA tracks short-term momentum; 20 EMA is a common swing entry zone; 50 & 200 SMA define major support/resistance.</p>
+                        <div class="space-y-1 text-xs text-gray-500"><p><span class="text-purple-300">Golden Cross:</span> 50 SMA crosses above 200 SMA — bullish long-term signal</p><p><span class="text-purple-300">Death Cross:</span> 50 SMA crosses below 200 SMA — bearish signal</p></div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-purple-500/20 rounded-2xl p-5">
+                        <i class="fas fa-tachometer-alt text-purple-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">RSI — Relative Strength Index</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed mb-3">Oscillator (0–100) measuring speed and magnitude of price changes. Values above 70 suggest overbought conditions; below 30 suggests oversold.</p>
+                        <div class="space-y-1 text-xs text-gray-500"><p><span class="text-purple-300">Divergence:</span> Price makes new high but RSI doesn't — potential reversal signal</p><p><span class="text-purple-300">Gap plays:</span> RSI above 70 on open often signals continued momentum</p></div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-purple-500/20 rounded-2xl p-5">
+                        <i class="fas fa-exchange-alt text-purple-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">MACD</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed mb-3">Moving Average Convergence Divergence — shows momentum and trend direction using the relationship between two EMAs (typically 12 & 26 period).</p>
+                        <div class="space-y-1 text-xs text-gray-500"><p><span class="text-purple-300">Signal line cross:</span> MACD crossing above signal line — bullish entry trigger</p><p><span class="text-purple-300">Histogram:</span> Expanding bars = strengthening momentum</p></div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-purple-500/20 rounded-2xl p-5">
+                        <i class="fas fa-arrows-alt-h text-purple-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Support & Resistance</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed mb-3">Price levels where buying (support) or selling (resistance) pressure repeatedly emerges. Breakouts above resistance or below support are high-probability trade signals.</p>
+                        <div class="space-y-1 text-xs text-gray-500"><p><span class="text-purple-300">Role reversal:</span> Broken resistance becomes new support</p><p><span class="text-purple-300">Round numbers:</span> $50, $100, $500 act as psychological levels</p></div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-purple-500/20 rounded-2xl p-5">
+                        <i class="fas fa-compress-alt text-purple-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Bollinger Bands</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed mb-3">Three bands around a 20 SMA: middle (SMA), upper (+2 std dev), lower (−2 std dev). Bands widen during high volatility and contract during consolidation ("squeeze").</p>
+                        <div class="space-y-1 text-xs text-gray-500"><p><span class="text-purple-300">Band walk:</span> Price hugging upper band = strong uptrend</p><p><span class="text-purple-300">Squeeze breakout:</span> Tight bands often precede explosive moves</p></div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-purple-500/20 rounded-2xl p-5">
+                        <i class="fas fa-chart-bar text-purple-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Volume Analysis</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed mb-3">Volume confirms price moves. A breakout on 5–10× average volume is far more reliable than one on light volume. It reveals whether institutions are participating.</p>
+                        <div class="space-y-1 text-xs text-gray-500"><p><span class="text-purple-300">RVOL:</span> Relative volume — current vs average at same time of day</p><p><span class="text-purple-300">Climax volume:</span> Massive spike often marks exhaustion of a move</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Risk & Psychology Panel ── -->
+            <div class="res-panel" id="panel-risk">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-gray-800/50 border border-red-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-5">
+                            <div class="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-shield-alt text-red-400"></i></div>
+                            <h3 class="text-white font-semibold">Position Sizing & Risk Rules</h3>
+                        </div>
+                        <div class="space-y-3 text-sm">
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">The 1–2% Rule</p><p class="text-gray-500">Never risk more than 1–2% of your total account on a single trade. On a $10k account that's $100–$200 max loss per trade.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">Stop-Loss Placement</p><p class="text-gray-500">Set stops at a technically meaningful level (below a key support or VWAP), not a round dollar amount.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">Reward-to-Risk Ratio</p><p class="text-gray-500">Only enter trades where the potential reward is at least 2× the risk. This means you can be right less than 50% of the time and still profit.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">Daily Loss Limit</p><p class="text-gray-500">Set a maximum daily loss (e.g. 3–5% of account). When hit, stop trading for the day — protect your capital and mindset.</p></div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800/50 border border-red-500/20 rounded-2xl p-6">
+                        <div class="flex items-center gap-3 mb-5">
+                            <div class="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0"><i class="fas fa-brain text-red-400"></i></div>
+                            <h3 class="text-white font-semibold">Trading Psychology</h3>
+                        </div>
+                        <div class="space-y-3 text-sm">
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">FOMO (Fear of Missing Out)</p><p class="text-gray-500">Chasing stocks that have already moved is a leading cause of losses. If you missed the entry, wait for the next setup.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">Revenge Trading</p><p class="text-gray-500">After a loss, the urge to win it back quickly leads to oversized, undisciplined trades. Always step back after a loss.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">Trade Journal</p><p class="text-gray-500">Log every trade — entry, exit, size, reason, and emotion. Patterns in your mistakes become obvious over time.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-red-300 font-medium mb-0.5">Process Over Outcome</p><p class="text-gray-500">A losing trade that followed your plan is a success. A winning trade that broke your rules is a failure. Judge process, not P&amp;L.</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Market Structure Panel ── -->
+            <div class="res-panel" id="panel-market-structure">
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div class="bg-gray-800/50 border border-cyan-500/20 rounded-2xl p-5">
+                        <i class="fas fa-clock text-cyan-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Pre-Market & After-Hours</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">Pre-market (4–9:30 AM ET) and after-hours (4–8 PM ET) sessions have lower liquidity and wider spreads. Price moves made overnight often set the tone for the regular session — this is where gap-ups form.</p>
+                    </div>
+                    <div class="bg-gray-800/50 border border-cyan-500/20 rounded-2xl p-5">
+                        <i class="fas fa-fire text-cyan-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Market Open Volatility</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">The first 30–60 minutes after open (9:30–10:30 AM ET) are the most volatile and liquid. Most gap trades play out in this window. Experienced traders use this for their best setups; beginners often use it for their worst.</p>
+                    </div>
+                    <div class="bg-gray-800/50 border border-cyan-500/20 rounded-2xl p-5">
+                        <i class="fas fa-water text-cyan-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Liquidity & Spreads</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">Liquidity determines how easily you can enter and exit. High-volume stocks have tight bid/ask spreads (pennies). Low-float, high-momentum stocks can have wider spreads — factor this into your risk calculation.</p>
+                    </div>
+                    <div class="bg-gray-800/50 border border-cyan-500/20 rounded-2xl p-5">
+                        <i class="fas fa-layer-group text-cyan-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Market Cap Categories</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed"><span class="text-cyan-300">Large cap (&gt;$10B):</span> Slow movers, less volatile.<br><span class="text-cyan-300">Mid cap ($2–10B):</span> Balanced volatility and liquidity.<br><span class="text-cyan-300">Small/micro cap (&lt;$2B):</span> High volatility, gap-up candidates, but higher risk and lower liquidity.</p>
+                    </div>
+                    <div class="bg-gray-800/50 border border-cyan-500/20 rounded-2xl p-5">
+                        <i class="fas fa-sync-alt text-cyan-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Sector Rotation</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">Institutional money rotates between sectors based on economic cycles. Trade with the money flow — when tech is hot, gap-ups in tech names carry more follow-through than ones in lagging sectors.</p>
+                    </div>
+                    <div class="bg-gray-800/50 border border-cyan-500/20 rounded-2xl p-5">
+                        <i class="fas fa-calendar-alt text-cyan-400 text-xl mb-3"></i>
+                        <h4 class="text-white font-semibold mb-2 text-sm">Key Market Events</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">Earnings season (Jan, Apr, Jul, Oct) creates the most gap-up opportunities. Fed announcements (FOMC), CPI releases, and jobs reports cause market-wide volatility — avoid holding positions through major macro events.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── CONTACT ── -->
+    <section id="contact" class="py-24 px-5 sm:px-8 border-t border-gray-800">
+        <div class="max-w-5xl mx-auto">
+            <div class="text-center mb-14">
+                <p class="text-pink-400 text-xs font-semibold uppercase tracking-widest mb-3">Get in touch</p>
+                <h2 class="text-4xl font-bold text-white mb-4">Contact Us</h2>
+                <p class="text-gray-400 max-w-xl mx-auto">Have a question about the platform, your account, or trading in general? We're here to help.</p>
+            </div>
+            <div class="grid md:grid-cols-5 gap-8">
+                <!-- Contact info -->
+                <div class="md:col-span-2 space-y-4">
+                    <div class="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-5">
+                        <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center mb-3">
+                            <i class="fas fa-robot text-blue-400"></i>
+                        </div>
+                        <h4 class="text-white font-semibold mb-1.5 text-sm">AI Chat Support</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">The fastest way to get help is through the AI Chat tab inside the platform. Ask anything about platform features, trading concepts, or your account.</p>
+                        <a href="/login" class="inline-flex items-center gap-1.5 mt-3 text-blue-400 hover:text-blue-300 text-xs font-medium transition-colors">Open Platform <i class="fas fa-arrow-right text-[10px]"></i></a>
+                    </div>
+                    <div class="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-5">
+                        <div class="w-10 h-10 rounded-xl bg-pink-500/15 flex items-center justify-center mb-3">
+                            <i class="fas fa-user-shield text-pink-400"></i>
+                        </div>
+                        <h4 class="text-white font-semibold mb-1.5 text-sm">Admin Support</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">For account issues, password resets, or subscription changes, contact your platform administrator directly. Use the form on this page to reach them.</p>
+                    </div>
+                    <div class="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-5">
+                        <div class="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center mb-3">
+                            <i class="fas fa-book text-green-400"></i>
+                        </div>
+                        <h4 class="text-white font-semibold mb-1.5 text-sm">Resources & Guides</h4>
+                        <p class="text-gray-500 text-xs leading-relaxed">Browse the Resources section above for guides on day trading, swing trading, technical analysis, and risk management.</p>
+                        <a href="#resources" class="inline-flex items-center gap-1.5 mt-3 text-green-400 hover:text-green-300 text-xs font-medium transition-colors">View Resources <i class="fas fa-arrow-up text-[10px]"></i></a>
+                    </div>
+                </div>
+
+                <!-- Contact form -->
+                <div class="md:col-span-3">
+                    <div class="bg-gray-800/40 border border-gray-700/50 rounded-2xl p-7">
+                        <h3 class="text-white font-semibold mb-6">Send a Message</h3>
+                        <form id="contact-form" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Name</label>
+                                    <input type="text" name="name" required placeholder="Your name"
+                                           class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Email</label>
+                                    <input type="email" name="email" required placeholder="you@email.com"
+                                           class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm transition-all">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Subject</label>
+                                <select name="subject" class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-pink-500 text-sm transition-all">
+                                    <option value="">Select a topic...</option>
+                                    <option>Account / Login Issue</option>
+                                    <option>Subscription & Billing</option>
+                                    <option>Platform Feature Question</option>
+                                    <option>Bug Report</option>
+                                    <option>Trading Question</option>
+                                    <option>Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Message</label>
+                                <textarea name="message" required rows="5" placeholder="Describe your question or issue..."
+                                          class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-sm transition-all resize-none"></textarea>
+                            </div>
+                            <div id="contact-feedback" class="hidden text-sm px-4 py-3 rounded-xl"></div>
+                            <button type="submit" id="contact-submit"
+                                    class="w-full bg-pink-600 hover:bg-pink-500 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-pink-600/20 flex items-center justify-center gap-2 text-sm">
+                                <i class="fas fa-paper-plane text-xs"></i>Send Message
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- ── FAQ ── -->
     <section id="faq" class="py-24 px-5 sm:px-8 border-t border-gray-800">
         <div class="max-w-3xl mx-auto">
@@ -504,6 +848,48 @@
                 document.querySelectorAll('.faq-item').forEach(function (i) { i.classList.remove('open'); });
                 if (!isOpen) item.classList.add('open');
             });
+        });
+
+        // Resources tab switcher
+        document.querySelectorAll('.res-tab').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.res-tab').forEach(function (b) { b.classList.remove('active'); });
+                document.querySelectorAll('.res-panel').forEach(function (p) { p.classList.remove('active'); });
+                btn.classList.add('active');
+                var panel = document.getElementById('panel-' + btn.dataset.tab);
+                if (panel) panel.classList.add('active');
+            });
+        });
+
+        // Contact form — posts to /api/contact
+        document.getElementById('contact-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            var btn = document.getElementById('contact-submit');
+            var fb = document.getElementById('contact-feedback');
+            var fd = new FormData(e.target);
+            var body = { name: fd.get('name'), email: fd.get('email'), subject: fd.get('subject'), message: fd.get('message') };
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin text-xs"></i> Sending...';
+            try {
+                var res = await fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                var data = await res.json();
+                fb.classList.remove('hidden');
+                if (data.success) {
+                    fb.className = 'text-sm px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/25 text-green-300';
+                    fb.textContent = 'Message sent! We\'ll get back to you as soon as possible.';
+                    e.target.reset();
+                } else {
+                    fb.className = 'text-sm px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300';
+                    fb.textContent = data.error || 'Something went wrong. Please try again.';
+                }
+            } catch (_) {
+                fb.classList.remove('hidden');
+                fb.className = 'text-sm px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300';
+                fb.textContent = 'Network error — please try again later.';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Send Message';
+            }
         });
     </script>
 </body>
