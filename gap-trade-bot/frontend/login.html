@@ -400,7 +400,7 @@
                         if (data.success) {
                             localStorage.setItem('session_token', data.data.session_token);
                             localStorage.setItem('user', JSON.stringify(data.data.user));
-                            window.location.href = '/';
+                            window.location.href = '/app';
                         } else {
                             this.error = data.error || 'Login failed';
                         }
