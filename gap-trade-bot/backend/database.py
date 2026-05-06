@@ -154,6 +154,13 @@ class DatabaseManager:
                 ('subscription_expires_at', 'TIMESTAMP DEFAULT NULL'),
                 ('stripe_customer_id', 'TEXT DEFAULT NULL'),
                 ('stripe_subscription_id', 'TEXT DEFAULT NULL'),
+                ('reset_token', 'TEXT DEFAULT NULL'),
+                ('reset_token_expires_at', 'TIMESTAMP DEFAULT NULL'),
+                ('first_name', 'TEXT DEFAULT NULL'),
+                ('last_name', 'TEXT DEFAULT NULL'),
+                ('address', 'TEXT DEFAULT NULL'),
+                ('profession', 'TEXT DEFAULT NULL'),
+                ('annual_income_range', 'TEXT DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -219,7 +226,27 @@ class DatabaseManager:
         except Exception as e:
             print(f"⚠️ Error migrating users: {e}")
     
-    def create_user(self, username, email, password_hash, system_role=None, subscription_tier='basic', preferences=None):
+    def update_user_profile(self, user_id, first_name=None, last_name=None, email=None,
+                             address=None, profession=None, annual_income_range=None):
+        """Update editable profile fields for a user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''UPDATE users SET first_name=?, last_name=?, email=?,
+                       address=?, profession=?, annual_income_range=? WHERE id=?''',
+                    (first_name, last_name, email, address, profession, annual_income_range, user_id)
+                )
+                conn.commit()
+                return True, "Profile updated"
+        except sqlite3.IntegrityError:
+            return False, "Email is already in use by another account"
+        except Exception as e:
+            return False, str(e)
+
+    def create_user(self, username, email, password_hash, system_role=None, subscription_tier='basic',
+                    preferences=None, first_name=None, last_name=None, address=None,
+                    profession=None, annual_income_range=None):
         """Create a new user. First user automatically becomes super_admin."""
         if preferences is None:
             preferences = {"gap_threshold": 25.0, "notifications_enabled": True, "theme": "dark"}
@@ -233,9 +260,11 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO users (username, email, password_hash, system_role, subscription_tier,
-                                       subscription_status, is_active, preferences)
-                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?)
-                ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences)))
+                                       subscription_status, is_active, preferences,
+                                       first_name, last_name, address, profession, annual_income_range)
+                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?)
+                ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences),
+                      first_name, last_name, address, profession, annual_income_range))
                 conn.commit()
                 return True, "User created successfully"
         except sqlite3.IntegrityError:
@@ -251,13 +280,14 @@ class DatabaseManager:
                 cursor.execute('''
                     SELECT id, username, email, password_hash, system_role, subscription_tier,
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
-                           preferences, stripe_customer_id, stripe_subscription_id
+                           preferences, stripe_customer_id, stripe_subscription_id,
+                           first_name, last_name, address, profession, annual_income_range
                     FROM users WHERE id = ?
                 ''', (user_id,))
                 row = cursor.fetchone()
                 if row:
                     user = dict(row)
-                    user['preferences'] = json.loads(user['preferences'])
+                    user['preferences'] = json.loads(user['preferences'] or '{}')
                     return user
                 return None
         except Exception as e:
@@ -272,14 +302,15 @@ class DatabaseManager:
                 cursor.execute('''
                     SELECT id, username, email, password_hash, system_role, subscription_tier,
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
-                           preferences, stripe_customer_id, stripe_subscription_id
+                           preferences, stripe_customer_id, stripe_subscription_id,
+                           first_name, last_name, address, profession, annual_income_range
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
-                
+
                 if row:
                     user = dict(row)
-                    user['preferences'] = json.loads(user['preferences'])
+                    user['preferences'] = json.loads(user['preferences'] or '{}')
                     return user
                 return None
         except Exception as e:
@@ -396,9 +427,91 @@ class DatabaseManager:
             print(f"Database error getting all users: {e}")
             return []
 
+    def delete_user(self, user_id):
+        """Permanently delete a user and their sessions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT username FROM users WHERE id = ?', (user_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return False, "User not found"
+                cursor.execute('DELETE FROM sessions WHERE username = ?', (row['username'],))
+                cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+                conn.commit()
+                return True, "User deleted"
+        except Exception as e:
+            return False, str(e)
+
+    def update_user_password(self, user_id, password_hash):
+        """Set a new password hash for a user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET password_hash = ? WHERE id = ?', (password_hash, user_id))
+                conn.commit()
+                return True, "Password updated"
+        except Exception as e:
+            return False, str(e)
+
+    def get_user_by_email(self, email):
+        """Look up a user by email address"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT id, username, email, is_active FROM users WHERE email = ?', (email,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            print(f"Database error getting user by email: {e}")
+            return None
+
+    def set_reset_token(self, user_id, token, expires_at):
+        """Store a password-reset token for a user"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?',
+                    (token, expires_at.isoformat(), user_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error setting reset token: {e}")
+            return False
+
+    def get_user_by_reset_token(self, token):
+        """Return the user with the given unexpired reset token, or None"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT id, username, email, reset_token_expires_at FROM users WHERE reset_token = ?',
+                    (token,)
+                )
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            print(f"Error looking up reset token: {e}")
+            return None
+
+    def clear_reset_token(self, user_id):
+        """Remove reset token after successful use"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'UPDATE users SET reset_token = NULL, reset_token_expires_at = NULL WHERE id = ?',
+                    (user_id,)
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Error clearing reset token: {e}")
+
     def update_user_system_role(self, user_id, system_role):
         """Set or clear a user's system role"""
-        valid = (None, 'super_admin', 'dev_master')
+        valid = (None, 'super_admin', 'dev_master', 'bot_admin')
         if system_role not in valid:
             return False, "Invalid system role"
         try:

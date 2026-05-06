@@ -174,6 +174,21 @@ const app = createApp({
                 adminAddUserError: '',
                 adminAddUserSuccess: '',
 
+                // Account tab sub-section
+                accountSection: 'subscription',
+
+                // Profile / Manage Info
+                profileForm: { email: '', first_name: '', last_name: '', address: '', profession: '', annual_income_range: '' },
+                profileLoading: false,
+                profileError: '',
+                profileSuccess: '',
+
+                // Change password
+                changePwForm: { current: '', newPw: '', confirm: '' },
+                changePwLoading: false,
+                changePwError: '',
+                changePwSuccess: '',
+
                 // Subscription / account page
                 subscriptionLoading: false,
 
@@ -333,14 +348,31 @@ const app = createApp({
 
         
         computed: {
+            changePwStrength() {
+                const p = this.changePwForm.newPw;
+                if (!p) return 0;
+                if (p.length < 8) return 1;
+                if (/[A-Z]/.test(p) && /[0-9]/.test(p)) return 3;
+                return 2;
+            },
+            changePwStrengthLabel() {
+                return ['', 'Weak', 'Medium', 'Strong'][this.changePwStrength] || '';
+            },
             isSuperAdmin() {
                 return this.user && this.user.system_role === 'super_admin';
             },
             isDevMaster() {
                 return this.user && this.user.system_role === 'dev_master';
             },
+            isBotAdmin() {
+                return this.user && this.user.system_role === 'bot_admin';
+            },
             isStaff() {
-                return this.user && (this.user.system_role === 'super_admin' || this.user.system_role === 'dev_master');
+                return this.user && (
+                    this.user.system_role === 'super_admin' ||
+                    this.user.system_role === 'dev_master' ||
+                    this.user.system_role === 'bot_admin'
+                );
             },
             isAdmin() {
                 return this.isSuperAdmin;
@@ -449,6 +481,7 @@ const app = createApp({
                 
                 // Update the activeTab value
                 this.activeTab = tabName;
+                if (tabName === 'account') this.accountSection = 'subscription';
                 
                 // Save the active tab to localStorage for persistence across page refreshes
                 localStorage.setItem('activeTab', tabName);
@@ -645,6 +678,79 @@ const app = createApp({
                 }
             },
 
+            initProfileForm() {
+                if (!this.user) return;
+                this.profileForm = {
+                    email: this.user.email || '',
+                    first_name: this.user.first_name || '',
+                    last_name: this.user.last_name || '',
+                    address: this.user.address || '',
+                    profession: this.user.profession || '',
+                    annual_income_range: this.user.annual_income_range || ''
+                };
+                this.profileError = '';
+                this.profileSuccess = '';
+            },
+
+            async saveProfile() {
+                this.profileError = '';
+                this.profileSuccess = '';
+                if (!this.profileForm.email || !this.profileForm.email.includes('@')) {
+                    this.profileError = 'Valid email is required';
+                    return;
+                }
+                this.profileLoading = true;
+                try {
+                    const response = await fetch('/api/auth/profile', {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.profileForm)
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.profileSuccess = 'Profile updated successfully.';
+                        // Refresh user data so header reflects changes
+                        await this.validateSession();
+                    } else {
+                        this.profileError = data.error || 'Failed to update profile';
+                    }
+                } catch (e) {
+                    this.profileError = 'Network error';
+                } finally {
+                    this.profileLoading = false;
+                }
+            },
+
+            async changePassword() {
+                this.changePwError = '';
+                this.changePwSuccess = '';
+                const { current, newPw, confirm } = this.changePwForm;
+                if (!current || !newPw || !confirm) { this.changePwError = 'All fields are required'; return; }
+                if (newPw !== confirm) { this.changePwError = 'New passwords do not match'; return; }
+                if (newPw.length < 8) { this.changePwError = 'Password must be at least 8 characters'; return; }
+                if (!/[A-Z]/.test(newPw)) { this.changePwError = 'Password must contain at least one uppercase letter'; return; }
+                if (!/[0-9]/.test(newPw)) { this.changePwError = 'Password must contain at least one number'; return; }
+                this.changePwLoading = true;
+                try {
+                    const response = await fetch('/api/auth/change-password', {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ current_password: current, new_password: newPw })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.changePwSuccess = 'Password updated successfully.';
+                        this.changePwForm = { current: '', newPw: '', confirm: '' };
+                    } else {
+                        this.changePwError = data.error || 'Failed to update password';
+                    }
+                } catch (e) {
+                    this.changePwError = 'Network error';
+                } finally {
+                    this.changePwLoading = false;
+                }
+            },
+
             async cancelSubscription() {
                 this.subscriptionLoading = true;
                 try {
@@ -735,6 +841,41 @@ const app = createApp({
                         const u = this.adminUsers.find(u => u.id === userId);
                         if (u) { u.subscription_tier = 'basic'; u.subscription_status = 'cancelled'; }
                     } else { alert(data.error || 'Failed'); }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminDeleteUser(userId, username) {
+                if (!confirm(`Permanently delete user "${username}"? This cannot be undone.`)) return;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.adminUsers = this.adminUsers.filter(u => u.id !== userId);
+                        this.showNotification(`User "${username}" deleted.`, 'success');
+                    } else {
+                        alert(data.error || 'Failed to delete user');
+                    }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminResetUserPassword(userId, username) {
+                const newPassword = prompt(`Set new password for "${username}":\n(min 8 chars, 1 uppercase, 1 number)`);
+                if (!newPassword) return;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/password`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: newPassword })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification(`Password updated for "${username}".`, 'success');
+                    } else {
+                        alert(data.error || 'Failed to reset password');
+                    }
                 } catch (e) { console.error(e); }
             },
 

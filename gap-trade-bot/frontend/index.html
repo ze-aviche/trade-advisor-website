@@ -88,8 +88,8 @@
                             <div class="py-1">
                                 <button @click="onTabChange('account'); profileMenuOpen = false"
                                         class="w-full flex items-center px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                    <i class="fas fa-crown text-yellow-400 mr-3 w-4"></i>
-                                    <span>{{ isStaff ? 'My Account' : 'Manage Subscription' }}</span>
+                                    <i class="fas fa-user-circle text-blue-400 mr-3 w-4"></i>
+                                    <span>Manage Account</span>
                                 </button>
                                 <button v-if="user && !isStaff && user.has_billing_account"
                                         @click="manageSubscription(); profileMenuOpen = false"
@@ -2683,9 +2683,27 @@
                 </div>
             </div>
 
-            <!-- Account / Subscription Tab -->
+            <!-- Account Tab -->
             <div v-if="activeTab === 'account'" class="space-y-6 max-w-4xl mx-auto">
-                <!-- Staff account view -->
+
+                <!-- Sub-section tabs -->
+                <div class="flex gap-2 bg-gray-800 rounded-xl p-1.5 w-fit">
+                    <button @click="accountSection = 'subscription'"
+                            :class="accountSection === 'subscription' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'"
+                            class="px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-crown mr-2"></i>Manage Subscription
+                    </button>
+                    <button @click="accountSection = 'info'; initProfileForm()"
+                            :class="accountSection === 'info' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'"
+                            class="px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-user-edit mr-2"></i>Manage Info
+                    </button>
+                </div>
+
+                <!-- ── Manage Subscription ── -->
+                <div v-if="accountSection === 'subscription'" class="space-y-6">
+
+                <!-- Staff subscription view -->
                 <div v-if="isStaff" class="bg-gray-800 rounded-xl p-8 shadow-lg text-center">
                     <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl font-bold text-white mx-auto mb-4">
                         {{ user ? user.username[0].toUpperCase() : '' }}
@@ -2802,6 +2820,127 @@
                         </div>
                     </div>
                 </div>
+
+                </div> <!-- end Manage Subscription section -->
+
+                <!-- ── Manage Info ── -->
+                <div v-if="accountSection === 'info'" class="space-y-6">
+
+                    <!-- Profile details -->
+                    <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                        <h3 class="text-white font-semibold mb-5 flex items-center">
+                            <i class="fas fa-id-card text-blue-400 mr-2"></i>Profile Details
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Username</label>
+                                <input :value="user ? user.username : ''" disabled
+                                       class="w-full bg-gray-900 border border-gray-700 text-gray-500 text-sm rounded-lg px-3 py-2 cursor-not-allowed">
+                                <p class="text-gray-600 text-xs mt-0.5">Cannot be changed</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Email <span class="text-red-400">*</span></label>
+                                <input v-model="profileForm.email" type="email"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">First Name</label>
+                                <input v-model="profileForm.first_name" type="text" placeholder="First name"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Last Name</label>
+                                <input v-model="profileForm.last_name" type="text" placeholder="Last name"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs text-gray-400 mb-1">Address</label>
+                                <input v-model="profileForm.address" type="text" placeholder="Street, City, State, ZIP"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Profession</label>
+                                <select v-model="profileForm.profession"
+                                        class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Select...</option>
+                                    <option>Individual Investor</option>
+                                    <option>Professional Trader</option>
+                                    <option>Financial Advisor</option>
+                                    <option>Portfolio Manager</option>
+                                    <option>Analyst</option>
+                                    <option>Software Engineer</option>
+                                    <option>Student</option>
+                                    <option>Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Annual Income Range</label>
+                                <select v-model="profileForm.annual_income_range"
+                                        class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Select...</option>
+                                    <option>Under $25,000</option>
+                                    <option>$25,000 – $50,000</option>
+                                    <option>$50,000 – $100,000</option>
+                                    <option>$100,000 – $200,000</option>
+                                    <option>$200,000 – $500,000</option>
+                                    <option>Over $500,000</option>
+                                    <option>Prefer not to say</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex items-center gap-3">
+                            <button @click="saveProfile()" :disabled="profileLoading"
+                                    class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
+                                <i :class="profileLoading ? 'fas fa-spinner fa-spin' : 'fas fa-save'" class="mr-1.5"></i>
+                                {{ profileLoading ? 'Saving...' : 'Save Changes' }}
+                            </button>
+                            <span v-if="profileError" class="text-red-400 text-sm">{{ profileError }}</span>
+                            <span v-if="profileSuccess" class="text-green-400 text-sm">{{ profileSuccess }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Change Password -->
+                    <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                        <h3 class="text-white font-semibold mb-4 flex items-center">
+                            <i class="fas fa-lock text-blue-400 mr-2"></i>Change Password
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Current Password</label>
+                                <input v-model="changePwForm.current" type="password" placeholder="Current password"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">New Password</label>
+                                <input v-model="changePwForm.newPw" type="password" placeholder="Min 8 chars, 1 upper, 1 num"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <div v-if="changePwForm.newPw" class="mt-1.5">
+                                    <div class="flex gap-1 mb-1">
+                                        <div class="h-1 flex-1 rounded-full" :class="changePwStrength >= 1 ? (changePwStrength === 1 ? 'bg-red-500' : changePwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                        <div class="h-1 flex-1 rounded-full" :class="changePwStrength >= 2 ? (changePwStrength === 2 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-gray-600'"></div>
+                                        <div class="h-1 flex-1 rounded-full" :class="changePwStrength >= 3 ? 'bg-green-500' : 'bg-gray-600'"></div>
+                                    </div>
+                                    <p class="text-xs" :class="changePwStrength === 1 ? 'text-red-400' : changePwStrength === 2 ? 'text-yellow-400' : 'text-green-400'">{{ changePwStrengthLabel }}</p>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Confirm New Password</label>
+                                <input v-model="changePwForm.confirm" type="password" placeholder="Confirm new password"
+                                       class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+                        <div class="mt-4 flex items-center gap-3">
+                            <button @click="changePassword()" :disabled="changePwLoading"
+                                    class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
+                                <i :class="changePwLoading ? 'fas fa-spinner fa-spin' : 'fas fa-key'" class="mr-1.5"></i>
+                                {{ changePwLoading ? 'Updating...' : 'Update Password' }}
+                            </button>
+                            <span v-if="changePwError" class="text-red-400 text-sm">{{ changePwError }}</span>
+                            <span v-if="changePwSuccess" class="text-green-400 text-sm">{{ changePwSuccess }}</span>
+                        </div>
+                    </div>
+
+                </div> <!-- end Manage Info section -->
             </div>
 
             <!-- Admin Tab -->
@@ -2848,7 +2987,7 @@
                                     <th class="py-3 px-3 text-gray-400 font-medium">Subscription</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Status</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Last Login</th>
-                                    <th v-if="isSuperAdmin" class="py-3 px-3 text-gray-400 font-medium">Actions</th>
+                                    <th v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3 text-gray-400 font-medium">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2863,12 +3002,14 @@
                                                 @change="adminUpdateSystemRole(u.id, $event.target.value || null); u.system_role = $event.target.value || null"
                                                 class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
                                             <option value="">User</option>
+                                            <option value="bot_admin">Bot Admin</option>
                                             <option value="dev_master">Dev Master</option>
                                             <option value="super_admin">Super Admin</option>
                                         </select>
                                         <span v-else>
                                             <span v-if="u.system_role === 'super_admin'" class="bg-red-800 text-red-200 text-xs px-2 py-0.5 rounded-full">Super Admin</span>
                                             <span v-else-if="u.system_role === 'dev_master'" class="bg-purple-800 text-purple-200 text-xs px-2 py-0.5 rounded-full">Dev Master</span>
+                                            <span v-else-if="u.system_role === 'bot_admin'" class="bg-blue-800 text-blue-200 text-xs px-2 py-0.5 rounded-full">Bot Admin</span>
                                             <span v-else class="text-gray-500 text-xs">—</span>
                                         </span>
                                     </td>
@@ -2892,14 +3033,24 @@
                                         <span :class="u.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" class="text-xs px-2 py-0.5 rounded-full">{{ u.is_active ? 'Active' : 'Inactive' }}</span>
                                     </td>
                                     <td class="py-3 px-3 text-gray-400 text-xs">{{ u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never' }}</td>
-                                    <td v-if="isSuperAdmin" class="py-3 px-3">
+                                    <td v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3">
                                         <div v-if="!(user && u.id === user.id)" class="flex gap-2 flex-wrap">
-                                            <button v-if="!u.system_role && u.subscription_tier !== 'basic'" @click="adminCancelUserSubscription(u.id)"
+                                            <!-- super_admin only actions -->
+                                            <button v-if="isSuperAdmin && !u.system_role && u.subscription_tier !== 'basic'" @click="adminCancelUserSubscription(u.id)"
                                                     class="bg-orange-800 hover:bg-orange-700 text-white text-xs px-2 py-1 rounded transition-colors">Cancel Sub</button>
-                                            <button @click="toggleUserActive(u.id, !!u.is_active)"
+                                            <button v-if="isSuperAdmin" @click="toggleUserActive(u.id, !!u.is_active)"
                                                     :class="u.is_active ? 'bg-red-800 hover:bg-red-700' : 'bg-green-800 hover:bg-green-700'"
                                                     class="text-white text-xs px-2 py-1 rounded transition-colors">
                                                 {{ u.is_active ? 'Deactivate' : 'Activate' }}
+                                            </button>
+                                            <!-- super_admin + bot_admin actions -->
+                                            <button @click="adminResetUserPassword(u.id, u.username)"
+                                                    class="bg-indigo-800 hover:bg-indigo-700 text-white text-xs px-2 py-1 rounded transition-colors">
+                                                <i class="fas fa-key mr-1"></i>Reset Pwd
+                                            </button>
+                                            <button @click="adminDeleteUser(u.id, u.username)"
+                                                    class="bg-red-900 hover:bg-red-800 text-white text-xs px-2 py-1 rounded transition-colors">
+                                                <i class="fas fa-trash mr-1"></i>Delete
                                             </button>
                                         </div>
                                     </td>

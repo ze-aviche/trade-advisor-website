@@ -581,7 +581,12 @@ def register():
         success, message = auth_manager.register_user(
             data.get('username', ''),
             data.get('email', ''),
-            data.get('password', '')
+            data.get('password', ''),
+            first_name=(data.get('first_name') or '').strip() or None,
+            last_name=(data.get('last_name') or '').strip() or None,
+            address=(data.get('address') or '').strip() or None,
+            profession=(data.get('profession') or '').strip() or None,
+            annual_income_range=(data.get('annual_income_range') or '').strip() or None,
         )
         if success:
             return jsonify({'success': True, 'message': message})
@@ -643,6 +648,11 @@ def get_auth_profile():
             'preferences': user.get('preferences', {}),
             'created_at': str(user.get('created_at', '')),
             'last_login': str(user.get('last_login', '')),
+            'first_name': user.get('first_name') or '',
+            'last_name': user.get('last_name') or '',
+            'address': user.get('address') or '',
+            'profession': user.get('profession') or '',
+            'annual_income_range': user.get('annual_income_range') or '',
         }
         return jsonify({'success': True, 'data': safe_user})
     except Exception as e:
@@ -652,9 +662,9 @@ def get_auth_profile():
 
 # Admin endpoints
 @app.route('/api/admin/users', methods=['GET'])
-@require_role('super_admin', 'dev_master')
+@require_role('super_admin', 'dev_master', 'bot_admin')
 def admin_list_users():
-    """List all users — super_admin and dev_master"""
+    """List all users — super_admin, dev_master and bot_admin"""
     try:
         from database import db_manager
         users = db_manager.get_all_users()
@@ -665,9 +675,9 @@ def admin_list_users():
 
 
 @app.route('/api/admin/users', methods=['POST'])
-@require_role('super_admin', 'dev_master')
+@require_role('super_admin', 'dev_master', 'bot_admin')
 def admin_add_user():
-    """Add a new user — super_admin and dev_master (always basic tier)"""
+    """Add a new user — super_admin, dev_master and bot_admin (always basic tier)"""
     try:
         from database import db_manager
         from auth import auth_manager as _am
@@ -677,8 +687,12 @@ def admin_add_user():
         password = data.get('password', '').strip()
         if not username or not email or not password:
             return jsonify({'success': False, 'error': 'username, email and password are required'}), 400
-        if len(password) < 6:
-            return jsonify({'success': False, 'error': 'Password must be at least 6 characters'}), 400
+        if len(password) < 8:
+            return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+        if not any(c.isupper() for c in password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one uppercase letter'}), 400
+        if not any(c.isdigit() for c in password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one number'}), 400
         password_hash = _am.hash_password(password)
         success, message = db_manager.create_user(username, email, password_hash)
         if success:
@@ -742,6 +756,175 @@ def admin_update_active(user_id):
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
         app_logger.error(f"Error updating active status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@require_role('super_admin', 'bot_admin')
+def admin_delete_user(user_id):
+    """Permanently delete a user — super_admin and bot_admin"""
+    try:
+        from database import db_manager
+        if request.user.get('id') == user_id:
+            return jsonify({'success': False, 'error': 'Cannot delete your own account'}), 400
+        success, message = db_manager.delete_user(user_id)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error deleting user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/password', methods=['PUT'])
+@require_role('super_admin', 'bot_admin')
+def admin_reset_user_password(user_id):
+    """Admin sets a new password for a user — super_admin and bot_admin"""
+    try:
+        from database import db_manager
+        from auth import auth_manager as _am
+        data = request.get_json()
+        new_password = (data.get('password') or '').strip()
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+        if not any(c.isupper() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one uppercase letter'}), 400
+        if not any(c.isdigit() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one number'}), 400
+        password_hash = _am.hash_password(new_password)
+        success, message = db_manager.update_user_password(user_id, password_hash)
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error resetting user password: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/profile', methods=['PUT'])
+@require_auth
+def update_auth_profile():
+    """Update editable profile fields for the authenticated user"""
+    try:
+        from database import db_manager
+        user = request.user
+        data = request.get_json() or {}
+        email = (data.get('email') or '').strip()
+        if not email or '@' not in email:
+            return jsonify({'success': False, 'error': 'Valid email is required'}), 400
+        success, message = db_manager.update_user_profile(
+            user['id'],
+            first_name=(data.get('first_name') or '').strip() or None,
+            last_name=(data.get('last_name') or '').strip() or None,
+            email=email,
+            address=(data.get('address') or '').strip() or None,
+            profession=(data.get('profession') or '').strip() or None,
+            annual_income_range=(data.get('annual_income_range') or '').strip() or None,
+        )
+        if success:
+            return jsonify({'success': True, 'message': message})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating profile: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/change-password', methods=['PUT'])
+@require_auth
+def change_password():
+    """Change password for the authenticated user — requires current password"""
+    try:
+        from database import db_manager
+        from auth import auth_manager as _am
+        user = request.user
+        data = request.get_json() or {}
+        current_password = (data.get('current_password') or '').strip()
+        new_password = (data.get('new_password') or '').strip()
+        if not current_password or not new_password:
+            return jsonify({'success': False, 'error': 'Current and new password are required'}), 400
+        # Verify current password
+        full_user = db_manager.get_user_by_id(user['id'])
+        if not full_user or full_user['password_hash'] != _am.hash_password(current_password):
+            return jsonify({'success': False, 'error': 'Current password is incorrect'}), 400
+        # Validate new password strength
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+        if not any(c.isupper() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one uppercase letter'}), 400
+        if not any(c.isdigit() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one number'}), 400
+        password_hash = _am.hash_password(new_password)
+        success, message = db_manager.update_user_password(user['id'], password_hash)
+        if success:
+            return jsonify({'success': True, 'message': 'Password updated successfully'})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error changing password: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    """Generate a password-reset token for the given email"""
+    import secrets as _secrets
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from database import db_manager
+        data = request.get_json() or {}
+        email = (data.get('email') or '').strip().lower()
+        if not email:
+            return jsonify({'success': False, 'error': 'Email is required'}), 400
+        user = db_manager.get_user_by_email(email)
+        # Always return same response to prevent email enumeration
+        if not user or not user.get('is_active', 1):
+            return jsonify({'success': True, 'message': 'If that email is registered, a reset token has been generated.'})
+        token = _secrets.token_urlsafe(32)
+        expires_at = _dt.now() + _td(hours=1)
+        db_manager.set_reset_token(user['id'], token, expires_at)
+        app_logger.info("Password reset token generated for user %s", user['id'])
+        # Return token directly (no email service configured)
+        return jsonify({'success': True, 'reset_token': token,
+                        'message': 'Token generated. Copy it and use the Reset Password form.'})
+    except Exception as e:
+        app_logger.error(f"Error generating reset token: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    """Reset a user's password using a valid reset token"""
+    from datetime import datetime as _dt
+    try:
+        from database import db_manager
+        from auth import auth_manager as _am
+        data = request.get_json() or {}
+        token = (data.get('token') or '').strip()
+        new_password = (data.get('password') or '').strip()
+        if not token or not new_password:
+            return jsonify({'success': False, 'error': 'Token and new password are required'}), 400
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+        if not any(c.isupper() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one uppercase letter'}), 400
+        if not any(c.isdigit() for c in new_password):
+            return jsonify({'success': False, 'error': 'Password must contain at least one number'}), 400
+        user = db_manager.get_user_by_reset_token(token)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid or expired reset token'}), 400
+        expires_str = user.get('reset_token_expires_at', '')
+        if expires_str:
+            try:
+                expires_at = _dt.fromisoformat(str(expires_str))
+                if _dt.now() > expires_at:
+                    return jsonify({'success': False, 'error': 'Reset token has expired'}), 400
+            except Exception:
+                pass
+        password_hash = _am.hash_password(new_password)
+        db_manager.update_user_password(user['id'], password_hash)
+        db_manager.clear_reset_token(user['id'])
+        return jsonify({'success': True, 'message': 'Password reset successfully. You can now log in.'})
+    except Exception as e:
+        app_logger.error(f"Error resetting password: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
