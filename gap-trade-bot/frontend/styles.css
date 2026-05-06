@@ -95,6 +95,10 @@ html.light .bg-gray-800.shadow-lg      { background-color: #ffffff !important; b
 html.light .bg-gray-700.rounded-lg,
 html.light .bg-gray-700.rounded-xl     { background-color: #f8fafc !important; border-color: #e2e8f0 !important; }
 
+/* Hide scrollbar on tab nav row while keeping scroll functionality */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* Theme toggle button base style */
 .theme-toggle {
     display: flex;

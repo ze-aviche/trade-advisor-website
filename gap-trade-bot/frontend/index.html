@@ -118,21 +118,69 @@
         </div>
 
         <!-- Navigation Tabs -->
-        <div class="bg-[#161b22] border-b border-gray-800 px-4 py-2">
-            <!-- Desktop: horizontal tab row -->
-            <div class="hidden md:flex items-center space-x-1 overflow-x-auto">
-                <button @click="handleTabClick('about')" :class="activeTab === 'about' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-info-circle mr-1"></i>About</button>
-                <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-arrow-up mr-1"></i>Gap-Ups</button>
-                <button @click="handleTabClick('historical')" :class="[activeTab === 'historical' ? 'text-blue-400 border-blue-400' : canAccessTab('historical') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-history mr-1"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('entry-bot')" :class="[activeTab === 'entry-bot' ? 'text-blue-400 border-blue-400' : canAccessTab('entry-bot') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-play mr-1"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('bot')" :class="[activeTab === 'bot' ? 'text-blue-400 border-blue-400' : canAccessTab('bot') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('trades')" :class="[activeTab === 'trades' ? 'text-blue-400 border-blue-400' : canAccessTab('trades') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-exchange-alt mr-1"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('positions')" :class="[activeTab === 'positions' ? 'text-blue-400 border-blue-400' : canAccessTab('positions') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-line mr-1"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('stats')" :class="[activeTab === 'stats' ? 'text-blue-400 border-blue-400' : canAccessTab('stats') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-chart-bar mr-1"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('backtest')" :class="[activeTab === 'backtest' ? 'text-blue-400 border-blue-400' : canAccessTab('backtest') ? 'text-gray-400 border-transparent hover:text-gray-300' : 'text-gray-600 border-transparent']" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-flask mr-1"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-1"></i></button>
-                <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-robot mr-1"></i>AI Chat</button>
-                <button @click="handleTabClick('help')" :class="activeTab === 'help' ? 'text-blue-400 border-blue-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-question-circle mr-1"></i>Help</button>
-                <button v-if="isStaff" @click="onTabChange('admin')" :class="activeTab === 'admin' ? 'text-yellow-400 border-yellow-400' : 'text-gray-400 border-transparent hover:text-gray-300'" class="px-3 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap"><i class="fas fa-shield-alt mr-1"></i>Admin</button>
+        <div class="bg-[#161b22] border-b border-gray-800 px-4 py-2.5">
+            <!-- Desktop: uniform pill tabs, scrollable -->
+            <div class="hidden md:flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
+                <button @click="handleTabClick('about')"
+                    :class="activeTab === 'about' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-info-circle text-xs"></i>About
+                </button>
+                <button @click="handleTabClick('gap-ups')"
+                    :class="activeTab === 'gap-ups' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-arrow-up text-xs"></i>Gap-Ups
+                </button>
+                <button @click="handleTabClick('historical')"
+                    :class="activeTab === 'historical' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('historical') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-history text-xs"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('entry-bot')"
+                    :class="activeTab === 'entry-bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('entry-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-play text-xs"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('bot')"
+                    :class="activeTab === 'bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-robot text-xs"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('trades')"
+                    :class="activeTab === 'trades' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('trades') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-exchange-alt text-xs"></i>Trades<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('positions')"
+                    :class="activeTab === 'positions' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('positions') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-chart-line text-xs"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('stats')"
+                    :class="activeTab === 'stats' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('stats') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-chart-bar text-xs"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('backtest')"
+                    :class="activeTab === 'backtest' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('backtest') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-flask text-xs"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('ai-chat')"
+                    :class="activeTab === 'ai-chat' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-comments text-xs"></i>AI Chat
+                </button>
+                <button @click="handleTabClick('help')"
+                    :class="activeTab === 'help' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-question-circle text-xs"></i>Help
+                </button>
+                <button v-if="isStaff" @click="onTabChange('admin')"
+                    :class="activeTab === 'admin' ? 'bg-yellow-500 border-yellow-500 text-white shadow-md shadow-yellow-500/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-yellow-500/50 hover:text-white'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-shield-alt text-xs"></i>Admin
+                </button>
             </div>
 
             <!-- Mobile: hamburger toggle -->
