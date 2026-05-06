@@ -9,6 +9,9 @@ import json
 import random
 import threading
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, time as time_class
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -572,7 +575,7 @@ def serve_login():
 
 @app.route('/api/contact', methods=['POST'])
 def contact():
-    """Store a contact form submission and log it"""
+    """Handle contact form submission and email it to the site owner"""
     try:
         data = request.get_json()
         if not data:
@@ -583,7 +586,41 @@ def contact():
         message = (data.get('message') or '').strip()
         if not name or not email or not message:
             return jsonify({'success': False, 'error': 'Name, email, and message are required'}), 400
+
         app_logger.info(f"Contact form: from={email!r} name={name!r} subject={subject!r} message={message[:120]!r}")
+
+        to_email = os.getenv('CONTACT_EMAIL_TO', 'mravinash1308@gmail.com')
+        from_email = os.getenv('CONTACT_EMAIL_FROM', '')
+        app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+
+        if from_email and app_password:
+            try:
+                mail_subject = f"[GapTradeBot Contact] {subject or 'New message'} — from {name}"
+                body = (
+                    f"You have a new contact form submission:\n\n"
+                    f"Name:    {name}\n"
+                    f"Email:   {email}\n"
+                    f"Subject: {subject or '(none)'}\n\n"
+                    f"Message:\n{message}\n"
+                )
+                msg = MIMEMultipart()
+                msg['From'] = from_email
+                msg['To'] = to_email
+                msg['Reply-To'] = email
+                msg['Subject'] = mail_subject
+                msg.attach(MIMEText(body, 'plain'))
+
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                    server.login(from_email, app_password)
+                    server.sendmail(from_email, to_email, msg.as_string())
+
+                app_logger.info(f"Contact email sent to {to_email}")
+            except Exception as mail_err:
+                app_logger.error(f"Failed to send contact email: {mail_err}")
+                # Still return success to the user; the submission was received
+        else:
+            app_logger.warning("Contact email not sent: GMAIL_APP_PASSWORD or CONTACT_EMAIL_FROM not configured")
+
         return jsonify({'success': True, 'message': 'Message received'})
     except Exception as e:
         app_logger.error(f"Contact form error: {e}")
