@@ -168,6 +168,7 @@ const app = createApp({
 
                 // Admin
                 adminUsers: [],
+                adminSearchQuery: '',
                 adminLoading: false,
                 adminAddUserForm: { username: '', email: '', password: '' },
                 adminAddUserLoading: false,
@@ -178,7 +179,7 @@ const app = createApp({
                 accountSection: 'subscription',
 
                 // Profile / Manage Info
-                profileForm: { email: '', first_name: '', last_name: '', address: '', profession: '', annual_income_range: '' },
+                profileForm: { email: '', first_name: '', last_name: '', address: '', profession: '', profession_other: '', annual_income_range: '' },
                 profileLoading: false,
                 profileError: '',
                 profileSuccess: '',
@@ -376,6 +377,18 @@ const app = createApp({
             },
             isAdmin() {
                 return this.isSuperAdmin;
+            },
+            filteredAdminUsers() {
+                const q = (this.adminSearchQuery || '').toLowerCase().trim();
+                if (!q) return this.adminUsers;
+                return this.adminUsers.filter(u =>
+                    (u.username || '').toLowerCase().includes(q) ||
+                    (u.email || '').toLowerCase().includes(q) ||
+                    (u.first_name || '').toLowerCase().includes(q) ||
+                    (u.last_name || '').toLowerCase().includes(q) ||
+                    (u.system_role || '').toLowerCase().includes(q) ||
+                    (u.subscription_tier || '').toLowerCase().includes(q)
+                );
             },
             tierLabel() {
                 if (!this.user) return '';
@@ -680,12 +693,19 @@ const app = createApp({
 
             initProfileForm() {
                 if (!this.user) return;
+                let profession = this.user.profession || '';
+                let profession_other = '';
+                if (profession.startsWith('Other: ')) {
+                    profession_other = profession.slice(7);
+                    profession = 'Other';
+                }
                 this.profileForm = {
                     email: this.user.email || '',
                     first_name: this.user.first_name || '',
                     last_name: this.user.last_name || '',
                     address: this.user.address || '',
-                    profession: this.user.profession || '',
+                    profession,
+                    profession_other,
                     annual_income_range: this.user.annual_income_range || ''
                 };
                 this.profileError = '';
@@ -701,10 +721,13 @@ const app = createApp({
                 }
                 this.profileLoading = true;
                 try {
+                    const professionValue = this.profileForm.profession === 'Other'
+                        ? (this.profileForm.profession_other.trim() ? `Other: ${this.profileForm.profession_other.trim()}` : 'Other')
+                        : this.profileForm.profession;
                     const response = await fetch('/api/auth/profile', {
                         method: 'PUT',
                         headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify(this.profileForm)
+                        body: JSON.stringify({ ...this.profileForm, profession: professionValue })
                     });
                     const data = await response.json();
                     if (data.success) {

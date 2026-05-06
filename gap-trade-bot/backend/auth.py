@@ -4,6 +4,7 @@ Authentication System for Trading Advisor
 Handles user registration, login, and session management using SQLite database
 """
 import hashlib
+import re
 import secrets
 import time
 from datetime import datetime, timedelta
@@ -30,8 +31,10 @@ class AuthManager:
         """Register a new user"""
         if not username or not email or not password:
             return False, "All fields are required"
-        if len(username) < 3:
-            return False, "Username must be at least 3 characters"
+        if len(username) < 8:
+            return False, "Username must be at least 8 characters"
+        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+            return False, "Username may only contain letters, numbers, and underscores"
         if len(password) < 8:
             return False, "Password must be at least 8 characters"
         if not any(c.isupper() for c in password):

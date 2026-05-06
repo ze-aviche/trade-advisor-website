@@ -63,7 +63,8 @@
                             <label class="block text-sm font-medium text-gray-300 mb-1.5">Username <span class="text-red-400">*</span></label>
                             <input v-model="registerForm.username" type="text" required
                                    class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                   placeholder="Choose a username">
+                                   placeholder="Min 8 chars, letters/numbers/_">
+                            <p v-if="usernameError" class="text-red-400 text-xs mt-1"><i class="fas fa-times-circle mr-1"></i>{{ usernameError }}</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-300 mb-1.5">Email <span class="text-red-400">*</span></label>
@@ -91,6 +92,8 @@
                         <input v-model="registerForm.confirmPassword" type="password" required
                                class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                placeholder="Confirm your password">
+                        <p v-if="pwConfirmMismatch" class="text-red-400 text-xs mt-1"><i class="fas fa-times-circle mr-1"></i>Passwords don't match</p>
+                        <p v-else-if="registerForm.confirmPassword" class="text-green-400 text-xs mt-1"><i class="fas fa-check-circle mr-1"></i>Passwords match</p>
                     </div>
 
                     <!-- Personal info -->
@@ -110,10 +113,38 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-300 mb-1.5">Address</label>
-                        <input v-model="registerForm.address" type="text"
+                        <label class="block text-sm font-medium text-gray-300 mb-1.5">Street Address</label>
+                        <input v-model="registerForm.address_street" type="text"
                                class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                               placeholder="Street, City, State, ZIP">
+                               placeholder="123 Main St, Apt 4B">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1.5">City</label>
+                            <input v-model="registerForm.address_city" type="text"
+                                   class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                   placeholder="San Francisco">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1.5">State / Province</label>
+                            <input v-model="registerForm.address_state" type="text"
+                                   class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                   placeholder="CA">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1.5">ZIP / Postal Code</label>
+                            <input v-model="registerForm.address_zip" type="text"
+                                   class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                   placeholder="94105">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1.5">Country</label>
+                            <input v-model="registerForm.address_country" type="text"
+                                   class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                   placeholder="USA">
+                        </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
@@ -130,6 +161,11 @@
                                 <option>Student</option>
                                 <option>Other</option>
                             </select>
+                            <div v-if="registerForm.profession === 'Other'" class="mt-2">
+                                <input v-model="registerForm.profession_other" type="text"
+                                       class="w-full px-3 py-2.5 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                       placeholder="Please specify your profession">
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-300 mb-1.5">Annual Income</label>
@@ -201,7 +237,9 @@
                     loginForm: { username: '', password: '' },
                     registerForm: {
                         username: '', email: '', password: '', confirmPassword: '',
-                        first_name: '', last_name: '', address: '', profession: '', annual_income_range: ''
+                        first_name: '', last_name: '',
+                        address_street: '', address_city: '', address_state: '', address_zip: '', address_country: '',
+                        profession: '', profession_other: '', annual_income_range: ''
                     }
                 };
             },
@@ -215,6 +253,17 @@
                 },
                 pwStrengthLabel() {
                     return ['', 'Weak', 'Medium', 'Strong'][this.pwStrength] || '';
+                },
+                pwConfirmMismatch() {
+                    const f = this.registerForm;
+                    return f.confirmPassword.length > 0 && f.password !== f.confirmPassword;
+                },
+                usernameError() {
+                    const u = this.registerForm.username;
+                    if (!u) return '';
+                    if (u.length < 8) return 'Must be at least 8 characters';
+                    if (!/^[a-zA-Z0-9_]+$/.test(u)) return 'Only letters, numbers, and _ allowed';
+                    return '';
                 }
             },
             methods: {
@@ -252,34 +301,43 @@
                     this.loading = true;
                     this.error = '';
                     this.success = '';
-                    if (this.registerForm.password !== this.registerForm.confirmPassword) {
-                        this.error = 'Passwords do not match';
-                        this.loading = false;
-                        return;
-                    }
-                    const p = this.registerForm.password;
+                    const f = this.registerForm;
+                    // Username validation
+                    if (f.username.length < 8) { this.error = 'Username must be at least 8 characters'; this.loading = false; return; }
+                    if (!/^[a-zA-Z0-9_]+$/.test(f.username)) { this.error = 'Username may only contain letters, numbers, and underscores'; this.loading = false; return; }
+                    // Password validation
+                    if (f.password !== f.confirmPassword) { this.error = 'Passwords do not match'; this.loading = false; return; }
+                    const p = f.password;
                     if (p.length < 8) { this.error = 'Password must be at least 8 characters'; this.loading = false; return; }
                     if (!/[A-Z]/.test(p)) { this.error = 'Password must contain at least one uppercase letter'; this.loading = false; return; }
                     if (!/[0-9]/.test(p)) { this.error = 'Password must contain at least one number'; this.loading = false; return; }
+                    // Combine address parts
+                    const cityStateZip = [f.address_city.trim(), f.address_state.trim(), f.address_zip.trim()].filter(Boolean).join(', ');
+                    const address = [f.address_street.trim(), cityStateZip, f.address_country.trim()].filter(Boolean).join('\n') || null;
+                    // Handle "Other" profession
+                    let profession = f.profession;
+                    if (profession === 'Other' && f.profession_other.trim()) {
+                        profession = `Other: ${f.profession_other.trim()}`;
+                    }
                     try {
                         const response = await fetch('/api/auth/register', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                username: this.registerForm.username,
-                                email: this.registerForm.email,
+                                username: f.username,
+                                email: f.email,
                                 password: p,
-                                first_name: this.registerForm.first_name,
-                                last_name: this.registerForm.last_name,
-                                address: this.registerForm.address,
-                                profession: this.registerForm.profession,
-                                annual_income_range: this.registerForm.annual_income_range
+                                first_name: f.first_name,
+                                last_name: f.last_name,
+                                address,
+                                profession,
+                                annual_income_range: f.annual_income_range
                             })
                         });
                         const data = await response.json();
                         if (data.success) {
                             this.success = 'Account created successfully! You can now sign in.';
-                            this.registerForm = { username: '', email: '', password: '', confirmPassword: '', first_name: '', last_name: '', address: '', profession: '', annual_income_range: '' };
+                            this.registerForm = { username: '', email: '', password: '', confirmPassword: '', first_name: '', last_name: '', address_street: '', address_city: '', address_state: '', address_zip: '', address_country: '', profession: '', profession_other: '', annual_income_range: '' };
                             setTimeout(() => { this.switchView('login'); }, 2000);
                         } else {
                             this.error = data.error || 'Registration failed';

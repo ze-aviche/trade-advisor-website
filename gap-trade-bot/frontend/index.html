@@ -2872,6 +2872,9 @@
                                     <option>Student</option>
                                     <option>Other</option>
                                 </select>
+                                <input v-if="profileForm.profession === 'Other'" v-model="profileForm.profession_other" type="text"
+                                       placeholder="Please specify your profession"
+                                       class="w-full mt-2 bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1">Annual Income Range</label>
@@ -2969,17 +2972,32 @@
 
                 <!-- Users table -->
                 <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
-                    <div class="flex items-center justify-between mb-5">
-                        <h3 class="text-white font-semibold flex items-center"><i class="fas fa-users text-blue-400 mr-2"></i>All Users <span class="text-gray-500 text-sm font-normal ml-2">({{ adminUsers.length }})</span></h3>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-white font-semibold flex items-center">
+                            <i class="fas fa-users text-blue-400 mr-2"></i>All Users
+                            <span class="text-gray-500 text-sm font-normal ml-2">
+                                ({{ filteredAdminUsers.length }}<span v-if="adminSearchQuery"> of {{ adminUsers.length }}</span>)
+                            </span>
+                        </h3>
                         <button @click="loadAdminUsers()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm text-gray-300 transition-colors">
                             <i :class="adminLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div class="mb-4 relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+                        <input v-model="adminSearchQuery" type="text" placeholder="Search by username, email, role, tier..."
+                               class="w-full pl-9 pr-9 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button v-if="adminSearchQuery" @click="adminSearchQuery = ''"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+                            <i class="fas fa-times"></i>
                         </button>
                     </div>
 
                     <div v-if="adminLoading" class="text-center py-8"><i class="fas fa-spinner fa-spin text-blue-400 text-2xl"></i></div>
 
                     <div v-else class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                        <p v-if="adminSearchQuery && filteredAdminUsers.length === 0" class="text-gray-500 text-sm text-center py-6">No users match "{{ adminSearchQuery }}"</p>
+                        <table v-else class="w-full text-sm">
                             <thead>
                                 <tr class="border-b border-gray-700 text-left">
                                     <th class="py-3 px-3 text-gray-400 font-medium">User</th>
@@ -2991,7 +3009,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="u in adminUsers" :key="u.id" class="border-b border-gray-700 hover:bg-gray-750 transition-colors">
+                                <tr v-for="u in filteredAdminUsers" :key="u.id" class="border-b border-gray-700 hover:bg-gray-750 transition-colors">
                                     <td class="py-3 px-3">
                                         <div class="text-white font-medium">{{ u.username }} <span v-if="user && u.id === user.id" class="text-gray-500 text-xs">(you)</span></div>
                                         <div class="text-gray-500 text-xs">{{ u.email }}</div>
