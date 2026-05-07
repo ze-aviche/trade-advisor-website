@@ -47,7 +47,7 @@ const app = createApp({
                 trades: [],
                 
                 // UI state
-                activeTab: localStorage.getItem('activeTab') || 'about',
+                activeTab: localStorage.getItem('activeTab') || 'gap-ups',
                 mobileMenuOpen: false,
                 loading: {
                     stats: false,
@@ -166,6 +166,10 @@ const app = createApp({
                 user: null,
                 profileMenuOpen: false,
                 darkMode: localStorage.getItem('theme') !== 'light',
+                contactForm: { name: '', email: '', subject: '', message: '' },
+                contactLoading: false,
+                contactSuccess: '',
+                contactError: '',
 
                 // Admin
                 adminUsers: [],
@@ -631,10 +635,10 @@ const app = createApp({
                 if (this.isStaff) return true;
                 if (tab === 'admin') return false;
                 const tierMap = {
-                    basic:    ['about', 'gap-ups', 'ai-chat', 'help'],
-                    beginner: ['about', 'gap-ups', 'ai-chat', 'help', 'historical'],
-                    advanced: ['about', 'gap-ups', 'ai-chat', 'help', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['about', 'gap-ups', 'ai-chat', 'help', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
+                    basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
+                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -957,6 +961,9 @@ const app = createApp({
                     if (response.ok) {
                         const userData = await response.json();
                         this.user = userData.data;
+                        // Pre-fill contact form with user info
+                        this.contactForm.name = [this.user.first_name, this.user.last_name].filter(Boolean).join(' ') || this.user.username;
+                        this.contactForm.email = this.user.email || '';
                         // Show Stripe redirect-back notification now that user data is fresh
                         if (this._pendingPaymentNotification === 'success') {
                             this._pendingPaymentNotification = null;
@@ -987,6 +994,35 @@ const app = createApp({
                 }
             },
             
+            async submitContact() {
+                this.contactError = '';
+                this.contactSuccess = '';
+                const f = this.contactForm;
+                if (!f.name.trim() || !f.email.trim() || !f.message.trim()) {
+                    this.contactError = 'Name, email, and message are required.';
+                    return;
+                }
+                this.contactLoading = true;
+                try {
+                    const res = await fetch('/api/contact', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: f.name, email: f.email, subject: f.subject, message: f.message })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        this.contactSuccess = "Message sent! We'll get back to you shortly.";
+                        this.contactForm = { name: this.user?.first_name ? `${this.user.first_name} ${this.user.last_name || ''}`.trim() : '', email: this.user?.email || '', subject: '', message: '' };
+                    } else {
+                        this.contactError = data.error || 'Failed to send message.';
+                    }
+                } catch {
+                    this.contactError = 'Network error. Please try again.';
+                } finally {
+                    this.contactLoading = false;
+                }
+            },
+
             toggleTheme() {
                 this.darkMode = !this.darkMode;
                 if (this.darkMode) {
