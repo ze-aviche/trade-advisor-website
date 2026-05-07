@@ -926,7 +926,7 @@ def change_password():
 
 @app.route('/api/auth/forgot-password', methods=['POST'])
 def forgot_password():
-    """Generate a password-reset token for the given email"""
+    """Send a password-reset link to the user's email address"""
     import secrets as _secrets
     from datetime import datetime as _dt, timedelta as _td
     try:
@@ -936,16 +936,49 @@ def forgot_password():
         if not email:
             return jsonify({'success': False, 'error': 'Email is required'}), 400
         user = db_manager.get_user_by_email(email)
-        # Always return same response to prevent email enumeration
+        # Always return success to prevent email enumeration
+        generic_ok = jsonify({'success': True, 'message': 'If that email is registered, a reset link has been sent.'})
         if not user or not user.get('is_active', 1):
-            return jsonify({'success': True, 'message': 'If that email is registered, a reset token has been generated.'})
+            return generic_ok
         token = _secrets.token_urlsafe(32)
         expires_at = _dt.now() + _td(hours=1)
         db_manager.set_reset_token(user['id'], token, expires_at)
         app_logger.info("Password reset token generated for user %s", user['id'])
-        # Return token directly (no email service configured)
-        return jsonify({'success': True, 'reset_token': token,
-                        'message': 'Token generated. Copy it and use the Reset Password form.'})
+
+        # Build the reset URL
+        base_url = request.host_url.rstrip('/')
+        reset_url = f"{base_url}/login?reset={token}"
+
+        # Send email via Gmail SMTP
+        from_email = os.getenv('CONTACT_EMAIL_FROM', '')
+        app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+        if from_email and app_password:
+            try:
+                subject = "Reset your Accentor AI password"
+                body = (
+                    f"Hi {user.get('username', '')},\n\n"
+                    f"We received a request to reset your Accentor AI password.\n\n"
+                    f"Click the link below to choose a new password (expires in 1 hour):\n\n"
+                    f"  {reset_url}\n\n"
+                    f"If you didn't request this, you can safely ignore this email — "
+                    f"your password will not be changed.\n\n"
+                    f"— Accentor AI Team\n"
+                )
+                msg = MIMEMultipart()
+                msg['From'] = from_email
+                msg['To'] = email
+                msg['Subject'] = subject
+                msg.attach(MIMEText(body, 'plain'))
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                    server.login(from_email, app_password)
+                    server.sendmail(from_email, email, msg.as_string())
+                app_logger.info("Password reset email sent to %s", email)
+            except Exception as mail_err:
+                app_logger.error(f"Failed to send reset email: {mail_err}")
+        else:
+            app_logger.warning("Reset email not sent: GMAIL credentials not configured. Token: %s", token)
+
+        return generic_ok
     except Exception as e:
         app_logger.error(f"Error generating reset token: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500

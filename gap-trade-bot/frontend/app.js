@@ -47,7 +47,7 @@ const app = createApp({
                 trades: [],
                 
                 // UI state
-                activeTab: localStorage.getItem('activeTab') || 'about',
+                activeTab: localStorage.getItem('activeTab') || 'gap-ups',
                 mobileMenuOpen: false,
                 loading: {
                     stats: false,
@@ -165,6 +165,11 @@ const app = createApp({
                 // User data
                 user: null,
                 profileMenuOpen: false,
+                darkMode: localStorage.getItem('theme') !== 'light',
+                contactForm: { name: '', email: '', subject: '', message: '' },
+                contactLoading: false,
+                contactSuccess: '',
+                contactError: '',
 
                 // Admin
                 adminUsers: [],
@@ -378,6 +383,84 @@ const app = createApp({
             isAdmin() {
                 return this.isSuperAdmin;
             },
+            lockedTabInfo() {
+                const map = {
+                    historical: {
+                        label: 'Historical Data', plan: 'Beginner Trader', price: '$5/mo', tier: 'beginner', icon: 'fa-history', color: 'blue',
+                        tagline: 'Understand the past to trade the future.',
+                        features: [
+                            { icon: 'fa-calendar-alt',  text: 'Browse months of daily gap-up scan results' },
+                            { icon: 'fa-filter',        text: 'Filter by date range, ticker, or gap size' },
+                            { icon: 'fa-file-download', text: 'Export historical data to CSV / Excel' },
+                            { icon: 'fa-search-dollar', text: 'Spot recurring gap patterns across sectors' },
+                        ],
+                    },
+                    'entry-bot': {
+                        label: 'Entry Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play', color: 'green',
+                        tagline: 'Automate your entries with precision.',
+                        features: [
+                            { icon: 'fa-bolt',          text: 'Rule-based automated trade entry execution' },
+                            { icon: 'fa-sliders-h',     text: 'Configure volume, price, and timing criteria' },
+                            { icon: 'fa-bell',          text: 'Real-time alerts when entry conditions are met' },
+                            { icon: 'fa-plug',          text: 'Direct integration with DAS Trader Pro' },
+                        ],
+                    },
+                    bot: {
+                        label: 'Exit Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot', color: 'green',
+                        tagline: 'Never second-guess your exits again.',
+                        features: [
+                            { icon: 'fa-shield-alt',    text: 'Automated stop-loss and profit-target exits' },
+                            { icon: 'fa-chart-line',    text: 'Trailing stop support to lock in gains' },
+                            { icon: 'fa-clock',         text: 'Time-based exit rules for end-of-day closes' },
+                            { icon: 'fa-exclamation-triangle', text: 'Panic-exit button to close all positions instantly' },
+                        ],
+                    },
+                    trades: {
+                        label: 'Trade History', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-exchange-alt', color: 'purple',
+                        tagline: 'Every trade logged, analyzed, and actionable.',
+                        features: [
+                            { icon: 'fa-list-alt',      text: 'Complete record of all executed trades' },
+                            { icon: 'fa-sort-amount-down', text: 'Sort and filter by ticker, date, P&L, or side' },
+                            { icon: 'fa-file-excel',    text: 'One-click export to CSV or Excel' },
+                            { icon: 'fa-sync-alt',      text: 'Auto-sync trades directly from DAS Trader' },
+                        ],
+                    },
+                    positions: {
+                        label: 'Positions', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-line', color: 'purple',
+                        tagline: 'Live visibility into every open position.',
+                        features: [
+                            { icon: 'fa-eye',           text: 'Real-time unrealized P&L for open positions' },
+                            { icon: 'fa-history',       text: 'Full position lifecycle from entry to exit' },
+                            { icon: 'fa-layer-group',   text: 'Track multiple simultaneous positions' },
+                            { icon: 'fa-tachometer-alt', text: 'Live price feed via WebSocket integration' },
+                        ],
+                    },
+                    stats: {
+                        label: 'Stats', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-bar', color: 'purple',
+                        tagline: 'Data-driven insights to sharpen your edge.',
+                        features: [
+                            { icon: 'fa-percentage',    text: 'Win rate, average P&L, and expectancy metrics' },
+                            { icon: 'fa-chart-pie',     text: 'Visual breakdowns by ticker, side, and time' },
+                            { icon: 'fa-calendar-week', text: 'Day-of-week and time-of-day performance analysis' },
+                            { icon: 'fa-trophy',        text: 'Best / worst trade highlights and streaks' },
+                        ],
+                    },
+                    backtest: {
+                        label: 'Backtest', plan: 'Yogi Trader', price: '$25/mo', tier: 'yogi', icon: 'fa-flask', color: 'yellow',
+                        tagline: 'Validate your strategy before risking real capital.',
+                        features: [
+                            { icon: 'fa-redo',          text: 'Replay strategies against months of historical data' },
+                            { icon: 'fa-dollar-sign',   text: 'Simulated P&L with configurable capital and sizing' },
+                            { icon: 'fa-chart-area',    text: 'Equity curve chart and drawdown analysis' },
+                            { icon: 'fa-balance-scale', text: 'Compare multiple strategies side by side' },
+                        ],
+                    },
+                };
+                const info = map[this.activeTab];
+                if (info && !this.canAccessTab(this.activeTab)) return info;
+                return null;
+            },
+
             filteredAdminUsers() {
                 const q = (this.adminSearchQuery || '').toLowerCase().trim();
                 if (!q) return this.adminUsers;
@@ -615,33 +698,17 @@ const app = createApp({
                 if (this.isStaff) return true;
                 if (tab === 'admin') return false;
                 const tierMap = {
-                    basic:    ['about', 'gap-ups', 'ai-chat', 'help'],
-                    beginner: ['about', 'gap-ups', 'ai-chat', 'help', 'historical'],
-                    advanced: ['about', 'gap-ups', 'ai-chat', 'help', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['about', 'gap-ups', 'ai-chat', 'help', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
+                    basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
+                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
 
             handleTabClick(tab) {
-                if (this.canAccessTab(tab)) {
-                    this.onTabChange(tab);
-                    return;
-                }
-                const upgrades = {
-                    historical: { plan: 'Beginner Trader', price: '$5/month', tier: 'beginner' },
-                    'entry-bot': { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    bot:         { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    trades:      { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    positions:   { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    stats:       { plan: 'Advanced Trader', price: '$10/month', tier: 'advanced' },
-                    backtest:    { plan: 'Yogi Trader',     price: '$25/month', tier: 'yogi' },
-                };
-                const labels = { historical: 'Historical', 'entry-bot': 'Entry Bot', bot: 'Exit Bot', trades: 'Trade History', positions: 'Positions', stats: 'Stats', backtest: 'Backtest' };
-                const info = upgrades[tab];
-                if (info) {
-                    this.upgradeModal = { show: true, tabLabel: labels[tab] || tab, requiredPlan: info.plan, requiredPrice: info.price, requiredTier: info.tier };
-                }
+                // Always allow navigation; locked tabs show inline upgrade card
+                this.onTabChange(tab);
             },
 
             // ── Subscription self-service ───────────────────────────────
@@ -957,6 +1024,9 @@ const app = createApp({
                     if (response.ok) {
                         const userData = await response.json();
                         this.user = userData.data;
+                        // Pre-fill contact form with user info
+                        this.contactForm.name = [this.user.first_name, this.user.last_name].filter(Boolean).join(' ') || this.user.username;
+                        this.contactForm.email = this.user.email || '';
                         // Show Stripe redirect-back notification now that user data is fresh
                         if (this._pendingPaymentNotification === 'success') {
                             this._pendingPaymentNotification = null;
@@ -987,6 +1057,46 @@ const app = createApp({
                 }
             },
             
+            async submitContact() {
+                this.contactError = '';
+                this.contactSuccess = '';
+                const f = this.contactForm;
+                if (!f.name.trim() || !f.email.trim() || !f.message.trim()) {
+                    this.contactError = 'Name, email, and message are required.';
+                    return;
+                }
+                this.contactLoading = true;
+                try {
+                    const res = await fetch('/api/contact', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: f.name, email: f.email, subject: f.subject, message: f.message })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        this.contactSuccess = "Message sent! We'll get back to you shortly.";
+                        this.contactForm = { name: this.user?.first_name ? `${this.user.first_name} ${this.user.last_name || ''}`.trim() : '', email: this.user?.email || '', subject: '', message: '' };
+                    } else {
+                        this.contactError = data.error || 'Failed to send message.';
+                    }
+                } catch {
+                    this.contactError = 'Network error. Please try again.';
+                } finally {
+                    this.contactLoading = false;
+                }
+            },
+
+            toggleTheme() {
+                this.darkMode = !this.darkMode;
+                if (this.darkMode) {
+                    document.documentElement.classList.remove('light');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.add('light');
+                    localStorage.setItem('theme', 'light');
+                }
+            },
+
             logout() {
                 localStorage.removeItem('session_token');
                 localStorage.removeItem('user');

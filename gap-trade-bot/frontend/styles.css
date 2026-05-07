@@ -1,5 +1,164 @@
 /* Custom styles for Trading Advisor Dashboard */
 
+/* ═══════════════════════════════════════════════════════
+   THEME SYSTEM — dark (default) / light mode
+   Toggle by adding/removing class "light" on <html>
+   ═══════════════════════════════════════════════════════ */
+
+/* Smooth theme transitions */
+body, body * {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+}
+
+/*
+   ── LIGHT MODE — Professional blue-gray palette ──
+   Page bg: muted blue-gray (not harsh white)
+   Nav/cards: clean white with depth via shadow
+   Accent colors: darkened variants for 4.5:1 contrast ratio
+*/
+
+html.light body { background-color: #e8edf5; color: #0d1828; }
+
+/* ── Backgrounds ── */
+html.light .bg-\[#0d1117\]  { background-color: #e8edf5 !important; }  /* page bg */
+html.light .bg-\[#161b22\]  { background-color: #ffffff !important; }  /* nav bar → white */
+html.light .bg-gray-900     { background-color: #f0f4fb !important; }
+html.light .bg-gray-800     { background-color: #ffffff !important; }
+html.light .bg-gray-700     { background-color: #f0f4fb !important; }
+html.light .bg-gray-600     { background-color: #e2e8f3 !important; }
+html.light .bg-gray-800\/50 { background-color: rgba(255,255,255,0.96) !important; }
+html.light .bg-gray-800\/30 { background-color: rgba(240,244,251,0.7) !important; }
+html.light .bg-gray-700\/50 { background-color: rgba(240,244,251,0.96) !important; }
+
+/* ── Borders ── */
+html.light .border-gray-800 { border-color: #c8d4e8 !important; }
+html.light .border-gray-700 { border-color: #d0daea !important; }
+html.light .border-gray-600 { border-color: #d8e2f0 !important; }
+
+/* ── Text — high contrast on blue-gray bg ── */
+html.light .text-white    { color: #0d1828 !important; }
+html.light .text-gray-100 { color: #0d1828 !important; }
+html.light .text-gray-200 { color: #1a2d46 !important; }
+html.light .text-gray-300 { color: #1e3048 !important; }
+html.light .text-gray-400 { color: #3d5470 !important; }
+html.light .text-gray-500 { color: #4a6080 !important; }
+html.light .text-gray-600 { color: #5a7090 !important; }
+
+/* ── Accent colors — darkened for light bg readability ── */
+html.light .text-blue-400   { color: #1d4ed8 !important; }
+html.light .text-blue-300   { color: #2563eb !important; }
+html.light .text-green-400  { color: #15803d !important; }
+html.light .text-green-300  { color: #16a34a !important; }
+html.light .text-red-400    { color: #b91c1c !important; }
+html.light .text-red-300    { color: #dc2626 !important; }
+html.light .text-yellow-400 { color: #b45309 !important; }
+html.light .text-yellow-300 { color: #d97706 !important; }
+html.light .text-purple-400 { color: #7c3aed !important; }
+html.light .text-purple-300 { color: #8b5cf6 !important; }
+html.light .text-cyan-400   { color: #0e7490 !important; }
+html.light .text-orange-400 { color: #c2410c !important; }
+html.light .text-emerald-400 { color: #047857 !important; }
+html.light .text-pink-400   { color: #be185d !important; }
+
+/* ── Hover states ── */
+html.light .hover\:bg-gray-700:hover { background-color: #e8edf5 !important; }
+html.light .hover\:bg-gray-600:hover { background-color: #dde4f0 !important; }
+html.light .hover\:text-white:hover  { color: #0d1828 !important; }
+
+/* ── Form inputs ── */
+html.light input,
+html.light select,
+html.light textarea {
+    background-color: #f5f8fe !important;
+    border-color: #c0cfe6 !important;
+    color: #0d1828 !important;
+}
+html.light input::placeholder,
+html.light textarea::placeholder { color: #7890aa !important; }
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
+}
+
+/* ── Tables ── */
+html.light .table-container                     { border-color: #c8d4e8 !important; }
+html.light .table-container th                  { background-color: #edf1f9 !important; color: #1a2d46 !important; border-color: #c8d4e8 !important; }
+html.light .table-container td                  { border-color: #d8e2f0 !important; color: #1e3048 !important; }
+html.light .table-container tr:hover            { background-color: #f0f4fb !important; }
+html.light .historical-table-container th       { background-color: #edf1f9 !important; color: #1a2d46 !important; border-color: #c8d4e8 !important; }
+html.light .historical-table-container td       { border-color: #d8e2f0 !important; color: #1e3048 !important; }
+html.light .historical-table-container tr:hover { background-color: #f0f4fb !important; }
+html.light .historical-table-container          { scrollbar-color: #8aaad0 #dde4f0; }
+
+/* ── Dropdown / modals ── */
+html.light .modal-content { background-color: #ffffff !important; border-color: #c8d4e8 !important; }
+
+/* ── Scrollbars ── */
+html.light ::-webkit-scrollbar-track       { background: #dde4f0; }
+html.light ::-webkit-scrollbar-thumb       { background: #8aaad0; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #5a80b0; }
+
+/* ── Nav tab pill overrides for light mode ── */
+html.light .bg-gray-800.border-gray-700 {
+    background-color: #f0f4fb !important;
+    border-color: #c8d4e8 !important;
+    color: #1e3048 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   LANDING PAGE STYLE CARD IMPROVEMENTS (dark mode only)
+   ═══════════════════════════════════════════════════════ */
+
+/* Major section cards */
+.bg-gray-800.shadow-lg {
+    background-color: rgba(31, 41, 55, 0.55) !important;
+    border: 1px solid rgba(55, 65, 81, 0.5) !important;
+    border-radius: 1rem !important;
+}
+
+/* Inner feature/detail cards */
+.bg-gray-700.rounded-lg,
+.bg-gray-700.rounded-xl {
+    background-color: rgba(55, 65, 81, 0.5) !important;
+    border: 1px solid rgba(75, 85, 99, 0.4) !important;
+}
+
+/* Light mode: override card improvements with proper white + shadow */
+html.light .bg-gray-800.shadow-lg {
+    background-color: #ffffff !important;
+    border-color: #c8d4e8 !important;
+    box-shadow: 0 2px 8px rgba(13,24,40,0.08), 0 1px 2px rgba(13,24,40,0.04) !important;
+}
+html.light .bg-gray-700.rounded-lg,
+html.light .bg-gray-700.rounded-xl {
+    background-color: #f0f4fb !important;
+    border-color: #c8d4e8 !important;
+}
+
+/* Hide scrollbar on tab nav row while keeping scroll functionality */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Theme toggle button base style */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+html:not(.light) .theme-toggle { background: #1f2937; border-color: #374151; color: #d1d5db; }
+html:not(.light) .theme-toggle:hover { background: #374151; border-color: #4b5563; color: #ffffff; }
+html.light .theme-toggle { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+html.light .theme-toggle:hover { background: #e2e8f0; border-color: #94a3b8; color: #0f172a; }
+
 /* Logo animations and effects */
 @keyframes logoGlow {
     0%, 100% {
