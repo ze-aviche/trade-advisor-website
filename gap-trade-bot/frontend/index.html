@@ -60,8 +60,18 @@
                 </div>
                 <div class="flex items-center space-x-2 md:space-x-3">
 
+                    <!-- Guest: Sign In / Sign Up buttons -->
+                    <template v-if="isGuest">
+                        <a href="/login" class="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-xl text-sm font-medium text-gray-300 hover:text-white transition-colors">
+                            <i class="fas fa-sign-in-alt text-xs"></i><span class="hidden sm:inline">Sign In</span>
+                        </a>
+                        <a href="/login?view=register" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 border border-blue-600 px-3 py-1.5 rounded-xl text-sm font-medium text-white transition-colors shadow-lg shadow-blue-600/20">
+                            <i class="fas fa-user-plus text-xs"></i><span class="hidden sm:inline">Sign Up Free</span>
+                        </a>
+                    </template>
+
                     <!-- Profile dropdown -->
-                    <div class="relative">
+                    <div v-if="!isGuest" class="relative">
                         <button @click="profileMenuOpen = !profileMenuOpen"
                                 class="flex items-center space-x-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-2 py-1.5 md:px-3 md:py-2 rounded-xl transition-colors">
                             <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
@@ -155,19 +165,19 @@
                     <i class="fas fa-flask text-xs"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('ai-chat')"
-                    :class="activeTab === 'ai-chat' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    :class="activeTab === 'ai-chat' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('ai-chat') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-comments text-xs"></i>AI Chat
+                    <i class="fas fa-comments text-xs"></i>AI Chat<i v-if="!canAccessTab('ai-chat')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('help')"
-                    :class="activeTab === 'help' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    :class="activeTab === 'help' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('help') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-question-circle text-xs"></i>Help
+                    <i class="fas fa-question-circle text-xs"></i>Help<i v-if="!canAccessTab('help')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('contact')"
-                    :class="activeTab === 'contact' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white'"
+                    :class="activeTab === 'contact' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('contact') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-envelope text-xs"></i>Contact
+                    <i class="fas fa-envelope text-xs"></i>Contact<i v-if="!canAccessTab('contact')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button v-if="isStaff" @click="onTabChange('admin')"
                     :class="activeTab === 'admin' ? 'bg-yellow-500 border-yellow-500 text-white shadow-md shadow-yellow-500/20' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-yellow-500/50 hover:text-white'"
@@ -197,10 +207,12 @@
                 <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : canAccessTab('stats') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : canAccessTab('backtest') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-auto"></i></button>
-                <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>AI Chat</button>
-                <button @click="handleTabClick('help')" :class="activeTab === 'help' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-question-circle mr-2 w-4"></i>Help</button>
-                <button @click="handleTabClick('contact')" :class="activeTab === 'contact' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-envelope mr-2 w-4"></i>Contact</button>
-                <button @click="onTabChange('account'); mobileMenuOpen = false" :class="activeTab === 'account' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-crown mr-2 w-4 text-yellow-400"></i>My Account</button>
+                <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : canAccessTab('ai-chat') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-comments mr-2 w-4"></i>AI Chat<i v-if="!canAccessTab('ai-chat')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('help')" :class="activeTab === 'help' ? 'bg-blue-600 text-white' : canAccessTab('help') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-question-circle mr-2 w-4"></i>Help<i v-if="!canAccessTab('help')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('contact')" :class="activeTab === 'contact' ? 'bg-blue-600 text-white' : canAccessTab('contact') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-envelope mr-2 w-4"></i>Contact<i v-if="!canAccessTab('contact')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button v-if="!isGuest" @click="onTabChange('account'); mobileMenuOpen = false" :class="activeTab === 'account' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-crown mr-2 w-4 text-yellow-400"></i>My Account</button>
+                <a v-if="isGuest" href="/login" class="flex items-center px-3 py-2 rounded text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600"><i class="fas fa-sign-in-alt mr-2 w-4"></i>Sign In</a>
+                <a v-if="isGuest" href="/login?view=register" class="flex items-center px-3 py-2 rounded text-sm font-medium bg-blue-600 text-white hover:bg-blue-500"><i class="fas fa-user-plus mr-2 w-4"></i>Sign Up Free</a>
                 <button v-if="isStaff" @click="onTabChange('admin')" :class="activeTab === 'admin' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-shield-alt mr-2 w-4"></i>Admin</button>
             </div>
         </div>
@@ -218,7 +230,7 @@
                             <i class="fas fa-lock text-yellow-400 text-xl"></i>
                         </div>
                         <div>
-                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">Locked Feature</div>
+                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">{{ lockedTabInfo.isGuest ? 'Sign In Required' : 'Locked Feature' }}</div>
                             <h2 class="text-2xl font-bold text-white leading-tight">{{ lockedTabInfo.label }}</h2>
                             <p class="text-gray-400 text-sm mt-0.5">{{ lockedTabInfo.tagline }}</p>
                         </div>
@@ -237,8 +249,25 @@
                             </div>
                         </div>
 
-                        <!-- Plan + CTA -->
-                        <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
+                        <!-- Plan + CTA: guest vs logged-in -->
+                        <div v-if="lockedTabInfo.isGuest" class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
+                            <div class="flex-1 text-center sm:text-left">
+                                <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Free to access</div>
+                                <div class="text-white font-bold text-lg leading-tight">Create an account</div>
+                                <div class="text-blue-400 font-semibold text-sm">No credit card required</div>
+                            </div>
+                            <div class="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[180px]">
+                                <a href="/login?view=register"
+                                    class="w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-6 rounded-xl transition-all shadow-lg shadow-blue-600/20 text-sm">
+                                    <i class="fas fa-user-plus mr-1.5 text-xs"></i>Sign Up Free
+                                </a>
+                                <a href="/login"
+                                    class="w-full text-center bg-gray-700 hover:bg-gray-600 text-gray-400 font-medium py-2 px-6 rounded-xl transition-colors text-xs">
+                                    Already have an account? Sign in
+                                </a>
+                            </div>
+                        </div>
+                        <div v-else class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
                             <div class="flex-1 text-center sm:text-left">
                                 <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Required Plan</div>
                                 <div class="text-white font-bold text-lg leading-tight">{{ lockedTabInfo.plan }}</div>

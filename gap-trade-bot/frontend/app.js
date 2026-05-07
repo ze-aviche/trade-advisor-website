@@ -164,6 +164,7 @@ const app = createApp({
                 
                 // User data
                 user: null,
+                isGuest: false,
                 profileMenuOpen: false,
                 darkMode: localStorage.getItem('theme') !== 'light',
                 contactForm: { name: '', email: '', subject: '', message: '' },
@@ -456,7 +457,49 @@ const app = createApp({
                         ],
                     },
                 };
-                const info = map[this.activeTab];
+                const guestMap = {
+                    'ai-chat': {
+                        label: 'AI Chat', isGuest: true, icon: 'fa-comments',
+                        tagline: 'Get real-time trading insights powered by AI.',
+                        features: [
+                            { icon: 'fa-comments',   text: 'Ask questions about gap-up stocks in real time' },
+                            { icon: 'fa-lightbulb',  text: 'AI-powered trade entry and exit suggestions' },
+                            { icon: 'fa-chart-line', text: 'Market sentiment analysis' },
+                            { icon: 'fa-brain',      text: 'Strategy Q&A with context-aware responses' },
+                        ],
+                    },
+                    help: {
+                        label: 'Help Center', isGuest: true, icon: 'fa-question-circle',
+                        tagline: 'Everything you need to get started.',
+                        features: [
+                            { icon: 'fa-book',      text: 'Step-by-step platform guides' },
+                            { icon: 'fa-video',     text: 'Tutorial videos and walkthroughs' },
+                            { icon: 'fa-headset',   text: 'Live support chat with our team' },
+                            { icon: 'fa-envelope',  text: 'Direct contact form for custom help' },
+                        ],
+                    },
+                    contact: {
+                        label: 'Contact Us', isGuest: true, icon: 'fa-envelope',
+                        tagline: 'We\'d love to hear from you.',
+                        features: [
+                            { icon: 'fa-envelope',    text: 'Send messages directly to our support team' },
+                            { icon: 'fa-clock',       text: 'Typical response within 24 hours' },
+                            { icon: 'fa-star',        text: 'Priority support for premium subscribers' },
+                            { icon: 'fa-shield-alt',  text: 'Your messages are private and secure' },
+                        ],
+                    },
+                    account: {
+                        label: 'My Account', isGuest: true, icon: 'fa-user-circle',
+                        tagline: 'Manage your profile, subscription, and settings.',
+                        features: [
+                            { icon: 'fa-user-edit',   text: 'Update your profile and password' },
+                            { icon: 'fa-crown',       text: 'Choose the plan that fits your trading style' },
+                            { icon: 'fa-credit-card', text: 'Manage billing and payment methods' },
+                            { icon: 'fa-bell',        text: 'Customize notification preferences' },
+                        ],
+                    },
+                };
+                const info = map[this.activeTab] || (this.isGuest ? guestMap[this.activeTab] : null);
                 if (info && !this.canAccessTab(this.activeTab)) return info;
                 return null;
             },
@@ -560,7 +603,9 @@ const app = createApp({
                 const user = localStorage.getItem('user');
 
                 if (!sessionToken || !user) {
-                    window.location.href = '/login';
+                    this.isGuest = true;
+                    this.activeTab = 'gap-ups';
+                    this.loadGapUps();
                     return;
                 }
 
@@ -694,6 +739,7 @@ const app = createApp({
 
             // ── Tab access control ──────────────────────────────────────
             canAccessTab(tab) {
+                if (this.isGuest) return tab === 'gap-ups';
                 if (!this.user) return false;
                 if (this.isStaff) return true;
                 if (tab === 'admin') return false;
@@ -1048,7 +1094,9 @@ const app = createApp({
                     } else {
                         localStorage.removeItem('session_token');
                         localStorage.removeItem('user');
-                        window.location.href = '/login';
+                        this.isGuest = true;
+                        this.activeTab = 'gap-ups';
+                        this.loadGapUps();
                         return false;
                     }
                 } catch (error) {
