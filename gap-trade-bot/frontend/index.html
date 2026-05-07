@@ -591,47 +591,6 @@
 
             <!-- Gap-Ups Tab -->
             <div v-if="activeTab === 'gap-ups'" class="space-y-6">
-                <!-- Gap-Up Configuration -->
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium text-white">Gap-Up Configuration</h3>
-                        <button @click="saveGapUpConfig" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-save mr-2"></i>Save Configuration
-                        </button>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">
-                                Minimum Gap Percentage
-                            </label>
-                            <div class="flex items-center space-x-2">
-                                <input 
-                                    v-model.number="gapUpConfig.min_percentage" 
-                                    type="number" 
-                                    min="0" 
-                                    max="100" 
-                                    step="0.1"
-                                    class="flex-1 bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="25.0"
-                                >
-                                <span class="text-gray-400 text-sm">%</span>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">
-                                Only stocks with gaps ≥ this percentage will be shown
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-end">
-                            <div class="bg-blue-900 bg-opacity-50 px-3 py-2 rounded-md">
-                                <span class="text-sm text-blue-300">
-                                    Current Setting: ≥{{ gapUpConfig.min_percentage }}% gap
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
                 <!-- Gap-Up Stocks List -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -640,7 +599,7 @@
                             <div class="flex items-center space-x-2">
                                 <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
                                 <span class="text-xs text-gray-400">Auto-updating</span>
-                                <span class="text-xs text-blue-400 bg-blue-900 bg-opacity-50 px-2 py-1 rounded">≥{{ gapUpConfig.min_percentage }}%</span>
+                                <span class="text-xs text-gray-500">{{ gapUps.length }} stocks</span>
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
@@ -652,76 +611,71 @@
                             </button>
                         </div>
                     </div>
-                    
+
                     <div v-if="loading.gapUps" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Loading gap-up stocks...</p>
                     </div>
-                    
+
                     <div v-else-if="gapUps.length === 0" class="text-center py-8">
                         <i class="fas fa-info-circle text-2xl text-gray-400"></i>
                         <p class="mt-2 text-gray-400">No gap-up stocks found</p>
                     </div>
-                    
+
                     <div v-else class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead class="bg-gray-700">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Company</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Price</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Gap%</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Volume</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Market Cap</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sector</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">List Date</th>
+                                    <th @click="toggleGapSort('ticker')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Ticker <i :class="gapUpSort.key==='ticker' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('company_name')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Company <i :class="gapUpSort.key==='company_name' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('price')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Price <i :class="gapUpSort.key==='price' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('gap_percent')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Gap% <i :class="gapUpSort.key==='gap_percent' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort-down text-blue-400'" class="ml-1"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('volume')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Volume <i :class="gapUpSort.key==='volume' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('market_cap')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Market Cap <i :class="gapUpSort.key==='market_cap' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('sector')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        Sector <i :class="gapUpSort.key==='sector' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
+                                    <th @click="toggleGapSort('list_date')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">
+                                        List Date <i :class="gapUpSort.key==='list_date' ? (gapUpSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="stock in gapUps" :key="stock.ticker" 
+                                <tr v-for="stock in sortedGapUps" :key="stock.ticker"
                                     class="hover:bg-gray-700 transition-colors">
-                                    <!-- Ticker -->
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="flex items-center">
-                                            <div class="text-sm font-bold text-white">{{ stock.ticker }}</div>
-                                        </div>
+                                        <div class="text-sm font-bold text-white">{{ stock.ticker }}</div>
                                     </td>
-                                    
-                                    <!-- Company Name -->
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm text-gray-300 max-w-[180px] truncate" :title="stock.company_name">{{ stock.company_name || 'N/A' }}</div>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm text-gray-300">{{ stock.company_name || 'N/A' }}</div>
+                                        <div class="text-sm font-bold" :class="getPriceColor(stock)">${{ stock.price }}</div>
                                     </td>
-                                    
-                                    <!-- Price -->
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm font-bold" :class="getPriceColor(stock)">
-                                            ${{ stock.price }}
-                                        </div>
+                                        <div class="text-sm font-bold text-green-400">+{{ stock.gap_percent }}%</div>
                                     </td>
-                                    
-                                    <!-- Gap% -->
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm font-bold text-green-400">
-                                            +{{ stock.gap_percent }}%
-                                        </div>
-                                    </td>
-                                    
-                                    <!-- Volume -->
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-300">{{ formatNumber(stock.volume) }}</div>
                                     </td>
-                                    
-                                    <!-- Market Cap -->
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-300">{{ formatMarketCap(stock.market_cap) }}</div>
                                     </td>
-                                    
-                                    <!-- Sector -->
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-300">{{ stock.sector || 'N/A' }}</div>
                                     </td>
-                                    
-                                    <!-- List Date -->
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-300">{{ formatDate(stock.list_date) || 'N/A' }}</div>
                                     </td>

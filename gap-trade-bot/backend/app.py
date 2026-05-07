@@ -1287,83 +1287,18 @@ def get_gap_up_details(ticker):
 
 @app.route('/api/gap-ups/config', methods=['GET', 'POST'])
 def gap_ups_config():
-    """Get or set gap-up configuration"""
+    """Gap-up config endpoint — threshold filter removed; invalidate cache on POST."""
     try:
-        if request.method == 'GET':
-            # Get current configuration
-            import config as config_module
-            min_percentage = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 5.0)
-            
-            return jsonify({
-                'success': True,
-                'data': {
-                    'min_percentage': min_percentage
-                }
-            })
-        else:
-            # POST - Update configuration
-            data = request.get_json()
-            min_percentage = data.get('min_percentage', 5.0)
-            
-            # Validate input
-            if not isinstance(min_percentage, (int, float)) or min_percentage < 0:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid min_percentage value'
-                }), 400
-            
-            # Update configuration file
-            config_path = os.path.join(os.path.dirname(__file__), 'config.py')
-            
-            # Read current config
-            with open(config_path, 'r') as f:
-                config_content = f.read()
-            
-            # Update the GAP_UP_MIN_PERCENTAGE line
-            import re
-            pattern = r'GAP_UP_MIN_PERCENTAGE\s*=\s*[\d.]+'
-            replacement = f'GAP_UP_MIN_PERCENTAGE = {min_percentage}'
-            
-            if re.search(pattern, config_content):
-                new_config_content = re.sub(pattern, replacement, config_content)
-            else:
-                # Add the line if it doesn't exist
-                new_config_content = config_content + f'\nGAP_UP_MIN_PERCENTAGE = {min_percentage}'
-            
-            # Write updated config
-            with open(config_path, 'w') as f:
-                f.write(new_config_content)
-            
-            # Force reload the config module to pick up the new value
-            try:
-                import importlib
-                import config as config_module
-                importlib.reload(config_module)
-                app_logger.info(f"🔄 Config module reloaded, new threshold: {getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 'unknown')}%")
-            except Exception as reload_error:
-                app_logger.warning(f"⚠️ Could not reload config module: {reload_error}")
-            
-            # Invalidate gap-up cache to ensure fresh data with new threshold
+        if request.method == 'POST':
             try:
                 from gap_up_cache import invalidate_gap_up_cache
                 invalidate_gap_up_cache()
-                app_logger.info("🗑️ Gap-up cache invalidated after config update")
-            except Exception as cache_error:
-                app_logger.warning(f"⚠️ Could not invalidate cache: {cache_error}")
-            
-            app_logger.info(f"✅ Gap-up configuration updated: min_percentage = {min_percentage}%")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Configuration updated: min_percentage = {min_percentage}% (cache cleared)'
-            })
-            
+            except Exception:
+                pass
+        return jsonify({'success': True, 'data': {}})
     except Exception as e:
         app_logger.error(f"Error in gap-ups config: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/historical-data/<ticker>')
 def get_historical_data(ticker):

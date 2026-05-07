@@ -156,8 +156,9 @@ const app = createApp({
                 isEditingBotConfig: false, // Track if user is actively editing bot config
                 
                 // Gap-up configuration
+                gapUpSort: { key: 'gap_percent', dir: 'desc' },
                 gapUpConfig: {
-                    min_percentage: 25.0
+                    min_percentage: 0
                 },
                 
 
@@ -504,6 +505,17 @@ const app = createApp({
                 return null;
             },
 
+            sortedGapUps() {
+                const { key, dir } = this.gapUpSort;
+                return [...this.gapUps].sort((a, b) => {
+                    let va = a[key], vb = b[key];
+                    if (va == null) return 1;
+                    if (vb == null) return -1;
+                    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+                    return dir === 'asc' ? (va > vb ? 1 : va < vb ? -1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
+                });
+            },
+
             filteredAdminUsers() {
                 const q = (this.adminSearchQuery || '').toLowerCase().trim();
                 if (!q) return this.adminUsers;
@@ -750,6 +762,15 @@ const app = createApp({
                     yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
+            },
+
+            toggleGapSort(key) {
+                if (this.gapUpSort.key === key) {
+                    this.gapUpSort.dir = this.gapUpSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.gapUpSort.key = key;
+                    this.gapUpSort.dir = ['gap_percent', 'volume', 'market_cap', 'price'].includes(key) ? 'desc' : 'asc';
+                }
             },
 
             handleTabClick(tab) {

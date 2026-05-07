@@ -77,9 +77,8 @@ web_config = config
 # Note: Stock list removed - system will use alternative methods for gap-up detection
 
 # Gap-up detection settings
-GAP_UP_MIN_PERCENTAGE = 10  # Minimum gap percentage to consider (25% for significant gaps)
-GAP_UP_MIN_PRICE = 0.5      # Minimum stock price to consider
-GAP_UP_UPDATE_INTERVAL = 100  # Update interval in seconds (5 minutes)
+GAP_UP_MIN_PRICE = 0.75     # Minimum stock price to consider (penny stock filter)
+GAP_UP_UPDATE_INTERVAL = 300  # Background refresh interval in seconds
 
 # Data source configuration
 USE_DELAYED_DATA = True       # Use 15-minute delayed data instead of real-time
@@ -87,8 +86,7 @@ DELAYED_DATA_DESCRIPTION = "15-minute delayed data for cost optimization"
 
 # Make these available as module-level attributes
 __all__ = [
-    'GAP_UP_MIN_PERCENTAGE',
-    'GAP_UP_MIN_PRICE', 
+    'GAP_UP_MIN_PRICE',
     'GAP_UP_UPDATE_INTERVAL',
     'USE_DELAYED_DATA',
     'DELAYED_DATA_DESCRIPTION'
