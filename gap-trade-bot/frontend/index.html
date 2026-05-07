@@ -209,31 +209,52 @@
         <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
 
             <!-- ── Inline Upgrade Card (shown when a locked tab is active) ── -->
-            <div v-if="lockedTabInfo" class="flex items-center justify-center min-h-[60vh] px-4">
-                <div class="bg-gray-800 shadow-lg rounded-2xl p-10 max-w-md w-full text-center border border-gray-700">
-                    <!-- Icon -->
-                    <div class="w-20 h-20 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mx-auto mb-6">
-                        <i class="fas fa-lock text-yellow-400 text-3xl"></i>
+            <div v-if="lockedTabInfo" class="flex items-start justify-center min-h-[70vh] px-4 py-8">
+                <div class="bg-gray-800 shadow-lg rounded-2xl overflow-hidden max-w-2xl w-full border border-gray-700">
+
+                    <!-- Header band -->
+                    <div class="bg-gradient-to-r from-blue-900/40 to-purple-900/30 border-b border-gray-700 px-8 py-7 flex items-center gap-5">
+                        <div class="w-14 h-14 rounded-2xl bg-yellow-500/10 border border-yellow-500/25 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-lock text-yellow-400 text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">Locked Feature</div>
+                            <h2 class="text-2xl font-bold text-white leading-tight">{{ lockedTabInfo.label }}</h2>
+                            <p class="text-gray-400 text-sm mt-0.5">{{ lockedTabInfo.tagline }}</p>
+                        </div>
                     </div>
-                    <!-- Title -->
-                    <h2 class="text-2xl font-bold text-white mb-2">{{ lockedTabInfo.label }}</h2>
-                    <p class="text-gray-400 text-sm mb-6">This feature requires a higher subscription plan to access.</p>
-                    <!-- Plan badge -->
-                    <div class="bg-gray-700 rounded-xl px-5 py-4 mb-8 inline-block">
-                        <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Required Plan</div>
-                        <div class="text-white font-bold text-lg">{{ lockedTabInfo.plan }}</div>
-                        <div class="text-blue-400 font-semibold text-sm mt-0.5">{{ lockedTabInfo.price }}</div>
-                    </div>
-                    <!-- Actions -->
-                    <div class="space-y-3">
-                        <button @click="onTabChange('account')"
-                            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-600/20">
-                            <i class="fas fa-arrow-up mr-2 text-sm"></i>Upgrade Plan
-                        </button>
-                        <button @click="onTabChange('about')"
-                            class="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium py-2.5 rounded-xl transition-colors text-sm">
-                            Back to Dashboard
-                        </button>
+
+                    <div class="px-8 py-7">
+                        <!-- Feature list -->
+                        <p class="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">What you'll unlock</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                            <div v-for="feat in lockedTabInfo.features" :key="feat.text"
+                                class="flex items-start gap-3 bg-gray-700/50 border border-gray-700 rounded-xl px-4 py-3">
+                                <div class="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <i :class="'fas ' + feat.icon" class="text-blue-400 text-xs"></i>
+                                </div>
+                                <span class="text-gray-300 text-sm leading-snug">{{ feat.text }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Plan + CTA -->
+                        <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
+                            <div class="flex-1 text-center sm:text-left">
+                                <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Required Plan</div>
+                                <div class="text-white font-bold text-lg leading-tight">{{ lockedTabInfo.plan }}</div>
+                                <div class="text-blue-400 font-semibold text-sm">{{ lockedTabInfo.price }}</div>
+                            </div>
+                            <div class="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[180px]">
+                                <button @click="onTabChange('account')"
+                                    class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-6 rounded-xl transition-all shadow-lg shadow-blue-600/20 text-sm">
+                                    <i class="fas fa-arrow-up mr-1.5 text-xs"></i>Upgrade Now
+                                </button>
+                                <button @click="onTabChange('gap-ups')"
+                                    class="w-full bg-gray-700 hover:bg-gray-600 text-gray-400 font-medium py-2 px-6 rounded-xl transition-colors text-xs">
+                                    Back to Dashboard
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -385,13 +385,76 @@ const app = createApp({
             },
             lockedTabInfo() {
                 const map = {
-                    historical:  { label: 'Historical Data',  plan: 'Beginner Trader', price: '$5/mo',  tier: 'beginner', icon: 'fa-history',      color: 'blue'   },
-                    'entry-bot': { label: 'Entry Bot',         plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play',         color: 'green'  },
-                    bot:         { label: 'Exit Bot',          plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot',        color: 'green'  },
-                    trades:      { label: 'Trade History',     plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-exchange-alt', color: 'purple' },
-                    positions:   { label: 'Positions',         plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-line',   color: 'purple' },
-                    stats:       { label: 'Stats',             plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-bar',    color: 'purple' },
-                    backtest:    { label: 'Backtest',          plan: 'Yogi Trader',     price: '$25/mo', tier: 'yogi',     icon: 'fa-flask',        color: 'yellow' },
+                    historical: {
+                        label: 'Historical Data', plan: 'Beginner Trader', price: '$5/mo', tier: 'beginner', icon: 'fa-history', color: 'blue',
+                        tagline: 'Understand the past to trade the future.',
+                        features: [
+                            { icon: 'fa-calendar-alt',  text: 'Browse months of daily gap-up scan results' },
+                            { icon: 'fa-filter',        text: 'Filter by date range, ticker, or gap size' },
+                            { icon: 'fa-file-download', text: 'Export historical data to CSV / Excel' },
+                            { icon: 'fa-search-dollar', text: 'Spot recurring gap patterns across sectors' },
+                        ],
+                    },
+                    'entry-bot': {
+                        label: 'Entry Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play', color: 'green',
+                        tagline: 'Automate your entries with precision.',
+                        features: [
+                            { icon: 'fa-bolt',          text: 'Rule-based automated trade entry execution' },
+                            { icon: 'fa-sliders-h',     text: 'Configure volume, price, and timing criteria' },
+                            { icon: 'fa-bell',          text: 'Real-time alerts when entry conditions are met' },
+                            { icon: 'fa-plug',          text: 'Direct integration with DAS Trader Pro' },
+                        ],
+                    },
+                    bot: {
+                        label: 'Exit Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot', color: 'green',
+                        tagline: 'Never second-guess your exits again.',
+                        features: [
+                            { icon: 'fa-shield-alt',    text: 'Automated stop-loss and profit-target exits' },
+                            { icon: 'fa-chart-line',    text: 'Trailing stop support to lock in gains' },
+                            { icon: 'fa-clock',         text: 'Time-based exit rules for end-of-day closes' },
+                            { icon: 'fa-exclamation-triangle', text: 'Panic-exit button to close all positions instantly' },
+                        ],
+                    },
+                    trades: {
+                        label: 'Trade History', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-exchange-alt', color: 'purple',
+                        tagline: 'Every trade logged, analyzed, and actionable.',
+                        features: [
+                            { icon: 'fa-list-alt',      text: 'Complete record of all executed trades' },
+                            { icon: 'fa-sort-amount-down', text: 'Sort and filter by ticker, date, P&L, or side' },
+                            { icon: 'fa-file-excel',    text: 'One-click export to CSV or Excel' },
+                            { icon: 'fa-sync-alt',      text: 'Auto-sync trades directly from DAS Trader' },
+                        ],
+                    },
+                    positions: {
+                        label: 'Positions', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-line', color: 'purple',
+                        tagline: 'Live visibility into every open position.',
+                        features: [
+                            { icon: 'fa-eye',           text: 'Real-time unrealized P&L for open positions' },
+                            { icon: 'fa-history',       text: 'Full position lifecycle from entry to exit' },
+                            { icon: 'fa-layer-group',   text: 'Track multiple simultaneous positions' },
+                            { icon: 'fa-tachometer-alt', text: 'Live price feed via WebSocket integration' },
+                        ],
+                    },
+                    stats: {
+                        label: 'Stats', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-bar', color: 'purple',
+                        tagline: 'Data-driven insights to sharpen your edge.',
+                        features: [
+                            { icon: 'fa-percentage',    text: 'Win rate, average P&L, and expectancy metrics' },
+                            { icon: 'fa-chart-pie',     text: 'Visual breakdowns by ticker, side, and time' },
+                            { icon: 'fa-calendar-week', text: 'Day-of-week and time-of-day performance analysis' },
+                            { icon: 'fa-trophy',        text: 'Best / worst trade highlights and streaks' },
+                        ],
+                    },
+                    backtest: {
+                        label: 'Backtest', plan: 'Yogi Trader', price: '$25/mo', tier: 'yogi', icon: 'fa-flask', color: 'yellow',
+                        tagline: 'Validate your strategy before risking real capital.',
+                        features: [
+                            { icon: 'fa-redo',          text: 'Replay strategies against months of historical data' },
+                            { icon: 'fa-dollar-sign',   text: 'Simulated P&L with configurable capital and sizing' },
+                            { icon: 'fa-chart-area',    text: 'Equity curve chart and drawdown analysis' },
+                            { icon: 'fa-balance-scale', text: 'Compare multiple strategies side by side' },
+                        ],
+                    },
                 };
                 const info = map[this.activeTab];
                 if (info && !this.canAccessTab(this.activeTab)) return info;
