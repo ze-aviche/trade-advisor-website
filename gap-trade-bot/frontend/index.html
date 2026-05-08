@@ -599,7 +599,7 @@
                             <div class="flex items-center space-x-2">
                                 <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
                                 <span class="text-xs text-gray-400">Auto-updating</span>
-                                <span class="text-xs text-gray-500">{{ gapUps.length }} stocks</span>
+                                <span class="text-xs text-gray-500">{{ sortedGapUps.length }} stocks</span>
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
@@ -612,14 +612,75 @@
                         </div>
                     </div>
 
+                    <!-- Date picker: Today (live) or a past snapshot -->
+                    <div class="flex items-center gap-3 mb-4">
+                        <button @click="selectGapUpDate(null)"
+                            :class="!gapUpViewDate ? 'bg-blue-600 border-blue-600 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:text-white'"
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all">
+                            <i class="fas fa-circle text-green-400 text-xs animate-pulse"></i>
+                            Live
+                        </button>
+                        <select @change="selectGapUpDate($event.target.value || null)"
+                            :value="gapUpViewDate || ''"
+                            :disabled="!gapUpSnapshotDates.length"
+                            class="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                            <option value="">{{ gapUpSnapshotDates.length ? '— View past date —' : 'No history yet' }}</option>
+                            <option v-for="d in gapUpSnapshotDates" :key="d" :value="d">{{ d }}</option>
+                        </select>
+                        <span v-if="gapUpViewDate" class="text-xs text-yellow-400 font-medium">
+                            <i class="fas fa-history mr-1"></i>Historical snapshot · {{ gapUpViewDate }}
+                        </span>
+                    </div>
+
+                    <!-- Session Sub-tabs -->
+                    <div class="flex gap-2 mb-5">
+                        <button @click="setGapUpSubTab('premarket')"
+                            :class="activeGapUpSubTab === 'premarket'
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20'
+                                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-blue-500/50 hover:text-white'"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all">
+                            <i class="fas fa-cloud-moon text-xs"></i>
+                            Pre-Market
+                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                                :class="activeGapUpSubTab === 'premarket' ? 'bg-blue-500/40' : 'bg-gray-600'">
+                                {{ gapUpSubTabCounts.premarket }}
+                            </span>
+                        </button>
+                        <button @click="setGapUpSubTab('intraday')"
+                            :class="activeGapUpSubTab === 'intraday'
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20'
+                                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-blue-500/50 hover:text-white'"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all">
+                            <i class="fas fa-sun text-xs"></i>
+                            Intraday
+                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                                :class="activeGapUpSubTab === 'intraday' ? 'bg-blue-500/40' : 'bg-gray-600'">
+                                {{ gapUpSubTabCounts.intraday }}
+                            </span>
+                        </button>
+                        <button @click="setGapUpSubTab('afterhours')"
+                            :class="activeGapUpSubTab === 'afterhours'
+                                ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20'
+                                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:border-blue-500/50 hover:text-white'"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all">
+                            <i class="fas fa-moon text-xs"></i>
+                            After Hours
+                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-xs"
+                                :class="activeGapUpSubTab === 'afterhours' ? 'bg-blue-500/40' : 'bg-gray-600'">
+                                {{ gapUpSubTabCounts.afterhours }}
+                            </span>
+                        </button>
+                    </div>
+
                     <div v-if="loading.gapUps" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Loading gap-up stocks...</p>
                     </div>
 
-                    <div v-else-if="gapUps.length === 0" class="text-center py-8">
+                    <div v-else-if="sortedGapUps.length === 0" class="text-center py-8">
                         <i class="fas fa-info-circle text-2xl text-gray-400"></i>
-                        <p class="mt-2 text-gray-400">No gap-up stocks found</p>
+                        <p class="mt-2 text-gray-400">No gap-up stocks in this session</p>
+                        <p class="mt-1 text-xs text-gray-500">Check another session tab or refresh</p>
                     </div>
 
                     <div v-else class="overflow-x-auto">
@@ -654,7 +715,9 @@
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
                                 <tr v-for="stock in sortedGapUps" :key="stock.ticker"
-                                    class="hover:bg-gray-700 transition-colors">
+                                    class="hover:bg-gray-700 transition-colors duration-1000"
+                                    :class="newGapUpTickers.includes(stock.ticker) ? 'bg-yellow-400/15' : ''"
+                                    :style="newGapUpTickers.includes(stock.ticker) ? 'transition: background-color 1s ease' : ''">
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm font-bold text-white">{{ stock.ticker }}</div>
                                     </td>

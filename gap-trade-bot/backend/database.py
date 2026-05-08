@@ -123,6 +123,28 @@ class DatabaseManager:
                 )
             ''')
             
+            # Gap-up daily snapshots
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS gap_up_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    ticker TEXT NOT NULL,
+                    session TEXT NOT NULL,
+                    company_name TEXT,
+                    price REAL,
+                    previous_close REAL,
+                    change_amount REAL,
+                    gap_percent REAL,
+                    volume INTEGER,
+                    market_cap INTEGER,
+                    sector TEXT,
+                    data_source TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(date, ticker)
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_gap_snapshots_date ON gap_up_snapshots(date)')
+
             # Create indexes for better query performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date)')
@@ -1812,5 +1834,78 @@ class DatabaseManager:
             print(f"Database error getting monthly P&L data: {e}")
             return []
 
+    # ------------------------------------------------------------------
+    # Gap-up snapshot methods
+    # ------------------------------------------------------------------
+
+    def save_gap_up_snapshot(self, date_str: str, stocks: list) -> int:
+        """Upsert all stocks for a trading day. Returns number of rows saved."""
+        if not stocks:
+            return 0
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.executemany(
+                    '''INSERT OR REPLACE INTO gap_up_snapshots
+                       (date, ticker, session, company_name, price, previous_close,
+                        change_amount, gap_percent, volume, market_cap, sector, data_source)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    [
+                        (
+                            date_str,
+                            s.get('ticker'),
+                            s.get('session', 'intraday'),
+                            s.get('company_name'),
+                            s.get('price'),
+                            s.get('previous_close'),
+                            s.get('change'),
+                            s.get('gap_percent'),
+                            s.get('volume'),
+                            s.get('market_cap'),
+                            s.get('sector'),
+                            s.get('data_source'),
+                        )
+                        for s in stocks if s.get('ticker')
+                    ]
+                )
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            print(f"Database error saving gap-up snapshot: {e}")
+            return 0
+
+    def get_gap_up_snapshot(self, date_str: str) -> list:
+        """Return all gap-up stocks stored for *date_str*, sorted by gap% desc."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT ticker, session, company_name, price, previous_close,
+                              change_amount AS change, gap_percent, volume, market_cap,
+                              sector, data_source
+                       FROM gap_up_snapshots
+                       WHERE date = ?
+                       ORDER BY gap_percent DESC''',
+                    (date_str,)
+                )
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching gap-up snapshot: {e}")
+            return []
+
+    def get_gap_up_snapshot_dates(self) -> list:
+        """Return distinct dates that have saved snapshots, newest first."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT DISTINCT date FROM gap_up_snapshots ORDER BY date DESC'
+                )
+                return [row['date'] for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching snapshot dates: {e}")
+            return []
+
+
 # Global database manager instance
-db_manager = DatabaseManager() 
+db_manager = DatabaseManager()

@@ -44,6 +44,8 @@ const app = createApp({
                 
                 recentActivity: [],
                 gapUps: [],
+                newGapUpTickers: [],   // tickers currently showing the new-arrival highlight
+                prevGapUpTickers: [],  // tickers from the last fetch, used to diff
                 trades: [],
                 
                 // UI state
@@ -287,6 +289,17 @@ const app = createApp({
             
                             // Continuous tracking interval
                 trackingInterval: null,
+
+                // Gap-up auto-refresh interval handle
+                gapUpRefreshInterval: null,
+
+                // Active sub-tab inside the gap-ups tab
+                activeGapUpSubTab: 'premarket',
+
+                // Historical snapshot browsing
+                gapUpViewDate: null,          // null = live today, 'YYYY-MM-DD' = historical
+                gapUpSnapshotDates: [],       // list of dates with saved snapshots
+                gapUpHistoricalData: [],      // stocks for the selected historical date
             
 
             
@@ -505,9 +518,24 @@ const app = createApp({
                 return null;
             },
 
+            activeGapUpData() {
+                // Single source of truth: live data or historical snapshot
+                return this.gapUpViewDate ? this.gapUpHistoricalData : this.gapUps;
+            },
+
+            gapUpSubTabCounts() {
+                const src = this.activeGapUpData;
+                return {
+                    premarket:  src.filter(s => s.session === 'premarket').length,
+                    intraday:   src.filter(s => s.session === 'intraday').length,
+                    afterhours: src.filter(s => s.session === 'afterhours').length,
+                };
+            },
+
             sortedGapUps() {
                 const { key, dir } = this.gapUpSort;
-                return [...this.gapUps].sort((a, b) => {
+                const filtered = this.activeGapUpData.filter(s => (s.session || 'premarket') === this.activeGapUpSubTab);
+                return filtered.sort((a, b) => {
                     let va = a[key], vb = b[key];
                     if (va == null) return 1;
                     if (vb == null) return -1;
@@ -568,8 +596,26 @@ const app = createApp({
         // Force close any stuck modals immediately
         this.forceCloseStuckModals();
 
+            // Default sub-tab to the current ET market session
+            (() => {
+                const et = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+                const h = et.getHours() + et.getMinutes() / 60;
+                if (h >= 4 && h < 9.5)       this.activeGapUpSubTab = 'premarket';
+                else if (h >= 9.5 && h < 16)  this.activeGapUpSubTab = 'intraday';
+                else if (h >= 16 && h < 20)   this.activeGapUpSubTab = 'afterhours';
+                else                           this.activeGapUpSubTab = 'premarket';
+            })();
+
             this.checkAuth();
-            
+
+            // Auto-refresh gap-ups every 2 minutes so new gappers appear without manual reload
+            this.gapUpRefreshInterval = setInterval(() => {
+                if (this.activeTab === 'gap-ups') {
+                    console.log('🔄 Auto-refreshing gap-ups...');
+                    this.loadGapUps();
+                }
+            }, 2 * 60 * 1000); // 2 minutes
+
             // Add page load event listener for automatic refresh
             window.addEventListener('load', () => {
                 console.log('📄 Page loaded, ensuring dashboard data is fresh...');
@@ -586,6 +632,12 @@ const app = createApp({
         },
         
         beforeDestroy() {
+            // Stop gap-up auto-refresh
+            if (this.gapUpRefreshInterval) {
+                clearInterval(this.gapUpRefreshInterval);
+                this.gapUpRefreshInterval = null;
+            }
+
             // Stop real-time updates
             this.stopRealTimeUpdates();
             
@@ -618,6 +670,7 @@ const app = createApp({
                     this.isGuest = true;
                     this.activeTab = 'gap-ups';
                     this.loadGapUps();
+                    this.loadGapUpSnapshotDates();
                     return;
                 }
 
@@ -708,6 +761,7 @@ const app = createApp({
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
+                    this.loadGapUpSnapshotDates();
                 } else if (tabName === 'entry-bot') {
                     console.log('🤖 Entry Bot tab selected - loading entry bot status...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
@@ -762,6 +816,43 @@ const app = createApp({
                     yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
+            },
+
+            setGapUpSubTab(tab) {
+                this.activeGapUpSubTab = tab;
+            },
+
+            async loadGapUpSnapshotDates() {
+                try {
+                    const res = await fetch('/api/gap-ups/snapshot/dates');
+                    const data = await res.json();
+                    if (data.success) this.gapUpSnapshotDates = data.dates || [];
+                } catch (e) {
+                    console.error('Failed to load snapshot dates:', e);
+                }
+            },
+
+            async selectGapUpDate(date) {
+                if (!date) {
+                    // Revert to live view
+                    this.gapUpViewDate = null;
+                    this.gapUpHistoricalData = [];
+                    return;
+                }
+                try {
+                    this.gapUpViewDate = date;
+                    const res = await fetch(`/api/gap-ups/snapshot/${date}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        this.gapUpHistoricalData = data.data || [];
+                    } else {
+                        this.gapUpHistoricalData = [];
+                        this.showNotification(`No snapshot data for ${date}`, 'warning');
+                    }
+                } catch (e) {
+                    console.error('Failed to load gap-up snapshot:', e);
+                    this.gapUpHistoricalData = [];
+                }
             },
 
             toggleGapSort(key) {
@@ -2047,28 +2138,40 @@ const app = createApp({
                         const response = await fetch('/api/gap-ups', {
                             signal: AbortSignal.timeout(10000) // 10 second timeout
                         });
-                        
+
                         console.log('📡 Gap-ups API response status:', response.status);
-                        
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        
-                    const data = await response.json();
+
+                        const data = await response.json();
                         console.log('📈 Gap-ups API response data:', data);
                         console.log('📈 Gap-ups count:', data.count);
                         console.log('📈 Gap-ups data length:', data.data ? data.data.length : 0);
-                    
+
                     if (data.success) {
-                        this.gapUps = data.data || [];
+                        const incoming = data.data || [];
+
+                        // Detect newly arrived tickers (skip on very first load when prevGapUpTickers is empty)
+                        if (this.prevGapUpTickers.length > 0) {
+                            const prevSet = new Set(this.prevGapUpTickers);
+                            const brandNew = incoming.map(s => s.ticker).filter(t => !prevSet.has(t));
+                            if (brandNew.length > 0) {
+                                this.newGapUpTickers = [...new Set([...this.newGapUpTickers, ...brandNew])];
+                                setTimeout(() => {
+                                    const removing = new Set(brandNew);
+                                    this.newGapUpTickers = this.newGapUpTickers.filter(t => !removing.has(t));
+                                }, 10000);
+                            }
+                        }
+
+                        this.gapUps = incoming;
+                        this.prevGapUpTickers = incoming.map(s => s.ticker);
                         this.dashboardStats.gapUps = this.gapUps.length;
                             console.log('✅ Gap-ups loaded successfully:', this.gapUps.length, 'stocks');
-                            console.log('✅ Gap-ups data:', this.gapUps);
                             this.updateLoadingProgress('gapUps', 'success');
                             return; // Success, exit retry loop
                     } else {
-                            console.error('❌ Gap-ups API returned error:', data.message);
-                            throw new Error(data.message || 'Failed to load gap-ups');
+                            const errMsg = data.error || data.message || 'Failed to load gap-ups';
+                            console.error('❌ Gap-ups API returned error:', errMsg);
+                            throw new Error(errMsg);
                     }
                 } catch (error) {
                         console.error(`❌ Error loading gap-ups (attempt ${attempt}):`, error);

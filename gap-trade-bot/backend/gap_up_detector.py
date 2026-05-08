@@ -23,6 +23,44 @@ logger = get_logger(__name__)
 # Gap tracker removed - using simple gap-up detection
 GAP_TRACKER_AVAILABLE = False
 
+# Session tracker: remembers which market session each ticker was FIRST detected in today.
+# Maps ticker -> {'session': 'premarket'|'intraday'|'afterhours', 'date': 'YYYY-MM-DD'}
+# Resets automatically on a new trading day.
+_session_tracker: dict = {}
+
+_SESSION_MAP = {
+    'pre_market':  'premarket',
+    'open':        'intraday',
+    'after_hours': 'afterhours',
+    'closed':      'intraday',   # outside hours → bucket into intraday as fallback
+}
+
+def _tag_with_session(stocks: list) -> list:
+    """
+    Stamp each stock dict with a 'session' key reflecting when it was
+    FIRST detected as a gapper today. Subsequent polls keep the original tag.
+    """
+    et_tz   = pytz.timezone('US/Eastern')
+    today   = dt.now(et_tz).date().isoformat()
+    session = _SESSION_MAP.get(check_market_timing(), 'intraday')
+
+    for stock in stocks:
+        ticker = stock.get('ticker')
+        if not ticker:
+            continue
+        entry = _session_tracker.get(ticker)
+        if entry and entry['date'] == today:
+            stock['session'] = entry['session']   # keep original
+        else:
+            _session_tracker[ticker] = {'session': session, 'date': today}
+            stock['session'] = session
+
+    # Purge stale entries from previous trading days
+    for t in [t for t, v in _session_tracker.items() if v['date'] != today]:
+        del _session_tracker[t]
+
+    return stocks
+
 def get_polygon_client():
     """Get Polygon API client with API key"""
     # Try to get API key from environment variable first
@@ -30,7 +68,7 @@ def get_polygon_client():
     
     # If not found, use the one from trading-advisor project
     if not api_key:
-        api_key = "5TcX1iTW6Fu2vysfbRbw60oW3PLWsdPT"
+        api_key = "4CylhlrrwfJpekCA76ni_E9g1jibSTIw"
         logger.info("Using default Polygon API key from trading-advisor project")
     
     if not api_key:
@@ -146,12 +184,170 @@ def get_gap_up_stocks():
     """Alias kept for backwards compatibility — delegates to get_gap_up_stocks_for_frontend."""
     return get_gap_up_stocks_for_frontend()
 
+# Ticker suffixes that reliably indicate non-common-stock instruments
+_NON_CS_SUFFIXES = ('W', 'WS', 'R', 'U', 'Z')
+
+def _ticker_looks_non_cs(ticker):
+    t = ticker.upper().replace('.', '')
+    return any(t.endswith(s) for s in _NON_CS_SUFFIXES)
+
+
+def _fetch_from_polygon(min_price):
+    """
+    Fetch gap-up stocks using Polygon's gainers snapshot endpoint.
+    Raises on any API error (e.g. insufficient plan).
+    When get_ticker_details returns NOT_FOUND, falls back to a ticker-suffix
+    heuristic so valid stocks aren't silently dropped.
+    """
+    polygon_client = get_polygon_client()
+    market_status = check_market_timing()
+    logger.info(f"Fetching market gainers via Polygon (status: {market_status})")
+
+    snapshots = polygon_client.get_snapshot_direction("stocks", direction="gainers")
+
+    if not snapshots or not isinstance(snapshots, list):
+        logger.warning("No gainers returned from Polygon API")
+        return []
+
+    logger.info(f"Processing {len(snapshots)} gainers from Polygon snapshot")
+
+    gap_up_stocks = []
+    skipped_non_cs = 0
+    skipped_price = 0
+    skipped_no_data = 0
+
+    for item in snapshots:
+        ticker = getattr(item, 'ticker', None)
+        if not ticker:
+            continue
+
+        try:
+            prev_day = getattr(item, 'prev_day', None)
+            day      = getattr(item, 'day', None)
+
+            previous_close = getattr(prev_day, 'close', None) if prev_day else None
+            current_price  = getattr(day, 'close', None)  if day  else None
+            volume         = getattr(day, 'volume', 0)     if day  else 0
+
+            if previous_close is None or current_price is None or previous_close == 0:
+                skipped_no_data += 1
+                continue
+
+            if current_price < min_price:
+                skipped_price += 1
+                continue
+
+            # Try to get ticker details; if NOT_FOUND fall back to suffix heuristic
+            company_name = ticker
+            market_cap   = 0
+            sector       = 'Unknown'
+            list_date    = None
+            try:
+                details      = polygon_client.get_ticker_details(ticker)
+                ticker_type  = getattr(details, 'type', None)
+                if ticker_type != "CS":
+                    skipped_non_cs += 1
+                    continue
+                company_name = details.name
+                market_cap   = getattr(details, 'market_cap', 0)
+                sector       = getattr(details, 'sic_description', 'Unknown')
+                list_date    = getattr(details, 'list_date', None)
+            except Exception:
+                # Details unavailable — use ticker suffix to exclude obvious non-CS
+                if _ticker_looks_non_cs(ticker):
+                    skipped_non_cs += 1
+                    continue
+                logger.warning(f"Ticker details not found for {ticker}; including based on suffix check")
+
+            gap_percent = ((current_price - previous_close) / previous_close) * 100
+
+            gap_up_stocks.append({
+                'ticker':         ticker,
+                'company_name':   company_name,
+                'price':          round(current_price, 2),
+                'previous_close': round(previous_close, 2),
+                'change':         round(current_price - previous_close, 2),
+                'change_percent': round(gap_percent, 2),
+                'gap_percent':    round(gap_percent, 2),
+                'volume':         int(volume or 0),
+                'market_cap':     market_cap,
+                'sector':         sector,
+                'list_date':      list_date,
+                'data_source':    'polygon',
+            })
+
+        except Exception as e:
+            logger.error(f"Error processing {ticker}: {e}")
+            continue
+
+    gap_up_stocks.sort(key=lambda x: x['gap_percent'], reverse=True)
+    logger.info(
+        f"Polygon done — {len(gap_up_stocks)} gap-ups "
+        f"(skipped: {skipped_non_cs} non-CS, {skipped_price} below ${min_price}, "
+        f"{skipped_no_data} missing data)"
+    )
+    return gap_up_stocks
+
+
+def _fetch_from_yfinance(min_price):
+    """
+    Fallback: fetch gap-up stocks using yfinance day_gainers screener.
+    Returns data in the same shape as _fetch_from_polygon.
+    """
+    import yfinance as yf
+
+    logger.info("Fetching market gainers via yfinance screener")
+    result = yf.screen('day_gainers')
+    quotes = result.get('quotes', [])
+    logger.info(f"yfinance returned {len(quotes)} gainers")
+
+    gap_up_stocks = []
+    for q in quotes:
+        try:
+            ticker        = q.get('symbol')
+            quote_type    = q.get('quoteType', '')
+            current_price = q.get('regularMarketPrice')
+            prev_close    = q.get('regularMarketPreviousClose')
+
+            if not ticker or quote_type != 'EQUITY':
+                continue
+            if current_price is None or prev_close is None or prev_close == 0:
+                continue
+            if current_price < min_price:
+                continue
+
+            gap_percent = ((current_price - prev_close) / prev_close) * 100
+
+            gap_up_stocks.append({
+                'ticker':         ticker,
+                'company_name':   q.get('longName') or q.get('shortName') or ticker,
+                'price':          round(current_price, 2),
+                'previous_close': round(prev_close, 2),
+                'change':         round(current_price - prev_close, 2),
+                'change_percent': round(gap_percent, 2),
+                'gap_percent':    round(gap_percent, 2),
+                'volume':         int(q.get('regularMarketVolume') or 0),
+                'market_cap':     int(q.get('marketCap') or 0),
+                'sector':         'Unknown',
+                'list_date':      None,
+                'data_source':    'yfinance',
+            })
+        except Exception as e:
+            logger.error(f"Error processing yfinance quote {q.get('symbol')}: {e}")
+            continue
+
+    gap_up_stocks.sort(key=lambda x: x['gap_percent'], reverse=True)
+    logger.info(f"yfinance done — {len(gap_up_stocks)} equity gap-ups found")
+    return gap_up_stocks
+
+
 def get_gap_up_stocks_for_frontend():
     """
-    Fetch all market gainers and return Common Stock gap-ups with no percentage threshold.
-    Uses snapshot data (prev_day + day) for price/volume — no extra API calls per ticker.
+    Fetch gap-up stocks from Polygon and yfinance, merge them, and return a
+    deduplicated list sorted by gap% descending. Polygon data takes priority
+    (richer metadata). Raises only if both sources fail.
     """
-    GAP_UP_MIN_PRICE = 0.75
+    GAP_UP_MIN_PRICE = 0.0
 
     from gap_up_cache import gap_up_cache
     cache_key = "gap_up_frontend_all"
@@ -161,87 +357,38 @@ def get_gap_up_stocks_for_frontend():
         logger.info(f"Cache HIT: returning {len(cached_result)} gap-up stocks")
         return cached_result
 
+    polygon_stocks = []
+    polygon_error  = None
     try:
-        polygon_client = get_polygon_client()
-        market_status = check_market_timing()
-        logger.info(f"Fetching market gainers (status: {market_status})")
-
-        snapshots = polygon_client.get_snapshot_direction("stocks", direction="gainers")
-
-        if not snapshots or not isinstance(snapshots, list):
-            logger.warning("No gainers returned from Polygon API")
-            return []
-
-        logger.info(f"Processing {len(snapshots)} gainers from Polygon snapshot")
-
-        gap_up_stocks = []
-        skipped_non_cs = 0
-        skipped_price = 0
-        skipped_no_data = 0
-
-        for item in snapshots:
-            ticker = getattr(item, 'ticker', None)
-            if not ticker:
-                continue
-
-            try:
-                # Pull price and volume directly from snapshot — no extra API calls
-                prev_day = getattr(item, 'prev_day', None)
-                day      = getattr(item, 'day', None)
-
-                previous_close = getattr(prev_day, 'close', None) if prev_day else None
-                current_price  = getattr(day, 'close', None)  if day  else None
-                volume         = getattr(day, 'volume', 0)     if day  else 0
-
-                if previous_close is None or current_price is None or previous_close == 0:
-                    skipped_no_data += 1
-                    continue
-
-                if current_price < GAP_UP_MIN_PRICE:
-                    skipped_price += 1
-                    continue
-
-                # Still need ticker_details for the Common Stock type check
-                details = polygon_client.get_ticker_details(ticker)
-                if getattr(details, 'type', None) != "CS":
-                    skipped_non_cs += 1
-                    continue
-
-                gap_percent = ((current_price - previous_close) / previous_close) * 100
-
-                gap_up_stocks.append({
-                    'ticker':        ticker,
-                    'company_name':  details.name,
-                    'price':         round(current_price, 2),
-                    'previous_close': round(previous_close, 2),
-                    'change':        round(current_price - previous_close, 2),
-                    'change_percent': round(gap_percent, 2),
-                    'gap_percent':   round(gap_percent, 2),
-                    'volume':        int(volume or 0),
-                    'market_cap':    getattr(details, 'market_cap', 0),
-                    'sector':        getattr(details, 'sic_description', 'Unknown'),
-                    'list_date':     getattr(details, 'list_date', None),
-                })
-
-            except Exception as e:
-                logger.error(f"Error processing {ticker}: {e}")
-                continue
-
-        # Return sorted by gap % descending so the biggest movers are first by default
-        gap_up_stocks.sort(key=lambda x: x['gap_percent'], reverse=True)
-
-        logger.info(
-            f"Done — {len(gap_up_stocks)} CS gap-ups found "
-            f"(skipped: {skipped_non_cs} non-CS, {skipped_price} below ${GAP_UP_MIN_PRICE}, "
-            f"{skipped_no_data} missing data)"
-        )
-
-        gap_up_cache.set(cache_key, gap_up_stocks, "real_time")
-        return gap_up_stocks
-
+        polygon_stocks = _fetch_from_polygon(GAP_UP_MIN_PRICE)
     except Exception as e:
-        logger.error(f"Error in get_gap_up_stocks_for_frontend: {e}")
-        return []
+        polygon_error = e
+        logger.warning(f"Polygon gainers unavailable: {e}")
+
+    yf_stocks = []
+    try:
+        yf_stocks = _fetch_from_yfinance(GAP_UP_MIN_PRICE)
+    except Exception as e:
+        logger.warning(f"yfinance screener unavailable: {e}")
+
+    if not polygon_stocks and not yf_stocks:
+        if polygon_error:
+            raise polygon_error
+        raise RuntimeError("No gap-up data available from any source")
+
+    # Merge: Polygon entries take priority; yfinance fills in any tickers not already present
+    seen   = {s['ticker'] for s in polygon_stocks}
+    merged = list(polygon_stocks)
+    for s in yf_stocks:
+        if s['ticker'] not in seen:
+            merged.append(s)
+
+    merged.sort(key=lambda x: x['gap_percent'], reverse=True)
+    _tag_with_session(merged)
+    logger.info(f"Merged result: {len(merged)} gap-up stocks ({len(polygon_stocks)} polygon + {len(yf_stocks) - len(seen & {s['ticker'] for s in yf_stocks})} yfinance-only)")
+
+    gap_up_cache.set(cache_key, merged, "real_time")
+    return merged
 
 
 
