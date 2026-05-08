@@ -159,6 +159,10 @@ const app = createApp({
                 
                 // Gap-up configuration
                 gapUpSort: { key: 'gap_percent', dir: 'desc' },
+                positionsSort: { key: 'date', dir: 'desc' },
+                tradesSort: { key: 'submitted_at', dir: 'desc' },
+                activePositionsSort: { key: 'entry_time', dir: 'desc' },
+                trackingSort: { key: 'symbol', dir: 'asc' },
                 gapUpConfig: {
                     min_percentage: 0
                 },
@@ -544,6 +548,51 @@ const app = createApp({
                 });
             },
 
+            sortedPositions() {
+                const { key, dir } = this.positionsSort;
+                return [...this.positions].sort((a, b) => {
+                    let va = a[key], vb = b[key];
+                    if (va == null) return 1;
+                    if (vb == null) return -1;
+                    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+                    return dir === 'asc' ? (va > vb ? 1 : va < vb ? -1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
+                });
+            },
+
+            sortedTrades() {
+                const { key, dir } = this.tradesSort;
+                return [...this.trades].sort((a, b) => {
+                    let va = a[key], vb = b[key];
+                    if (va == null) return 1;
+                    if (vb == null) return -1;
+                    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+                    return dir === 'asc' ? (va > vb ? 1 : va < vb ? -1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
+                });
+            },
+
+            sortedActivePositions() {
+                const { key, dir } = this.activePositionsSort;
+                return [...this.activePositions].sort((a, b) => {
+                    let va = a[key], vb = b[key];
+                    if (va == null) return 1;
+                    if (vb == null) return -1;
+                    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+                    return dir === 'asc' ? (va > vb ? 1 : va < vb ? -1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
+                });
+            },
+
+            sortedTrackingSymbols() {
+                const { key, dir } = this.trackingSort;
+                const getVal = (obj, k) => k.split('.').reduce((o, p) => (o != null ? o[p] : null), obj);
+                return [...this.trackingSymbols].sort((a, b) => {
+                    let va = getVal(a, key), vb = getVal(b, key);
+                    if (va == null) return 1;
+                    if (vb == null) return -1;
+                    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+                    return dir === 'asc' ? (va > vb ? 1 : va < vb ? -1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
+                });
+            },
+
             filteredAdminUsers() {
                 const q = (this.adminSearchQuery || '').toLowerCase().trim();
                 if (!q) return this.adminUsers;
@@ -860,7 +909,46 @@ const app = createApp({
                     this.gapUpSort.dir = this.gapUpSort.dir === 'asc' ? 'desc' : 'asc';
                 } else {
                     this.gapUpSort.key = key;
-                    this.gapUpSort.dir = ['gap_percent', 'volume', 'market_cap', 'price'].includes(key) ? 'desc' : 'asc';
+                    this.gapUpSort.dir = ['gap_percent', 'volume', 'market_cap', 'float_shares', 'price'].includes(key) ? 'desc' : 'asc';
+                }
+            },
+
+            togglePositionsSort(key) {
+                if (this.positionsSort.key === key) {
+                    this.positionsSort.dir = this.positionsSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.positionsSort.key = key;
+                    this.positionsSort.dir = ['avg_cost', 'init_price', 'realized', 'unrealized', 'quantity', 'init_quantity'].includes(key) ? 'desc' : 'asc';
+                }
+            },
+
+            toggleTradesSort(key) {
+                if (this.tradesSort.key === key) {
+                    this.tradesSort.dir = this.tradesSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.tradesSort.key = key;
+                    this.tradesSort.dir = ['quantity', 'price', 'pnl'].includes(key) ? 'desc' : 'asc';
+                }
+            },
+
+            toggleActivePositionsSort(key) {
+                if (this.activePositionsSort.key === key) {
+                    this.activePositionsSort.dir = this.activePositionsSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.activePositionsSort.key = key;
+                    this.activePositionsSort.dir = ['entry_price', 'quantity'].includes(key) ? 'desc' : 'asc';
+                }
+            },
+
+            toggleTrackingSort(key) {
+                if (this.trackingSort.key === key) {
+                    this.trackingSort.dir = this.trackingSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.trackingSort.key = key;
+                    const numericKeys = ['entry_parameters.total_volume', 'entry_parameters.dollar_volume',
+                        'current_data.current_volume', 'current_data.current_dollar_volume',
+                        'order_parameters.quantity'];
+                    this.trackingSort.dir = numericKeys.includes(key) ? 'desc' : 'asc';
                 }
             },
 
@@ -4026,6 +4114,14 @@ const app = createApp({
             return value.toFixed(2);
         },
         
+        formatFloat(shares) {
+            if (!shares || shares === 0) return 'N/A';
+            if (shares >= 1e9) return `${(shares / 1e9).toFixed(2)}B`;
+            if (shares >= 1e6) return `${(shares / 1e6).toFixed(2)}M`;
+            if (shares >= 1e3) return `${(shares / 1e3).toFixed(0)}K`;
+            return shares.toString();
+        },
+
         // Format market cap
         formatMarketCap(marketCap) {
             if (!marketCap || marketCap === 0) return 'N/A';
