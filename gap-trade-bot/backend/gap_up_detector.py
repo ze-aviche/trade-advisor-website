@@ -242,6 +242,7 @@ def _fetch_from_polygon(min_price):
             market_cap   = 0
             sector       = 'Unknown'
             list_date    = None
+            float_shares = 0
             try:
                 details      = polygon_client.get_ticker_details(ticker)
                 ticker_type  = getattr(details, 'type', None)
@@ -252,6 +253,10 @@ def _fetch_from_polygon(min_price):
                 market_cap   = getattr(details, 'market_cap', 0)
                 sector       = getattr(details, 'sic_description', 'Unknown')
                 list_date    = getattr(details, 'list_date', None)
+                float_shares = int(
+                    getattr(details, 'share_class_shares_outstanding', None) or
+                    getattr(details, 'weighted_shares_outstanding', None) or 0
+                )
             except Exception:
                 # Details unavailable — use ticker suffix to exclude obvious non-CS
                 if _ticker_looks_non_cs(ticker):
@@ -271,6 +276,7 @@ def _fetch_from_polygon(min_price):
                 'gap_percent':    round(gap_percent, 2),
                 'volume':         int(volume or 0),
                 'market_cap':     market_cap,
+                'float_shares':   float_shares,
                 'sector':         sector,
                 'list_date':      list_date,
                 'data_source':    'polygon',
@@ -328,6 +334,7 @@ def _fetch_from_yfinance(min_price):
                 'gap_percent':    round(gap_percent, 2),
                 'volume':         int(q.get('regularMarketVolume') or 0),
                 'market_cap':     int(q.get('marketCap') or 0),
+                'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
                 'sector':         'Unknown',
                 'list_date':      None,
                 'data_source':    'yfinance',

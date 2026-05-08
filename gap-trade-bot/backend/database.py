@@ -137,6 +137,7 @@ class DatabaseManager:
                     gap_percent REAL,
                     volume INTEGER,
                     market_cap INTEGER,
+                    float_shares INTEGER DEFAULT 0,
                     sector TEXT,
                     data_source TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -144,6 +145,11 @@ class DatabaseManager:
                 )
             ''')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_gap_snapshots_date ON gap_up_snapshots(date)')
+            # Migration: add float_shares to existing databases that lack the column
+            try:
+                cursor.execute('ALTER TABLE gap_up_snapshots ADD COLUMN float_shares INTEGER DEFAULT 0')
+            except Exception:
+                pass
 
             # Create indexes for better query performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
@@ -1848,8 +1854,8 @@ class DatabaseManager:
                 cursor.executemany(
                     '''INSERT OR REPLACE INTO gap_up_snapshots
                        (date, ticker, session, company_name, price, previous_close,
-                        change_amount, gap_percent, volume, market_cap, sector, data_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        change_amount, gap_percent, volume, market_cap, float_shares, sector, data_source)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     [
                         (
                             date_str,
@@ -1862,6 +1868,7 @@ class DatabaseManager:
                             s.get('gap_percent'),
                             s.get('volume'),
                             s.get('market_cap'),
+                            s.get('float_shares', 0),
                             s.get('sector'),
                             s.get('data_source'),
                         )
@@ -1882,7 +1889,7 @@ class DatabaseManager:
                 cursor.execute(
                     '''SELECT ticker, session, company_name, price, previous_close,
                               change_amount AS change, gap_percent, volume, market_cap,
-                              sector, data_source
+                              float_shares, sector, data_source
                        FROM gap_up_snapshots
                        WHERE date = ?
                        ORDER BY gap_percent DESC''',
