@@ -1287,83 +1287,40 @@ def get_gap_up_details(ticker):
 
 @app.route('/api/gap-ups/config', methods=['GET', 'POST'])
 def gap_ups_config():
-    """Get or set gap-up configuration"""
+    """Gap-up config endpoint — threshold filter removed; invalidate cache on POST."""
     try:
-        if request.method == 'GET':
-            # Get current configuration
-            import config as config_module
-            min_percentage = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 5.0)
-            
-            return jsonify({
-                'success': True,
-                'data': {
-                    'min_percentage': min_percentage
-                }
-            })
-        else:
-            # POST - Update configuration
-            data = request.get_json()
-            min_percentage = data.get('min_percentage', 5.0)
-            
-            # Validate input
-            if not isinstance(min_percentage, (int, float)) or min_percentage < 0:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid min_percentage value'
-                }), 400
-            
-            # Update configuration file
-            config_path = os.path.join(os.path.dirname(__file__), 'config.py')
-            
-            # Read current config
-            with open(config_path, 'r') as f:
-                config_content = f.read()
-            
-            # Update the GAP_UP_MIN_PERCENTAGE line
-            import re
-            pattern = r'GAP_UP_MIN_PERCENTAGE\s*=\s*[\d.]+'
-            replacement = f'GAP_UP_MIN_PERCENTAGE = {min_percentage}'
-            
-            if re.search(pattern, config_content):
-                new_config_content = re.sub(pattern, replacement, config_content)
-            else:
-                # Add the line if it doesn't exist
-                new_config_content = config_content + f'\nGAP_UP_MIN_PERCENTAGE = {min_percentage}'
-            
-            # Write updated config
-            with open(config_path, 'w') as f:
-                f.write(new_config_content)
-            
-            # Force reload the config module to pick up the new value
-            try:
-                import importlib
-                import config as config_module
-                importlib.reload(config_module)
-                app_logger.info(f"🔄 Config module reloaded, new threshold: {getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 'unknown')}%")
-            except Exception as reload_error:
-                app_logger.warning(f"⚠️ Could not reload config module: {reload_error}")
-            
-            # Invalidate gap-up cache to ensure fresh data with new threshold
+        if request.method == 'POST':
             try:
                 from gap_up_cache import invalidate_gap_up_cache
                 invalidate_gap_up_cache()
-                app_logger.info("🗑️ Gap-up cache invalidated after config update")
-            except Exception as cache_error:
-                app_logger.warning(f"⚠️ Could not invalidate cache: {cache_error}")
-            
-            app_logger.info(f"✅ Gap-up configuration updated: min_percentage = {min_percentage}%")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Configuration updated: min_percentage = {min_percentage}% (cache cleared)'
-            })
-            
+            except Exception:
+                pass
+        return jsonify({'success': True, 'data': {}})
     except Exception as e:
         app_logger.error(f"Error in gap-ups config: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/gap-ups/snapshot/dates')
+def get_gap_up_snapshot_dates():
+    """Return the list of dates that have saved gap-up snapshots."""
+    try:
+        from database import db_manager
+        dates = db_manager.get_gap_up_snapshot_dates()
+        return jsonify({'success': True, 'dates': dates})
+    except Exception as e:
+        app_logger.error(f"Error fetching snapshot dates: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/gap-ups/snapshot/<date>')
+def get_gap_up_snapshot(date):
+    """Return the gap-up snapshot for a specific trading date (YYYY-MM-DD)."""
+    try:
+        from database import db_manager
+        stocks = db_manager.get_gap_up_snapshot(date)
+        return jsonify({'success': True, 'date': date, 'data': stocks, 'count': len(stocks)})
+    except Exception as e:
+        app_logger.error(f"Error fetching gap-up snapshot for {date}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/historical-data/<ticker>')
 def get_historical_data(ticker):
@@ -3625,39 +3582,75 @@ def broadcast_gap_ups():
 # Background task to update real-time gap-ups
 def update_real_time_gap_ups():
     """
-    Background task to update gap-up data using delayed data
-    Optimized for early morning gap-up detection to reduce API costs
-    Uses 15-minute delayed data instead of real-time data
+    Background task — continuously refreshes gap-up data and broadcasts to
+    connected WebSocket clients. Interval adapts to market session:
+      - market open  : 2 min  (catch new gappers quickly)
+      - pre/after    : 5 min
+      - closed       : 15 min (minimal polling, market is shut)
     """
     global real_time_gap_ups
-    
-    # Gap-up configuration
-    GAP_UP_UPDATE_INTERVAL = 300  # 5 minutes
-    DELAYED_DATA_DESCRIPTION = '15-minute delayed data for cost optimization'
-    
+
+    INTERVALS = {
+        'open':        120,   # 2 minutes
+        'pre_market':  300,   # 5 minutes
+        'after_hours': 300,   # 5 minutes
+        'closed':      900,   # 15 minutes
+    }
+
+    # Track which dates we've already saved a snapshot for this process run
+    _snapshot_saved_dates = set()
+
     while True:
         try:
             if REAL_DATA_AVAILABLE:
-                # Get latest gap-up data using delayed data
+                from gap_up_detector import check_market_timing
+                import pytz as _pytz
+                _et = _pytz.timezone('US/Eastern')
+                _now_et = datetime.now(_et)
+                market_status = check_market_timing()
+                interval      = INTERVALS.get(market_status, 300)
+
                 latest_gap_ups = get_gap_up_stocks_for_frontend()
                 real_time_gap_ups = latest_gap_ups
-                
-                # Broadcast to connected clients
                 broadcast_gap_ups()
-                
-            # Use configurable update interval to reduce API calls
-            # This is sufficient for early morning gap-up detection
-            app_logger.info(f"⏰ Next gap-up update in {GAP_UP_UPDATE_INTERVAL} seconds ({DELAYED_DATA_DESCRIPTION})")
-            time.sleep(GAP_UP_UPDATE_INTERVAL)
+
+                # Save end-of-day snapshot once per day after 8 PM ET
+                _today = _now_et.date().isoformat()
+                if _now_et.hour >= 20 and _today not in _snapshot_saved_dates and latest_gap_ups:
+                    try:
+                        from database import db_manager as _db
+                        saved = _db.save_gap_up_snapshot(_today, latest_gap_ups)
+                        _snapshot_saved_dates.add(_today)
+                        app_logger.info(f"📸 Gap-up snapshot saved for {_today}: {saved} stocks")
+                    except Exception as snap_err:
+                        app_logger.error(f"Error saving gap-up snapshot: {snap_err}")
+
+                app_logger.info(
+                    f"Gap-up monitor: {len(latest_gap_ups)} stocks "
+                    f"(market={market_status}, next refresh in {interval}s)"
+                )
+            else:
+                interval = 300
+
+            time.sleep(interval)
         except Exception as e:
             app_logger.error(f"Error updating gap-ups: {e}")
-            time.sleep(GAP_UP_UPDATE_INTERVAL)  # Use same interval on error
+            time.sleep(300)
 
-# Start background task
+# Start background gap-up monitor — runs under both `python app.py` and gunicorn
+_bg_thread_started = False
+def _start_background_tasks():
+    global _bg_thread_started
+    if not _bg_thread_started:
+        _bg_thread_started = True
+        update_thread = threading.Thread(target=update_real_time_gap_ups, daemon=True)
+        update_thread.daemon = True
+        update_thread.start()
+        app_logger.info("✅ Gap-up background monitor started")
+
+_start_background_tasks()
+
 if __name__ == '__main__':
-    # Start background task in a separate thread
-    update_thread = threading.Thread(target=update_real_time_gap_ups, daemon=True)
-    update_thread.start()
     
     # DAS Trader integration is disabled — skip DAS sync services
     if DAS_ENABLED:
