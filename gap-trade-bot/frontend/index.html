@@ -275,6 +275,11 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-history text-xs"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
+                <button @click="handleTabClick('swing')"
+                    :class="activeTab === 'swing' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('swing') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-wave-square text-xs"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
                 <button @click="handleTabClick('entry-bot')"
                     :class="activeTab === 'entry-bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('entry-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
@@ -331,7 +336,7 @@
             <div class="flex md:hidden items-center justify-between py-1">
                 <span class="text-blue-400 text-sm font-medium">
                     <i class="fas fa-layer-group mr-2 text-gray-400"></i>
-                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account'}[activeTab] || 'Menu' }}
+                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account'}[activeTab] || 'Menu' }}
                 </span>
                 <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-gray-400 hover:text-white p-1 rounded">
                     <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'" class="text-lg"></i>
@@ -342,6 +347,7 @@
             <div v-if="mobileMenuOpen" class="md:hidden border-t border-gray-700 mt-2 pt-2 grid grid-cols-2 gap-1">
                 <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
                 <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : canAccessTab('entry-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : canAccessTab('bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -1443,6 +1449,360 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 Swing Trading Tab
+                 ══════════════════════════════════════════════════════════════ -->
+            <div v-if="activeTab === 'swing' && canAccessTab('swing')" class="space-y-6">
+
+                <!-- Header -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fas fa-wave-square text-blue-400"></i> Swing Trading Analysis
+                        </h2>
+                        <p class="text-gray-400 text-sm mt-0.5">Technical indicators, sector context, news, and AI setup recommendation</p>
+                    </div>
+                </div>
+
+                <!-- ── Ticker input row ─────────────────────────────────────────── -->
+                <div class="bg-gray-800 rounded-2xl border border-gray-700 p-4">
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <div class="flex gap-1 flex-1 min-w-[160px]">
+                            <input v-model="swingTicker" @keyup.enter="loadSwingData"
+                                @input="swingTechnicals = null; swingRecommendation = null; swingNews = null"
+                                placeholder="Ticker (e.g. NVDA)"
+                                class="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 uppercase" />
+                            <!-- News button -->
+                            <button @click="loadSwingNews()" :disabled="!swingTicker.trim() || loading.swingNews"
+                                class="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium bg-gray-700 border border-gray-600 text-gray-300 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                                <i v-if="!loading.swingNews" class="fas fa-newspaper"></i>
+                                <i v-else class="fas fa-spinner fa-spin"></i>
+                                <span class="hidden sm:inline ml-1">News</span>
+                            </button>
+                        </div>
+                        <!-- Analyze button -->
+                        <button @click="loadSwingData" :disabled="!swingTicker.trim() || loading.swingTechnicals"
+                            class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                            <i v-if="!loading.swingTechnicals" class="fas fa-chart-mixed"></i>
+                            <i v-else class="fas fa-spinner fa-spin"></i>
+                            {{ loading.swingTechnicals ? 'Loading…' : 'Analyze' }}
+                        </button>
+                        <!-- AI Setup button -->
+                        <button @click="loadSwingRecommendation" :disabled="!swingTechnicals || loading.swingRecommendation"
+                            class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                            <i v-if="!loading.swingRecommendation" class="fas fa-robot"></i>
+                            <i v-else class="fas fa-spinner fa-spin"></i>
+                            {{ loading.swingRecommendation ? 'Thinking…' : 'AI Setup' }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── News card ───────────────────────────────────────────────── -->
+                <div v-if="loading.swingNews" class="flex items-center gap-2 text-gray-400 text-sm">
+                    <i class="fas fa-spinner fa-spin"></i> Loading news…
+                </div>
+                <div v-if="swingNews && !loading.swingNews" class="bg-gray-800 rounded-2xl border border-amber-700/40 p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold text-white flex items-center gap-2">
+                            <i class="fas fa-newspaper text-amber-400"></i>
+                            News — {{ swingNews.ticker }}
+                        </span>
+                        <button @click="swingNews = null" class="text-gray-500 hover:text-white text-xs"><i class="fas fa-times"></i></button>
+                    </div>
+                    <!-- AI summary -->
+                    <div v-if="swingNews.summary" class="bg-amber-900/20 border border-amber-700/30 rounded-xl px-4 py-3 text-sm text-amber-100 italic">
+                        <i class="fas fa-robot text-amber-400 mr-1.5"></i>{{ swingNews.summary }}
+                    </div>
+                    <!-- Headlines -->
+                    <ol class="space-y-2 text-sm">
+                        <li v-for="(a, i) in (swingNews.articles || [])" :key="i" class="flex items-start gap-2">
+                            <span class="text-gray-500 font-mono text-xs mt-0.5 w-4 shrink-0">{{ i+1 }}.</span>
+                            <div>
+                                <a :href="a.article_url || a.url || '#'" target="_blank" rel="noopener"
+                                    class="text-blue-400 hover:text-blue-300 leading-snug">{{ a.title }}</a>
+                                <div class="text-gray-500 text-xs mt-0.5">
+                                    {{ a.publisher?.name || a.source || '' }}
+                                    <span v-if="a.published_utc" class="ml-2">{{ formatNewsTime(a.published_utc) }}</span>
+                                </div>
+                            </div>
+                        </li>
+                    </ol>
+                </div>
+
+                <!-- Loading state -->
+                <div v-if="loading.swingTechnicals" class="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+                    <i class="fas fa-spinner fa-spin text-3xl text-blue-400"></i>
+                    <span class="text-sm">Fetching price history and computing indicators…</span>
+                </div>
+
+                <!-- ── Content (only when technicals loaded) ───────────────────── -->
+                <template v-if="swingTechnicals && !loading.swingTechnicals">
+
+                    <!-- Sector bar -->
+                    <div v-if="swingSectorInfo" class="bg-gray-800 rounded-2xl border border-gray-700 px-4 py-3 flex flex-wrap items-center gap-4 text-sm">
+                        <span class="font-semibold text-white flex items-center gap-1.5">
+                            <i :class="getSectorTrendIcon(swingSectorPerf?.trend)" class="text-blue-400 text-xs"></i>
+                            {{ swingSectorInfo.sector }}
+                        </span>
+                        <span class="text-gray-400">ETF: <span class="text-white font-mono">{{ swingSectorInfo.etf }}</span></span>
+                        <span v-if="swingSectorPerf" :class="getPerfColor(swingSectorPerf.etf_1d_pct)" class="font-mono">
+                            ETF 1d {{ swingSectorPerf.etf_1d_pct > 0 ? '+' : '' }}{{ swingSectorPerf.etf_1d_pct }}%
+                        </span>
+                        <span v-if="swingSectorPerf" :class="getPerfColor(swingSectorPerf.etf_5d_pct)" class="font-mono">
+                            5d {{ swingSectorPerf.etf_5d_pct > 0 ? '+' : '' }}{{ swingSectorPerf.etf_5d_pct }}%
+                        </span>
+                        <span v-if="swingSectorPerf" :class="getPerfColor(swingSectorPerf.spy_1d_pct)" class="font-mono">
+                            SPY 1d {{ swingSectorPerf.spy_1d_pct > 0 ? '+' : '' }}{{ swingSectorPerf.spy_1d_pct }}%
+                        </span>
+                        <span class="ml-auto text-gray-500 text-xs">
+                            Trend: <span class="text-gray-300">{{ swingSectorPerf?.trend || '—' }}</span>
+                        </span>
+                    </div>
+
+                    <!-- ── Active signals chips ────────────────────────────────── -->
+                    <div v-if="swingTechnicals.signals?.length" class="flex flex-wrap gap-2">
+                        <span v-for="sig in swingTechnicals.signals" :key="sig.label"
+                            :class="swingSignalBadgeColor(sig.type)"
+                            class="px-3 py-1 rounded-full text-xs font-medium">
+                            {{ sig.label }}
+                        </span>
+                        <span v-if="swingTechnicalsCached" class="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-400 border border-gray-600 flex items-center gap-1">
+                            <i class="fas fa-bolt text-yellow-400"></i> cached
+                        </span>
+                    </div>
+
+                    <!-- ── Technicals table ────────────────────────────────────── -->
+                    <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-gray-700 flex items-center gap-2">
+                            <i class="fas fa-table text-blue-400 text-sm"></i>
+                            <span class="font-semibold text-white text-sm">Technical Indicators — {{ swingTicker.toUpperCase() }}</span>
+                            <span :class="getPerfColor(swingTechnicals.chg_1d)" class="ml-auto font-mono text-sm font-bold">
+                                ${{ swingTechnicals.price?.toFixed(2) }}
+                                <span class="text-xs ml-1">{{ swingTechnicals.chg_1d >= 0 ? '+' : '' }}{{ swingTechnicals.chg_1d }}%</span>
+                            </span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-900/50">
+                                    <tr class="text-gray-400 text-xs uppercase">
+                                        <th class="text-left px-5 py-2.5 font-medium w-1/3">Indicator</th>
+                                        <th class="text-right px-5 py-2.5 font-medium w-1/3">Value</th>
+                                        <th class="text-right px-5 py-2.5 font-medium w-1/3">Signal</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-700/50">
+                                    <!-- Price changes -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">5d Change</td>
+                                        <td class="px-5 py-3 text-right font-mono" :class="getPerfColor(swingTechnicals.chg_5d)">
+                                            {{ swingTechnicals.chg_5d != null ? (swingTechnicals.chg_5d >= 0 ? '+' : '') + swingTechnicals.chg_5d + '%' : '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-gray-400">Momentum</td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">20d Change</td>
+                                        <td class="px-5 py-3 text-right font-mono" :class="getPerfColor(swingTechnicals.chg_20d)">
+                                            {{ swingTechnicals.chg_20d != null ? (swingTechnicals.chg_20d >= 0 ? '+' : '') + swingTechnicals.chg_20d + '%' : '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-gray-400">Trend</td>
+                                    </tr>
+                                    <!-- RSI -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">RSI (14)</td>
+                                        <td class="px-5 py-3 text-right font-mono font-semibold" :class="rsiColor(swingTechnicals.rsi14)">
+                                            {{ swingTechnicals.rsi14 ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right" :class="rsiColor(swingTechnicals.rsi14)">
+                                            {{ swingTechnicals.rsi14 == null ? '—' : swingTechnicals.rsi14 < 30 ? 'Oversold' : swingTechnicals.rsi14 > 70 ? 'Overbought' : 'Neutral' }}
+                                        </td>
+                                    </tr>
+                                    <!-- MACD -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">MACD Line</td>
+                                        <td class="px-5 py-3 text-right font-mono" :class="macdColor(swingTechnicals.macd_hist)">
+                                            {{ swingTechnicals.macd_line ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right" :class="macdColor(swingTechnicals.macd_hist)">
+                                            {{ swingTechnicals.macd_hist == null ? '—' : swingTechnicals.macd_hist > 0 ? 'Bullish' : 'Bearish' }}
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300 pl-8 text-xs">Signal / Histogram</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-400 text-xs">
+                                            {{ swingTechnicals.macd_signal ?? '—' }} / {{ swingTechnicals.macd_hist ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-gray-500 text-xs">MACD cross</td>
+                                    </tr>
+                                    <!-- SMAs -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">SMA 20</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-300">{{ swingTechnicals.sma20?.toFixed(2) ?? '—' }}</td>
+                                        <td class="px-5 py-3 text-right text-xs" :class="priceVsSma(swingTechnicals.price, swingTechnicals.sma20).cls">
+                                            {{ priceVsSma(swingTechnicals.price, swingTechnicals.sma20).label }}
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">SMA 50</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-300">{{ swingTechnicals.sma50?.toFixed(2) ?? '—' }}</td>
+                                        <td class="px-5 py-3 text-right text-xs" :class="priceVsSma(swingTechnicals.price, swingTechnicals.sma50).cls">
+                                            {{ priceVsSma(swingTechnicals.price, swingTechnicals.sma50).label }}
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">SMA 200</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-300">{{ swingTechnicals.sma200?.toFixed(2) ?? '—' }}</td>
+                                        <td class="px-5 py-3 text-right text-xs" :class="priceVsSma(swingTechnicals.price, swingTechnicals.sma200).cls">
+                                            {{ priceVsSma(swingTechnicals.price, swingTechnicals.sma200).label }}
+                                        </td>
+                                    </tr>
+                                    <!-- EMAs -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">EMA 9 / EMA 21</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-300">
+                                            {{ swingTechnicals.ema9?.toFixed(2) ?? '—' }} / {{ swingTechnicals.ema21?.toFixed(2) ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-xs" :class="swingTechnicals.ema9 && swingTechnicals.ema21 ? (swingTechnicals.ema9 > swingTechnicals.ema21 ? 'text-green-400' : 'text-red-400') : 'text-gray-400'">
+                                            {{ swingTechnicals.ema9 && swingTechnicals.ema21 ? (swingTechnicals.ema9 > swingTechnicals.ema21 ? 'EMA9 > EMA21 ↑' : 'EMA9 < EMA21 ↓') : '—' }}
+                                        </td>
+                                    </tr>
+                                    <!-- Bollinger -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">Bollinger Bands (20,2σ)</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-400 text-xs">
+                                            {{ swingTechnicals.bb_lower?.toFixed(2) ?? '—' }} / {{ swingTechnicals.bb_mid?.toFixed(2) ?? '—' }} / {{ swingTechnicals.bb_upper?.toFixed(2) ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-gray-400 text-xs">
+                                            {{ bbPosition(swingTechnicals.price, swingTechnicals.bb_lower, swingTechnicals.bb_upper) }} in band
+                                        </td>
+                                    </tr>
+                                    <!-- ATR -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">ATR (14)</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-300">{{ swingTechnicals.atr14?.toFixed(2) ?? '—' }}</td>
+                                        <td class="px-5 py-3 text-right text-gray-400 text-xs">
+                                            {{ swingTechnicals.atr14 && swingTechnicals.price ? (swingTechnicals.atr14 / swingTechnicals.price * 100).toFixed(1) + '% of price' : '—' }}
+                                        </td>
+                                    </tr>
+                                    <!-- Volume -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">Volume vs 20d Avg</td>
+                                        <td class="px-5 py-3 text-right font-mono" :class="swingTechnicals.vol_ratio > 1.5 ? 'text-green-400' : 'text-gray-300'">
+                                            {{ swingTechnicals.vol_ratio != null ? swingTechnicals.vol_ratio + 'x' : '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-xs" :class="swingTechnicals.vol_ratio > 1.5 ? 'text-green-400' : 'text-gray-400'">
+                                            {{ swingTechnicals.vol_ratio > 1.5 ? 'High volume' : 'Normal' }}
+                                        </td>
+                                    </tr>
+                                    <!-- Support / Resistance -->
+                                    <tr class="hover:bg-gray-700/20">
+                                        <td class="px-5 py-3 text-gray-300">20d Support / Resistance</td>
+                                        <td class="px-5 py-3 text-right font-mono text-gray-300 text-xs">
+                                            ${{ swingTechnicals.support20d?.toFixed(2) ?? '—' }} / ${{ swingTechnicals.resist20d?.toFixed(2) ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 text-right text-gray-400 text-xs">Range</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- ── AI Swing Setup card ─────────────────────────────────── -->
+                    <div v-if="loading.swingRecommendation" class="flex flex-col items-center gap-3 py-10 text-gray-400">
+                        <i class="fas fa-spinner fa-spin text-2xl text-purple-400"></i>
+                        <span class="text-sm">Claude is analysing the swing setup…</span>
+                    </div>
+
+                    <div v-if="swingRecommendation && !loading.swingRecommendation"
+                        :class="swingGradeBg(swingRecommendation.grade)"
+                        class="rounded-2xl p-5 space-y-4">
+
+                        <!-- Header row -->
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div class="text-xs text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                                    <i class="fas fa-robot text-purple-400"></i> AI Swing Setup
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-3xl font-black" :class="swingGradeColor(swingRecommendation.grade)">
+                                        {{ swingRecommendation.grade }}
+                                    </span>
+                                    <span class="text-lg font-bold" :class="swingBiasColor(swingRecommendation.bias)">
+                                        {{ swingRecommendation.bias }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-right text-sm text-gray-300">
+                                <div>Hold: <span class="text-white font-medium">{{ swingRecommendation.hold_period || '—' }}</span></div>
+                                <div>R/R: <span class="text-white font-medium">{{ swingRecommendation.risk_reward || '—' }}</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Summary -->
+                        <p class="text-gray-200 text-sm leading-relaxed">{{ swingRecommendation.summary }}</p>
+
+                        <!-- Entry / Stop / Targets grid -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div class="bg-gray-900/40 rounded-xl px-4 py-3 text-center">
+                                <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Entry Zone</div>
+                                <div class="text-green-400 font-bold text-sm">{{ swingRecommendation.entry_zone || '—' }}</div>
+                            </div>
+                            <div class="bg-gray-900/40 rounded-xl px-4 py-3 text-center">
+                                <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Stop Loss</div>
+                                <div class="text-red-400 font-bold text-sm">{{ swingRecommendation.stop_loss || '—' }}</div>
+                            </div>
+                            <div class="bg-gray-900/40 rounded-xl px-4 py-3 text-center">
+                                <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Target 1</div>
+                                <div class="text-blue-400 font-bold text-sm">{{ swingRecommendation.target_1 || '—' }}</div>
+                            </div>
+                            <div class="bg-gray-900/40 rounded-xl px-4 py-3 text-center">
+                                <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Target 2</div>
+                                <div class="text-blue-300 font-bold text-sm">{{ swingRecommendation.target_2 || '—' }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Earnings -->
+                        <div v-if="swingRecommendation.earnings_summary" class="bg-gray-900/40 rounded-xl px-4 py-3 text-sm">
+                            <div class="text-xs text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                                <i class="fas fa-calendar-check text-amber-400 text-xs"></i> Earnings Pattern
+                            </div>
+                            <p class="text-gray-300 leading-relaxed">{{ swingRecommendation.earnings_summary }}</p>
+                        </div>
+
+                        <!-- Catalysts + Risks -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div v-if="swingRecommendation.catalysts?.length" class="bg-gray-900/40 rounded-xl px-4 py-3">
+                                <div class="text-xs text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                    <i class="fas fa-bolt text-green-400 text-xs"></i> Catalysts
+                                </div>
+                                <ul class="space-y-1">
+                                    <li v-for="c in swingRecommendation.catalysts" :key="c"
+                                        class="text-gray-300 text-sm flex items-start gap-1.5">
+                                        <i class="fas fa-circle text-green-400 text-[6px] mt-1.5 shrink-0"></i> {{ c }}
+                                    </li>
+                                </ul>
+                            </div>
+                            <div v-if="swingRecommendation.key_risks?.length" class="bg-gray-900/40 rounded-xl px-4 py-3">
+                                <div class="text-xs text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                    <i class="fas fa-triangle-exclamation text-red-400 text-xs"></i> Key Risks
+                                </div>
+                                <ul class="space-y-1">
+                                    <li v-for="r in swingRecommendation.key_risks" :key="r"
+                                        class="text-gray-300 text-sm flex items-start gap-1.5">
+                                        <i class="fas fa-circle text-red-400 text-[6px] mt-1.5 shrink-0"></i> {{ r }}
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <p class="text-gray-600 text-xs text-right">AI analysis via Claude Haiku · Not financial advice</p>
+                    </div>
+
+                </template>
+                <!-- end v-if swingTechnicals -->
+
+            </div>
+            <!-- end Swing tab -->
 
             <!-- Entry Bot Tab -->
             <div v-if="activeTab === 'entry-bot' && canAccessTab('entry-bot')" class="space-y-6">
