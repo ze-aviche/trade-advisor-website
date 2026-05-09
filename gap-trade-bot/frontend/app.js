@@ -80,7 +80,9 @@ const app = createApp({
                     pieCharts: false,
                     backtest: false,
                     runBacktest: false,
-                    equityChart: false
+                    equityChart: false,
+                    historicalAnalysis: false,
+                    stockNews: false
                 },
                 
                 // Charts
@@ -237,6 +239,12 @@ const app = createApp({
                 minGapPercent: 25,     // Gap-up filter threshold
                 sortColumn: '',
                 sortDirection: 'asc',
+                historicalAnalysis: null,
+                historicalSectorInfo: null,
+                historicalSectorPerf: null,
+                historicalAnalysisCached: false,
+                stockNews: null,
+                _historicalCharts: {},
                 
                 // Trade History
                 tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
@@ -4376,9 +4384,14 @@ const app = createApp({
 
                 if (data.success) {
                     this.historicalData = data.data || [];
+                    this.historicalAnalysis = null;
+                    this.historicalSectorInfo = null;
+                    this.historicalSectorPerf = null;
+                    this.historicalAnalysisCached = false;
                     console.log(`✅ Loaded ${this.historicalData.length} days of historical data for ${this.historicalTicker}`);
                     this.showNotification(`Loaded ${this.historicalData.length} days of historical data`, 'success');
                     this.debugHistoricalData();
+                    this.$nextTick(() => this.initHistoricalCharts());
                 } else {
                     console.error('Failed to load historical data:', data.error);
                     this.showNotification('Failed to load historical data: ' + data.error, 'error');
@@ -4580,6 +4593,227 @@ const app = createApp({
             }
         },
         
+        buildHistoricalStats() {
+            const data = this.historicalData;
+            if (!data.length) return {};
+
+            const total = data.length;
+            const runnerDays = data.filter(d => d['Runner/Fader'] === 'Runner').length;
+            const faderDays  = data.filter(d => d['Runner/Fader'] === 'Fader').length;
+            const neutralDays = total - runnerDays - faderDays;
+
+            const sum = (key) => data.reduce((s, d) => s + (parseFloat(d[key]) || 0), 0);
+            const avgGap      = (sum('gap up % at open') / total).toFixed(1);
+            const avgDayHigh  = (sum('day high %')       / total).toFixed(1);
+            const avgClose    = (sum('closing percent')  / total).toFixed(1);
+            const avgVol      = (sum('premarket volume') / total).toFixed(2);
+
+            // Gap size buckets
+            const gapDist = { '5-15%': 0, '15-30%': 0, '30-50%': 0, '50%+': 0 };
+            data.forEach(d => {
+                const g = parseFloat(d['gap up % at open']) || 0;
+                if (g >= 50) gapDist['50%+']++;
+                else if (g >= 30) gapDist['30-50%']++;
+                else if (g >= 15) gapDist['15-30%']++;
+                else gapDist['5-15%']++;
+            });
+
+            // Most common day-high time
+            const timeCounts = {};
+            data.forEach(d => { const t = d['day high time']; if (t) timeCounts[t] = (timeCounts[t] || 0) + 1; });
+            const commonHighTime = Object.entries(timeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+
+            // Recent 30-day runner rate
+            const cutoff30 = new Date(); cutoff30.setDate(cutoff30.getDate() - 30);
+            const recent30 = data.filter(d => new Date(d.date) >= cutoff30);
+            const recent30RunnerPct = recent30.length
+                ? Math.round(recent30.filter(d => d['Runner/Fader'] === 'Runner').length / recent30.length * 100) : 0;
+
+            // High-volume runner rate (top 50% by premarket volume)
+            const sortedVol = [...data].sort((a, b) => (parseFloat(b['premarket volume']) || 0) - (parseFloat(a['premarket volume']) || 0));
+            const topHalf = sortedVol.slice(0, Math.ceil(total / 2));
+            const highVolRunnerPct = topHalf.length
+                ? Math.round(topHalf.filter(d => d['Runner/Fader'] === 'Runner').length / topHalf.length * 100) : 0;
+
+            return {
+                totalDays: total,
+                runnerDays, faderDays, neutralDays,
+                runnerPct:  total ? Math.round(runnerDays  / total * 100) : 0,
+                faderPct:   total ? Math.round(faderDays   / total * 100) : 0,
+                neutralPct: total ? Math.round(neutralDays / total * 100) : 0,
+                avgGap, avgDayHigh, avgClose,
+                avgPremarketVol: avgVol,
+                commonHighTime,
+                gapDistribution: gapDist,
+                recent30RunnerPct,
+                highVolRunnerPct,
+                period: this.getPeriodDescription(),
+                minGap: this.minGapPercent
+            };
+        },
+
+        async runHistoricalAnalysis() {
+            if (!this.historicalData.length) return;
+            try {
+                this.loading.historicalAnalysis = true;
+                this.historicalAnalysis = null;
+                const stats = this.buildHistoricalStats();
+                const response = await fetch(`/api/historical-analysis/${this.historicalTicker.toUpperCase()}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stats })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.historicalAnalysis = data.analysis;
+                    this.historicalSectorInfo = data.sector_info || null;
+                    this.historicalSectorPerf = data.sector_perf || null;
+                    this.historicalAnalysisCached = data.cached || false;
+                    this.$nextTick(() => {
+                        const el = document.getElementById('ai-analysis-card');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                } else if (data.rate_limited) {
+                    this.showNotification('AI Predict: ' + data.error, 'warning');
+                } else {
+                    this.showNotification('AI analysis failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                this.showNotification('Error running AI analysis: ' + error.message, 'error');
+            } finally {
+                this.loading.historicalAnalysis = false;
+            }
+        },
+
+        initHistoricalCharts() {
+            this.destroyHistoricalCharts();
+            if (!this.historicalData.length) return;
+
+            const stats = this.buildHistoricalStats();
+            const chartDefaults = {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 }, boxWidth: 12 } } },
+                cutout: '60%'
+            };
+
+            const rfCtx = document.getElementById('runnerFaderChart');
+            if (rfCtx) {
+                this._historicalCharts.runnerFader = new Chart(rfCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Runner', 'Fader', 'Neutral'],
+                        datasets: [{ data: [stats.runnerDays, stats.faderDays, stats.neutralDays],
+                            backgroundColor: ['#22c55e', '#ef4444', '#6b7280'], borderWidth: 0 }]
+                    },
+                    options: { ...chartDefaults }
+                });
+            }
+
+            const gdCtx = document.getElementById('gapDistChart');
+            if (gdCtx) {
+                const dist = stats.gapDistribution;
+                this._historicalCharts.gapDist = new Chart(gdCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(dist),
+                        datasets: [{ data: Object.values(dist),
+                            backgroundColor: ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'], borderWidth: 0 }]
+                    },
+                    options: { ...chartDefaults }
+                });
+            }
+
+            const cbCtx = document.getElementById('closingBehaviorChart');
+            if (cbCtx) {
+                const posClose = this.historicalData.filter(d => (parseFloat(d['closing percent']) || 0) > 0).length;
+                this._historicalCharts.closingBehavior = new Chart(cbCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Positive Close', 'Negative Close'],
+                        datasets: [{ data: [posClose, this.historicalData.length - posClose],
+                            backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 0 }]
+                    },
+                    options: { ...chartDefaults }
+                });
+            }
+        },
+
+        destroyHistoricalCharts() {
+            Object.values(this._historicalCharts).forEach(c => { try { c.destroy(); } catch(e) {} });
+            this._historicalCharts = {};
+        },
+
+        async loadStockNews() {
+            const ticker = this.historicalTicker.trim().toUpperCase();
+            if (!ticker) return;
+            try {
+                this.loading.stockNews = true;
+                this.stockNews = null;
+                const response = await fetch(`/api/stock-news/${ticker}`);
+                const data = await response.json();
+                if (data.success) {
+                    this.stockNews = data;
+                } else {
+                    this.showNotification('Could not load news: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (err) {
+                this.showNotification('News fetch failed: ' + err.message, 'error');
+            } finally {
+                this.loading.stockNews = false;
+            }
+        },
+
+        formatNewsTime(isoStr) {
+            if (!isoStr) return '';
+            try {
+                const diff = (Date.now() - new Date(isoStr).getTime()) / 1000;
+                if (diff < 3600)   return Math.floor(diff / 60) + 'm ago';
+                if (diff < 86400)  return Math.floor(diff / 3600) + 'h ago';
+                if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+                return new Date(isoStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } catch { return ''; }
+        },
+
+        getOutlookColor(outlook) {
+            if (!outlook) return 'text-gray-400';
+            const o = outlook.toLowerCase();
+            if (o === 'bullish') return 'text-green-400';
+            if (o === 'bearish') return 'text-red-400';
+            if (o === 'mixed')   return 'text-yellow-400';
+            return 'text-gray-400';
+        },
+
+        getOutlookBg(outlook) {
+            if (!outlook) return 'bg-gray-700';
+            const o = outlook.toLowerCase();
+            if (o === 'bullish') return 'bg-green-900/40 border border-green-700/50';
+            if (o === 'bearish') return 'bg-red-900/40 border border-red-700/50';
+            if (o === 'mixed')   return 'bg-yellow-900/40 border border-yellow-700/50';
+            return 'bg-gray-700';
+        },
+
+        getCautionColor(level) {
+            if (!level) return 'text-gray-400';
+            const l = level.toLowerCase();
+            if (l === 'high')   return 'text-red-400';
+            if (l === 'medium') return 'text-yellow-400';
+            if (l === 'low')    return 'text-green-400';
+            return 'text-gray-400';
+        },
+
+        getPerfColor(pct) {
+            if (pct == null || isNaN(pct)) return 'text-gray-400';
+            return pct > 0 ? 'text-green-400' : (pct < 0 ? 'text-red-400' : 'text-gray-400');
+        },
+
+        getSectorTrendIcon(trend) {
+            if (!trend) return 'fas fa-minus';
+            const t = trend.toLowerCase();
+            if (t.includes('up')) return 'fas fa-arrow-trend-up';
+            if (t.includes('down')) return 'fas fa-arrow-trend-down';
+            return 'fas fa-minus';
+        },
+
         // Helper method to get color class for pattern types
         getPatternColor(pattern) {
             if (!pattern) return 'bg-gray-100 text-gray-800';

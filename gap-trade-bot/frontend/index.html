@@ -904,10 +904,22 @@
                         </div>
                         <!-- Controls: wrap to 2 rows on mobile -->
                         <div class="flex flex-wrap gap-2">
-                            <input v-model="historicalTicker"
-                                   @keyup.enter="loadHistoricalData"
-                                   placeholder="Ticker (e.g. AAPL)"
-                                   class="flex-1 min-w-[120px] bg-gray-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <!-- Ticker + News grouped together -->
+                            <div class="flex gap-1 flex-1 min-w-[150px]">
+                                <input v-model="historicalTicker"
+                                       @keyup.enter="loadHistoricalData"
+                                       @input="stockNews = null"
+                                       placeholder="Ticker (e.g. AAPL)"
+                                       class="flex-1 min-w-[100px] bg-gray-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <button @click="loadStockNews"
+                                        :disabled="!historicalTicker.trim() || loading.stockNews"
+                                        class="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap border border-gray-500"
+                                        title="Fetch latest news and AI summary for this ticker">
+                                    <i v-if="!loading.stockNews" class="fas fa-newspaper"></i>
+                                    <i v-else class="fas fa-spinner fa-spin"></i>
+                                    <span class="ml-1 hidden sm:inline">News</span>
+                                </button>
+                            </div>
 
                             <select v-model="selectedPeriod"
                                     @change="loadHistoricalData"
@@ -948,9 +960,78 @@
                                     class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap">
                                 <i class="fas fa-file-csv mr-1"></i>CSV
                             </button>
+                            <button @click="runHistoricalAnalysis"
+                                    :disabled="historicalData.length === 0 || loading.historicalAnalysis"
+                                    class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap">
+                                <i v-if="!loading.historicalAnalysis" class="fas fa-robot mr-1"></i>
+                                <i v-else class="fas fa-spinner fa-spin mr-1"></i>
+                                {{ loading.historicalAnalysis ? 'Predicting…' : 'AI Predict' }}
+                            </button>
                         </div>
                     </div>
                     
+                    <!-- ── News Card (independent of historical data) ── -->
+                    <div v-if="loading.stockNews" class="mb-4 bg-gray-700 rounded-lg p-4 flex items-center gap-3">
+                        <i class="fas fa-spinner fa-spin text-amber-400"></i>
+                        <span class="text-sm text-gray-300">Fetching latest news for {{ historicalTicker.toUpperCase() }}…</span>
+                    </div>
+
+                    <div v-if="stockNews && !loading.stockNews" class="mb-4 bg-gray-700 rounded-lg overflow-hidden">
+                        <!-- Card header -->
+                        <div class="flex items-center justify-between px-4 py-2.5 bg-gray-600/60 border-b border-gray-600">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-newspaper text-amber-400 text-sm"></i>
+                                <span class="text-sm font-semibold text-white">Latest News — {{ stockNews.ticker }}</span>
+                                <span v-if="stockNews.cached" class="text-xs text-gray-500 bg-gray-700 px-1.5 py-0.5 rounded">
+                                    <i class="fas fa-bolt mr-0.5"></i>cached
+                                </span>
+                            </div>
+                            <button @click="stockNews = null" class="text-gray-500 hover:text-white text-sm px-1">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+
+                        <!-- AI summary -->
+                        <div v-if="stockNews.summary" class="px-4 py-3 bg-amber-900/20 border-b border-gray-600">
+                            <p class="text-xs font-semibold text-amber-400 uppercase tracking-wide mb-1">
+                                <i class="fas fa-robot mr-1"></i>AI Summary
+                            </p>
+                            <p class="text-sm text-gray-200 leading-relaxed">{{ stockNews.summary }}</p>
+                        </div>
+
+                        <!-- Headline list -->
+                        <ul class="divide-y divide-gray-600/60">
+                            <li v-for="(article, i) in stockNews.articles" :key="i"
+                                class="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-600/40 transition-colors">
+                                <span class="text-xs text-gray-600 font-mono mt-0.5 w-4 flex-shrink-0">{{ i + 1 }}</span>
+                                <div class="flex-1 min-w-0">
+                                    <a v-if="article.url" :href="article.url" target="_blank" rel="noopener"
+                                       class="text-sm text-gray-200 hover:text-amber-300 transition-colors leading-snug line-clamp-2">
+                                        {{ article.title }}
+                                    </a>
+                                    <p v-else class="text-sm text-gray-200 leading-snug line-clamp-2">{{ article.title }}</p>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span v-if="article.source" class="text-xs text-gray-500">{{ article.source }}</span>
+                                        <span v-if="article.source && article.published" class="text-gray-700 text-xs">·</span>
+                                        <span v-if="article.published" class="text-xs text-gray-500">{{ formatNewsTime(article.published) }}</span>
+                                    </div>
+                                </div>
+                                <a v-if="article.url" :href="article.url" target="_blank" rel="noopener"
+                                   class="flex-shrink-0 text-gray-600 hover:text-amber-400 transition-colors mt-0.5">
+                                    <i class="fas fa-arrow-up-right-from-square text-xs"></i>
+                                </a>
+                            </li>
+                            <li v-if="!stockNews.articles.length" class="px-4 py-3 text-sm text-gray-500 text-center">
+                                No recent news found for {{ stockNews.ticker }}.
+                            </li>
+                        </ul>
+
+                        <p class="px-4 py-2 text-xs text-gray-600 border-t border-gray-600">
+                            News via Polygon.io · AI summary by Claude · Refreshes every 30 min
+                        </p>
+                    </div>
+                    <!-- ── End News Card ── -->
+
                     <div v-if="loading.historical" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Analyzing {{ getPeriodDescription() }} of historical data...</p>
@@ -1008,6 +1089,176 @@
                             </div>
                         </div>
                         
+                        <!-- Behavioral Charts -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h5 class="text-xs font-medium text-gray-400 mb-1 text-center uppercase tracking-wide">Runner / Fader Split</h5>
+                                <div style="height:140px;position:relative;"><canvas id="runnerFaderChart"></canvas></div>
+                                <p class="text-center text-xs text-gray-500 mt-1">{{ Math.round(getRunnerDaysCount() / historicalData.length * 100) }}% runner rate</p>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h5 class="text-xs font-medium text-gray-400 mb-1 text-center uppercase tracking-wide">Gap Size Distribution</h5>
+                                <div style="height:140px;position:relative;"><canvas id="gapDistChart"></canvas></div>
+                                <p class="text-center text-xs text-gray-500 mt-1">avg {{ getAverageGapPercent() }}% gap</p>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h5 class="text-xs font-medium text-gray-400 mb-1 text-center uppercase tracking-wide">Closing Behavior</h5>
+                                <div style="height:140px;position:relative;"><canvas id="closingBehaviorChart"></canvas></div>
+                                <p class="text-center text-xs text-gray-500 mt-1">positive vs negative close</p>
+                            </div>
+                        </div>
+
+                        <!-- AI Analysis Result Card -->
+                        <div v-if="loading.historicalAnalysis" class="bg-gray-700 rounded-lg p-6 mb-6 text-center">
+                            <i class="fas fa-robot text-purple-400 text-2xl mb-2"></i>
+                            <p class="text-gray-300 font-medium">Claude is analyzing {{ historicalData.length }} gap-up events…</p>
+                            <p class="text-gray-500 text-sm mt-1">Comparing runner/fader patterns, volume signals, and timing</p>
+                        </div>
+
+                        <div v-if="historicalAnalysis && !loading.historicalAnalysis" id="ai-analysis-card"
+                             :class="getOutlookBg(historicalAnalysis.outlook)"
+                             class="rounded-lg p-4 mb-6">
+                            <!-- Header row -->
+                            <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                        <i class="fas fa-robot text-purple-400"></i>
+                                        <span class="text-sm font-medium text-gray-300">AI Prediction · {{ historicalData.length }} events · {{ getPeriodDescription() }}</span>
+                                        <span v-if="historicalSectorInfo" class="bg-gray-600 text-gray-300 text-xs px-2 py-0.5 rounded-full">
+                                            {{ historicalSectorInfo.sector }}
+                                        </span>
+                                        <span v-if="historicalAnalysisCached"
+                                              class="bg-gray-700 text-gray-500 text-xs px-2 py-0.5 rounded-full"
+                                              title="Result cached from earlier today — no extra API call was made">
+                                            <i class="fas fa-bolt mr-1"></i>cached
+                                        </span>
+                                    </div>
+                                    <p class="text-white font-semibold text-base">{{ historicalAnalysis.summary }}</p>
+                                    <p v-if="historicalAnalysis.regime_note" class="text-xs text-gray-400 mt-1 italic">{{ historicalAnalysis.regime_note }}</p>
+                                </div>
+                                <div class="text-right flex-shrink-0">
+                                    <span :class="getOutlookColor(historicalAnalysis.outlook)"
+                                          class="text-lg font-bold block">{{ historicalAnalysis.outlook }}</span>
+                                    <span class="text-xs text-gray-400">Confidence: {{ historicalAnalysis.confidence }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Sector Performance Row -->
+                            <div v-if="historicalSectorInfo && historicalSectorPerf && historicalSectorPerf.sector_etf && historicalSectorPerf.sector_etf.symbol"
+                                 class="bg-black/30 rounded-lg p-3 mb-3">
+                                <div class="flex items-center gap-1.5 mb-2">
+                                    <i class="fas fa-industry text-cyan-400 text-xs"></i>
+                                    <span class="text-xs font-semibold text-cyan-400 uppercase tracking-wide">
+                                        Sector Context — {{ historicalSectorInfo.sector }}
+                                    </span>
+                                    <span v-if="historicalSectorPerf.relative_strength"
+                                          class="ml-auto text-xs"
+                                          :class="historicalSectorPerf.relative_strength.includes('out') ? 'text-green-400' : historicalSectorPerf.relative_strength.includes('under') ? 'text-red-400' : 'text-gray-400'">
+                                        {{ historicalSectorPerf.relative_strength }} market
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                    <div class="bg-black/20 rounded p-2">
+                                        <p class="text-gray-500 mb-0.5">{{ historicalSectorPerf.sector_etf.symbol }} (1d)</p>
+                                        <p class="font-semibold" :class="getPerfColor(historicalSectorPerf.sector_etf.change_1d_pct)">
+                                            {{ historicalSectorPerf.sector_etf.change_1d_pct > 0 ? '+' : '' }}{{ historicalSectorPerf.sector_etf.change_1d_pct }}%
+                                        </p>
+                                    </div>
+                                    <div class="bg-black/20 rounded p-2">
+                                        <p class="text-gray-500 mb-0.5">{{ historicalSectorPerf.sector_etf.symbol }} (5d)</p>
+                                        <p class="font-semibold" :class="getPerfColor(historicalSectorPerf.sector_etf.change_5d_pct)">
+                                            {{ historicalSectorPerf.sector_etf.change_5d_pct > 0 ? '+' : '' }}{{ historicalSectorPerf.sector_etf.change_5d_pct }}%
+                                            <i :class="getSectorTrendIcon(historicalSectorPerf.sector_etf.trend_5d)" class="ml-1 text-gray-500"></i>
+                                        </p>
+                                    </div>
+                                    <div v-if="historicalSectorPerf.spy && historicalSectorPerf.spy.symbol !== historicalSectorPerf.sector_etf.symbol"
+                                         class="bg-black/20 rounded p-2">
+                                        <p class="text-gray-500 mb-0.5">SPY (1d)</p>
+                                        <p class="font-semibold" :class="getPerfColor(historicalSectorPerf.spy.change_1d_pct)">
+                                            {{ historicalSectorPerf.spy.change_1d_pct > 0 ? '+' : '' }}{{ historicalSectorPerf.spy.change_1d_pct }}%
+                                        </p>
+                                    </div>
+                                    <div v-if="historicalSectorPerf.sector_vs_market_5d != null"
+                                         class="bg-black/20 rounded p-2">
+                                        <p class="text-gray-500 mb-0.5">Sector vs SPY (5d)</p>
+                                        <p class="font-semibold" :class="getPerfColor(historicalSectorPerf.sector_vs_market_5d)">
+                                            {{ historicalSectorPerf.sector_vs_market_5d > 0 ? '+' : '' }}{{ historicalSectorPerf.sector_vs_market_5d }}%
+                                        </p>
+                                    </div>
+                                </div>
+                                <p v-if="historicalAnalysis.sector_impact" class="text-xs text-gray-400 mt-2 italic">
+                                    <i class="fas fa-circle-info mr-1 text-cyan-600"></i>{{ historicalAnalysis.sector_impact }}
+                                </p>
+                            </div>
+
+                            <!-- Entry / Exit / Caution columns -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                                <!-- Entry -->
+                                <div class="bg-black/20 rounded-lg p-3">
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <i class="fas fa-sign-in-alt text-green-400 text-xs"></i>
+                                        <span class="text-xs font-semibold text-green-400 uppercase tracking-wide">Entry</span>
+                                    </div>
+                                    <p class="text-white text-sm font-medium mb-1">{{ historicalAnalysis.entry?.signal }}</p>
+                                    <p v-if="historicalAnalysis.entry?.price_context" class="text-gray-400 text-xs mb-2">{{ historicalAnalysis.entry.price_context }}</p>
+                                    <ul class="space-y-1">
+                                        <li v-for="c in (historicalAnalysis.entry?.conditions || [])" :key="c"
+                                            class="text-xs text-gray-300 flex items-start gap-1">
+                                            <span class="text-green-500 mt-0.5">•</span><span>{{ c }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <!-- Exit -->
+                                <div class="bg-black/20 rounded-lg p-3">
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <i class="fas fa-sign-out-alt text-blue-400 text-xs"></i>
+                                        <span class="text-xs font-semibold text-blue-400 uppercase tracking-wide">Exit Target</span>
+                                    </div>
+                                    <p class="text-white text-sm font-medium mb-1">{{ historicalAnalysis.exit?.target }}</p>
+                                    <p v-if="historicalAnalysis.exit?.timing" class="text-gray-400 text-xs mb-2">{{ historicalAnalysis.exit.timing }}</p>
+                                    <ul class="space-y-1">
+                                        <li v-for="c in (historicalAnalysis.exit?.conditions || [])" :key="c"
+                                            class="text-xs text-gray-300 flex items-start gap-1">
+                                            <span class="text-blue-500 mt-0.5">•</span><span>{{ c }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <!-- Caution -->
+                                <div class="bg-black/20 rounded-lg p-3">
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <i class="fas fa-exclamation-triangle text-yellow-400 text-xs"></i>
+                                        <span class="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Caution</span>
+                                        <span :class="getCautionColor(historicalAnalysis.caution?.level)"
+                                              class="text-xs font-bold ml-auto">{{ historicalAnalysis.caution?.level }}</span>
+                                    </div>
+                                    <ul class="space-y-1">
+                                        <li v-for="f in (historicalAnalysis.caution?.factors || [])" :key="f"
+                                            class="text-xs text-gray-300 flex items-start gap-1">
+                                            <span class="text-yellow-500 mt-0.5">•</span><span>{{ f }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Pattern insights -->
+                            <div v-if="historicalAnalysis.insights?.length" class="bg-black/20 rounded-lg p-3">
+                                <div class="flex items-center gap-1.5 mb-2">
+                                    <i class="fas fa-lightbulb text-yellow-300 text-xs"></i>
+                                    <span class="text-xs font-semibold text-yellow-300 uppercase tracking-wide">Pattern Insights</span>
+                                </div>
+                                <ul class="grid grid-cols-1 md:grid-cols-3 gap-1">
+                                    <li v-for="ins in historicalAnalysis.insights" :key="ins"
+                                        class="text-xs text-gray-300 flex items-start gap-1">
+                                        <span class="text-purple-400 mt-0.5">→</span><span>{{ ins }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <p class="text-xs text-gray-600 mt-3">⚠ AI predictions are based on historical patterns only and are not financial advice. Always use your own judgment.</p>
+                        </div>
+
                         <!-- Historical Data Table -->
                         <div class="bg-gray-700 rounded-lg" style="overflow: visible;">
                             <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-400 border-b border-gray-600">
