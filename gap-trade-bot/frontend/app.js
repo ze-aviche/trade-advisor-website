@@ -159,7 +159,13 @@ const app = createApp({
                 botConfig: {
                     profit_target_pct: 5.0,
                     stop_loss_pct: 2.5,
-                    monitor_interval: 5
+                    monitor_interval: 5,
+                    trailing_stop_enabled: false,
+                    trailing_stop_pct: 1.5,
+                    eod_exit_enabled: true,
+                    eod_exit_time: '15:45',
+                    breakeven_stop_enabled: true,
+                    breakeven_trigger_pct: 50.0,
                 },
                 isEditingBotConfig: false, // Track if user is actively editing bot config
                 
@@ -1960,10 +1966,17 @@ const app = createApp({
                     const response = await axios.get('/api/bot/config');
                     
                     if (response.data.success) {
+                        const d = response.data.data;
                         this.botConfig = {
-                            profit_target_pct: response.data.data.profit_target_pct || 5.0,
-                            stop_loss_pct: response.data.data.stop_loss_pct || 2.5,
-                            monitor_interval: response.data.data.monitor_interval || 5
+                            profit_target_pct: d.profit_target_pct ?? 5.0,
+                            stop_loss_pct: d.stop_loss_pct ?? 2.5,
+                            monitor_interval: d.monitor_interval ?? 5,
+                            trailing_stop_enabled: d.trailing_stop_enabled ?? false,
+                            trailing_stop_pct: d.trailing_stop_pct ?? 1.5,
+                            eod_exit_enabled: d.eod_exit_enabled ?? true,
+                            eod_exit_time: d.eod_exit_time ?? '15:45',
+                            breakeven_stop_enabled: d.breakeven_stop_enabled ?? true,
+                            breakeven_trigger_pct: d.breakeven_trigger_pct ?? 50.0,
                         };
                         console.log('✅ Bot config loaded:', this.botConfig);
                     } else {

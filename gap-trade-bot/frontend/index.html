@@ -2809,6 +2809,68 @@
                             <p class="text-xs text-gray-400 mt-2">Position monitoring cycle interval</p>
                         </div>
                     </div>
+                    <!-- Enhanced Exit Features -->
+                    <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                        <!-- Trailing Stop -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-md font-medium text-white">Trailing Stop</h4>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="botConfig.trailing_stop_enabled" class="sr-only peer">
+                                    <div class="w-10 h-5 bg-gray-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:bg-green-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2" :class="botConfig.trailing_stop_enabled ? "" : 'opacity-40 pointer-events-none'">
+                                <input v-model.number="botConfig.trailing_stop_pct"
+                                       type="number" min="0.1" max="20" step="0.1"
+                                       @focus="onBotConfigFocus" @blur="onBotConfigBlur"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">% trail</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Stop ratchets up (LONG) or down (SHORT) as price moves in your favour</p>
+                        </div>
+
+                        <!-- EOD Force-Exit -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-md font-medium text-white">EOD Force-Exit</h4>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="botConfig.eod_exit_enabled" class="sr-only peer">
+                                    <div class="w-10 h-5 bg-gray-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:bg-green-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2" :class="botConfig.eod_exit_enabled ? "" : 'opacity-40 pointer-events-none'">
+                                <input v-model="botConfig.eod_exit_time"
+                                       type="time"
+                                       @focus="onBotConfigFocus" @blur="onBotConfigBlur"
+                                       class="bg-gray-600 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">ET</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Close all open positions at market when this time is reached (Eastern Time)</p>
+                        </div>
+
+                        <!-- Breakeven Stop -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-md font-medium text-white">Breakeven Stop</h4>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="botConfig.breakeven_stop_enabled" class="sr-only peer">
+                                    <div class="w-10 h-5 bg-gray-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:bg-green-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2" :class="botConfig.breakeven_stop_enabled ? "" : 'opacity-40 pointer-events-none'">
+                                <input v-model.number="botConfig.breakeven_trigger_pct"
+                                       type="number" min="10" max="90" step="5"
+                                       @focus="onBotConfigFocus" @blur="onBotConfigBlur"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">% to target</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Move stop to entry price once position reaches this % of the way to profit target</p>
+                        </div>
+
+                    </div>
+
                 </div>
 
 
