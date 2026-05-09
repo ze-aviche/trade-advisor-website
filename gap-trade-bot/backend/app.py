@@ -723,7 +723,7 @@ def _send_registration_welcome(to_email: str, first_name: str):
           Accentor <span style="color:#93c5fd;">AI</span>
         </div>
         <div style="color:#bfdbfe;font-size:13px;margin-top:6px;letter-spacing:0.04em;">
-          INTELLIGENT GAP-UP TRADING PLATFORM
+          INTELLIGENT TRADING PLATFORM
         </div>
       </td></tr>
 
@@ -785,56 +785,50 @@ def _send_registration_welcome(to_email: str, first_name: str):
         </div>
       </td></tr>
 
-      <!-- Why Accentor vs competitors -->
+      <!-- Why Accentor AI -->
       <tr><td style="padding:28px 44px 0;">
         <div style="font-size:13px;font-weight:700;color:#a78bfa;text-transform:uppercase;
                     letter-spacing:0.08em;margin-bottom:16px;">Why traders choose Accentor AI</div>
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td width="50%" style="padding:0 8px 14px 0;vertical-align:top;">
-              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
-                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
-                  vs. ThinkorSwim / TradeStation
-                </div>
-                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
-                  Professional-grade scanning without the steep learning curve. Gap-up alerts and AI analysis are ready on day one — no custom scripting required.
-                </div>
-              </div>
-            </td>
-            <td width="50%" style="padding:0 0 14px 8px;vertical-align:top;">
-              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
-                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
-                  vs. Finviz / StockFetcher
-                </div>
-                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
-                  Not just a screener. Accentor AI pairs live scans with automated execution through DAS Trader — so you act on signals in seconds, not minutes.
-                </div>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td width="50%" style="padding:0 8px 0 0;vertical-align:top;">
-              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
-                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
-                  vs. Trade Ideas / Benzinga Pro
-                </div>
-                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
-                  AI-ranked swing picks and contextual news summaries built in — at a fraction of the cost. No separate subscriptions for alerts, news, and analytics.
-                </div>
-              </div>
-            </td>
-            <td width="50%" style="padding:0 0 0 8px;vertical-align:top;">
-              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
-                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
-                  vs. Manual Trading Setups
-                </div>
-                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
-                  Automated trailing stops, breakeven triggers, and EOD exits mean your risk is managed even when you step away from the screen.
-                </div>
-              </div>
-            </td>
-          </tr>
-        </table>
+        <div style="background:#1c2230;border:1px solid #30363d;border-radius:10px;padding:24px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="padding:7px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#a78bfa;font-weight:700;font-size:13px;">→</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">All-in-one platform</strong> — scanning, AI analysis, automated execution, and analytics in a single dashboard. No juggling multiple subscriptions.
+              </span>
+            </td></tr>
+            <tr><td style="padding:7px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#a78bfa;font-weight:700;font-size:13px;">→</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Zero setup complexity</strong> — gap-up alerts, AI-ranked swing picks, and live technicals are ready the moment you log in. No scripting or manual configuration required.
+              </span>
+            </td></tr>
+            <tr><td style="padding:7px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#a78bfa;font-weight:700;font-size:13px;">→</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Scan to execution in seconds</strong> — live scans are paired with direct order routing through DAS Trader so you act on signals before the crowd.
+              </span>
+            </td></tr>
+            <tr><td style="padding:7px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#a78bfa;font-weight:700;font-size:13px;">→</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Intelligent risk management</strong> — automated trailing stops, breakeven triggers, and EOD force-exits protect your capital even when you step away from the screen.
+              </span>
+            </td></tr>
+            <tr><td style="padding:7px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#a78bfa;font-weight:700;font-size:13px;">→</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">AI-powered insight, not just data</strong> — contextual news summaries, sector momentum, and ranked swing candidates are generated fresh every session, not recycled from static screeners.
+              </span>
+            </td></tr>
+            <tr><td style="padding:7px 0;">
+              <span style="color:#a78bfa;font-weight:700;font-size:13px;">→</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Built for active day traders</strong> — every feature is optimised for gap-up and intraday setups, not generic long-term investing tools.
+              </span>
+            </td></tr>
+          </table>
+        </div>
       </td></tr>
 
       <!-- CTA -->
@@ -853,7 +847,6 @@ def _send_registration_welcome(to_email: str, first_name: str):
       <!-- Footer -->
       <tr><td style="background:#0d1117;padding:20px 44px;border-top:1px solid #21262d;">
         <p style="color:#4b5563;font-size:11px;line-height:1.6;margin:0;text-align:center;">
-          You're receiving this because you created an account at accentorai.com.
           If you have questions, reply to this email — we read every one.
         </p>
       </td></tr>
