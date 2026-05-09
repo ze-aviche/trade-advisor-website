@@ -241,6 +241,7 @@ const app = createApp({
                 historicalAnalysis: null,
                 historicalSectorInfo: null,
                 historicalSectorPerf: null,
+                historicalAnalysisCached: false,
                 _historicalCharts: {},
                 
                 // Trade History
@@ -4384,6 +4385,7 @@ const app = createApp({
                     this.historicalAnalysis = null;
                     this.historicalSectorInfo = null;
                     this.historicalSectorPerf = null;
+                    this.historicalAnalysisCached = false;
                     console.log(`✅ Loaded ${this.historicalData.length} days of historical data for ${this.historicalTicker}`);
                     this.showNotification(`Loaded ${this.historicalData.length} days of historical data`, 'success');
                     this.debugHistoricalData();
@@ -4664,10 +4666,13 @@ const app = createApp({
                     this.historicalAnalysis = data.analysis;
                     this.historicalSectorInfo = data.sector_info || null;
                     this.historicalSectorPerf = data.sector_perf || null;
+                    this.historicalAnalysisCached = data.cached || false;
                     this.$nextTick(() => {
                         const el = document.getElementById('ai-analysis-card');
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     });
+                } else if (data.rate_limited) {
+                    this.showNotification('AI Predict: ' + data.error, 'warning');
                 } else {
                     this.showNotification('AI analysis failed: ' + (data.error || 'Unknown error'), 'error');
                 }

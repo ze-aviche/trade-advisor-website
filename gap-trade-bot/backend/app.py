@@ -1481,6 +1481,48 @@ def get_historical_data(ticker):
             'error': f'Unexpected error: {str(e)}'
         }), 500
 
+# ── In-memory cache + rate limiter (no Redis needed) ─────────────────────────
+import threading as _threading
+
+_analysis_cache:    dict = {}   # cache_key  -> (stored_at: float, payload: dict)
+_sector_etf_cache:  dict = {}   # etf_symbol -> (stored_at: float, perf: dict)
+_rate_limit_store:  dict = {}   # client_ip  -> [call_timestamps: float]
+_cache_lock = _threading.Lock()
+
+_ANALYSIS_TTL    = 4 * 3600    # re-use analysis result for 4 h
+_SECTOR_ETF_TTL  = 4 * 3600    # sector ETF bars stale after 4 h
+_RATE_MAX        = 5            # max AI Predict clicks
+_RATE_WINDOW     = 3600         # …per hour per IP
+
+
+def _cache_get(store: dict, key: str, ttl: float):
+    with _cache_lock:
+        entry = store.get(key)
+        if entry and (time.time() - entry[0]) < ttl:
+            return entry[1]
+        store.pop(key, None)
+        return None
+
+
+def _cache_set(store: dict, key: str, value):
+    with _cache_lock:
+        store[key] = (time.time(), value)
+
+
+def _check_rate_limit(ip: str):
+    """Return (allowed: bool, retry_after_seconds: int)."""
+    now = time.time()
+    with _cache_lock:
+        recent = [t for t in _rate_limit_store.get(ip, []) if now - t < _RATE_WINDOW]
+        if len(recent) >= _RATE_MAX:
+            retry = int(_RATE_WINDOW - (now - recent[0]))
+            _rate_limit_store[ip] = recent
+            return False, retry
+        recent.append(now)
+        _rate_limit_store[ip] = recent
+        return True, 0
+
+
 # ── Sector analysis helpers ────────────────────────────────────────────────────
 
 def _sic_to_sector_etf(sic_code, sic_desc=''):
@@ -1583,8 +1625,13 @@ def _get_sector_context(ticker, polygon_api_key):
     except Exception as e:
         app_logger.warning(f"Sector ref lookup failed for {ticker}: {e}")
 
-    # Step 2: last ~10 trading days of sector ETF + SPY
+    # Step 2: sector ETF + SPY performance — check cache first (4 h TTL)
     etf_sym = sector_info['etf']
+    cached_perf = _cache_get(_sector_etf_cache, etf_sym, _SECTOR_ETF_TTL)
+    if cached_perf is not None:
+        app_logger.info(f"Sector ETF cache HIT for {etf_sym}")
+        return sector_info, cached_perf
+
     end_dt = datetime.now().strftime('%Y-%m-%d')
     start_dt = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
     agg_params = {"adjusted": "true", "sort": "asc", "limit": 15, "apiKey": polygon_api_key}
@@ -1606,8 +1653,7 @@ def _get_sector_context(ticker, polygon_api_key):
         chg_1d = round((closes[-1] - closes[-2]) / closes[-2] * 100, 2)
         n = min(6, len(closes))
         chg_5d = round((closes[-1] - closes[-n]) / closes[-n] * 100, 2)
-        # Winning days in window
-        up_days = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
+        up_days = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i - 1])
         trend = ('uptrending' if chg_5d > 0.5 else ('downtrending' if chg_5d < -0.5 else 'flat'))
         return {'symbol': sym, 'last_close': round(closes[-1], 2),
                 'change_1d_pct': chg_1d, 'change_5d_pct': chg_5d,
@@ -1630,6 +1676,8 @@ def _get_sector_context(ticker, polygon_api_key):
         perf['sector_vs_market_5d'] = 0
         perf['relative_strength'] = 'in-line with'
 
+    _cache_set(_sector_etf_cache, etf_sym, perf)
+    app_logger.info(f"Sector ETF cache SET for {etf_sym}")
     return sector_info, perf
 
 
@@ -1642,8 +1690,31 @@ def get_historical_analysis(ticker):
         if not AI_AGENT_AVAILABLE or not _ai_agent:
             return jsonify({'success': False, 'error': 'AI analysis not available'}), 503
 
+        # ── Rate limit: 5 calls per IP per hour ───────────────────────────────
+        client_ip = (request.headers.get('X-Forwarded-For', request.remote_addr) or 'unknown').split(',')[0].strip()
+        allowed, retry_after = _check_rate_limit(client_ip)
+        if not allowed:
+            mins, secs = divmod(retry_after, 60)
+            wait_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+            app_logger.warning(f"Rate limit hit for {client_ip} on /api/historical-analysis/{ticker}")
+            return jsonify({
+                'success': False,
+                'error': f'Too many AI Predict requests. Please wait {wait_str} before trying again.',
+                'rate_limited': True,
+                'retry_after': retry_after
+            }), 429
+
         body = request.get_json(force=True) or {}
         stats = body.get('stats', {})
+
+        # ── Analysis cache: keyed by ticker + params + calendar date ─────────
+        today = datetime.now().strftime('%Y-%m-%d')
+        cache_key = f"{ticker.upper()}|{stats.get('period', '')}|{stats.get('minGap', '')}|{today}"
+        cached_result = _cache_get(_analysis_cache, cache_key, _ANALYSIS_TTL)
+        if cached_result is not None:
+            app_logger.info(f"Analysis cache HIT for {cache_key}")
+            cached_result['cached'] = True
+            return jsonify(cached_result)
 
         # Fetch sector context from Polygon (best-effort, won't block if it fails)
         polygon_key = os.getenv('POLYGON_API_KEY')
@@ -1715,14 +1786,18 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
                         'regime_note': '', 'sector_impact': '', 'entry': {}, 'exit': {},
                         'caution': {}, 'insights': []}
 
-        return jsonify({
+        result = {
             'success': True,
             'analysis': analysis,
             'ticker': ticker.upper(),
             'sector_info': sector_info,
             'sector_perf': sector_perf,
-            'stats': stats
-        })
+            'stats': stats,
+            'cached': False
+        }
+        _cache_set(_analysis_cache, cache_key, result)
+        app_logger.info(f"Analysis cache SET for {cache_key}")
+        return jsonify(result)
 
     except json.JSONDecodeError as e:
         app_logger.error(f"JSON parse error in historical analysis for {ticker}: {e}")
