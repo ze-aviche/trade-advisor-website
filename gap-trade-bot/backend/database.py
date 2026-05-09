@@ -1913,6 +1913,39 @@ class DatabaseManager:
             print(f"Database error fetching snapshot dates: {e}")
             return []
 
+    def get_gap_up_ticker_history(self, ticker: str, days: int = None) -> list:
+        """Return all gap-up snapshot rows for a given ticker, newest first.
+        Optionally filter to only the last *days* calendar days."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if days:
+                    from datetime import datetime, timedelta
+                    cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+                    cursor.execute(
+                        '''SELECT date, session, company_name, price, previous_close,
+                                  change_amount AS change, gap_percent, volume, market_cap,
+                                  float_shares, sector, data_source
+                           FROM gap_up_snapshots
+                           WHERE ticker = ? AND date >= ?
+                           ORDER BY date DESC''',
+                        (ticker.upper(), cutoff)
+                    )
+                else:
+                    cursor.execute(
+                        '''SELECT date, session, company_name, price, previous_close,
+                                  change_amount AS change, gap_percent, volume, market_cap,
+                                  float_shares, sector, data_source
+                           FROM gap_up_snapshots
+                           WHERE ticker = ?
+                           ORDER BY date DESC''',
+                        (ticker.upper(),)
+                    )
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching ticker history for {ticker}: {e}")
+            return []
+
 
 # Global database manager instance
 db_manager = DatabaseManager()

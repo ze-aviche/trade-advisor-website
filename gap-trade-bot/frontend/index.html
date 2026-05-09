@@ -218,7 +218,7 @@
         </div>
 
         <!-- Main Content -->
-        <main class="w-full py-6 px-4 sm:px-6 lg:px-8">
+        <main class="w-full py-6 px-4 sm:px-12 lg:px-24">
 
             <!-- ── Inline Upgrade Card (shown when a locked tab is active) ── -->
             <div v-if="lockedTabInfo" class="flex items-start justify-center min-h-[70vh] px-4 py-8">
@@ -769,7 +769,7 @@
                                    placeholder="Enter ticker symbol (e.g., AAPL)"
                                    class="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             
-                            <select v-model="selectedPeriod" 
+                            <select v-model="selectedPeriod"
                                     @change="loadHistoricalData"
                                     class="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600">
                                 <option value="180">6 Months</option>
@@ -778,6 +778,17 @@
                                 <option value="1095">3 Years</option>
                                 <option value="1825">5 Years</option>
                                 <option value="0">All Time</option>
+                            </select>
+
+                            <select v-model.number="minGapPercent"
+                                    @change="historicalData.length > 0 && loadHistoricalData()"
+                                    class="bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600">
+                                <option :value="5">≥ 5% Gap</option>
+                                <option :value="10">≥ 10% Gap</option>
+                                <option :value="15">≥ 15% Gap</option>
+                                <option :value="20">≥ 20% Gap</option>
+                                <option :value="25">≥ 25% Gap</option>
+                                <option :value="30">≥ 30% Gap</option>
                             </select>
                             
                             <button @click="loadHistoricalData"
@@ -812,7 +823,7 @@
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
-                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of 25%+ gap-up data ({{ getPeriodDescription() }} analysis)</p>
+                                    <p class="text-sm text-gray-400">{{ historicalData.length }} days of {{ minGapPercent }}%+ gap-up data ({{ getPeriodDescription() }} analysis)</p>
                                 </div>
                             </div>
                         </div>
@@ -1036,8 +1047,8 @@
                     
                     <div v-else-if="historicalTicker && !loading.historical" class="text-center py-8">
                         <i class="fas fa-chart-line text-2xl text-gray-400"></i>
-                        <p class="mt-2 text-gray-400">No 25%+ gap-up data available for {{ historicalTicker.toUpperCase() }}</p>
-                        <p class="text-sm text-gray-500">This stock may not have had significant gap-ups in the last 3 years</p>
+                        <p class="mt-2 text-gray-400">No {{ minGapPercent }}%+ gap-up data available for {{ historicalTicker.toUpperCase() }}</p>
+                        <p class="text-sm text-gray-500">Try a lower gap threshold or a longer time period</p>
                     </div>
                     
                     <div v-else class="text-center py-8">

@@ -108,14 +108,15 @@ class HistoricalDataCache:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Get all dates in the range
+
+                # Get all trading days in the range (weekdays only — markets closed on weekends)
                 start_dt = datetime.strptime(start_date, '%Y-%m-%d')
                 end_dt = datetime.strptime(end_date, '%Y-%m-%d')
                 all_dates = []
                 current_dt = start_dt
                 while current_dt <= end_dt:
-                    all_dates.append(current_dt.strftime('%Y-%m-%d'))
+                    if current_dt.weekday() < 5:  # 0=Mon … 4=Fri; skip Sat/Sun
+                        all_dates.append(current_dt.strftime('%Y-%m-%d'))
                     current_dt += timedelta(days=1)
                 
                 # Get cached dates
@@ -156,21 +157,38 @@ class HistoricalDataCache:
                     ''', (ticker, date, json.dumps(data_point)))
                     stored_count += 1
                 
-                # Update cache metadata with actual query range
-                if data_list:
-                    # Use actual query range if provided, otherwise use data range
-                    if query_start_date and query_end_date:
-                        start_date = query_start_date
-                        end_date = query_end_date
+                # Always update cache metadata when a query range is provided,
+                # even if no gap-up days were found in that range.  Without this,
+                # a range with zero gap-ups is re-fetched from Polygon on every
+                # subsequent request because the metadata never expands.
+                if query_start_date and query_end_date:
+                    # Expand the existing metadata range to include the new query range
+                    cursor.execute(
+                        'SELECT data_start_date, data_end_date FROM cache_metadata WHERE ticker = ?',
+                        (ticker,)
+                    )
+                    existing = cursor.fetchone()
+                    if existing and existing['data_start_date'] and existing['data_end_date']:
+                        new_start = min(existing['data_start_date'], query_start_date)
+                        new_end   = max(existing['data_end_date'],   query_end_date)
                     else:
-                        # Fallback to data range (for backward compatibility)
-                        start_date = min(data['date'] for data in data_list if data.get('date'))
-                        end_date = max(data['date'] for data in data_list if data.get('date'))
-                    
+                        new_start = query_start_date
+                        new_end   = query_end_date
+
                     cursor.execute('''
-                        INSERT OR REPLACE INTO cache_metadata 
+                        INSERT OR REPLACE INTO cache_metadata
                         (ticker, last_updated, data_start_date, data_end_date, total_records)
-                        VALUES (?, CURRENT_TIMESTAMP, ?, ?, 
+                        VALUES (?, CURRENT_TIMESTAMP, ?, ?,
+                                (SELECT COUNT(*) FROM historical_data_cache WHERE ticker = ?))
+                    ''', (ticker, new_start, new_end, ticker))
+                elif data_list:
+                    # Fallback: derive range from the data itself
+                    start_date = min(d['date'] for d in data_list if d.get('date'))
+                    end_date   = max(d['date'] for d in data_list if d.get('date'))
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO cache_metadata
+                        (ticker, last_updated, data_start_date, data_end_date, total_records)
+                        VALUES (?, CURRENT_TIMESTAMP, ?, ?,
                                 (SELECT COUNT(*) FROM historical_data_cache WHERE ticker = ?))
                     ''', (ticker, start_date, end_date, ticker))
                 

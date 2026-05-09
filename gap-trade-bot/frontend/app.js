@@ -219,6 +219,7 @@ const app = createApp({
                 historicalTicker: '',
                 historicalData: [],
                 selectedPeriod: '365', // Default to 1 year
+                minGapPercent: 25,     // Gap-up filter threshold
                 sortColumn: '',
                 sortDirection: 'asc',
                 
@@ -4351,30 +4352,27 @@ const app = createApp({
                 this.showNotification('Please enter a ticker symbol', 'warning');
                 return;
             }
-            
+
             try {
                 console.log(`📈 Loading historical data for ${this.historicalTicker}...`);
                 this.loading.historical = true;
-                
-                // Use the correct endpoint format: /api/historical-data/<ticker>
-                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}`);
+
+                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     this.historicalData = data.data || [];
                     console.log(`✅ Loaded ${this.historicalData.length} days of historical data for ${this.historicalTicker}`);
                     this.showNotification(`Loaded ${this.historicalData.length} days of historical data`, 'success');
-                    
-                    // Debug the data structure
                     this.debugHistoricalData();
-                    } else {
+                } else {
                     console.error('Failed to load historical data:', data.error);
                     this.showNotification('Failed to load historical data: ' + data.error, 'error');
-                    }
-                } catch (error) {
+                }
+            } catch (error) {
                 console.error('Error loading historical data:', error);
                 this.showNotification('Error loading historical data: ' + error.message, 'error');
-                } finally {
+            } finally {
                 this.loading.historical = false;
             }
         },
@@ -4396,36 +4394,36 @@ const app = createApp({
         getGapUpDaysCount() {
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
-                return gapPercent >= 25;
+                return gapPercent >= this.minGapPercent;
             }).length;
             console.log(`📊 Gap-up days count: ${count} (from ${this.historicalData.length} total days)`);
             return count;
         },
-        
+
         getRunnerDaysCount() {
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
                 const closePercent = parseFloat(day['closing percent']) || 0;
-                return gapPercent >= 25 && closePercent >= 25;
+                return gapPercent >= this.minGapPercent && closePercent >= this.minGapPercent;
             }).length;
             console.log(`🏃 Runner days count: ${count}`);
             return count;
         },
-        
+
         getFaderDaysCount() {
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
                 const closePercent = parseFloat(day['closing percent']) || 0;
-                return gapPercent >= 25 && closePercent < 25;
+                return gapPercent >= this.minGapPercent && closePercent < this.minGapPercent;
             }).length;
             console.log(`📉 Fader days count: ${count}`);
             return count;
         },
-        
+
         getAverageGapPercent() {
             const gapUpDays = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
-                return gapPercent >= 25;
+                return gapPercent >= this.minGapPercent;
             });
             if (gapUpDays.length === 0) return 0;
             const totalGap = gapUpDays.reduce((sum, day) => {

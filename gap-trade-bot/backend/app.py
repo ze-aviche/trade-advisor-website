@@ -1322,6 +1322,23 @@ def get_gap_up_snapshot(date):
         app_logger.error(f"Error fetching gap-up snapshot for {date}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/gap-ups/history/<ticker>')
+def get_gap_up_ticker_history(ticker):
+    """Return all gap-up snapshot records for a ticker from the local database."""
+    try:
+        from database import db_manager
+        days = request.args.get('days', None, type=int)
+        records = db_manager.get_gap_up_ticker_history(ticker.upper(), days=days)
+        return jsonify({
+            'success': True,
+            'ticker': ticker.upper(),
+            'data': records,
+            'count': len(records)
+        })
+    except Exception as e:
+        app_logger.error(f"Error fetching gap-up history for {ticker}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/historical-data/<ticker>')
 def get_historical_data(ticker):
     """Get historical data for a specific ticker"""
@@ -1339,8 +1356,9 @@ def get_historical_data(ticker):
         period = request.args.get('period', '365', type=int)
         days = request.args.get('days', period, type=int)  # Use period as fallback for days
         use_cache = request.args.get('cache', 'true').lower() == 'true'
-        
-        app_logger.info(f"📊 Fetching historical data for {ticker} - {days} days, cache: {use_cache}")
+        min_gap = request.args.get('min_gap', 25, type=float)
+
+        app_logger.info(f"📊 Fetching historical data for {ticker} - {days} days, min_gap={min_gap}%, cache: {use_cache}")
         
         # Add timeout protection for historical data fetching using threading
         import threading
@@ -1352,7 +1370,7 @@ def get_historical_data(ticker):
         def fetch_data():
             try:
                 app_logger.info(f"🔄 Starting data fetch for {ticker}")
-                data = get_historical_gap_up_data(ticker, days=days, use_cache=use_cache)
+                data = get_historical_gap_up_data(ticker, days=days, use_cache=use_cache, min_gap_percent=min_gap)
                 app_logger.info(f"✅ Data fetch completed for {ticker}, got {len(data) if data else 0} records")
                 result_queue.put(data)
             except Exception as e:
@@ -3622,6 +3640,19 @@ def update_real_time_gap_ups():
                         saved = _db.save_gap_up_snapshot(_today, latest_gap_ups)
                         _snapshot_saved_dates.add(_today)
                         app_logger.info(f"📸 Gap-up snapshot saved for {_today}: {saved} stocks")
+
+                        # Also populate historical_data_cache so the cache self-builds over time
+                        from historical_data import cache_gap_up_day_for_tickers as _cache_gappers
+                        _cache_thread = threading.Thread(
+                            target=_cache_gappers,
+                            args=(_today, latest_gap_ups),
+                            daemon=True
+                        )
+                        _cache_thread.start()
+                        app_logger.info(
+                            f"📡 Background: caching {len(latest_gap_ups)} gappers "
+                            f"in historical_data_cache for {_today}"
+                        )
                     except Exception as snap_err:
                         app_logger.error(f"Error saving gap-up snapshot: {snap_err}")
 

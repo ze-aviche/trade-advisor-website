@@ -389,10 +389,10 @@ def get_batch_daily_data(ticker, start_date, end_date):
         logger.error(f"❌ Error fetching batch daily data for {ticker}: {e}")
         return []
 
-def process_batch_data_to_gap_ups(ticker, daily_data):
+def process_batch_data_to_gap_ups(ticker, daily_data, min_gap_percent=5):
     """
     Process batch daily data to extract gap-up information.
-    Returns only days with 25%+ gap-ups.
+    Returns days where the gap-up percentage meets min_gap_percent.
     """
     try:
         major_gap_up_data = []
@@ -428,9 +428,9 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                 gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
                 logger.debug(f"📈 Gap calculation for {date_str}: Open={agg.open}, PrevClose={previous_day_close}, Gap={gap_percent}%")
             
-            # Only process if it's a major gap-up (25%+)
-            if gap_percent and gap_percent >= 25:
-                logger.info(f"🚀 Found major gap-up for {ticker} on {date_str}: {gap_percent}%")
+            # Only process if the gap meets the minimum threshold
+            if gap_percent and gap_percent >= min_gap_percent:
+                logger.info(f"🚀 Found gap-up for {ticker} on {date_str}: {gap_percent}% (min: {min_gap_percent}%)")
                 
                 # Calculate percentages
                 percent_gap_high = None
@@ -496,20 +496,24 @@ def process_batch_data_to_gap_ups(ticker, daily_data):
                 
                 major_gap_up_data.append(data_point)
         
-        logger.info(f"📈 Found {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+        logger.info(f"📈 Found {len(major_gap_up_data)} gap-up days (>={min_gap_percent}%) for {ticker}")
         return major_gap_up_data
-        
+
     except Exception as e:
         logger.error(f"❌ Error processing batch data for {ticker}: {e}")
         return []
 
-def get_historical_gap_up_data(ticker, days=30, use_cache=True):
+def get_historical_gap_up_data(ticker, days=30, use_cache=True, min_gap_percent=25):
     """
     Get comprehensive historical gap-up data for a stock using intelligent caching.
-    Returns detailed gap-up analysis for the specified number of days.
-    Only caches days when stocks actually gap up by 25% or more (gap_percent >= 25).
+    Cache stores days with gap >= 5% (low threshold for broad reuse).
+    Results are filtered to min_gap_percent before returning.
     """
     start_time = time.time()
+    # Helper applied to every return path so callers always get the filtered view
+    def _filter(data):
+        return [d for d in (data or []) if (d.get('gap up % at open') or 0) >= min_gap_percent]
+
     try:
         # Calculate date range based on requested days (not always 3 years)
         end_date = dt.now().date()
@@ -554,7 +558,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                 if is_fresh and requested_cached_data:
                     requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
                     logger.info(f"✅ Returning {len(requested_cached_data)} fresh cached gap-up days for {ticker}")
-                    return requested_cached_data
+                    return _filter(requested_cached_data)
                 
                 # Check if requested range extends beyond cached range
                 cache_range = cache_status.get('data_range', {})
@@ -609,16 +613,16 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                             all_data = requested_cached_data + delta_data
                             all_data.sort(key=lambda x: x['date'], reverse=True)
                             logger.info(f"✅ Returning {len(all_data)} gap-up days (cached: {len(requested_cached_data)}, delta: {len(delta_data)})")
-                            return all_data
+                            return _filter(all_data)
                         else:
                             logger.info(f"✅ No missing dates to fetch for requested range")
-                            return requested_cached_data
+                            return _filter(requested_cached_data)
                     else:
                         # Requested range is within cached range
                         if requested_cached_data:
                             requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
                             logger.info(f"✅ Returning {len(requested_cached_data)} gap-up days from cache for requested range")
-                            return requested_cached_data
+                            return _filter(requested_cached_data)
                         else:
                             logger.info(f"✅ No gap-up days found in requested range (within cache)")
                             return []
@@ -627,7 +631,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                     if requested_cached_data:
                         requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
                         logger.info(f"✅ Returning {len(requested_cached_data)} gap-up days from cache for requested range")
-                        return requested_cached_data
+                        return _filter(requested_cached_data)
                     else:
                         logger.info(f"🔄 No gap-up days found in requested range, checking for delta")
                     
@@ -683,7 +687,7 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                                 # Return delta data (these are the only gap-up days in the requested range)
                                 delta_data.sort(key=lambda x: x['date'], reverse=True)
                                 logger.info(f"✅ Returning {len(delta_data)} gap-up days from delta for requested range")
-                                return delta_data
+                                return _filter(delta_data)
                             else:
                                 logger.info(f"✅ No missing dates to fetch for requested range")
                                 return []
@@ -696,18 +700,18 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                         logger.info(f"🔄 No cache range info, fetching delta for entire requested range")
                         missing_dates = historical_cache.get_cache_gaps(ticker, requested_start, requested_end)
                         logger.info(f"DEBUG: Found {len(missing_dates)} missing dates for requested range")
-                        
+
                         if missing_dates:
                             logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
                             polygon_client = get_polygon_client()
-                            
+
                             delta_data = []
                             for missing_date in missing_dates:
                                 data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
                                 gap_percent = data_point.get('gap up % at open') if data_point else None
-                                if data_point and gap_percent is not None and gap_percent >= 25:  # Only cache major gap-up days (25%+)
+                                if data_point and gap_percent is not None and gap_percent >= 5:
                                     delta_data.append(data_point)
-                            
+
                             # Store new delta data in cache (even if empty)
                             if delta_data:
                                 historical_cache.store_historical_data(ticker, delta_data, requested_start, requested_end)
@@ -716,11 +720,11 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
                                 # Cache empty delta result to avoid re-searching this period
                                 historical_cache.store_historical_data(ticker, [], requested_start, requested_end)
                                 logger.info(f"💾 Cached empty delta result (no gap-ups) for {ticker} in period {requested_start} to {requested_end}")
-                            
+
                             # Return delta data (these are the only gap-up days in the requested range)
                             delta_data.sort(key=lambda x: x['date'], reverse=True)
                             logger.info(f"✅ Returning {len(delta_data)} gap-up days from delta for requested range")
-                            return delta_data
+                            return _filter(delta_data)
                         else:
                             logger.info(f"✅ No missing dates to fetch for requested range")
                             return []
@@ -743,22 +747,22 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
             logger.error(f"❌ No historical data found for {ticker}")
             return None
         
-        # Process batch data to extract gap-up information
-        major_gap_up_data = process_batch_data_to_gap_ups(ticker, daily_data)
-        
+        # Process batch data to extract gap-up information (cache at 5% threshold)
+        major_gap_up_data = process_batch_data_to_gap_ups(ticker, daily_data, min_gap_percent=5)
+
         # Sort by date (most recent first)
         major_gap_up_data.sort(key=lambda x: x['date'], reverse=True)
-        
+
         # Store cache result (even if no gap-ups found) if caching is enabled
         if use_cache:
             if major_gap_up_data:
                 historical_cache.store_historical_data(ticker, major_gap_up_data, from_date, to_date)
-                logger.info(f"💾 Cached {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
+                logger.info(f"💾 Cached {len(major_gap_up_data)} gap-up days (>=5%) for {ticker}")
             else:
                 # Cache empty result to avoid re-searching this period
                 historical_cache.store_historical_data(ticker, [], from_date, to_date)
                 logger.info(f"💾 Cached empty result (no gap-ups) for {ticker} in period {from_date} to {to_date}")
-        
+
         duration = time.time() - start_time
         log_performance('historical_gap_up_data', duration, {
             'ticker': ticker,
@@ -767,12 +771,12 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True):
             'total_days': len(daily_data),
             'gap_up_days': len(major_gap_up_data)
         })
-        
+
         logger.info(f"✅ Retrieved {len(daily_data)} days of historical data for {ticker}")
-        logger.info(f"📈 Found {len(major_gap_up_data)} major gap-up days (25%+) for {ticker}")
-        
-        # Return only gap-up data (never return all historical data)
-        return major_gap_up_data[:days]  # Return gap-up data only
+        logger.info(f"📈 Found {len(major_gap_up_data)} gap-up days (>=5%) for {ticker}, returning filtered to >={min_gap_percent}%")
+
+        # Apply user's min_gap_percent filter before returning
+        return _filter(major_gap_up_data)[:days]
         
     except Exception as e:
         duration = time.time() - start_time
@@ -820,7 +824,7 @@ def fetch_multiple_stocks_parallel(tickers, days=365, use_cache=True):
         logger.error(f"❌ Error in parallel processing: {e}")
         return {}
 
-def get_batch_delta_data(ticker, missing_dates):
+def get_batch_delta_data(ticker, missing_dates, min_gap_percent=5):
     """
     Fetch delta data for missing dates using batch processing.
     This is much faster than fetching day by day.
@@ -871,31 +875,34 @@ def get_batch_delta_data(ticker, missing_dates):
                         logger.debug(f"📊 Found previous trading day for {missing_date}: {prev_date_str} (close: {previous_day_close})")
                         break
                 
-                # Fallback: if not found in batch data, fetch individually
+                # Fallback: if not found in batch data, fetch individually.
+                # Walk back up to 10 days to correctly skip weekends/holidays.
                 if previous_day_close is None:
-                    try:
-                        prev_date_str = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
-                        prev_aggs = polygon_client.get_aggs(
-                            ticker=ticker,
-                            multiplier=1,
-                            timespan="day",
-                            from_=prev_date_str,
-                            to=prev_date_str,
-                            adjusted="true"
-                        )
-                        if prev_aggs and len(prev_aggs) > 0:
-                            previous_day_close = prev_aggs[0].close
-                            logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
-                    except Exception as e:
-                        logger.warning(f"Could not fetch previous day data for {ticker} on {missing_date}: {e}")
+                    for fb in range(1, 10):
+                        prev_date_str = (current_date - timedelta(days=fb)).strftime('%Y-%m-%d')
+                        try:
+                            prev_aggs = polygon_client.get_aggs(
+                                ticker=ticker,
+                                multiplier=1,
+                                timespan="day",
+                                from_=prev_date_str,
+                                to=prev_date_str,
+                                adjusted="true"
+                            )
+                            if prev_aggs and len(prev_aggs) > 0:
+                                previous_day_close = prev_aggs[0].close
+                                logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
+                                break
+                        except Exception as e:
+                            logger.warning(f"Could not fetch previous day data for {ticker} on {prev_date_str}: {e}")
                 
                 # Calculate gap percentage
                 gap_percent = None
                 if previous_day_close and agg.open:
                     gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
                 
-                # Only process if it's a major gap-up (25%+)
-                if gap_percent and gap_percent >= 25:
+                # Only process if the gap meets the minimum threshold
+                if gap_percent and gap_percent >= min_gap_percent:
                     # Get premarket data for gap-up days only
                     premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, missing_date)
                     premarket_volume = get_premarket_volume(polygon_client, ticker, missing_date)
@@ -965,6 +972,47 @@ def get_batch_delta_data(ticker, missing_dates):
     except Exception as e:
         logger.error(f"❌ Error in batch delta processing for {ticker}: {e}")
         return []
+
+def cache_gap_up_day_for_tickers(date_str, gap_up_stocks, delay_seconds=0.5):
+    """
+    Populate historical_data_cache for each ticker in the nightly gap-up snapshot.
+    Called from update_real_time_gap_ups() in a background thread after the snapshot is saved.
+    """
+    try:
+        polygon_client = get_polygon_client()
+        cached_count = 0
+        skipped_count = 0
+
+        for stock in gap_up_stocks:
+            ticker = stock.get('ticker') or stock.get('symbol')
+            if not ticker:
+                continue
+
+            # Skip if this date is already in the historical cache for this ticker
+            existing = historical_cache.get_cached_data(ticker, date_str, date_str)
+            if existing:
+                skipped_count += 1
+                continue
+
+            try:
+                data_point = fetch_single_day_data(ticker, polygon_client, date_str)
+                if data_point:
+                    historical_cache.store_historical_data(ticker, [data_point], date_str, date_str)
+                    cached_count += 1
+                    logger.info(f"💾 Snapshot→cache: stored {date_str} data for {ticker}")
+            except Exception as e:
+                logger.error(f"❌ Snapshot→cache error for {ticker} on {date_str}: {e}")
+
+            if delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+        logger.info(
+            f"✅ Nightly historical cache update for {date_str}: "
+            f"{cached_count} stored, {skipped_count} already cached"
+        )
+    except Exception as e:
+        logger.error(f"❌ cache_gap_up_day_for_tickers failed for {date_str}: {e}")
+
 
 def get_cache_stats():
     """Get cache statistics"""
