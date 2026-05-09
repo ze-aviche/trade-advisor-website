@@ -82,7 +82,10 @@ const app = createApp({
                     runBacktest: false,
                     equityChart: false,
                     historicalAnalysis: false,
-                    stockNews: false
+                    stockNews: false,
+                    swingTechnicals: false,
+                    swingRecommendation: false,
+                    swingNews: false,
                 },
                 
                 // Charts
@@ -245,6 +248,15 @@ const app = createApp({
                 historicalAnalysisCached: false,
                 stockNews: null,
                 _historicalCharts: {},
+
+                // Swing Trading tab
+                swingTicker: '',
+                swingTechnicals: null,
+                swingSectorInfo: null,
+                swingSectorPerf: null,
+                swingRecommendation: null,
+                swingNews: null,
+                swingTechnicalsCached: false,
                 
                 // Trade History
                 tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
@@ -436,6 +448,16 @@ const app = createApp({
                             { icon: 'fa-filter',        text: 'Filter by date range, ticker, or gap size' },
                             { icon: 'fa-file-download', text: 'Export historical data to CSV / Excel' },
                             { icon: 'fa-search-dollar', text: 'Spot recurring gap patterns across sectors' },
+                        ],
+                    },
+                    swing: {
+                        label: 'Swing Trading', plan: 'Beginner Trader', price: '$5/mo', tier: 'beginner', icon: 'fa-wave-square', color: 'blue',
+                        tagline: 'Find the best swing setups with AI precision.',
+                        features: [
+                            { icon: 'fa-chart-mixed',   text: 'RSI, MACD, Bollinger Bands, ATR and more' },
+                            { icon: 'fa-layer-group',   text: 'SMA 20/50/200 and EMA 9/21 crossover analysis' },
+                            { icon: 'fa-newspaper',     text: 'Latest news headlines + AI summary' },
+                            { icon: 'fa-robot',         text: 'Claude AI entry zone, stop, and target recommendation' },
                         ],
                     },
                     'entry-bot': {
@@ -890,9 +912,9 @@ const app = createApp({
                 if (tab === 'admin') return false;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
-                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
+                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -4813,6 +4835,134 @@ const app = createApp({
             if (t.includes('down')) return 'fas fa-arrow-trend-down';
             return 'fas fa-minus';
         },
+
+        // ── Swing Trading methods ────────────────────────────────────────────
+
+        async loadSwingData() {
+            const ticker = this.swingTicker.trim().toUpperCase();
+            if (!ticker) { this.showNotification('Enter a ticker first', 'warning'); return; }
+            this.swingTechnicals = null;
+            this.swingSectorInfo = null;
+            this.swingSectorPerf = null;
+            this.swingRecommendation = null;
+            this.swingNews = null;
+            this.swingTechnicalsCached = false;
+            this.loading.swingTechnicals = true;
+            try {
+                const res  = await fetch(`/api/swing-technicals/${ticker}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed');
+                this.swingTechnicals = data.technicals;
+                this.swingSectorInfo = data.sector_info;
+                this.swingSectorPerf = data.sector_perf;
+                this.swingTechnicalsCached = !!data.cached;
+                // Also load news
+                this.loadSwingNews(ticker);
+            } catch (e) {
+                this.showNotification(`Swing data error: ${e.message}`, 'error');
+            } finally {
+                this.loading.swingTechnicals = false;
+            }
+        },
+
+        async loadSwingNews(ticker) {
+            ticker = (ticker || this.swingTicker).trim().toUpperCase();
+            if (!ticker) return;
+            this.loading.swingNews = true;
+            try {
+                const res  = await fetch(`/api/stock-news/${ticker}`);
+                const data = await res.json();
+                if (data.success) this.swingNews = data;
+            } catch (e) { /* silent */ }
+            finally { this.loading.swingNews = false; }
+        },
+
+        async loadSwingRecommendation() {
+            if (!this.swingTechnicals) {
+                this.showNotification('Load technicals first', 'warning');
+                return;
+            }
+            this.swingRecommendation = null;
+            this.loading.swingRecommendation = true;
+            const ticker = this.swingTicker.trim().toUpperCase();
+            try {
+                const res  = await fetch(`/api/swing-recommendation/${ticker}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        technicals:  this.swingTechnicals,
+                        sector_info: this.swingSectorInfo,
+                        sector_perf: this.swingSectorPerf,
+                    }),
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'AI error');
+                this.swingRecommendation = data.recommendation;
+            } catch (e) {
+                this.showNotification(`AI error: ${e.message}`, 'error');
+            } finally {
+                this.loading.swingRecommendation = false;
+            }
+        },
+
+        swingGradeColor(grade) {
+            if (!grade) return 'text-gray-400';
+            const g = grade.toUpperCase();
+            if (g === 'A') return 'text-green-400';
+            if (g === 'B') return 'text-blue-400';
+            if (g === 'C') return 'text-yellow-400';
+            return 'text-red-400';
+        },
+
+        swingGradeBg(grade) {
+            if (!grade) return 'bg-gray-800';
+            const g = grade.toUpperCase();
+            if (g === 'A') return 'bg-green-900/40 border border-green-700';
+            if (g === 'B') return 'bg-blue-900/40 border border-blue-700';
+            if (g === 'C') return 'bg-yellow-900/40 border border-yellow-700';
+            return 'bg-red-900/40 border border-red-700';
+        },
+
+        swingBiasColor(bias) {
+            if (!bias) return 'text-gray-400';
+            const b = bias.toLowerCase();
+            if (b === 'bullish') return 'text-green-400';
+            if (b === 'bearish') return 'text-red-400';
+            return 'text-yellow-400';
+        },
+
+        rsiColor(rsi) {
+            if (rsi == null) return 'text-gray-400';
+            if (rsi < 30)  return 'text-green-400';
+            if (rsi > 70)  return 'text-red-400';
+            return 'text-yellow-300';
+        },
+
+        macdColor(hist) {
+            if (hist == null) return 'text-gray-400';
+            return hist > 0 ? 'text-green-400' : 'text-red-400';
+        },
+
+        priceVsSma(price, sma) {
+            if (!price || !sma) return { label: '—', cls: 'text-gray-400' };
+            return price > sma
+                ? { label: 'Above', cls: 'text-green-400' }
+                : { label: 'Below', cls: 'text-red-400' };
+        },
+
+        bbPosition(price, lower, upper) {
+            if (!price || !lower || !upper) return '—';
+            const pct = ((price - lower) / (upper - lower) * 100).toFixed(0);
+            return `${pct}%`;
+        },
+
+        swingSignalBadgeColor(type) {
+            if (type === 'bullish') return 'bg-green-900/60 text-green-300 border border-green-700';
+            if (type === 'bearish') return 'bg-red-900/60 text-red-300 border border-red-700';
+            return 'bg-gray-700 text-gray-300 border border-gray-600';
+        },
+
+        // ── End Swing methods ────────────────────────────────────────────────
 
         // Helper method to get color class for pattern types
         getPatternColor(pattern) {

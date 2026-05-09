@@ -4114,6 +4114,357 @@ def update_real_time_gap_ups():
             app_logger.error(f"Error updating gap-ups: {e}")
             time.sleep(300)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Swing Trading endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+_swing_cache: dict = {}
+_SWING_TTL = 2 * 3600  # 2-hour TTL — intraday technicals change often
+
+
+def _compute_technicals(bars: list) -> dict:
+    """
+    Given a list of Polygon aggregate bars (oldest→newest), compute swing
+    trading indicators and return a flat dict.
+    """
+    import math
+
+    closes = [b['c'] for b in bars]
+    highs  = [b['h'] for b in bars]
+    lows   = [b['l'] for b in bars]
+    vols   = [b['v'] for b in bars]
+
+    n = len(closes)
+    if n < 30:
+        return {'error': 'Not enough data'}
+
+    # ── SMA / EMA helpers ────────────────────────────────────────────────────
+    def sma(series, period):
+        if len(series) < period:
+            return None
+        return sum(series[-period:]) / period
+
+    def ema(series, period):
+        if len(series) < period:
+            return None
+        k = 2 / (period + 1)
+        e = series[0]
+        for p in series[1:]:
+            e = p * k + e * (1 - k)
+        return e
+
+    # ── RSI(14) ──────────────────────────────────────────────────────────────
+    def rsi(series, period=14):
+        if len(series) < period + 1:
+            return None
+        gains, losses = [], []
+        for i in range(1, len(series)):
+            d = series[i] - series[i - 1]
+            gains.append(max(d, 0))
+            losses.append(max(-d, 0))
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return round(100 - (100 / (1 + rs)), 2)
+
+    # ── MACD(12,26,9) ────────────────────────────────────────────────────────
+    def macd_vals(series):
+        if len(series) < 26:
+            return None, None, None
+        ema12 = ema(series[-50:], 12)
+        ema26 = ema(series[-60:], 26)
+        if ema12 is None or ema26 is None:
+            return None, None, None
+        macd_line = ema12 - ema26
+        # Signal: 9-period EMA of macd — approximate with last 9 MACD values
+        macd_series = []
+        for i in range(9, 0, -1):
+            sub = series[:-i] if i > 0 else series
+            e12 = ema(sub[-50:], 12)
+            e26 = ema(sub[-60:], 26)
+            if e12 and e26:
+                macd_series.append(e12 - e26)
+        signal = ema(macd_series, 9) if len(macd_series) >= 9 else (sum(macd_series) / len(macd_series) if macd_series else 0)
+        histogram = macd_line - signal if signal is not None else 0
+        return round(macd_line, 4), round(signal, 4), round(histogram, 4)
+
+    # ── Bollinger Bands(20, 2σ) ──────────────────────────────────────────────
+    def bollinger(series, period=20, std_mult=2):
+        if len(series) < period:
+            return None, None, None
+        s = series[-period:]
+        mid = sum(s) / period
+        variance = sum((x - mid) ** 2 for x in s) / period
+        sd = math.sqrt(variance)
+        return round(mid - std_mult * sd, 4), round(mid, 4), round(mid + std_mult * sd, 4)
+
+    # ── ATR(14) ──────────────────────────────────────────────────────────────
+    def atr(highs_s, lows_s, closes_s, period=14):
+        if len(highs_s) < period + 1:
+            return None
+        trs = []
+        for i in range(1, len(highs_s)):
+            tr = max(
+                highs_s[i] - lows_s[i],
+                abs(highs_s[i] - closes_s[i - 1]),
+                abs(lows_s[i] - closes_s[i - 1])
+            )
+            trs.append(tr)
+        return round(sum(trs[-period:]) / period, 4)
+
+    # ── Volume ratio (today vs 20-day avg) ───────────────────────────────────
+    avg_vol_20 = sma(vols[:-1], 20)
+    vol_ratio  = round(vols[-1] / avg_vol_20, 2) if avg_vol_20 else None
+
+    # ── Support / Resistance (simple: 20-day low / high) ─────────────────────
+    support    = round(min(lows[-20:]), 4)
+    resistance = round(max(highs[-20:]), 4)
+
+    # ── Compute all values ───────────────────────────────────────────────────
+    price      = closes[-1]
+    sma20_val  = sma(closes, 20)
+    sma50_val  = sma(closes, 50)
+    sma200_val = sma(closes, 200) if n >= 200 else None
+    ema9_val   = ema(closes[-30:], 9)
+    ema21_val  = ema(closes[-50:], 21)
+    rsi_val    = rsi(closes)
+    macd_line, macd_sig, macd_hist = macd_vals(closes)
+    bb_lower, bb_mid, bb_upper     = bollinger(closes)
+    atr_val    = atr(highs, lows, closes)
+
+    # ── Active signals ───────────────────────────────────────────────────────
+    signals = []
+    if rsi_val is not None:
+        if rsi_val < 30:
+            signals.append({'label': 'RSI Oversold', 'type': 'bullish'})
+        elif rsi_val > 70:
+            signals.append({'label': 'RSI Overbought', 'type': 'bearish'})
+    if macd_line is not None and macd_sig is not None:
+        if macd_line > macd_sig and macd_hist and macd_hist > 0:
+            signals.append({'label': 'MACD Bullish Cross', 'type': 'bullish'})
+        elif macd_line < macd_sig and macd_hist and macd_hist < 0:
+            signals.append({'label': 'MACD Bearish Cross', 'type': 'bearish'})
+    if sma20_val and sma50_val:
+        if sma20_val > sma50_val and closes[-2] < sma50_val:
+            signals.append({'label': '20/50 Golden Cross forming', 'type': 'bullish'})
+        elif sma20_val < sma50_val and closes[-2] > sma50_val:
+            signals.append({'label': '20/50 Death Cross forming', 'type': 'bearish'})
+    if sma200_val:
+        if price > sma200_val:
+            signals.append({'label': 'Above 200-SMA', 'type': 'bullish'})
+        else:
+            signals.append({'label': 'Below 200-SMA', 'type': 'bearish'})
+    if bb_lower and bb_upper:
+        bb_pct = (price - bb_lower) / (bb_upper - bb_lower) * 100 if (bb_upper - bb_lower) > 0 else 50
+        if bb_pct < 10:
+            signals.append({'label': 'Near BB Lower Band', 'type': 'bullish'})
+        elif bb_pct > 90:
+            signals.append({'label': 'Near BB Upper Band', 'type': 'bearish'})
+    if vol_ratio and vol_ratio > 1.5:
+        signals.append({'label': f'High Volume ({vol_ratio}x avg)', 'type': 'neutral'})
+
+    # ── Price change % ───────────────────────────────────────────────────────
+    chg_1d  = round((closes[-1] / closes[-2] - 1) * 100, 2) if n >= 2 else None
+    chg_5d  = round((closes[-1] / closes[-6] - 1) * 100, 2) if n >= 6 else None
+    chg_20d = round((closes[-1] / closes[-21] - 1) * 100, 2) if n >= 21 else None
+
+    def _r(v):
+        return round(v, 4) if v is not None else None
+
+    return {
+        'price':       round(price, 4),
+        'chg_1d':      chg_1d,
+        'chg_5d':      chg_5d,
+        'chg_20d':     chg_20d,
+        'rsi14':       rsi_val,
+        'macd_line':   macd_line,
+        'macd_signal': macd_sig,
+        'macd_hist':   macd_hist,
+        'sma20':       _r(sma20_val),
+        'sma50':       _r(sma50_val),
+        'sma200':      _r(sma200_val),
+        'ema9':        _r(ema9_val),
+        'ema21':       _r(ema21_val),
+        'bb_lower':    bb_lower,
+        'bb_mid':      bb_mid,
+        'bb_upper':    bb_upper,
+        'atr14':       atr_val,
+        'vol_ratio':   vol_ratio,
+        'support20d':  support,
+        'resist20d':   resistance,
+        'signals':     signals,
+    }
+
+
+@app.route('/api/swing-technicals/<ticker>')
+def swing_technicals(ticker):
+    """
+    Return technical indicators + sector context for swing analysis.
+    Uses 2-hour in-memory cache.
+    """
+    ticker = ticker.upper().strip()
+    polygon_key = os.environ.get('POLYGON_API_KEY', '')
+
+    # Cache check
+    cached = _cache_get(_swing_cache, ticker, _SWING_TTL)
+    if cached:
+        cached['cached'] = True
+        return jsonify(cached)
+
+    try:
+        import requests as _req
+
+        # ── Fetch ~300 days of daily bars ────────────────────────────────────
+        end_dt   = datetime.now()
+        start_dt = end_dt - timedelta(days=420)  # extra buffer for weekends/holidays
+        url = (
+            f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/"
+            f"{start_dt.strftime('%Y-%m-%d')}/{end_dt.strftime('%Y-%m-%d')}"
+            f"?adjusted=true&sort=asc&limit=300&apiKey={polygon_key}"
+        )
+        resp = _req.get(url, timeout=10)
+        resp.raise_for_status()
+        poly_data = resp.json()
+        bars = poly_data.get('results', [])
+
+        if len(bars) < 30:
+            return jsonify({'success': False, 'error': 'Not enough price history'}), 422
+
+        technicals = _compute_technicals(bars)
+        if 'error' in technicals:
+            return jsonify({'success': False, 'error': technicals['error']}), 422
+
+        # ── Sector context ────────────────────────────────────────────────────
+        try:
+            sector_info, sector_perf = _get_sector_context(ticker, polygon_key)
+        except Exception:
+            sector_info, sector_perf = None, None
+
+        result = {
+            'success':      True,
+            'ticker':       ticker,
+            'technicals':   technicals,
+            'sector_info':  sector_info,
+            'sector_perf':  sector_perf,
+            'bars_count':   len(bars),
+            'cached':       False,
+        }
+        _cache_set(_swing_cache, ticker, result)
+        return jsonify(result)
+
+    except Exception as exc:
+        app_logger.error(f"swing-technicals error for {ticker}: {exc}")
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/swing-recommendation/<ticker>', methods=['POST'])
+def swing_recommendation(ticker):
+    """
+    Claude AI swing setup analysis.
+    Reads technicals from cache (or fetches) + earnings from web search.
+    POST body: { technicals: {...}, sector_info: {...}, sector_perf: {...} }
+    """
+    ticker = ticker.upper().strip()
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI not available'}), 503
+
+    # Per-IP rate limit (reuse the same gate as historical analysis)
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+    allowed, retry_after = _check_rate_limit(client_ip)
+    if not allowed:
+        mins, secs = divmod(int(retry_after), 60)
+        wait_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+        return jsonify({'success': False, 'error': f'Rate limit: try again in {wait_str}'}), 429
+
+    body        = request.get_json(silent=True) or {}
+    technicals  = body.get('technicals', {})
+    sector_info = body.get('sector_info', {})
+    sector_perf = body.get('sector_perf', {})
+
+    # ── Earnings history via web search ──────────────────────────────────────
+    earnings_text = ''
+    try:
+        er_results = _ai_agent._web_search(f"{ticker} earnings history beat miss last 8 quarters EPS actual vs estimate")
+        if er_results:
+            earnings_text = er_results[:1200]
+    except Exception:
+        earnings_text = 'Earnings history unavailable.'
+
+    # ── Build prompt ─────────────────────────────────────────────────────────
+    t = technicals
+    sector_block = ''
+    if sector_info and sector_perf:
+        sector_block = (
+            f"\nSector: {sector_info.get('sector','?')} ({sector_info.get('etf','?')})\n"
+            f"ETF 1d: {sector_perf.get('etf_1d_pct','?')}% | 5d: {sector_perf.get('etf_5d_pct','?')}%\n"
+            f"SPY 1d: {sector_perf.get('spy_1d_pct','?')}%\n"
+            f"Sector trend: {sector_perf.get('trend','?')}\n"
+        )
+
+    signals_txt = ', '.join(s['label'] for s in t.get('signals', [])) or 'none'
+
+    prompt = f"""You are an expert swing trader. Analyse the following data for {ticker} and return ONLY a JSON object.
+
+PRICE & MOMENTUM
+Price: ${t.get('price','?')}
+1d chg: {t.get('chg_1d','?')}% | 5d: {t.get('chg_5d','?')}% | 20d: {t.get('chg_20d','?')}%
+
+TECHNICALS
+RSI(14): {t.get('rsi14','?')}
+MACD line: {t.get('macd_line','?')} | Signal: {t.get('macd_signal','?')} | Hist: {t.get('macd_hist','?')}
+SMA20: {t.get('sma20','?')} | SMA50: {t.get('sma50','?')} | SMA200: {t.get('sma200','?')}
+EMA9: {t.get('ema9','?')} | EMA21: {t.get('ema21','?')}
+BB Lower: {t.get('bb_lower','?')} | BB Mid: {t.get('bb_mid','?')} | BB Upper: {t.get('bb_upper','?')}
+ATR(14): {t.get('atr14','?')}
+Volume ratio vs 20d avg: {t.get('vol_ratio','?')}x
+20d Support: {t.get('support20d','?')} | 20d Resistance: {t.get('resist20d','?')}
+Active signals: {signals_txt}
+{sector_block}
+RECENT EARNINGS / FUNDAMENTAL CONTEXT
+{earnings_text}
+
+Return ONLY this JSON (no markdown, no commentary):
+{{
+  "grade": "A|B|C|F",
+  "bias": "Bullish|Bearish|Neutral",
+  "summary": "2-3 sentence swing setup summary",
+  "entry_zone": "price or price range string",
+  "stop_loss": "price string",
+  "target_1": "price string",
+  "target_2": "price string (optional stretch target)",
+  "risk_reward": "e.g. 1:2.5",
+  "hold_period": "e.g. 3–10 days",
+  "key_risks": ["risk1", "risk2"],
+  "earnings_summary": "1-2 sentences on recent ER beat/miss pattern",
+  "catalysts": ["catalyst1", "catalyst2"]
+}}"""
+
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
+        msg = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=600,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        # Strip markdown fences if present
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+            raw = raw.strip()
+        rec = json.loads(raw)
+        return jsonify({'success': True, 'ticker': ticker, 'recommendation': rec})
+    except json.JSONDecodeError as jde:
+        return jsonify({'success': False, 'error': f'AI response parse error: {jde}', 'raw': raw[:500]}), 500
+    except Exception as exc:
+        app_logger.error(f"swing-recommendation error for {ticker}: {exc}")
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 # Start background gap-up monitor — runs under both `python app.py` and gunicorn
 _bg_thread_started = False
 def _start_background_tasks():
