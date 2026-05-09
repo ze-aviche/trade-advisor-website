@@ -27,12 +27,11 @@ _sentry_dsn = os.environ.get('SENTRY_DSN')
 if _sentry_dsn:
     import sentry_sdk
     from sentry_sdk.integrations.flask import FlaskIntegration
-    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
     sentry_sdk.init(
         dsn=_sentry_dsn,
-        integrations=[FlaskIntegration(), SqlalchemyIntegration()],
-        traces_sample_rate=0.1,   # 10 % of requests get performance traces
-        send_default_pii=False,   # don't send passwords/tokens automatically
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
     )
 
 # Setup comprehensive logging
@@ -98,8 +97,9 @@ except Exception as e:
     _ai_agent = None
     AI_AGENT_AVAILABLE = False
 
-# Feature flag: set to True to re-enable DAS Trader integration
-DAS_ENABLED = False
+# Feature flag: controls DAS Trader integration.
+# Set DAS_ENABLED=true in .env (or environment) to enable for local/mock testing.
+DAS_ENABLED = os.environ.get('DAS_ENABLED', 'false').lower() == 'true'
 if not DAS_ENABLED:
     BOT_AVAILABLE = False
     SCHEDULED_SYNC_AVAILABLE = False
@@ -111,7 +111,14 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gap-up-detection-web-20
 
 _cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:5000').split(',')
 CORS(app, origins=_cors_origins)
-socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode='eventlet')
+# eventlet doesn't support Python 3.13 — fall back to threading for local dev
+_async_mode = 'eventlet'
+try:
+    import eventlet  # noqa: F401
+    eventlet.green.thread.start_joinable_thread  # probe the broken attribute
+except (ImportError, AttributeError):
+    _async_mode = 'threading'
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode=_async_mode)
 
 # Tag each request with the authenticated user so Sentry errors show who was affected
 @app.before_request
