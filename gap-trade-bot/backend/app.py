@@ -1481,6 +1481,160 @@ def get_historical_data(ticker):
             'error': f'Unexpected error: {str(e)}'
         }), 500
 
+# ── Sector analysis helpers ────────────────────────────────────────────────────
+
+def _sic_to_sector_etf(sic_code, sic_desc=''):
+    """Map Polygon SIC code + description to (sector_name, sector_SPDR_ETF)."""
+    desc = (sic_desc or '').upper()
+    # Description keyword matching takes priority — more reliable than SIC ranges
+    _kw_map = [
+        (['SOFTWARE', 'PREPACKAGED', 'COMPUTER INTEGRATED', 'SEMICONDUCTOR', 'MICROCHIP',
+          'INTERNET', 'DATA PROCESSING', 'INFORMATION TECHNOLOGY', 'ARTIFICIAL INTEL',
+          'ELECTRONIC COMPONENT', 'ELECTRONIC EQUIPMENT', 'OPTICAL INSTRUMENT'], ('Technology', 'XLK')),
+        (['PHARMACEUTICAL', 'BIOTECHNOLOGY', 'MEDICAL DEVICE', 'MEDICAL EQUIPMENT',
+          'HEALTH SERVICE', 'HOSPITAL', 'DIAGNOSTIC', 'DRUG STORE', 'DRUG MFRS',
+          'BIOLOGICAL PRODUCT', 'DENTAL', 'CLINICAL', 'GENOMIC'], ('Healthcare', 'XLV')),
+        (['BANK', 'SAVINGS INSTITUTION', 'INSURANCE', 'INVESTMENT', 'SECURITY BROKER',
+          'FINANCE SERVICE', 'CREDIT SERVICE', 'MORTGAGE', 'FINANCIAL SERVICE',
+          'ASSET MANAGEMENT', 'HEDGE FUND', 'BROKERAGE'], ('Financials', 'XLF')),
+        (['OIL AND GAS', 'PETROLEUM', 'CRUDE OIL', 'NATURAL GAS', 'PIPELINE',
+          'REFIN', 'COAL MINING', 'OFFSHORE DRILL'], ('Energy', 'XLE')),
+        (['RETAIL STORE', 'RESTAURANT', 'HOTEL', 'MOTEL', 'CASINO', 'GAMBLING',
+          'AUTOMOTIVE', 'APPAREL', 'LEISURE', 'ENTERTAINMENT', 'HOME FURNISH',
+          'APPLIANCE', 'CLOTHING', 'FOOTWEAR'], ('Consumer Discretionary', 'XLY')),
+        (['FOOD', 'BEVERAGE', 'GROCERY', 'TOBACCO', 'HOUSEHOLD PRODUCT',
+          'PERSONAL CARE', 'COSMETIC', 'SOAP', 'CLEANING PRODUCT'], ('Consumer Staples', 'XLP')),
+        (['AEROSPACE', 'DEFENSE', 'MACHINERY', 'RAILROAD', 'AIRLINE', 'AIR TRANSPORT',
+          'SHIPPING', 'FREIGHT', 'TRUCKING', 'CONSTRUCTION', 'ENGINEERING',
+          'INDUSTRIAL MACHINE', 'ELECTRICAL EQUIPMENT'], ('Industrials', 'XLI')),
+        (['ELECTRIC UTILITY', 'GAS DISTRIBUTION', 'WATER SUPPLY', 'POWER GENERAT',
+          'SANITARY SERVICE'], ('Utilities', 'XLU')),
+        (['CABLE', 'BROADCASTING', 'PUBLISHING', 'WIRELESS TELECOM', 'TELECOM',
+          'TELEPHONE', 'MEDIA', 'SOCIAL NETWORK', 'ADVERTISING AGENCY',
+          'MOTION PICTURE'], ('Communication Services', 'XLC')),
+        (['MINING', 'METAL SERVICE', 'CHEMICAL', 'PAPER MILL', 'TIMBER', 'GLASS',
+          'STEEL WORK', 'ALUMINUM', 'GOLD MINING', 'SILVER MINING'], ('Materials', 'XLB')),
+        (['REAL ESTATE', 'REIT', 'PROPERTY MANAGEMENT', 'APARTMENT', 'LAND SUBDIVIDER',
+          'OPERATORS OF APART'], ('Real Estate', 'XLRE')),
+    ]
+    for keywords, result in _kw_map:
+        if any(kw in desc for kw in keywords):
+            return result
+
+    # Fallback: SIC numeric ranges
+    try:
+        sic = int(sic_code) if sic_code else 0
+    except (ValueError, TypeError):
+        return ('Diversified', 'SPY')
+
+    if 7370 <= sic <= 7379 or 3570 <= sic <= 3579 or 3670 <= sic <= 3679:
+        return ('Technology', 'XLK')
+    if 4800 <= sic <= 4899:
+        return ('Communication Services', 'XLC')
+    if 4900 <= sic <= 4999:
+        return ('Utilities', 'XLU')
+    if 6000 <= sic <= 6799:
+        return ('Financials', 'XLF')
+    if 1300 <= sic <= 1399 or 2900 <= sic <= 2999:
+        return ('Energy', 'XLE')
+    if 2000 <= sic <= 2199:
+        return ('Consumer Staples', 'XLP')
+    if 5900 <= sic <= 5999:
+        return ('Consumer Discretionary', 'XLY')
+    if 8000 <= sic <= 8099:
+        return ('Healthcare', 'XLV')
+    if 2800 <= sic <= 2899 or 1000 <= sic <= 1499:
+        return ('Materials', 'XLB')
+    if 3400 <= sic <= 3699 or 3700 <= sic <= 3799:
+        return ('Industrials', 'XLI')
+    if 6500 <= sic <= 6552:
+        return ('Real Estate', 'XLRE')
+    return ('Diversified', 'SPY')
+
+
+def _get_sector_context(ticker, polygon_api_key):
+    """
+    Fetch sector classification and recent sector ETF + SPY performance from Polygon.
+    Returns (sector_info dict, perf dict).  Safe — never raises.
+    """
+    import requests as _req
+
+    sector_info = {'sector': 'Unknown', 'etf': 'SPY',
+                   'sic_code': '', 'sic_description': '', 'company_name': ticker}
+    perf = {}
+
+    if not polygon_api_key:
+        return sector_info, perf
+
+    # Step 1: reference data → sector/SIC
+    try:
+        r = _req.get(
+            f"https://api.polygon.io/v3/reference/tickers/{ticker.upper()}",
+            params={"apiKey": polygon_api_key}, timeout=8
+        )
+        if r.status_code == 200:
+            d = r.json().get('results', {})
+            sic_code = str(d.get('sic_code', '') or '')
+            sic_desc = d.get('sic_description', '') or ''
+            sector, etf = _sic_to_sector_etf(sic_code, sic_desc)
+            sector_info = {'sector': sector, 'etf': etf,
+                           'sic_code': sic_code, 'sic_description': sic_desc,
+                           'company_name': d.get('name', ticker)}
+    except Exception as e:
+        app_logger.warning(f"Sector ref lookup failed for {ticker}: {e}")
+
+    # Step 2: last ~10 trading days of sector ETF + SPY
+    etf_sym = sector_info['etf']
+    end_dt = datetime.now().strftime('%Y-%m-%d')
+    start_dt = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
+    agg_params = {"adjusted": "true", "sort": "asc", "limit": 15, "apiKey": polygon_api_key}
+
+    def _bars(sym):
+        try:
+            r = _req.get(
+                f"https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/day/{start_dt}/{end_dt}",
+                params=agg_params, timeout=8
+            )
+            return r.json().get('results', []) if r.status_code == 200 else []
+        except Exception:
+            return []
+
+    def _summarize(bars, sym):
+        if not bars or len(bars) < 2:
+            return {}
+        closes = [b['c'] for b in bars]
+        chg_1d = round((closes[-1] - closes[-2]) / closes[-2] * 100, 2)
+        n = min(6, len(closes))
+        chg_5d = round((closes[-1] - closes[-n]) / closes[-n] * 100, 2)
+        # Winning days in window
+        up_days = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
+        trend = ('uptrending' if chg_5d > 0.5 else ('downtrending' if chg_5d < -0.5 else 'flat'))
+        return {'symbol': sym, 'last_close': round(closes[-1], 2),
+                'change_1d_pct': chg_1d, 'change_5d_pct': chg_5d,
+                'trend_5d': trend, 'up_days_of_10': up_days}
+
+    etf_bars = _bars(etf_sym)
+    spy_bars = _bars('SPY') if etf_sym != 'SPY' else etf_bars
+
+    perf['sector_etf'] = _summarize(etf_bars, etf_sym)
+    if etf_sym != 'SPY':
+        perf['spy'] = _summarize(spy_bars, 'SPY')
+        sec_5d = perf['sector_etf'].get('change_5d_pct') or 0
+        spy_5d = perf['spy'].get('change_5d_pct') or 0
+        rel = round(sec_5d - spy_5d, 2)
+        perf['sector_vs_market_5d'] = rel
+        perf['relative_strength'] = ('outperforming' if rel > 0.3
+                                     else ('underperforming' if rel < -0.3 else 'in-line with'))
+    else:
+        perf['spy'] = perf['sector_etf']
+        perf['sector_vs_market_5d'] = 0
+        perf['relative_strength'] = 'in-line with'
+
+    return sector_info, perf
+
+
+# ── Historical AI analysis endpoint ───────────────────────────────────────────
+
 @app.route('/api/historical-analysis/<ticker>', methods=['POST'])
 def get_historical_analysis(ticker):
     """Use Claude AI to analyze historical gap-up patterns and predict next gap-up day behavior."""
@@ -1491,7 +1645,22 @@ def get_historical_analysis(ticker):
         body = request.get_json(force=True) or {}
         stats = body.get('stats', {})
 
-        prompt = f"""You are analyzing historical gap-up trading data for {ticker.upper()}. Based on the statistics below, predict how this stock will likely behave on its NEXT gap-up day and give actionable trading guidance.
+        # Fetch sector context from Polygon (best-effort, won't block if it fails)
+        polygon_key = os.getenv('POLYGON_API_KEY')
+        sector_info, sector_perf = _get_sector_context(ticker, polygon_key)
+
+        # Build sector context block for the prompt
+        etf_data = sector_perf.get('sector_etf', {})
+        spy_data = sector_perf.get('spy', {})
+        rel_str = sector_perf.get('relative_strength', 'unknown')
+        sector_block = f"""
+SECTOR CONTEXT ({sector_info['sector']} — {sector_info['sic_description'] or 'N/A'}):
+- Sector ETF: {sector_info['etf']} | 1-day: {etf_data.get('change_1d_pct', 'N/A')}% | 5-day: {etf_data.get('change_5d_pct', 'N/A')}% | Trend: {etf_data.get('trend_5d', 'N/A')}
+- S&P 500 (SPY): 1-day: {spy_data.get('change_1d_pct', 'N/A')}% | 5-day: {spy_data.get('change_5d_pct', 'N/A')}%
+- Sector is {rel_str} the broader market by {abs(sector_perf.get('sector_vs_market_5d', 0))}% over 5 days
+- Use this to judge whether gap-up moves in {ticker.upper()} are more likely to hold (sector tailwind) or fade (sector headwind)"""
+
+        prompt = f"""You are analyzing historical gap-up trading data for {ticker.upper()} ({sector_info['company_name']}). Based on the statistics and live sector context below, predict how this stock will likely behave on its NEXT gap-up day and give actionable trading guidance.
 
 HISTORICAL GAP-UP STATISTICS ({stats.get('period', 'N/A')}, {stats.get('minGap', 0)}%+ gaps only):
 - Total gap-up events: {stats.get('totalDays', 0)}
@@ -1499,24 +1668,26 @@ HISTORICAL GAP-UP STATISTICS ({stats.get('period', 'N/A')}, {stats.get('minGap',
 - Fader days (closed below open): {stats.get('faderDays', 0)} ({stats.get('faderPct', 0)}%)
 - Neutral days: {stats.get('neutralDays', 0)} ({stats.get('neutralPct', 0)}%)
 - Average gap-up %: {stats.get('avgGap', 0)}%
-- Average day high %: {stats.get('avgDayHigh', 0)}%  (from prev close)
-- Average closing %: {stats.get('avgClose', 0)}%  (from prev close)
+- Average day high %: {stats.get('avgDayHigh', 0)}% (from prev close)
+- Average closing %: {stats.get('avgClose', 0)}% (from prev close)
 - Average premarket volume: {stats.get('avgPremarketVol', 0)}M shares
 - Most common day high time: {stats.get('commonHighTime', 'N/A')} EST
 - Gap size distribution: {stats.get('gapDistribution', {})}
 - RECENT TREND (last 30 days): runner rate {stats.get('recent30RunnerPct', 0)}% vs full-period {stats.get('runnerPct', 0)}%
 - High-volume runner rate (top 50% vol days): {stats.get('highVolRunnerPct', 0)}%
+{sector_block}
 
 Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
 {{
   "outlook": "Bullish" | "Bearish" | "Mixed" | "Neutral",
   "confidence": "High" | "Medium" | "Low",
-  "summary": "One concise sentence predicting next gap-up day behavior based on the data",
+  "summary": "One concise sentence predicting next gap-up day behavior, referencing sector if relevant",
   "regime_note": "One sentence comparing recent 30-day trend vs full-period trend — is behavior shifting?",
+  "sector_impact": "One sentence on how the current {sector_info['sector']} sector trend ({etf_data.get('trend_5d', 'N/A')}) affects the prediction — tailwind, headwind, or neutral?",
   "entry": {{
     "signal": "e.g. Buy at open / Wait for first pullback / Short bias — avoid long",
-    "price_context": "brief context (e.g. target near premarket high, enter above VWAP)",
-    "conditions": ["specific condition 1", "specific condition 2"]
+    "price_context": "brief context referencing sector momentum if relevant",
+    "conditions": ["specific condition 1 (may include sector/market alignment)", "specific condition 2"]
   }},
   "exit": {{
     "target": "+X% from open (based on avg day high of {stats.get('avgDayHigh', 0)}%)",
@@ -1525,9 +1696,9 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
   }},
   "caution": {{
     "level": "High" | "Medium" | "Low",
-    "factors": ["specific risk factor 1", "specific risk factor 2"]
+    "factors": ["risk factor 1 (consider sector headwind if applicable)", "risk factor 2"]
   }},
-  "insights": ["data-backed pattern insight 1", "data-backed pattern insight 2", "data-backed pattern insight 3"]
+  "insights": ["data-backed pattern insight 1", "data-backed pattern insight 2", "sector-aware insight 3"]
 }}"""
 
         response = _ai_agent.process_message(prompt, user_id=f"hist_analysis_{ticker.upper()}")
@@ -1541,10 +1712,17 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
             analysis = json.loads(json_match.group(0))
         else:
             analysis = {'summary': text, 'outlook': 'Mixed', 'confidence': 'Low',
-                        'regime_note': '', 'entry': {}, 'exit': {}, 'caution': {}, 'insights': []}
+                        'regime_note': '', 'sector_impact': '', 'entry': {}, 'exit': {},
+                        'caution': {}, 'insights': []}
 
-        return jsonify({'success': True, 'analysis': analysis, 'ticker': ticker.upper(),
-                        'stats': stats})
+        return jsonify({
+            'success': True,
+            'analysis': analysis,
+            'ticker': ticker.upper(),
+            'sector_info': sector_info,
+            'sector_perf': sector_perf,
+            'stats': stats
+        })
 
     except json.JSONDecodeError as e:
         app_logger.error(f"JSON parse error in historical analysis for {ticker}: {e}")

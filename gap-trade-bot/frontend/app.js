@@ -239,6 +239,8 @@ const app = createApp({
                 sortColumn: '',
                 sortDirection: 'asc',
                 historicalAnalysis: null,
+                historicalSectorInfo: null,
+                historicalSectorPerf: null,
                 _historicalCharts: {},
                 
                 // Trade History
@@ -4380,6 +4382,8 @@ const app = createApp({
                 if (data.success) {
                     this.historicalData = data.data || [];
                     this.historicalAnalysis = null;
+                    this.historicalSectorInfo = null;
+                    this.historicalSectorPerf = null;
                     console.log(`✅ Loaded ${this.historicalData.length} days of historical data for ${this.historicalTicker}`);
                     this.showNotification(`Loaded ${this.historicalData.length} days of historical data`, 'success');
                     this.debugHistoricalData();
@@ -4658,6 +4662,8 @@ const app = createApp({
                 const data = await response.json();
                 if (data.success) {
                     this.historicalAnalysis = data.analysis;
+                    this.historicalSectorInfo = data.sector_info || null;
+                    this.historicalSectorPerf = data.sector_perf || null;
                     this.$nextTick(() => {
                         const el = document.getElementById('ai-analysis-card');
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -4755,6 +4761,19 @@ const app = createApp({
             if (l === 'medium') return 'text-yellow-400';
             if (l === 'low')    return 'text-green-400';
             return 'text-gray-400';
+        },
+
+        getPerfColor(pct) {
+            if (pct == null || isNaN(pct)) return 'text-gray-400';
+            return pct > 0 ? 'text-green-400' : (pct < 0 ? 'text-red-400' : 'text-gray-400');
+        },
+
+        getSectorTrendIcon(trend) {
+            if (!trend) return 'fas fa-minus';
+            const t = trend.toLowerCase();
+            if (t.includes('up')) return 'fas fa-arrow-trend-up';
+            if (t.includes('down')) return 'fas fa-arrow-trend-down';
+            return 'fas fa-minus';
         },
 
         // Helper method to get color class for pattern types
