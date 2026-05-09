@@ -871,23 +871,26 @@ def get_batch_delta_data(ticker, missing_dates):
                         logger.debug(f"📊 Found previous trading day for {missing_date}: {prev_date_str} (close: {previous_day_close})")
                         break
                 
-                # Fallback: if not found in batch data, fetch individually
+                # Fallback: if not found in batch data, fetch individually.
+                # Walk back up to 10 days to correctly skip weekends/holidays.
                 if previous_day_close is None:
-                    try:
-                        prev_date_str = (current_date - timedelta(days=1)).strftime('%Y-%m-%d')
-                        prev_aggs = polygon_client.get_aggs(
-                            ticker=ticker,
-                            multiplier=1,
-                            timespan="day",
-                            from_=prev_date_str,
-                            to=prev_date_str,
-                            adjusted="true"
-                        )
-                        if prev_aggs and len(prev_aggs) > 0:
-                            previous_day_close = prev_aggs[0].close
-                            logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
-                    except Exception as e:
-                        logger.warning(f"Could not fetch previous day data for {ticker} on {missing_date}: {e}")
+                    for fb in range(1, 10):
+                        prev_date_str = (current_date - timedelta(days=fb)).strftime('%Y-%m-%d')
+                        try:
+                            prev_aggs = polygon_client.get_aggs(
+                                ticker=ticker,
+                                multiplier=1,
+                                timespan="day",
+                                from_=prev_date_str,
+                                to=prev_date_str,
+                                adjusted="true"
+                            )
+                            if prev_aggs and len(prev_aggs) > 0:
+                                previous_day_close = prev_aggs[0].close
+                                logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
+                                break
+                        except Exception as e:
+                            logger.warning(f"Could not fetch previous day data for {ticker} on {prev_date_str}: {e}")
                 
                 # Calculate gap percentage
                 gap_percent = None
