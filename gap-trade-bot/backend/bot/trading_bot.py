@@ -12,8 +12,9 @@ import socket
 import uuid
 import os
 from datetime import datetime
+import pytz
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 import sys
 import os
@@ -35,6 +36,9 @@ class Position:
     stop_loss: float
     entry_time: float
     position_id: str
+    highest_price: float = 0.0   # trailing stop: best price seen for LONG
+    lowest_price: float = 0.0    # trailing stop: best price seen for SHORT
+    breakeven_set: bool = False   # True once stop has been moved to entry
 
 @dataclass
 class PriceData:
@@ -771,6 +775,20 @@ class TradingBot:
         self.profit_target_pct = self.config.get('profit_target_pct', 5.0)
         self.stop_loss_pct = self.config.get('stop_loss_pct', 2.5)
         self.monitor_interval = self.config.get('monitor_interval', 1)
+
+        # Trailing stop
+        self.trailing_stop_enabled  = self.config.get('trailing_stop_enabled', False)
+        self.trailing_stop_pct      = self.config.get('trailing_stop_pct', 1.5)
+
+        # EOD force-exit (ET time string "HH:MM")
+        self.eod_exit_enabled = self.config.get('eod_exit_enabled', True)
+        self.eod_exit_time    = self.config.get('eod_exit_time', '15:45')
+        self._eod_exited_today = False   # reset each trading day
+        self._eod_last_date   = None
+
+        # Breakeven stop
+        self.breakeven_stop_enabled  = self.config.get('breakeven_stop_enabled', True)
+        self.breakeven_trigger_pct   = self.config.get('breakeven_trigger_pct', 50.0)
         
         # Enhanced monitoring intervals
         self.price_check_interval = 1  # Check prices every 1 second (critical for exits)
@@ -924,15 +942,19 @@ class TradingBot:
             position_data['avg_price']
         )
         
+        entry = position_data['avg_price']
         return Position(
             symbol=position_data['symbol'],
             type=position_data['type'],
             size=position_data['quantity'],
-            entry_price=position_data['avg_price'],
+            entry_price=entry,
             profit_target=profit_target,
             stop_loss=stop_loss,
             entry_time=time.time(),
-            position_id=f"POS_{position_data['symbol']}_{position_data['quantity']}"
+            position_id=f"POS_{position_data['symbol']}_{position_data['quantity']}",
+            highest_price=entry,
+            lowest_price=entry,
+            breakeven_set=False,
         )
     
     def discover_existing_positions(self):
@@ -1405,6 +1427,36 @@ class TradingBot:
                 with self._positions_lock:
                     active_positions_copy = dict(self.active_positions)
                 
+                # ── EOD force-exit check ──────────────────────────────────────
+                if self.eod_exit_enabled and active_positions_copy:
+                    et_now = datetime.now(pytz.timezone('US/Eastern'))
+                    today_str = et_now.strftime('%Y-%m-%d')
+                    if self._eod_last_date != today_str:
+                        self._eod_last_date = today_str
+                        self._eod_exited_today = False
+                    if not self._eod_exited_today:
+                        eod_h, eod_m = map(int, self.eod_exit_time.split(':'))
+                        if (et_now.hour, et_now.minute) >= (eod_h, eod_m):
+                            logger.info(f"⏰ EOD force-exit triggered at {et_now.strftime('%H:%M')} ET — closing all positions")
+                            self._eod_exited_today = True
+                            for sym, pos in list(active_positions_copy.items()):
+                                eod_price = None
+                                if self.price_manager:
+                                    eod_price = self.price_manager.get_current_price(sym)
+                                if self.order_manager:
+                                    self.order_manager.close_position(sym, pos, eod_price or pos.entry_price, "EOD_FORCE_EXIT")
+                                with self._positions_lock:
+                                    if sym in self.active_positions:
+                                        del self.active_positions[sym]
+                                        self.active_positions_count = len(self.active_positions)
+                                if self.price_manager:
+                                    self.price_manager.unsubscribe_from_symbol(sym)
+                            # skip rest of loop — all positions gone
+                            self.check_for_new_positions()
+                            logger.info("Position monitoring cycle completed after EOD exit.")
+                            time.sleep(self.monitor_interval)
+                            continue
+
                 for symbol, position in active_positions_copy.items():
                     # Skip positions with 0 quantity - they shouldn't be processed for exit conditions
                     if position.size == 0:
@@ -1417,12 +1469,12 @@ class TradingBot:
                         if self.price_manager:
                             self.price_manager.unsubscribe_from_symbol(symbol)
                         continue
-                    
+
                     logger.info(f"Checking position: {symbol} ({position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f})")
-                    
+
                     # Check if position still exists in DAS using proper parsing
                     position_exists = self._check_position_exists_in_das(current_positions_raw, symbol)
-                    
+
                     if not position_exists:
                         logger.info(f"Position {symbol} no longer exists in DAS, removing from tracking")
                         with self._positions_lock:
@@ -1433,22 +1485,64 @@ class TradingBot:
                         if self.price_manager:
                             self.price_manager.unsubscribe_from_symbol(symbol)
                         continue
-                    
+
                     current_price = None
                     if self.price_manager:
                         current_price = self.price_manager.get_current_price(symbol)
-                    
+
                     if current_price:
                         logger.info(f"Current price for {symbol}: ${current_price:.2f}")
-                        
+
+                        # ── Trailing stop update ──────────────────────────────────
+                        if self.trailing_stop_enabled:
+                            with self._positions_lock:
+                                pos = self.active_positions.get(symbol)
+                                if pos:
+                                    if pos.type == "LONG":
+                                        if current_price > pos.highest_price:
+                                            pos.highest_price = current_price
+                                            new_stop = round(current_price * (1 - self.trailing_stop_pct / 100), 4)
+                                            if new_stop > pos.stop_loss:
+                                                logger.info(f"📈 Trailing stop raised for {symbol}: ${pos.stop_loss:.2f} → ${new_stop:.2f}")
+                                                pos.stop_loss = new_stop
+                                    else:  # SHORT
+                                        if pos.lowest_price == 0.0 or current_price < pos.lowest_price:
+                                            pos.lowest_price = current_price
+                                            new_stop = round(current_price * (1 + self.trailing_stop_pct / 100), 4)
+                                            if new_stop < pos.stop_loss:
+                                                logger.info(f"📉 Trailing stop lowered for {symbol}: ${pos.stop_loss:.2f} → ${new_stop:.2f}")
+                                                pos.stop_loss = new_stop
+                                    position = pos  # use updated reference
+
+                        # ── Breakeven stop check ──────────────────────────────────
+                        if self.breakeven_stop_enabled and not position.breakeven_set:
+                            with self._positions_lock:
+                                pos = self.active_positions.get(symbol)
+                                if pos and not pos.breakeven_set:
+                                    if pos.type == "LONG":
+                                        target_dist = pos.profit_target - pos.entry_price
+                                        trigger_price = pos.entry_price + target_dist * (self.breakeven_trigger_pct / 100)
+                                        if current_price >= trigger_price:
+                                            pos.stop_loss = pos.entry_price
+                                            pos.breakeven_set = True
+                                            logger.info(f"🔐 Breakeven stop set for {symbol} at ${pos.entry_price:.2f}")
+                                    else:  # SHORT
+                                        target_dist = pos.entry_price - pos.profit_target
+                                        trigger_price = pos.entry_price - target_dist * (self.breakeven_trigger_pct / 100)
+                                        if current_price <= trigger_price:
+                                            pos.stop_loss = pos.entry_price
+                                            pos.breakeven_set = True
+                                            logger.info(f"🔐 Breakeven stop set for {symbol} at ${pos.entry_price:.2f}")
+                                    position = pos
+
                         # Check exit conditions
                         should_exit, exit_reason = ExitConditionChecker.check_exit_conditions(
                             symbol, position, current_price
                         )
-                        
+
                         if should_exit:
                             logger.info(f"Exit condition met for {symbol}: {exit_reason} at ${current_price:.2f}")
-                            
+
                             if self.order_manager:
                                 success = self.order_manager.close_position(symbol, position, current_price, exit_reason)
                                 if success:
@@ -1597,8 +1691,8 @@ class TradingBot:
         return {
             'running': self.is_running,
             'monitoring': self.monitoring,
-            'active_positions': positions_data,  # Return active positions data directly
-            'active_positions_count': actual_positions_count,  # Use actual count of displayed positions
+            'active_positions': positions_data,
+            'active_positions_count': actual_positions_count,
             'last_update': self.last_update.isoformat() if self.last_update else None,
             'profit_target_pct': self.profit_target_pct,
             'stop_loss_pct': self.stop_loss_pct,
@@ -1607,7 +1701,14 @@ class TradingBot:
             'position_discovery_interval': self.position_discovery_interval,
             'config_check_interval': self.config_check_interval,
             'connection_check_interval': self.connection_check_interval,
-            'das_connected': self.connection is not None
+            'das_connected': self.connection is not None,
+            # Enhanced exit features
+            'trailing_stop_enabled': self.trailing_stop_enabled,
+            'trailing_stop_pct': self.trailing_stop_pct,
+            'eod_exit_enabled': self.eod_exit_enabled,
+            'eod_exit_time': self.eod_exit_time,
+            'breakeven_stop_enabled': self.breakeven_stop_enabled,
+            'breakeven_trigger_pct': self.breakeven_trigger_pct,
         }
     
     def subscribe_stock(self, ticker: str) -> bool:
@@ -1653,7 +1754,21 @@ class TradingBot:
             if 'monitor_interval' in strategies:
                 self.monitor_interval = int(strategies['monitor_interval'])
                 logger.info(f"📊 Monitor interval updated: {old_monitor_interval}s → {self.monitor_interval}s")
-            
+
+            if 'trailing_stop_enabled' in strategies:
+                self.trailing_stop_enabled = bool(strategies['trailing_stop_enabled'])
+            if 'trailing_stop_pct' in strategies:
+                self.trailing_stop_pct = float(strategies['trailing_stop_pct'])
+            if 'eod_exit_enabled' in strategies:
+                self.eod_exit_enabled = bool(strategies['eod_exit_enabled'])
+            if 'eod_exit_time' in strategies:
+                self.eod_exit_time = str(strategies['eod_exit_time'])
+                self._eod_exited_today = False  # allow re-trigger if time changed
+            if 'breakeven_stop_enabled' in strategies:
+                self.breakeven_stop_enabled = bool(strategies['breakeven_stop_enabled'])
+            if 'breakeven_trigger_pct' in strategies:
+                self.breakeven_trigger_pct = float(strategies['breakeven_trigger_pct'])
+
             # Recalculate exit targets for all existing positions
             positions_updated = 0
             with self._positions_lock:

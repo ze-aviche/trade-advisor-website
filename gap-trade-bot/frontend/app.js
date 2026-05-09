@@ -159,7 +159,13 @@ const app = createApp({
                 botConfig: {
                     profit_target_pct: 5.0,
                     stop_loss_pct: 2.5,
-                    monitor_interval: 5
+                    monitor_interval: 5,
+                    trailing_stop_enabled: false,
+                    trailing_stop_pct: 1.5,
+                    eod_exit_enabled: true,
+                    eod_exit_time: '15:45',
+                    breakeven_stop_enabled: true,
+                    breakeven_trigger_pct: 50.0,
                 },
                 isEditingBotConfig: false, // Track if user is actively editing bot config
                 
@@ -175,21 +181,6 @@ const app = createApp({
                 
 
                 
-                // Music player (SoundCloud Widget)
-                mp: {
-                    showSearch: false,
-                    query: '',
-                    isPlaying: false,
-                    progress: 0,   // ms
-                    duration: 0,   // ms
-                    volume: 70,    // 0-100
-                    showVolume: false,
-                    currentSound: null,
-                    ready: false,
-                    error: '',
-                    _widget: null,
-                },
-
                 // User data
                 user: null,
                 isGuest: false,
@@ -725,12 +716,6 @@ const app = createApp({
                     this.loadGapUps();
                 }
             }, 2 * 60 * 1000); // 2 minutes
-
-            // Load SoundCloud Widget API and init music player
-            const scScript = document.createElement('script');
-            scScript.src = 'https://w.soundcloud.com/player/api.js';
-            scScript.onload = () => this.mpInitWidget();
-            document.head.appendChild(scScript);
 
             // Add page load event listener for automatic refresh
             window.addEventListener('load', () => {
@@ -1960,10 +1945,17 @@ const app = createApp({
                     const response = await axios.get('/api/bot/config');
                     
                     if (response.data.success) {
+                        const d = response.data.data;
                         this.botConfig = {
-                            profit_target_pct: response.data.data.profit_target_pct || 5.0,
-                            stop_loss_pct: response.data.data.stop_loss_pct || 2.5,
-                            monitor_interval: response.data.data.monitor_interval || 5
+                            profit_target_pct: d.profit_target_pct ?? 5.0,
+                            stop_loss_pct: d.stop_loss_pct ?? 2.5,
+                            monitor_interval: d.monitor_interval ?? 5,
+                            trailing_stop_enabled: d.trailing_stop_enabled ?? false,
+                            trailing_stop_pct: d.trailing_stop_pct ?? 1.5,
+                            eod_exit_enabled: d.eod_exit_enabled ?? true,
+                            eod_exit_time: d.eod_exit_time ?? '15:45',
+                            breakeven_stop_enabled: d.breakeven_stop_enabled ?? true,
+                            breakeven_trigger_pct: d.breakeven_trigger_pct ?? 50.0,
                         };
                         console.log('✅ Bot config loaded:', this.botConfig);
                     } else {
@@ -5856,87 +5848,6 @@ const app = createApp({
             }
         },
 
-        // ── Music Player (SoundCloud Widget) ─────────────────────────
-        mpInitWidget() {
-            const iframe = document.getElementById('sc-widget');
-            if (!iframe || !window.SC) return;
-            const W = window.SC.Widget;
-            const widget = W(iframe);
-            this.mp._widget = widget;
-            widget.bind(W.Events.READY, () => {
-                this.mp.ready = true;
-                widget.setVolume(this.mp.volume);
-            });
-            widget.bind(W.Events.PLAY, () => {
-                this.mp.isPlaying = true;
-                this.mp.error = '';
-                widget.getCurrentSound(s => { this.mp.currentSound = s; });
-                widget.getDuration(d => { this.mp.duration = d; });
-            });
-            widget.bind(W.Events.PAUSE, () => { this.mp.isPlaying = false; });
-            widget.bind(W.Events.FINISH, () => { this.mp.isPlaying = false; });
-            widget.bind(W.Events.PLAY_PROGRESS, data => {
-                this.mp.progress = data.currentPosition;
-            });
-            widget.bind(W.Events.ERROR, () => {
-                this.mp.error = 'Track unavailable — try a different search.';
-                this.mp.isPlaying = false;
-            });
-        },
-        mpSearch() {
-            const q = this.mp.query.trim();
-            if (!q || !this.mp._widget) return;
-            this.mp.error = '';
-            // Load SoundCloud search results as a playlist and auto-play
-            this.mp._widget.load(
-                `https://soundcloud.com/search/sounds?q=${encodeURIComponent(q)}`,
-                { auto_play: true, buying: false, liking: false, download: false,
-                  sharing: false, show_playcount: false, show_reposts: false }
-            );
-            this.mp.showSearch = false;
-        },
-        mpToggle() {
-            if (!this.mp._widget) return;
-            this.mp._widget.isPaused(paused => {
-                if (paused) this.mp._widget.play();
-                else        this.mp._widget.pause();
-            });
-        },
-        mpNext() { if (this.mp._widget) this.mp._widget.next(); },
-        mpPrev() { if (this.mp._widget) this.mp._widget.prev(); },
-        mpSeek(e) {
-            if (!this.mp._widget || !this.mp.duration) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const pct  = (e.clientX - rect.left) / rect.width;
-            this.mp._widget.seekTo(Math.round(pct * this.mp.duration));
-        },
-        mpSetVolume(v) {
-            this.mp.volume = parseInt(v);
-            if (this.mp._widget) this.mp._widget.setVolume(this.mp.volume);
-        },
-        mpCurrentTrack() {
-            const s = this.mp.currentSound;
-            if (!s) return null;
-            return {
-                title:  s.title || 'Unknown',
-                artist: s.user ? s.user.username : '',
-                cover:  s.artwork_url ? s.artwork_url.replace('-large', '-t50x50') : '',
-            };
-        },
-        mpProgressPct() {
-            return this.mp.duration > 0 ? (this.mp.progress / this.mp.duration) * 100 : 0;
-        },
-        mpFormatTime(ms) {
-            if (!ms) return '0:00';
-            const s = Math.floor(ms / 1000);
-            return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-        },
-        mpStop() {
-            if (this.mp._widget) this.mp._widget.pause();
-            this.mp.isPlaying = false;
-            this.mp.progress  = 0;
-            this.mp.currentSound = null;
-        },
         }
     });
     
