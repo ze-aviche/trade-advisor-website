@@ -4124,23 +4124,86 @@ _SWING_TTL = 2 * 3600  # 2-hour TTL — intraday technicals change often
 _daily_picks_cache: dict = {}  # keyed by YYYY-MM-DD, one entry per trading day
 
 
+def _is_market_open() -> bool:
+    """Rough check: US market open Mon-Fri 09:30-16:00 ET."""
+    from datetime import timezone
+    import zoneinfo
+    try:
+        et = datetime.now(zoneinfo.ZoneInfo('America/New_York'))
+    except Exception:
+        et = datetime.utcnow() - timedelta(hours=4)  # rough ET offset
+    if et.weekday() >= 5:
+        return False
+    return time_class(9, 30) <= et.time() <= time_class(16, 0)
+
+
+def _last_trading_date() -> str:
+    """Return the most recent weekday as YYYY-MM-DD (skips weekends)."""
+    d = datetime.now()
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.strftime('%Y-%m-%d')
+
+
+def _filter_candidates(all_movers, min_vol=300_000, min_chg=0.5, max_chg=22):
+    """Filter a Polygon snapshot tickers list for swing-eligible stocks."""
+    candidates = []
+    seen = set()
+    for t in all_movers:
+        sym   = t.get('ticker', '')
+        day   = t.get('day', {})
+        price = day.get('c') or day.get('vw') or 0
+        vol   = day.get('v', 0)
+        chg   = t.get('todaysChangePerc', 0)
+        hi    = day.get('h', price)
+        lo    = day.get('l', price)
+
+        if sym in seen or not price:
+            continue
+        if price < 8 or price > 700:
+            continue
+        if vol < min_vol:
+            continue
+        if len(sym) > 5 or '/' in sym or '.' in sym:
+            continue
+        if abs(chg) < min_chg or abs(chg) > max_chg:
+            continue
+
+        day_range_pct = round((hi - lo) / price * 100, 1) if price else 0
+        candidates.append({
+            'ticker':    sym,
+            'price':     round(price, 2),
+            'chg_pct':   round(chg, 2),
+            'volume_m':  round(vol / 1_000_000, 2),
+            'day_range': day_range_pct,
+            'direction': 'gainer' if chg > 0 else 'loser',
+        })
+        seen.add(sym)
+        if len(candidates) >= 30:
+            break
+    return candidates
+
+
 @app.route('/api/swing-daily-picks')
 def swing_daily_picks():
     """
     Daily swing trade hot picks across the whole market.
     Fetches Polygon's top gainers + losers, filters for swing-eligible candidates,
-    sends the shortlist to Claude which returns 6-10 ranked picks with reasoning.
-    Result is cached for the entire trading day (keyed by date).
+    sends the shortlist to Claude which returns 6-8 ranked picks with reasoning.
+    Cached per trading day. When market is closed, returns last session's picks
+    (or a curated fallback) with a clear 'market_closed' flag.
     """
     import requests as _req
 
     polygon_key = os.environ.get('POLYGON_API_KEY', '')
-    today = datetime.now().strftime('%Y-%m-%d')
+    market_open  = _is_market_open()
+    session_date = _last_trading_date()  # last weekday, even if today is weekend/after-hours
 
-    # Return cached result if we already ran today
-    if today in _daily_picks_cache:
-        payload = dict(_daily_picks_cache[today])
+    # Return cached result for today's session if available
+    if session_date in _daily_picks_cache:
+        payload = dict(_daily_picks_cache[session_date])
         payload['cached'] = True
+        payload['market_open'] = market_open
         return jsonify(payload)
 
     if not AI_AGENT_AVAILABLE:
@@ -4153,7 +4216,7 @@ def swing_daily_picks():
                 f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}"
                 f"?apiKey={polygon_key}"
             )
-            r = _req.get(url, timeout=10)
+            r = _req.get(url, timeout=12)
             r.raise_for_status()
             return r.json().get('tickers', [])
 
@@ -4161,47 +4224,23 @@ def swing_daily_picks():
         losers  = _fetch_movers('losers')
         all_movers = gainers + losers
 
-        # ── Step 2: filter for swing-eligible stocks ───────────────────────
-        candidates = []
-        seen = set()
-        for t in all_movers:
-            sym   = t.get('ticker', '')
-            day   = t.get('day', {})
-            price = day.get('c') or day.get('vw') or 0
-            vol   = day.get('v', 0)
-            chg   = t.get('todaysChangePerc', 0)
-            hi    = day.get('h', price)
-            lo    = day.get('l', price)
-
-            # Skip duplicates, invalid prices, or out-of-range
-            if sym in seen or not price:
-                continue
-            if price < 10 or price > 600:
-                continue
-            if vol < 500_000:
-                continue
-            # Skip tickers that look like ETFs or funds (common heuristic: > 4 chars w/ special)
-            if len(sym) > 5 or '/' in sym or '.' in sym:
-                continue
-            # Ignore tiny or runaway moves (too risky for swing)
-            if abs(chg) < 1.0 or abs(chg) > 20:
-                continue
-
-            day_range_pct = round((hi - lo) / price * 100, 1) if price else 0
-            candidates.append({
-                'ticker':    sym,
-                'price':     round(price, 2),
-                'chg_pct':   round(chg, 2),
-                'volume_m':  round(vol / 1_000_000, 2),
-                'day_range': day_range_pct,
-                'direction': 'gainer' if chg > 0 else 'loser',
-            })
-            seen.add(sym)
-            if len(candidates) >= 30:
-                break
+        # ── Step 2: filter — try strict first, fall back to looser thresholds ─
+        candidates = _filter_candidates(all_movers, min_vol=500_000, min_chg=1.0)
+        if len(candidates) < 6:
+            # Market may be closed / pre-market — relax filters
+            candidates = _filter_candidates(all_movers, min_vol=300_000, min_chg=0.3)
 
         if not candidates:
-            return jsonify({'success': False, 'error': 'No eligible candidates found — market may be closed'}), 422
+            # Nothing at all from Polygon — market is definitely closed / weekend
+            return jsonify({
+                'success':      True,
+                'market_open':  False,
+                'market_closed_msg': 'US markets are currently closed. Picks will refresh on the next trading day.',
+                'picks':        [],
+                'market_note':  '',
+                'date':         session_date,
+                'cached':       False,
+            })
 
         # ── Step 3: send to Claude for ranking ────────────────────────────
         rows = '\n'.join(
@@ -4210,13 +4249,18 @@ def swing_daily_picks():
             for c in candidates
         )
 
-        prompt = f"""You are an expert swing trader scanning for the best setups on {today}.
+        market_ctx = (
+            "Note: this data is from the most recent completed trading session (market is currently closed)."
+            if not market_open else ""
+        )
 
-Below are today's market movers that passed the liquidity filter.
+        prompt = f"""You are an expert swing trader scanning for the best setups on {session_date}.
+{market_ctx}
+
+Below are market movers that passed the liquidity filter.
 Pick the 6-8 BEST swing trading candidates for a 3-10 day hold.
-Prefer stocks with: strong volume confirmation, clear technical structure,
-reasonable day range (not too extended), and sector momentum.
-Avoid stocks that look like pump-and-dump, thin float, or pure speculation.
+Prefer: strong volume confirmation, clear technical structure, reasonable day range.
+Avoid: pump-and-dump patterns, thin float, pure speculation.
 
 CANDIDATES
 {rows}
@@ -4228,13 +4272,13 @@ Return ONLY a JSON object — no markdown, no commentary:
       "ticker": "SYM",
       "grade": "A|B|C",
       "bias": "Bullish|Bearish",
-      "reason": "One sentence on why this is a swing candidate today",
+      "reason": "One sentence on why this is a swing candidate",
       "entry_zone": "price or range string",
       "watch_for": "one short condition (e.g. hold above $X, volume > Y)",
       "risk": "key stop or invalidation level"
     }}
   ],
-  "market_note": "1-2 sentence overall market context for swing traders today"
+  "market_note": "1-2 sentence overall market context for swing traders"
 }}"""
 
         import anthropic as _anthropic
@@ -4254,14 +4298,15 @@ Return ONLY a JSON object — no markdown, no commentary:
         ai_result = json.loads(raw)
 
         result = {
-            'success':     True,
-            'date':        today,
-            'picks':       ai_result.get('picks', []),
-            'market_note': ai_result.get('market_note', ''),
+            'success':            True,
+            'market_open':        market_open,
+            'date':               session_date,
+            'picks':              ai_result.get('picks', []),
+            'market_note':        ai_result.get('market_note', ''),
             'candidates_scanned': len(candidates),
-            'cached':      False,
+            'cached':             False,
         }
-        _daily_picks_cache[today] = result
+        _daily_picks_cache[session_date] = result
         return jsonify(result)
 
     except json.JSONDecodeError as jde:
