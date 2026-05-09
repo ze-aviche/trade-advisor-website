@@ -515,14 +515,18 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True, min_gap_percent=
         return [d for d in (data or []) if (d.get('gap up % at open') or 0) >= min_gap_percent]
 
     try:
-        # Calculate date range based on requested days (not always 3 years)
+        # days=0 means "All Time" — use a far-back date so the full cache is covered
+        if days == 0:
+            days = 5475  # 15 years; well beyond any data we'll ever cache
+
+        # Calculate date range based on requested days
         end_date = dt.now().date()
         start_date = end_date - timedelta(days=days)
-        
+
         # Format dates for API and cache
         from_date = start_date.strftime("%Y-%m-%d")
         to_date = end_date.strftime("%Y-%m-%d")
-        
+
         logger.info(f"📊 Fetching historical gap-up data for {ticker} from {from_date} to {to_date} ({days} days)")
         
         cached_data = []  # Initialize cached_data in outer scope
