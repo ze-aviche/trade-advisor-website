@@ -571,7 +571,8 @@ canvas {
     overflow-x: auto;
     overflow-y: hidden;
     max-width: 100%;
-    border-radius: 8px;
+    border-radius: 0 0 8px 8px;
+    -webkit-overflow-scrolling: touch;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     scrollbar-width: thin;
     scrollbar-color: #6B7280 #374151;
@@ -639,13 +640,30 @@ canvas {
     transition: background-color 0.2s ease;
 }
 
-/* Force horizontal scroll */
+/* Sticky first column (Date) — stays visible while scrolling horizontally */
+.historical-table-container th:first-child,
+.historical-table-container td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background-color: #4B5563; /* matches thead */
+}
+.historical-table-container td:first-child {
+    background-color: #1f2937; /* matches tbody row bg */
+}
+.historical-table-container tr:hover td:first-child {
+    background-color: #374151;
+}
+
+/* Scrollbar — auto width, always visible */
 .historical-table-container {
     display: block;
     width: 100%;
     overflow-x: scroll;
     overflow-y: hidden;
     position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: #6B7280 #374151;
 }
 
 .historical-table-container table {
@@ -656,47 +674,42 @@ canvas {
     table-layout: auto;
 }
 
-/* Ensure table cells don't wrap */
 .historical-table-container th,
 .historical-table-container td {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-width: 120px;
+    min-width: 90px;
     max-width: none;
 }
 
-/* Additional scrollbar styling for better visibility */
-.historical-table-container {
-    scrollbar-width: auto;
-    scrollbar-color: #6B7280 #374151;
-}
-
-/* Ensure the table takes full width when content is wide */
-.historical-table-container table {
-    width: max-content;
-    min-width: 100%;
-}
-
-/* Responsive table */
+/* Tablet */
 @media (max-width: 1024px) {
     .historical-table-container {
         font-size: 0.75rem;
     }
-
     .historical-table-container th,
     .historical-table-container td {
-        padding: 8px 12px;
-        min-width: 100px;
+        padding: 8px 10px;
+        min-width: 80px;
     }
 }
 
+/* Mobile */
 @media (max-width: 768px) {
+    .historical-table-container::-webkit-scrollbar {
+        height: 10px; /* thicker = easier to grab on touch */
+    }
     .historical-table-container th,
     .historical-table-container td {
-        min-width: 80px;
-        padding: 6px 8px;
-        font-size: 0.7rem;
+        min-width: 68px;
+        padding: 5px 7px;
+        font-size: 0.68rem;
+    }
+    /* Date column slightly wider so it's readable */
+    .historical-table-container th:first-child,
+    .historical-table-container td:first-child {
+        min-width: 76px;
     }
 }
 
