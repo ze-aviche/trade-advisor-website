@@ -962,12 +962,6 @@
                                                     <i :class="getSortIcon('afterhours close')" class="ml-2"></i>
                                                 </div>
                                             </th>
-                                            <th @click="sortTable('total volume')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
-                                                <div class="flex items-center justify-end">
-                                                    <span>Volume</span>
-                                                    <i :class="getSortIcon('total volume')" class="ml-2"></i>
-                                                </div>
-                                            </th>
                                             <th @click="sortTable('VWAP Crosses')" class="px-3 py-3 text-right text-gray-300 font-medium cursor-pointer hover:bg-gray-500 transition-colors whitespace-nowrap">
                                                 <div class="flex items-center justify-end">
                                                     <span>VWAP</span>
@@ -1027,7 +1021,6 @@
                                                 {{ day['closing percent'] ? (day['closing percent'] > 0 ? '+' : '') + day['closing percent'] + '%' : 'N/A' }}
                                             </td>
                                             <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">${{ day['afterhours close'] || 'N/A' }}</td>
-                                            <td class="px-3 py-3 text-right text-gray-300 whitespace-nowrap">{{ formatNumber(day['total volume']) }}</td>
                                             <td class="px-3 py-3 text-right text-purple-400 whitespace-nowrap">{{ day['VWAP Crosses'] || 0 }}</td>
                                             <td class="px-3 py-3 text-right whitespace-nowrap">
                                                 <span :class="getPatternColor(day['Runner/Fader'])" class="px-2 py-1 rounded text-xs font-medium">
