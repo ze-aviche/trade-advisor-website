@@ -1486,11 +1486,13 @@ import threading as _threading
 
 _analysis_cache:    dict = {}   # cache_key  -> (stored_at: float, payload: dict)
 _sector_etf_cache:  dict = {}   # etf_symbol -> (stored_at: float, perf: dict)
+_news_cache:        dict = {}   # ticker     -> (stored_at: float, payload: dict)
 _rate_limit_store:  dict = {}   # client_ip  -> [call_timestamps: float]
 _cache_lock = _threading.Lock()
 
 _ANALYSIS_TTL    = 4 * 3600    # re-use analysis result for 4 h
 _SECTOR_ETF_TTL  = 4 * 3600    # sector ETF bars stale after 4 h
+_NEWS_TTL        = 30 * 60     # news stale after 30 min
 _RATE_MAX        = 5            # max AI Predict clicks
 _RATE_WINDOW     = 3600         # …per hour per IP
 
@@ -1805,6 +1807,85 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
     except Exception as e:
         app_logger.error(f"Error in historical analysis for {ticker}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/stock-news/<ticker>')
+def get_stock_news_endpoint(ticker):
+    """Fetch latest news for a ticker from Polygon and summarise with Claude."""
+    import requests as _req
+    import re as _re
+
+    ticker = ticker.upper()
+
+    cached = _cache_get(_news_cache, ticker, _NEWS_TTL)
+    if cached:
+        cached['cached'] = True
+        return jsonify(cached)
+
+    articles = []
+    polygon_key = os.getenv('POLYGON_API_KEY')
+
+    # Primary: Polygon news API
+    if polygon_key:
+        try:
+            r = _req.get(
+                'https://api.polygon.io/v2/reference/news',
+                params={'ticker': ticker, 'limit': 8, 'sort': 'published_utc',
+                        'order': 'desc', 'apiKey': polygon_key},
+                timeout=8
+            )
+            if r.status_code == 200:
+                for item in r.json().get('results', []):
+                    articles.append({
+                        'title':       item.get('title', ''),
+                        'url':         item.get('article_url', ''),
+                        'source':      (item.get('publisher') or {}).get('name', ''),
+                        'published':   item.get('published_utc', ''),
+                        'description': (item.get('description') or '')[:220],
+                    })
+        except Exception as e:
+            app_logger.warning(f"Polygon news failed for {ticker}: {e}")
+
+    # Fallback: AI agent web search
+    if not articles and AI_AGENT_AVAILABLE and _ai_agent:
+        try:
+            result = _ai_agent._get_stock_news(ticker, days=7)
+            for item in (result.get('news') or []):
+                articles.append({
+                    'title':       item.get('title') or item.get('snippet', ''),
+                    'url':         item.get('url', ''),
+                    'source':      '',
+                    'published':   '',
+                    'description': item.get('snippet', ''),
+                })
+        except Exception as e:
+            app_logger.warning(f"Web search news fallback failed for {ticker}: {e}")
+
+    # Claude summary of top headlines
+    summary = ''
+    if articles and AI_AGENT_AVAILABLE and _ai_agent:
+        headlines = '\n'.join(f"- {a['title']}" for a in articles[:6] if a['title'])
+        try:
+            resp = _ai_agent.process_message(
+                f"You are a concise trading news analyst. Summarise these recent news headlines about {ticker} "
+                f"in exactly 2-3 sentences. Focus on: key catalysts, market sentiment, and what traders should watch. "
+                f"Do not use bullet points — write flowing prose.\n\nHeadlines:\n{headlines}",
+                user_id=f"news_summary_{ticker}"
+            )
+            if resp.get('success'):
+                summary = resp.get('response', '').strip()
+        except Exception as e:
+            app_logger.warning(f"News summary Claude call failed for {ticker}: {e}")
+
+    result = {
+        'success':  True,
+        'ticker':   ticker,
+        'articles': articles[:6],
+        'summary':  summary,
+        'cached':   False,
+    }
+    _cache_set(_news_cache, ticker, result)
+    return jsonify(result)
 
 
 @app.route('/api/test-historical/<ticker>')

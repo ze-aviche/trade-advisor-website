@@ -81,7 +81,8 @@ const app = createApp({
                     backtest: false,
                     runBacktest: false,
                     equityChart: false,
-                    historicalAnalysis: false
+                    historicalAnalysis: false,
+                    stockNews: false
                 },
                 
                 // Charts
@@ -242,6 +243,7 @@ const app = createApp({
                 historicalSectorInfo: null,
                 historicalSectorPerf: null,
                 historicalAnalysisCached: false,
+                stockNews: null,
                 _historicalCharts: {},
                 
                 // Trade History
@@ -4739,6 +4741,37 @@ const app = createApp({
         destroyHistoricalCharts() {
             Object.values(this._historicalCharts).forEach(c => { try { c.destroy(); } catch(e) {} });
             this._historicalCharts = {};
+        },
+
+        async loadStockNews() {
+            const ticker = this.historicalTicker.trim().toUpperCase();
+            if (!ticker) return;
+            try {
+                this.loading.stockNews = true;
+                this.stockNews = null;
+                const response = await fetch(`/api/stock-news/${ticker}`);
+                const data = await response.json();
+                if (data.success) {
+                    this.stockNews = data;
+                } else {
+                    this.showNotification('Could not load news: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (err) {
+                this.showNotification('News fetch failed: ' + err.message, 'error');
+            } finally {
+                this.loading.stockNews = false;
+            }
+        },
+
+        formatNewsTime(isoStr) {
+            if (!isoStr) return '';
+            try {
+                const diff = (Date.now() - new Date(isoStr).getTime()) / 1000;
+                if (diff < 3600)   return Math.floor(diff / 60) + 'm ago';
+                if (diff < 86400)  return Math.floor(diff / 3600) + 'h ago';
+                if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+                return new Date(isoStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } catch { return ''; }
         },
 
         getOutlookColor(outlook) {
