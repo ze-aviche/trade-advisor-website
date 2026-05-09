@@ -86,6 +86,7 @@ const app = createApp({
                     swingTechnicals: false,
                     swingRecommendation: false,
                     swingNews: false,
+                    swingDailyPicks: false,
                 },
                 
                 // Charts
@@ -257,6 +258,8 @@ const app = createApp({
                 swingRecommendation: null,
                 swingNews: null,
                 swingTechnicalsCached: false,
+                swingDailyPicks: null,
+                swingDailyPicksDate: null,
                 
                 // Trade History
                 tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
@@ -874,9 +877,13 @@ const app = createApp({
                     this.startContinuousTracking();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
-                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
-                    // Historical tab is ready for user input, no auto-loading needed
+                    this.stopPositionHistoryUpdates();
+                    this.stopContinuousTracking();
+                } else if (tabName === 'swing') {
+                    console.log('📊 Swing Trading tab selected - loading daily picks...');
+                    this.stopPositionHistoryUpdates();
+                    this.stopContinuousTracking();
+                    this.loadSwingDailyPicks();
                 } else if (tabName === 'stats') {
                     console.log('📊 Stats tab selected - loading statistics...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
@@ -4960,6 +4967,32 @@ const app = createApp({
             if (type === 'bullish') return 'bg-green-900/60 text-green-300 border border-green-700';
             if (type === 'bearish') return 'bg-red-900/60 text-red-300 border border-red-700';
             return 'bg-gray-700 text-gray-300 border border-gray-600';
+        },
+
+        async loadSwingDailyPicks(force = false) {
+            const today = new Date().toISOString().slice(0, 10);
+            // Don't re-fetch if already loaded for today (unless forced)
+            if (!force && this.swingDailyPicks && this.swingDailyPicksDate === today) return;
+            this.loading.swingDailyPicks = true;
+            try {
+                const res  = await fetch('/api/swing-daily-picks');
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'No picks available');
+                this.swingDailyPicks = data;
+                this.swingDailyPicksDate = data.date || today;
+            } catch (e) {
+                this.showNotification(`Daily picks: ${e.message}`, 'error');
+            } finally {
+                this.loading.swingDailyPicks = false;
+            }
+        },
+
+        selectSwingPick(ticker) {
+            this.swingTicker = ticker;
+            this.swingTechnicals = null;
+            this.swingRecommendation = null;
+            this.swingNews = null;
+            this.loadSwingData();
         },
 
         // ── End Swing methods ────────────────────────────────────────────────
