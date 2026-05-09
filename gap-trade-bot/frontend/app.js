@@ -4077,17 +4077,10 @@ const app = createApp({
         formatDate(dateString) {
             if (!dateString) return 'N/A';
             try {
-                // Parse the ISO string and format to MM/DD/YYYY HH:MM
-                const date = new Date(dateString);
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                const year = date.getFullYear();
-                const hours = String(date.getHours()).padStart(2, '0');
-                const minutes = String(date.getMinutes()).padStart(2, '0');
-                
-                return `${month}/${day}/${year} ${hours}:${minutes}`;
+                // Split directly to avoid timezone offset converting the date
+                const [year, month, day] = dateString.split('-');
+                return `${month}/${day}/${year}`;
             } catch (error) {
-                // Fallback to original string if parsing fails
                 return dateString;
             }
         },
