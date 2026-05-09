@@ -573,6 +573,43 @@ def serve_login():
     return send_from_directory(FRONTEND_DIR, 'login.html')
 
 
+@app.route('/api/music/search')
+def music_search():
+    """Proxy Deezer search so the browser doesn't hit CORS. Returns 30-second preview tracks."""
+    from auth import login_required as _lr
+    # Only serve to authenticated sessions
+    from flask import session as _sess
+    if not _sess.get('user_id'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'tracks': []})
+    try:
+        import requests as _req
+        resp = _req.get(
+            'https://api.deezer.com/search',
+            params={'q': q, 'limit': 8},
+            timeout=5
+        )
+        resp.raise_for_status()
+        raw = resp.json().get('data', [])
+        tracks = [
+            {
+                'id':      t['id'],
+                'title':   t['title'],
+                'artist':  t['artist']['name'],
+                'cover':   t['album'].get('cover_small', ''),
+                'preview': t.get('preview', ''),
+            }
+            for t in raw
+            if t.get('preview')  # skip tracks with no playable preview
+        ]
+        return jsonify({'tracks': tracks})
+    except Exception as e:
+        app_logger.error(f"Music search error: {e}")
+        return jsonify({'tracks': [], 'error': str(e)}), 500
+
+
 @app.route('/api/contact', methods=['POST'])
 def contact():
     """Handle contact form submission and email it to the site owner"""

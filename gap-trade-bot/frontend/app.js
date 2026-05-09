@@ -169,6 +169,23 @@ const app = createApp({
                 
 
                 
+                // Music player
+                mp: {
+                    showSearch: false,
+                    query: '',
+                    results: [],
+                    searching: false,
+                    queue: [],
+                    queueIndex: -1,
+                    isPlaying: false,
+                    progress: 0,
+                    duration: 30,
+                    volume: 0.7,
+                    showVolume: false,
+                    _audio: null,
+                    _timer: null,
+                },
+
                 // User data
                 user: null,
                 isGuest: false,
@@ -5397,14 +5414,97 @@ const app = createApp({
         async updateDebugLogs() {
             try {
                 const response = await axios.get('/api/entry-bot/debug-logs');
-                
+
                 if (response.data.success) {
                     this.debugLogs = response.data.logs || [];
                 }
             } catch (error) {
                 console.error('Error updating debug logs:', error);
             }
-        }
+        },
+
+        // ── Music Player ──────────────────────────────────────────────
+        async mpSearch() {
+            const q = this.mp.query.trim();
+            if (!q) return;
+            this.mp.searching = true;
+            this.mp.results = [];
+            try {
+                const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`);
+                const json = await res.json();
+                this.mp.results = json.tracks || [];
+            } catch (_) {}
+            this.mp.searching = false;
+        },
+        mpPlay(track, fromQueue) {
+            // Build/extend queue
+            if (!fromQueue) {
+                this.mp.queue = this.mp.results;
+                this.mp.queueIndex = this.mp.results.findIndex(t => t.id === track.id);
+                if (this.mp.queueIndex < 0) this.mp.queueIndex = 0;
+            }
+            // Teardown previous
+            if (this.mp._audio) {
+                this.mp._audio.pause();
+                this.mp._audio = null;
+            }
+            clearInterval(this.mp._timer);
+            const audio = new Audio(track.preview);
+            audio.volume = this.mp.volume;
+            audio.play().catch(() => {});
+            audio.addEventListener('timeupdate', () => {
+                this.mp.progress = audio.currentTime;
+                this.mp.duration = audio.duration || 30;
+            });
+            audio.addEventListener('ended', () => this.mpNext());
+            this.mp._audio = audio;
+            this.mp.isPlaying = true;
+            this.mp.showSearch = false;
+            this.mp.results = [];
+        },
+        mpToggle() {
+            if (!this.mp._audio) return;
+            if (this.mp.isPlaying) {
+                this.mp._audio.pause();
+                this.mp.isPlaying = false;
+            } else {
+                this.mp._audio.play().catch(() => {});
+                this.mp.isPlaying = true;
+            }
+        },
+        mpNext() {
+            if (!this.mp.queue.length) return;
+            this.mp.queueIndex = (this.mp.queueIndex + 1) % this.mp.queue.length;
+            this.mpPlay(this.mp.queue[this.mp.queueIndex], true);
+        },
+        mpPrev() {
+            if (!this.mp.queue.length) return;
+            this.mp.queueIndex = (this.mp.queueIndex - 1 + this.mp.queue.length) % this.mp.queue.length;
+            this.mpPlay(this.mp.queue[this.mp.queueIndex], true);
+        },
+        mpSeek(e) {
+            if (!this.mp._audio) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            this.mp._audio.currentTime = pct * (this.mp._audio.duration || 30);
+        },
+        mpSetVolume(v) {
+            this.mp.volume = parseFloat(v);
+            if (this.mp._audio) this.mp._audio.volume = this.mp.volume;
+        },
+        mpCurrentTrack() {
+            return this.mp.queue[this.mp.queueIndex] || null;
+        },
+        mpProgressPct() {
+            return this.mp.duration > 0 ? (this.mp.progress / this.mp.duration) * 100 : 0;
+        },
+        mpStop() {
+            if (this.mp._audio) { this.mp._audio.pause(); this.mp._audio = null; }
+            this.mp.isPlaying = false;
+            this.mp.progress = 0;
+            this.mp.queue = [];
+            this.mp.queueIndex = -1;
+        },
         }
     });
     
