@@ -1882,49 +1882,87 @@
                 <!-- Entry Parameters Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium text-white">Entry Parameters</h3>
-                        <button @click="submitEntryParameters" 
-                                :disabled="loading.submitEntry || !entryForm.symbol || !entryForm.totalVolume || !entryForm.dollarVolume || !entryForm.entryTime || !entryForm.quantity || (entryForm.orderType === 'LIMIT' && !entryForm.limitPrice)"
-                                class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium">
+                        <div class="flex items-center space-x-4">
+                            <h3 class="text-lg font-medium text-white">Entry Parameters</h3>
+                            <!-- Trade Style Toggle -->
+                            <div class="flex items-center bg-gray-700 rounded-lg p-1 space-x-1">
+                                <button @click="entryForm.positionType = 'day'"
+                                        :class="entryForm.positionType === 'day' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'"
+                                        class="flex items-center px-3 py-1.5 rounded-md text-xs font-semibold transition-all">
+                                    <i class="fas fa-bolt mr-1"></i>Day
+                                </button>
+                                <button @click="entryForm.positionType = 'swing'"
+                                        :class="entryForm.positionType === 'swing' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'"
+                                        class="flex items-center px-3 py-1.5 rounded-md text-xs font-semibold transition-all">
+                                    <i class="fas fa-moon mr-1"></i>Swing
+                                </button>
+                            </div>
+                        </div>
+                        <button @click="submitEntryParameters"
+                                :disabled="loading.submitEntry || !entryForm.symbol || !entryForm.quantity || (entryForm.orderType === 'LIMIT' && !entryForm.limitPrice) || (entryForm.positionType === 'day' && (!entryForm.totalVolume || !entryForm.dollarVolume || !entryForm.entryTime))"
+                                :class="entryForm.positionType === 'swing' ? 'bg-purple-700 hover:bg-purple-600' : 'bg-green-600 hover:bg-green-700'"
+                                class="disabled:bg-gray-500 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium">
                             <i :class="loading.submitEntry ? 'fas fa-spinner fa-spin' : 'fas fa-paper-plane'" class="mr-2"></i>
-                            {{ loading.submitEntry ? 'Submitting...' : 'Submit Entry Parameters' }}
+                            {{ loading.submitEntry ? 'Submitting...' : (entryForm.positionType === 'swing' ? 'Submit Swing Entry' : 'Submit Entry Parameters') }}
                         </button>
                     </div>
-                    
+
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <!-- Symbol -->
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Symbol</label>
-                            <input v-model="entryForm.symbol" 
-                                   type="text" 
+                            <input v-model="entryForm.symbol"
+                                   type="text"
                                    placeholder="e.g., AAPL"
                                    class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
                         </div>
-                        
-                        <!-- Total Volume -->
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Volume (M)</label>
-                            <input v-model="entryForm.totalVolume" 
-                                   type="number" 
+
+                        <!-- Total Volume (day only) -->
+                        <div :class="entryForm.positionType === 'swing' ? 'opacity-40 pointer-events-none' : ''">
+                            <label class="block text-sm text-gray-400 mb-2">Volume (M) <span v-if="entryForm.positionType==='swing'" class="text-gray-500">(Day only)</span></label>
+                            <input v-model="entryForm.totalVolume"
+                                   type="number"
                                    placeholder="e.g., 1.5"
                                    class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
                         </div>
                         
-                        <!-- Dollar Volume -->
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Dollar Volume (M)</label>
-                            <input v-model="entryForm.dollarVolume" 
-                                   type="number" 
+                        <!-- Dollar Volume (day only) -->
+                        <div :class="entryForm.positionType === 'swing' ? 'opacity-40 pointer-events-none' : ''">
+                            <label class="block text-sm text-gray-400 mb-2">Dollar Volume (M) <span v-if="entryForm.positionType==='swing'" class="text-gray-500">(Day only)</span></label>
+                            <input v-model="entryForm.dollarVolume"
+                                   type="number"
                                    placeholder="e.g., 50.0"
                                    class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
                         </div>
-                        
-                        <!-- Entry Time -->
-                        <div>
+
+                        <!-- Entry Time (day only) / Swing Entry Reason (swing) -->
+                        <div v-if="entryForm.positionType === 'day'">
                             <label class="block text-sm text-gray-400 mb-2">Entry Time (ET)</label>
-                            <input v-model="entryForm.entryTime" 
-                                   type="time" 
+                            <input v-model="entryForm.entryTime"
+                                   type="time"
                                    class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-gray-600 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        <div v-if="entryForm.positionType === 'swing'">
+                            <label class="block text-sm text-gray-400 mb-2">Setup / Entry Reason</label>
+                            <input v-model="entryForm.swingEntryReason"
+                                   type="text"
+                                   placeholder="e.g., bull_flag_breakout"
+                                   class="w-full bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-purple-600 focus:border-purple-400 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Swing-only: Max Hold Days override -->
+                    <div v-if="entryForm.positionType === 'swing'" class="mt-4 p-4 bg-purple-900/30 border border-purple-700/50 rounded-lg">
+                        <h4 class="text-sm font-medium text-purple-200 mb-3"><i class="fas fa-moon mr-1"></i>Swing Trade Settings</h4>
+                        <div class="flex items-center space-x-6">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Max Hold Days (optional override)</label>
+                                <input v-model.number="entryForm.maxHoldDays"
+                                       type="number" min="1" max="90"
+                                       placeholder="Use global default"
+                                       class="w-40 bg-gray-700 text-white text-sm rounded-md px-3 py-2 border border-purple-700 focus:border-purple-400 focus:outline-none">
+                            </div>
+                            <p class="text-xs text-purple-300 mt-4">Leave blank to use the global swing max hold days setting. Swing positions are never EOD-exited.</p>
                         </div>
                     </div>
                     
@@ -2737,6 +2775,91 @@
 
 
 
+                <!-- Swing Bot Configuration Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <i class="fas fa-moon text-purple-400"></i>
+                            <h3 class="text-lg font-medium text-white">Swing Bot Configuration</h3>
+                        </div>
+                        <button @click="updateSwingBotConfig" class="bg-purple-700 hover:bg-purple-600 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-save mr-2"></i>Save Swing Config
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Profit Target -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Profit Target %</label>
+                            <div class="flex items-center space-x-2">
+                                <input v-model.number="swingBotConfig.profit_target_pct"
+                                       type="number" min="1" max="100" step="1"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-purple-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">%</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1">Target profit for swing positions (typically 10–30%)</p>
+                        </div>
+                        <!-- Stop Loss -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Stop Loss %</label>
+                            <div class="flex items-center space-x-2">
+                                <input v-model.number="swingBotConfig.stop_loss_pct"
+                                       type="number" min="1" max="50" step="0.5"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-purple-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">%</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1">Max drawdown before exit (typically 5–10%)</p>
+                        </div>
+                        <!-- Max Hold Days -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Max Hold Days</label>
+                            <div class="flex items-center space-x-2">
+                                <input v-model.number="swingBotConfig.max_hold_days"
+                                       type="number" min="1" max="90" step="1"
+                                       class="w-24 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-purple-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">days</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1">Force exit after this many calendar days</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                        <!-- Trailing Stop -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <label class="text-sm font-medium text-gray-200">Trailing Stop</label>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="swingBotConfig.trailing_stop_enabled" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-purple-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2" :class="swingBotConfig.trailing_stop_enabled ? '' : 'opacity-40 pointer-events-none'">
+                                <input v-model.number="swingBotConfig.trailing_stop_pct"
+                                       type="number" min="0.5" max="20" step="0.5"
+                                       class="w-20 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-purple-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">% trailing</span>
+                            </div>
+                        </div>
+                        <!-- Breakeven Stop -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <label class="text-sm font-medium text-gray-200">Breakeven Stop</label>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="swingBotConfig.breakeven_stop_enabled" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-purple-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2" :class="swingBotConfig.breakeven_stop_enabled ? '' : 'opacity-40 pointer-events-none'">
+                                <input v-model.number="swingBotConfig.breakeven_trigger_pct"
+                                       type="number" min="10" max="90" step="5"
+                                       class="w-20 bg-gray-600 text-white text-center px-3 py-2 rounded border border-gray-500 focus:border-purple-500 focus:outline-none">
+                                <span class="text-sm text-gray-300">% to target</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 p-3 bg-purple-900/30 border border-purple-700/50 rounded-lg">
+                        <p class="text-xs text-purple-300"><i class="fas fa-info-circle mr-1"></i>Swing positions are never force-exited at EOD. They are monitored at 60-second intervals during market hours and held overnight automatically.</p>
+                    </div>
+                </div>
+
                 <!-- Active Positions Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -2753,12 +2876,14 @@
                             <thead class="bg-gray-700">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Ticker</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Style</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Entry Price</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Price</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Profit Target</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Stop Loss</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Quantity</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Qty</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Days</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Position Value</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">P&L</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">P&L %</th>
@@ -2768,6 +2893,13 @@
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
                                 <tr v-for="position in botStatus.active_positions" :key="position.symbol" :data-symbol="position.symbol" class="transition-all duration-300 ease-in-out">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span :class="position.position_type === 'swing' ? 'bg-purple-900 text-purple-300 border border-purple-700' : 'bg-blue-900 text-blue-300 border border-blue-700'"
+                                              class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide">
+                                            <i :class="position.position_type === 'swing' ? 'fas fa-moon' : 'fas fa-bolt'" class="mr-1 text-xs"></i>
+                                            {{ position.position_type === 'swing' ? 'Swing' : 'Day' }}
+                                        </span>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         <span :class="position.type === 'LONG' ? 'text-green-400' : 'text-red-400'" class="font-medium">
                                             {{ position.type }}
@@ -2781,6 +2913,13 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-green-400">${{ position.profit_target.toFixed(2) }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-red-400">${{ position.stop_loss.toFixed(2) }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatNumber(position.size) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span v-if="position.position_type === 'swing' && position.days_held !== null && position.days_held !== undefined"
+                                              class="text-purple-300 font-semibold">
+                                            {{ position.days_held }}d
+                                        </span>
+                                        <span v-else class="text-gray-600">—</span>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                                         ${{ (position.entry_price * position.size).toFixed(2) }}
                                     </td>
@@ -2805,7 +2944,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="botStatus.active_positions.length === 0">
-                                    <td colspan="11" class="px-6 py-4 text-center text-sm text-gray-400">
+                                    <td colspan="13" class="px-6 py-4 text-center text-sm text-gray-400">
                                         No active positions
                                     </td>
                                 </tr>

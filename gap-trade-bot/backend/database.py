@@ -218,6 +218,51 @@ class DatabaseManager:
                 if cursor.rowcount:
                     print("✅ Promoted earliest user to super_admin")
 
+            # ── Swing trading columns ─────────────────────────────────────────
+            for tbl, col, defn in [
+                # positions: tag each row as day or swing
+                ('positions',       'position_type',      "TEXT DEFAULT 'day'"),
+                ('positions',       'swing_stop_loss',    'REAL DEFAULT NULL'),
+                ('positions',       'swing_target',       'REAL DEFAULT NULL'),
+                ('positions',       'swing_entry_reason', 'TEXT DEFAULT NULL'),
+                ('positions',       'max_hold_days',      'INTEGER DEFAULT NULL'),
+                ('positions',       'entry_date',         'TEXT DEFAULT NULL'),
+                # daily_positions: same tags for history
+                ('daily_positions', 'position_type',      "TEXT DEFAULT 'day'"),
+                ('daily_positions', 'swing_stop_loss',    'REAL DEFAULT NULL'),
+                ('daily_positions', 'swing_target',       'REAL DEFAULT NULL'),
+                # trades: track which style produced the trade
+                ('trades',          'position_type',      "TEXT DEFAULT 'day'"),
+                ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
+            # swing_bot_config: per-user swing exit settings
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_bot_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    profit_target_pct REAL DEFAULT 15.0,
+                    stop_loss_pct REAL DEFAULT 7.0,
+                    trailing_stop_enabled INTEGER DEFAULT 0,
+                    trailing_stop_pct REAL DEFAULT 4.0,
+                    max_hold_days INTEGER DEFAULT 20,
+                    earnings_protection_enabled INTEGER DEFAULT 1,
+                    earnings_exit_days INTEGER DEFAULT 2,
+                    daily_close_exit_enabled INTEGER DEFAULT 1,
+                    breakeven_stop_enabled INTEGER DEFAULT 1,
+                    breakeven_trigger_pct REAL DEFAULT 50.0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # seed a default row if table is empty
+            cursor.execute('SELECT COUNT(*) as cnt FROM swing_bot_config')
+            if cursor.fetchone()['cnt'] == 0:
+                cursor.execute('INSERT INTO swing_bot_config (user_id) VALUES (1)')
+
             conn.commit()
 
     def _get_user_count(self):
@@ -653,9 +698,10 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO trades (
-                        trade_id, symbol, side, quantity, price, route, 
-                        trade_time, order_id, liquidity, ecn_fee, pnl, trade_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        trade_id, symbol, side, quantity, price, route,
+                        trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
+                        position_type, days_held
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -668,7 +714,9 @@ class DatabaseManager:
                     trade_data.get('liquidity'),
                     trade_data.get('ecn_fee', 0.0),
                     trade_data.get('pnl', 0.0),
-                    trade_data['trade_date']
+                    trade_data['trade_date'],
+                    trade_data.get('position_type', 'day'),
+                    trade_data.get('days_held'),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -2034,6 +2082,69 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             print(f"Database error marking welcome sent: {e}")
+
+    # ── Swing bot config ──────────────────────────────────────────────────────
+
+    def get_swing_bot_config(self, user_id: int = 1) -> dict:
+        """Return swing bot config for user_id. Falls back to defaults if row missing."""
+        defaults = {
+            'profit_target_pct': 15.0,
+            'stop_loss_pct': 7.0,
+            'trailing_stop_enabled': False,
+            'trailing_stop_pct': 4.0,
+            'max_hold_days': 20,
+            'earnings_protection_enabled': True,
+            'earnings_exit_days': 2,
+            'daily_close_exit_enabled': True,
+            'breakeven_stop_enabled': True,
+            'breakeven_trigger_pct': 50.0,
+        }
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM swing_bot_config WHERE user_id=? LIMIT 1', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    cfg = dict(row)
+                    cfg['trailing_stop_enabled'] = bool(cfg.get('trailing_stop_enabled', 0))
+                    cfg['earnings_protection_enabled'] = bool(cfg.get('earnings_protection_enabled', 1))
+                    cfg['daily_close_exit_enabled'] = bool(cfg.get('daily_close_exit_enabled', 1))
+                    cfg['breakeven_stop_enabled'] = bool(cfg.get('breakeven_stop_enabled', 1))
+                    return cfg
+        except Exception as e:
+            print(f"Database error fetching swing config: {e}")
+        return defaults
+
+    def update_swing_bot_config(self, config: dict, user_id: int = 1) -> tuple:
+        """Upsert swing bot config for user_id."""
+        fields = [
+            'profit_target_pct', 'stop_loss_pct', 'trailing_stop_enabled',
+            'trailing_stop_pct', 'max_hold_days', 'earnings_protection_enabled',
+            'earnings_exit_days', 'daily_close_exit_enabled',
+            'breakeven_stop_enabled', 'breakeven_trigger_pct',
+        ]
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT id FROM swing_bot_config WHERE user_id=?', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    sets = ', '.join(f'{f}=?' for f in fields if f in config)
+                    vals = [config[f] for f in fields if f in config]
+                    if sets:
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE swing_bot_config SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE user_id=?', vals)
+                else:
+                    cursor.execute('INSERT INTO swing_bot_config (user_id) VALUES (?)', (user_id,))
+                    sets = ', '.join(f'{f}=?' for f in fields if f in config)
+                    vals = [config[f] for f in fields if f in config]
+                    if sets:
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE swing_bot_config SET {sets} WHERE user_id=?', vals)
+                conn.commit()
+                return True, "Swing config updated"
+        except Exception as e:
+            return False, f"Database error updating swing config: {e}"
 
 
 # Global database manager instance

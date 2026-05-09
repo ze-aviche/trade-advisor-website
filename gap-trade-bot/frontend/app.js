@@ -312,7 +312,23 @@ const app = createApp({
                 route: 'SMAT', // Default route
                 quantity: 100, // Default quantity
                 orderType: 'MKT', // MKT for Market, LIMIT for Limit orders
-                limitPrice: '' // Only used for LIMIT orders
+                limitPrice: '', // Only used for LIMIT orders
+                // Trade style
+                positionType: 'day', // 'day' | 'swing'
+                swingEntryReason: '',
+                maxHoldDays: null,
+            },
+            swingBotConfig: {
+                profit_target_pct: 15.0,
+                stop_loss_pct: 7.0,
+                trailing_stop_enabled: false,
+                trailing_stop_pct: 4.0,
+                max_hold_days: 20,
+                earnings_protection_enabled: true,
+                earnings_exit_days: 2,
+                daily_close_exit_enabled: true,
+                breakeven_stop_enabled: true,
+                breakeven_trigger_pct: 50.0,
             },
             
             // Tracking Symbols
@@ -708,6 +724,9 @@ const app = createApp({
             })();
 
             this.checkAuth();
+
+            // Load swing bot config on startup
+            this.loadSwingBotConfig();
 
             // Auto-refresh gap-ups every 2 minutes so new gappers appear without manual reload
             this.gapUpRefreshInterval = setInterval(() => {
@@ -5592,38 +5611,49 @@ const app = createApp({
         async submitEntryParameters() {
             try {
                 this.loading.submitEntry = true;
-                
+
                 const entryData = {
                     symbol: this.entryForm.symbol.toUpperCase(),
-                    total_volume: parseInt(this.entryForm.totalVolume),
-                    dollar_volume: parseInt(this.entryForm.dollarVolume),
-                    entry_time: this.entryForm.entryTime,
-                    // New DAS order parameters
                     order_side: this.entryForm.orderSide,
                     route: this.entryForm.route,
                     quantity: parseInt(this.entryForm.quantity),
                     order_type: this.entryForm.orderType,
-                    limit_price: this.entryForm.limitPrice ? parseFloat(this.entryForm.limitPrice) : null
+                    limit_price: this.entryForm.limitPrice ? parseFloat(this.entryForm.limitPrice) : null,
+                    position_type: this.entryForm.positionType,
                 };
-                
+
+                if (this.entryForm.positionType === 'day') {
+                    entryData.total_volume = parseInt(this.entryForm.totalVolume);
+                    entryData.dollar_volume = parseInt(this.entryForm.dollarVolume);
+                    entryData.entry_time = this.entryForm.entryTime;
+                } else {
+                    entryData.swing_entry_reason = this.entryForm.swingEntryReason || '';
+                    if (this.entryForm.maxHoldDays) {
+                        entryData.max_hold_days = parseInt(this.entryForm.maxHoldDays);
+                    }
+                }
+
                 const response = await axios.post('/api/entry-bot/submit-parameters', entryData);
-                
+
                 if (response.data.success) {
-                    this.addDebugLog('info', `Entry parameters submitted for ${entryData.symbol}`);
+                    this.addDebugLog('info', `${this.entryForm.positionType === 'swing' ? 'Swing' : 'Day'} entry parameters submitted for ${entryData.symbol}`);
                     this.updateTrackingStatus();
-                    
-                    // Clear form
+
+                    // Clear form (preserve positionType so user can quickly submit another)
+                    const keepType = this.entryForm.positionType;
                     this.entryForm = {
                         symbol: '',
                         totalVolume: '',
                         dollarVolume: '',
                         entryTime: '',
-                        // Reset new DAS order parameters
                         orderSide: 'B',
                         route: 'SMAT',
                         quantity: 100,
                         orderType: 'MKT',
-                        limitPrice: ''
+                        limitPrice: '',
+                        positionType: keepType,
+                        swingEntryReason: '',
+                        maxHoldDays: null,
                     };
                 } else {
                     this.addDebugLog('error', `Failed to submit entry parameters: ${response.data.message}`);
@@ -5633,6 +5663,31 @@ const app = createApp({
                 this.addDebugLog('error', `Error submitting entry parameters: ${error.message}`);
             } finally {
                 this.loading.submitEntry = false;
+            }
+        },
+
+        async updateSwingBotConfig() {
+            try {
+                const response = await axios.post('/api/swing-bot/update-config', this.swingBotConfig);
+                if (response.data.success) {
+                    this.showNotification('Swing bot config saved successfully.', 'success');
+                } else {
+                    this.showNotification('Failed to save swing config: ' + (response.data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error saving swing config:', error);
+                this.showNotification('Error saving swing config: ' + error.message, 'error');
+            }
+        },
+
+        async loadSwingBotConfig() {
+            try {
+                const response = await axios.get('/api/swing-bot/config');
+                if (response.data.success) {
+                    this.swingBotConfig = { ...this.swingBotConfig, ...response.data.data };
+                }
+            } catch (error) {
+                console.error('Error loading swing config:', error);
             }
         },
         

@@ -22,6 +22,19 @@ from logging_config import setup_logging, get_logger, log_api_request, log_perfo
 # Load environment variables
 load_dotenv()
 
+# Error monitoring — must be initialised before Flask app is created
+_sentry_dsn = os.environ.get('SENTRY_DSN')
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[FlaskIntegration(), SqlalchemyIntegration()],
+        traces_sample_rate=0.1,   # 10 % of requests get performance traces
+        send_default_pii=False,   # don't send passwords/tokens automatically
+    )
+
 # Setup comprehensive logging
 setup_logging(log_level='INFO', log_dir='logs')
 app_logger = get_logger('app')
@@ -99,6 +112,16 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gap-up-detection-web-20
 _cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:5000').split(',')
 CORS(app, origins=_cors_origins)
 socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode='eventlet')
+
+# Tag each request with the authenticated user so Sentry errors show who was affected
+@app.before_request
+def _set_sentry_user():
+    if _sentry_dsn:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '') or request.cookies.get('session_token')
+        if token and auth_manager:
+            user = auth_manager.get_user_by_session(token)
+            if user:
+                sentry_sdk.set_user({'id': user.get('id'), 'username': user.get('username'), 'email': user.get('email')})
 
 # Global variables for real-time data
 active_stocks = set()
@@ -2442,33 +2465,53 @@ def stop_bot():
 
 @app.route('/api/bot/update-strategies', methods=['POST'])
 def update_strategies():
-    """Update bot strategies"""
+    """Update day bot strategies"""
     try:
         if not BOT_AVAILABLE:
-            return jsonify({
-                'success': False,
-                'error': 'Bot not available'
-            }), 503
-        
+            return jsonify({'success': False, 'error': 'Bot not available'}), 503
+
         data = request.get_json()
         success = trading_bot.update_strategies(data)
         if success:
-            return jsonify({
-                'success': True,
-                'message': 'Strategies updated successfully',
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to update strategies'
-            }), 500
+            return jsonify({'success': True, 'message': 'Strategies updated successfully', 'timestamp': datetime.now().isoformat()})
+        return jsonify({'success': False, 'error': 'Failed to update strategies'}), 500
     except Exception as e:
         app_logger.error(f"Error updating strategies: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/swing-bot/config', methods=['GET'])
+def get_swing_bot_config():
+    """Return current swing bot config."""
+    try:
+        cfg = db_manager.get_swing_bot_config()
+        return jsonify({'success': True, 'data': cfg, 'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        app_logger.error(f"Error fetching swing config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/swing-bot/update-config', methods=['POST'])
+def update_swing_bot_config():
+    """Update swing bot config and apply to running bot."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        # Persist to DB
+        ok, msg = db_manager.update_swing_bot_config(data)
+        if not ok:
+            return jsonify({'success': False, 'error': msg}), 500
+
+        # Apply to live bot if running
+        if BOT_AVAILABLE:
+            trading_bot.update_swing_strategies(data)
+
+        return jsonify({'success': True, 'message': 'Swing config updated', 'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        app_logger.error(f"Error updating swing config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/bot/unsubscribe-stocks', methods=['POST'])
 def unsubscribe_stocks():
@@ -3778,20 +3821,31 @@ def submit_entry_parameters():
         total_volume = data.get('total_volume')
         dollar_volume = data.get('dollar_volume')
         entry_time = data.get('entry_time')
-        
+        position_type = data.get('position_type', 'day')  # 'day' | 'swing'
+
         # New DAS order parameters
         order_side = data.get('order_side', 'B')  # B for Buy, S for Sell
         route = data.get('route', 'SMAT')  # Default route
         quantity = data.get('quantity', 100)  # Default quantity
         order_type = data.get('order_type', 'MKT')  # MKT for Market, LIMIT for Limit orders
         limit_price = data.get('limit_price')  # Only used for LIMIT orders
-        
-        if not all([symbol, total_volume, dollar_volume, entry_time]):
+
+        # Swing-specific optional fields
+        swing_entry_reason = data.get('swing_entry_reason', '')
+        max_hold_days = data.get('max_hold_days')
+
+        # day trades require volume/time; swing trades only require symbol + order params
+        if position_type == 'day' and not all([symbol, total_volume, dollar_volume, entry_time]):
             return jsonify({
                 'success': False,
                 'error': 'Missing required parameters: symbol, total_volume, dollar_volume, entry_time'
             }), 400
-        
+        elif not symbol:
+            return jsonify({'success': False, 'error': 'Missing required parameter: symbol'}), 400
+
+        if position_type not in ('day', 'swing'):
+            return jsonify({'success': False, 'error': "position_type must be 'day' or 'swing'"}), 400
+
         # Validate order parameters
         if order_side not in ['B', 'S']:
             return jsonify({
@@ -3820,8 +3874,8 @@ def submit_entry_parameters():
         # Store the tracking parameters
         tracking_symbols[symbol] = {
             'symbol': symbol,
-            'total_volume': float(total_volume),
-            'dollar_volume': float(dollar_volume),
+            'total_volume': float(total_volume) if total_volume else None,
+            'dollar_volume': float(dollar_volume) if dollar_volume else None,
             'entry_time': entry_time,
             # DAS order parameters
             'order_side': order_side,
@@ -3830,7 +3884,11 @@ def submit_entry_parameters():
             'order_type': order_type,
             'limit_price': limit_price,
             'submitted_at': datetime.now().isoformat(),
-            'status': 'tracking'
+            'status': 'tracking',
+            # Trade style
+            'position_type': position_type,
+            'swing_entry_reason': swing_entry_reason,
+            'max_hold_days': int(max_hold_days) if max_hold_days else None,
         }
         
         # Start continuous tracking if this is the first symbol
