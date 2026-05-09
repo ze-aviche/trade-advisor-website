@@ -219,6 +219,7 @@ const app = createApp({
                 historicalTicker: '',
                 historicalData: [],
                 selectedPeriod: '365', // Default to 1 year
+                minGapPercent: 25,     // Gap-up filter threshold
                 sortColumn: '',
                 sortDirection: 'asc',
                 
@@ -4356,7 +4357,7 @@ const app = createApp({
                 console.log(`📈 Loading historical data for ${this.historicalTicker}...`);
                 this.loading.historical = true;
 
-                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}`);
+                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}`);
                 const data = await response.json();
 
                 if (data.success) {
@@ -4393,7 +4394,7 @@ const app = createApp({
         getGapUpDaysCount() {
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
-                return gapPercent >= 25;
+                return gapPercent >= this.minGapPercent;
             }).length;
             console.log(`📊 Gap-up days count: ${count} (from ${this.historicalData.length} total days)`);
             return count;
@@ -4403,7 +4404,7 @@ const app = createApp({
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
                 const closePercent = parseFloat(day['closing percent']) || 0;
-                return gapPercent >= 25 && closePercent >= 25;
+                return gapPercent >= this.minGapPercent && closePercent >= this.minGapPercent;
             }).length;
             console.log(`🏃 Runner days count: ${count}`);
             return count;
@@ -4413,7 +4414,7 @@ const app = createApp({
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
                 const closePercent = parseFloat(day['closing percent']) || 0;
-                return gapPercent >= 25 && closePercent < 25;
+                return gapPercent >= this.minGapPercent && closePercent < this.minGapPercent;
             }).length;
             console.log(`📉 Fader days count: ${count}`);
             return count;
@@ -4422,7 +4423,7 @@ const app = createApp({
         getAverageGapPercent() {
             const gapUpDays = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
-                return gapPercent >= 25;
+                return gapPercent >= this.minGapPercent;
             });
             if (gapUpDays.length === 0) return 0;
             const totalGap = gapUpDays.reduce((sum, day) => {
