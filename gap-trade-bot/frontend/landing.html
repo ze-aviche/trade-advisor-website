@@ -37,6 +37,85 @@
             display: flex;
             align-items: center;
         }
+        #swing-bar {
+            position: fixed;
+            top: 100px; /* below gap bar */
+            left: 0; right: 0;
+            z-index: 39;
+            height: 36px;
+            background: linear-gradient(90deg, #0d0a1a 0%, #130d23 50%, #0d0a1a 100%);
+            border-bottom: 1px solid rgba(139,92,246,0.25);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+        #swing-bar::before, #swing-bar::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 80px;
+            z-index: 2;
+            pointer-events: none;
+        }
+        #swing-bar::before {
+            left: 0;
+            background: linear-gradient(to right, #0d0a1a, transparent);
+        }
+        #swing-bar::after {
+            right: 0;
+            background: linear-gradient(to left, #0d0a1a, transparent);
+        }
+        .swing-label {
+            position: absolute;
+            left: 0;
+            z-index: 3;
+            background: linear-gradient(135deg, #7c3aed, #db2777);
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 0 12px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .swing-track {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            animation: swing-scroll 55s linear infinite;
+            padding-left: 180px;
+            will-change: transform;
+        }
+        .swing-track:hover { animation-play-state: paused; }
+        @keyframes swing-scroll {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .swing-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin: 0 18px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            color: #e2e8f0;
+        }
+        .swing-item .s-sym { color: #c4b5fd; font-weight: 700; }
+        .swing-item .s-grade {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.05em;
+        }
+        .s-grade.buy  { background: rgba(52,211,153,0.15); color: #34d399; }
+        .s-grade.hold { background: rgba(251,191,36,0.15);  color: #fbbf24; }
+        .swing-item .s-info { color: #9ca3af; font-size: 11px; font-weight: 400; }
+        .swing-sep { color: rgba(139,92,246,0.45); font-size: 10px; margin: 0 6px; }
         #ticker-bar::before, #ticker-bar::after {
             content: '';
             position: absolute;
@@ -193,8 +272,19 @@
         </div>
     </div>
 
+    <!-- ── SWING PICKS BAR ── -->
+    <div id="swing-bar">
+        <div class="swing-label">
+            <span class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse"></span>
+            TODAY'S SWING PICKS
+        </div>
+        <div id="swing-track" class="swing-track">
+            <!-- populated by JS -->
+        </div>
+    </div>
+
     <!-- ── HERO ── -->
-    <section class="min-h-screen flex items-center pt-[100px] px-5 sm:px-8 relative overflow-hidden">
+    <section class="min-h-screen flex items-center pt-[136px] px-5 sm:px-8 relative overflow-hidden">
         <!-- Background blobs -->
         <div class="absolute top-1/4 left-1/3 w-[600px] h-[600px] bg-blue-600 opacity-[0.05] rounded-full blur-3xl pointer-events-none"></div>
         <div class="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-purple-600 opacity-[0.05] rounded-full blur-3xl pointer-events-none"></div>
@@ -1126,6 +1216,44 @@
         const totalWidth = track.scrollWidth / 2;
         const duration = Math.max(20, totalWidth / 100);
         track.style.animationDuration = duration + 's';
+    })();
+
+    // ── Swing Picks Bar ──────────────────────────────────────────────
+    (function() {
+        const swingPicks = [
+            { sym: 'AAPL',  grade: 'BUY',  info: 'Bull flag on daily · EMA crossover · Target $205' },
+            { sym: 'NVDA',  grade: 'BUY',  info: 'AI momentum · Breakout above $870 resistance' },
+            { sym: 'MSFT',  grade: 'BUY',  info: 'Cup & handle forming · Strong sector tailwind' },
+            { sym: 'META',  grade: 'BUY',  info: 'Volume surge · RSI 58 · Above 50-day SMA' },
+            { sym: 'AMZN',  grade: 'BUY',  info: 'AWS growth catalyst · Ascending triangle' },
+            { sym: 'GOOGL', grade: 'HOLD', info: 'Tight consolidation · Watch $175 breakout level' },
+            { sym: 'TSLA',  grade: 'BUY',  info: 'Oversold bounce · Key support held · High vol' },
+            { sym: 'JPM',   grade: 'BUY',  info: 'Financials rotation · Above all major SMAs' },
+            { sym: 'UNH',   grade: 'HOLD', info: 'Sector defensive play · Tight range · Basing' },
+            { sym: 'V',     grade: 'BUY',  info: 'Consumer spend resilience · ATH breakout watch' },
+            { sym: 'HD',    grade: 'BUY',  info: 'Housing recovery play · MACD bullish cross' },
+            { sym: 'COST',  grade: 'BUY',  info: 'Retail strength · New 52-week high territory' },
+        ];
+
+        const swingTrack = document.getElementById('swing-track');
+        if (!swingTrack) return;
+
+        function buildSwingItems(list) {
+            return list.map(s => {
+                const gradeClass = s.grade === 'BUY' ? 'buy' : 'hold';
+                return `<span class="swing-item">
+                    <span class="s-sym">${s.sym}</span>
+                    <span class="s-grade ${gradeClass}">${s.grade}</span>
+                    <span class="s-info">${s.info}</span>
+                </span><span class="swing-sep">◆</span>`;
+            }).join('');
+        }
+
+        const swingHtml = buildSwingItems(swingPicks);
+        swingTrack.innerHTML = swingHtml + swingHtml;
+
+        const swingWidth = swingTrack.scrollWidth / 2;
+        swingTrack.style.animationDuration = Math.max(30, swingWidth / 80) + 's';
     })();
     </script>
 
