@@ -23,6 +23,98 @@
         .res-tab.active { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #93c5fd; }
         .res-panel { display: none; }
         .res-panel.active { display: block; }
+
+        /* ── Gap-Up Ticker Bar ── */
+        #ticker-bar {
+            position: fixed;
+            top: 64px; /* below 64px navbar */
+            left: 0; right: 0;
+            z-index: 40;
+            height: 36px;
+            background: linear-gradient(90deg, #0a0f1a 0%, #0d1523 50%, #0a0f1a 100%);
+            border-bottom: 1px solid rgba(59,130,246,0.25);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+        #ticker-bar::before, #ticker-bar::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 80px;
+            z-index: 2;
+            pointer-events: none;
+        }
+        #ticker-bar::before {
+            left: 0;
+            background: linear-gradient(to right, #0a0f1a, transparent);
+        }
+        #ticker-bar::after {
+            right: 0;
+            background: linear-gradient(to left, #0a0f1a, transparent);
+        }
+        .ticker-label {
+            position: absolute;
+            left: 0;
+            z-index: 3;
+            background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 0 12px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .ticker-track {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            animation: ticker-scroll 40s linear infinite;
+            padding-left: 100px; /* start after label */
+            will-change: transform;
+        }
+        .ticker-track:hover { animation-play-state: paused; }
+        @keyframes ticker-scroll {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .ticker-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin: 0 18px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            color: #e2e8f0;
+        }
+        .ticker-item .t-sym {
+            color: #93c5fd;
+            font-weight: 700;
+        }
+        .ticker-item .t-pct {
+            color: #4ade80;
+            font-weight: 700;
+            text-shadow: 0 0 8px rgba(74,222,128,0.6);
+        }
+        .ticker-item .t-pct.hot {
+            color: #fb923c;
+            text-shadow: 0 0 10px rgba(251,146,60,0.7);
+            animation: pulse-glow 1.8s ease-in-out infinite;
+        }
+        .ticker-sep {
+            color: rgba(99,102,241,0.5);
+            font-size: 10px;
+            margin: 0 6px;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { text-shadow: 0 0 8px rgba(251,146,60,0.6); }
+            50%       { text-shadow: 0 0 18px rgba(251,146,60,1), 0 0 30px rgba(251,146,60,0.4); }
+        }
     </style>
 </head>
 <body class="bg-[#0d1117] text-white antialiased">
@@ -90,8 +182,19 @@
         </div>
     </nav>
 
+    <!-- ── GAP-UP TICKER BAR ── -->
+    <div id="ticker-bar">
+        <div class="ticker-label">
+            <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+            TODAY'S GAPS
+        </div>
+        <div id="ticker-track" class="ticker-track">
+            <!-- populated by JS -->
+        </div>
+    </div>
+
     <!-- ── HERO ── -->
-    <section class="min-h-screen flex items-center pt-16 px-5 sm:px-8 relative overflow-hidden">
+    <section class="min-h-screen flex items-center pt-[100px] px-5 sm:px-8 relative overflow-hidden">
         <!-- Background blobs -->
         <div class="absolute top-1/4 left-1/3 w-[600px] h-[600px] bg-blue-600 opacity-[0.05] rounded-full blur-3xl pointer-events-none"></div>
         <div class="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-purple-600 opacity-[0.05] rounded-full blur-3xl pointer-events-none"></div>
@@ -898,6 +1001,75 @@
                 btn.innerHTML = '<i class="fas fa-paper-plane text-xs"></i> Send Message';
             }
         });
+
+    /* ── Gap-Up Ticker Bar ── */
+    (async function initTickerBar() {
+        const track = document.getElementById('ticker-track');
+        if (!track) return;
+
+        let stocks = [];
+        try {
+            const res = await fetch('/api/gap-ups', { cache: 'no-store' });
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+                // Sort descending by gap%, take top 20
+                stocks = json.data
+                    .filter(s => s.gap_percent != null)
+                    .sort((a, b) => b.gap_percent - a.gap_percent)
+                    .slice(0, 20);
+            }
+        } catch (_) {}
+
+        // Fallback: try latest snapshot if live feed returned nothing
+        if (stocks.length === 0) {
+            try {
+                const datesRes = await fetch('/api/gap-ups/snapshot/dates', { cache: 'no-store' });
+                const datesJson = await datesRes.json();
+                if (datesJson.success && datesJson.dates && datesJson.dates.length > 0) {
+                    const latestDate = datesJson.dates[datesJson.dates.length - 1];
+                    const snapRes = await fetch(`/api/gap-ups/snapshot/${latestDate}`, { cache: 'no-store' });
+                    const snapJson = await snapRes.json();
+                    if (snapJson.success && Array.isArray(snapJson.data) && snapJson.data.length > 0) {
+                        stocks = snapJson.data
+                            .filter(s => s.gap_percent != null || s['gap up % at open'] != null)
+                            .map(s => ({
+                                ticker: s.ticker || s.symbol,
+                                gap_percent: s.gap_percent ?? s['gap up % at open']
+                            }))
+                            .filter(s => s.gap_percent != null)
+                            .sort((a, b) => b.gap_percent - a.gap_percent)
+                            .slice(0, 20);
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (stocks.length === 0) {
+            // Hide the bar entirely if no data at all
+            document.getElementById('ticker-bar').style.display = 'none';
+            return;
+        }
+
+        function buildItems(list) {
+            return list.map(s => {
+                const pct = parseFloat(s.gap_percent).toFixed(1);
+                const isHot = parseFloat(pct) >= 50;
+                return `<span class="ticker-item">
+                    <span class="t-sym">${s.ticker}</span>
+                    <span class="t-pct${isHot ? ' hot' : ''}">+${pct}%</span>
+                </span><span class="ticker-sep">◆</span>`;
+            }).join('');
+        }
+
+        // Duplicate content so the seamless loop works at all viewport widths
+        const html = buildItems(stocks);
+        track.innerHTML = html + html;
+
+        // Adjust scroll speed to content length (px/s = ~100)
+        const totalWidth = track.scrollWidth / 2;
+        const duration = Math.max(20, totalWidth / 100);
+        track.style.animationDuration = duration + 's';
+    })();
     </script>
 </body>
 </html>
