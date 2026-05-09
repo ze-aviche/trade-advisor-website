@@ -4783,6 +4783,119 @@ Return ONLY this JSON (no markdown, no commentary):
         return jsonify({'success': False, 'error': str(exc)}), 500
 
 
+def _send_trial_expiry_reminders():
+    """
+    Background loop — runs every hour, sends a reminder email to users whose
+    trial expires in ~24 hours and haven't received the reminder yet.
+    """
+    from_email   = os.getenv('CONTACT_EMAIL_FROM', '')
+    app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+
+    while True:
+        try:
+            from database import db_manager as _db
+            users = _db.get_trial_expiring_users(hours_from_now=24, window_hours=2)
+
+            for user in users:
+                email      = user.get('email', '')
+                first_name = user.get('first_name') or user.get('username', 'there')
+                expires_at = user.get('trial_expires_at', '')
+
+                # Format expiry to a readable date (e.g. "May 16, 2026")
+                try:
+                    exp_dt    = datetime.fromisoformat(str(expires_at))
+                    exp_label = exp_dt.strftime('%B %-d, %Y')   # e.g. "May 16, 2026"
+                except Exception:
+                    exp_label = str(expires_at)[:10]
+
+                app_logger.info(f"Sending trial-expiry reminder to {email} (expires {exp_label})")
+
+                if from_email and app_password:
+                    try:
+                        msg = MIMEMultipart('alternative')
+                        msg['Subject'] = 'Your Accentor AI free trial ends tomorrow'
+                        msg['From']    = from_email
+                        msg['To']      = email
+
+                        html_body = f"""
+<html><body style="margin:0;padding:0;background:#0d1117;font-family:Arial,sans-serif;color:#e2e8f0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d1117;padding:40px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;">
+      <!-- Header -->
+      <tr><td style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);padding:28px 40px;text-align:center;">
+        <div style="font-size:26px;font-weight:800;color:#fff;">Accentor <span style="color:#93c5fd;">AI</span></div>
+        <div style="color:#bfdbfe;font-size:12px;margin-top:4px;">AI-Powered Gap-Up Trading Intelligence</div>
+      </td></tr>
+      <!-- Body -->
+      <tr><td style="padding:32px 40px;">
+        <h2 style="color:#fff;font-size:19px;margin:0 0 10px;">Hey {first_name}, your trial ends tomorrow ⏰</h2>
+        <p style="color:#9ca3af;font-size:14px;line-height:1.7;margin:0 0 6px;">
+          Your 7-day free trial expires on <strong style="color:#fff;">{exp_label}</strong>.
+        </p>
+        <p style="color:#9ca3af;font-size:14px;line-height:1.7;margin:0 0 24px;">
+          After that your account reverts to the free tier — you'll lose access to:
+        </p>
+        <!-- Feature list -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+          <tr><td style="padding:9px 0;border-bottom:1px solid #21262d;">
+            <span style="color:#f87171;font-size:13px;">✗</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;">Historical gap-up data &amp; AI predictions</span>
+          </td></tr>
+          <tr><td style="padding:9px 0;border-bottom:1px solid #21262d;">
+            <span style="color:#f87171;font-size:13px;">✗</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;">Swing Trading tab — daily hot picks &amp; technicals</span>
+          </td></tr>
+          <tr><td style="padding:9px 0;border-bottom:1px solid #21262d;">
+            <span style="color:#f87171;font-size:13px;">✗</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;">Entry Bot &amp; Exit Bot automation</span>
+          </td></tr>
+          <tr><td style="padding:9px 0;">
+            <span style="color:#f87171;font-size:13px;">✗</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;">Trade history, positions, stats &amp; backtesting</span>
+          </td></tr>
+        </table>
+        <!-- Plans note -->
+        <p style="color:#9ca3af;font-size:13px;line-height:1.7;margin:0 0 24px;">
+          Keep your edge for as little as <strong style="color:#fff;">$5/month</strong> — or explore our full plans.
+        </p>
+        <!-- CTA -->
+        <div style="text-align:center;margin-bottom:28px;">
+          <a href="https://accentorai.com/app"
+             style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;
+                    font-weight:700;font-size:14px;padding:14px 36px;border-radius:10px;">
+            Upgrade Now — Keep Full Access →
+          </a>
+        </div>
+        <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0;">
+          If you have questions, just reply to this email. We're happy to help.
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+                        msg.attach(MIMEText(html_body, 'html'))
+                        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                            server.login(from_email, app_password)
+                            server.sendmail(from_email, email, msg.as_string())
+                        app_logger.info(f"Trial reminder sent to {email}")
+                    except Exception as mail_err:
+                        app_logger.warning(f"Trial reminder email failed for {email}: {mail_err}")
+                else:
+                    app_logger.warning(f"SMTP not configured — skipping trial reminder for {email}")
+
+                # Mark sent regardless of email success to avoid repeated attempts
+                _db.mark_trial_reminder_sent(user['id'])
+
+        except Exception as exc:
+            app_logger.error(f"Trial reminder loop error: {exc}")
+
+        # Check once per hour
+        time.sleep(3600)
+
+
 # Start background gap-up monitor — runs under both `python app.py` and gunicorn
 _bg_thread_started = False
 def _start_background_tasks():
@@ -4793,6 +4906,10 @@ def _start_background_tasks():
         update_thread.daemon = True
         update_thread.start()
         app_logger.info("✅ Gap-up background monitor started")
+
+        reminder_thread = threading.Thread(target=_send_trial_expiry_reminders, daemon=True)
+        reminder_thread.start()
+        app_logger.info("✅ Trial expiry reminder service started")
 
 _start_background_tasks()
 

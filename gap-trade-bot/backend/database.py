@@ -201,6 +201,7 @@ class DatabaseManager:
                 ('profession', 'TEXT DEFAULT NULL'),
                 ('annual_income_range', 'TEXT DEFAULT NULL'),
                 ('trial_expires_at', 'TIMESTAMP DEFAULT NULL'),
+                ('trial_reminder_sent', 'INTEGER DEFAULT 0'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -1961,6 +1962,39 @@ class DatabaseManager:
             print(f"Database error fetching ticker history for {ticker}: {e}")
             return []
 
+
+    def get_trial_expiring_users(self, hours_from_now: int = 24, window_hours: int = 2) -> list:
+        """
+        Return users whose trial expires within [hours_from_now - window_hours,
+        hours_from_now + window_hours] and haven't received a reminder yet.
+        Default: trials expiring in 22-26 h from now.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                lo = (datetime.now() + timedelta(hours=hours_from_now - window_hours)).strftime('%Y-%m-%d %H:%M:%S')
+                hi = (datetime.now() + timedelta(hours=hours_from_now + window_hours)).strftime('%Y-%m-%d %H:%M:%S')
+                cursor.execute(
+                    '''SELECT id, username, email, first_name, trial_expires_at
+                       FROM users
+                       WHERE trial_expires_at BETWEEN ? AND ?
+                         AND trial_reminder_sent = 0
+                         AND is_active = 1''',
+                    (lo, hi)
+                )
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching expiring trials: {e}")
+            return []
+
+    def mark_trial_reminder_sent(self, user_id: int):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET trial_reminder_sent=1 WHERE id=?', (user_id,))
+                conn.commit()
+        except Exception as e:
+            print(f"Database error marking trial reminder sent: {e}")
 
     def save_email_lead(self, email: str, source: str = 'landing_popup') -> tuple:
         """Save a lead email. Returns (True, 'new'|'exists')."""
