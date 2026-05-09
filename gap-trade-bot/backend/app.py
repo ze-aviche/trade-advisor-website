@@ -750,7 +750,8 @@ def get_auth_profile():
 
         base_tier = user.get('subscription_tier', 'basic')
         # Grant beginner access during trial for basic-tier users
-        effective_tier = 'beginner' if (trial_active and base_tier == 'basic') else base_tier
+        # During trial, basic users get full yogi access; after expiry they revert to basic
+        effective_tier = 'yogi' if (trial_active and base_tier == 'basic') else base_tier
 
         safe_user = {
             'id': user.get('id'),
