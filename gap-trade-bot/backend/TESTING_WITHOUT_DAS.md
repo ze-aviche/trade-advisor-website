@@ -2,6 +2,25 @@
 
 Use the mock DAS server and DB seeder to test all swing trading features locally — no DAS Trader subscription required.
 
+## Important: Docker vs local testing are mutually exclusive
+
+**Stop Docker before starting a mock test session.**
+
+```bash
+docker-compose down
+```
+
+Why:
+- Docker maps port `5000` on the host. Running `python app.py` locally also uses port `5000`. They will conflict and Docker will fail to start if the local Flask process is still running.
+- The mock DAS server binds `127.0.0.1:9800` on the **host machine**. A bot running inside Docker resolves `127.0.0.1` to the container's loopback, not the host — so it can never reach the mock server. Mock testing only works when Flask is run directly on the host.
+
+**To return to Docker after testing:**
+1. Kill the local Flask process and mock server (`Ctrl+C` in both terminals).
+2. Confirm port 5000 is free: `netstat -ano | findstr :5000` (should be empty).
+3. `docker-compose up --build -d`
+
+---
+
 ## Files
 
 | File | Purpose |
