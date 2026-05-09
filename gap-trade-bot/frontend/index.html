@@ -914,7 +914,7 @@
                         </ul>
 
                         <p class="px-4 py-2 text-xs text-gray-600 border-t border-gray-600">
-                            News via Polygon.io · AI summary by Claude · Refreshes every 30 min
+                            News via Polygon.io · AI summary by Accentor AI · Refreshes every 30 min
                         </p>
                     </div>
                     <!-- ── End News Card ── -->
@@ -998,7 +998,7 @@
                         <!-- AI Analysis Result Card -->
                         <div v-if="loading.historicalAnalysis" class="bg-gray-700 rounded-lg p-6 mb-6 text-center">
                             <i class="fas fa-robot text-purple-400 text-2xl mb-2"></i>
-                            <p class="text-gray-300 font-medium">Claude is analyzing {{ historicalData.length }} gap-up events…</p>
+                            <p class="text-gray-300 font-medium">Accentor AI is processing {{ historicalData.length }} gap-up events — please wait…</p>
                             <p class="text-gray-500 text-sm mt-1">Comparing runner/fader patterns, volume signals, and timing</p>
                         </div>
 
@@ -1685,7 +1685,7 @@
                     <!-- ── AI Swing Setup card ─────────────────────────────────── -->
                     <div v-if="loading.swingRecommendation" class="flex flex-col items-center gap-3 py-10 text-gray-400">
                         <i class="fas fa-spinner fa-spin text-2xl text-purple-400"></i>
-                        <span class="text-sm">Claude is analysing the swing setup…</span>
+                        <span class="text-sm">Accentor AI is generating your swing recommendation — this may take a moment…</span>
                     </div>
 
                     <div v-if="swingRecommendation && !loading.swingRecommendation"
@@ -1770,7 +1770,7 @@
                             </div>
                         </div>
 
-                        <p class="text-gray-600 text-xs text-right">AI analysis via Claude Haiku · Not financial advice</p>
+                        <p class="text-gray-600 text-xs text-right">AI analysis by Accentor AI · Not financial advice</p>
                     </div>
 
                 </template>
@@ -3562,7 +3562,7 @@
                         <div v-if="aiChatLoading" class="text-center py-4">
                             <div class="flex items-center justify-center space-x-2">
                                 <i class="fas fa-spinner fa-spin text-blue-400"></i>
-                                <span class="text-sm text-gray-400">AI is analyzing and gathering information...</span>
+                                <span class="text-sm text-gray-400">Processing your request — please wait…</span>
                             </div>
                         </div>
                     </div>

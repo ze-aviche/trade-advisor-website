@@ -676,22 +676,200 @@ def register():
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
+        email      = (data.get('email') or '').strip()
+        first_name = (data.get('first_name') or '').strip() or None
+
         success, message = auth_manager.register_user(
             data.get('username', ''),
-            data.get('email', ''),
+            email,
             data.get('password', ''),
-            first_name=(data.get('first_name') or '').strip() or None,
+            first_name=first_name,
             last_name=(data.get('last_name') or '').strip() or None,
             address=(data.get('address') or '').strip() or None,
             profession=(data.get('profession') or '').strip() or None,
             annual_income_range=(data.get('annual_income_range') or '').strip() or None,
         )
         if success:
+            _send_registration_welcome(email, first_name or data.get('username', ''))
             return jsonify({'success': True, 'message': message})
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
         app_logger.error(f"Error registering user: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _send_registration_welcome(to_email: str, first_name: str):
+    """Send a welcome email to a newly registered user (fire-and-forget)."""
+    from_email   = os.getenv('CONTACT_EMAIL_FROM', '')
+    app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+    if not from_email or not app_password or not to_email:
+        return
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f'Welcome to Accentor AI, {first_name} — Your 7-Day Trial Has Started'
+        msg['From']    = from_email
+        msg['To']      = to_email
+
+        html_body = f"""
+<html><body style="margin:0;padding:0;background:#0d1117;font-family:Arial,sans-serif;color:#e2e8f0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d1117;padding:40px 0;">
+  <tr><td align="center">
+    <table width="620" cellpadding="0" cellspacing="0"
+           style="background:#161b22;border:1px solid #30363d;border-radius:14px;overflow:hidden;max-width:620px;">
+
+      <!-- Header -->
+      <tr><td style="background:linear-gradient(135deg,#1e3a8a 0%,#6d28d9 100%);padding:36px 44px;text-align:center;">
+        <div style="font-size:30px;font-weight:800;color:#fff;letter-spacing:-0.5px;">
+          Accentor <span style="color:#93c5fd;">AI</span>
+        </div>
+        <div style="color:#bfdbfe;font-size:13px;margin-top:6px;letter-spacing:0.04em;">
+          INTELLIGENT GAP-UP TRADING PLATFORM
+        </div>
+      </td></tr>
+
+      <!-- Welcome message -->
+      <tr><td style="padding:36px 44px 0;">
+        <h2 style="color:#fff;font-size:21px;margin:0 0 14px;font-weight:700;">
+          Welcome aboard, {first_name}. Your free trial is active.
+        </h2>
+        <p style="color:#9ca3af;font-size:14px;line-height:1.75;margin:0 0 28px;">
+          You now have <strong style="color:#fff;">full Yogi-tier access for 7 days</strong> — no credit card
+          required. Explore every feature, run the bots live, and see exactly what Accentor AI can do
+          for your trading edge before you decide to subscribe.
+        </p>
+      </td></tr>
+
+      <!-- What you can do -->
+      <tr><td style="padding:0 44px;">
+        <div style="background:#1c2230;border:1px solid #30363d;border-radius:10px;padding:24px;">
+          <div style="font-size:13px;font-weight:700;color:#60a5fa;text-transform:uppercase;
+                      letter-spacing:0.08em;margin-bottom:16px;">What's included in your trial</div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="padding:8px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#34d399;font-weight:700;">✓</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Daily Gap-Up Scanner</strong> — pre-market momentum movers with sector context
+              </span>
+            </td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#34d399;font-weight:700;">✓</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Swing Trading Tab</strong> — daily AI-ranked hot picks, full technicals (RSI, MACD, Bollinger Bands, ATR), and sector momentum
+              </span>
+            </td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#34d399;font-weight:700;">✓</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Automated Exit Bot</strong> — trailing stop, breakeven stop, and EOD force-exit, all configurable from the dashboard
+              </span>
+            </td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#34d399;font-weight:700;">✓</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Entry Bot</strong> — automated order entry rules wired directly to your DAS Trader account
+              </span>
+            </td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #21262d;">
+              <span style="color:#34d399;font-weight:700;">✓</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">Historical Analytics &amp; Backtesting</strong> — P&amp;L curves, win-rate breakdowns, and strategy backtests on real gap-up data
+              </span>
+            </td></tr>
+            <tr><td style="padding:8px 0;">
+              <span style="color:#34d399;font-weight:700;">✓</span>
+              <span style="color:#d1d5db;font-size:13px;margin-left:10px;">
+                <strong style="color:#fff;">AI Chat Assistant</strong> — ask anything about the markets, your positions, or trading strategy
+              </span>
+            </td></tr>
+          </table>
+        </div>
+      </td></tr>
+
+      <!-- Why Accentor vs competitors -->
+      <tr><td style="padding:28px 44px 0;">
+        <div style="font-size:13px;font-weight:700;color:#a78bfa;text-transform:uppercase;
+                    letter-spacing:0.08em;margin-bottom:16px;">Why traders choose Accentor AI</div>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td width="50%" style="padding:0 8px 14px 0;vertical-align:top;">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
+                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
+                  vs. ThinkorSwim / TradeStation
+                </div>
+                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
+                  Professional-grade scanning without the steep learning curve. Gap-up alerts and AI analysis are ready on day one — no custom scripting required.
+                </div>
+              </div>
+            </td>
+            <td width="50%" style="padding:0 0 14px 8px;vertical-align:top;">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
+                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
+                  vs. Finviz / StockFetcher
+                </div>
+                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
+                  Not just a screener. Accentor AI pairs live scans with automated execution through DAS Trader — so you act on signals in seconds, not minutes.
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td width="50%" style="padding:0 8px 0 0;vertical-align:top;">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
+                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
+                  vs. Trade Ideas / Benzinga Pro
+                </div>
+                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
+                  AI-ranked swing picks and contextual news summaries built in — at a fraction of the cost. No separate subscriptions for alerts, news, and analytics.
+                </div>
+              </div>
+            </td>
+            <td width="50%" style="padding:0 0 0 8px;vertical-align:top;">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
+                <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px;">
+                  vs. Manual Trading Setups
+                </div>
+                <div style="font-size:12px;color:#9ca3af;line-height:1.6;">
+                  Automated trailing stops, breakeven triggers, and EOD exits mean your risk is managed even when you step away from the screen.
+                </div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- CTA -->
+      <tr><td style="padding:32px 44px;text-align:center;">
+        <a href="https://accentorai.com/app"
+           style="display:inline-block;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;
+                  text-decoration:none;font-weight:700;font-size:15px;padding:15px 40px;
+                  border-radius:10px;letter-spacing:0.02em;box-shadow:0 4px 15px rgba(124,58,237,0.3);">
+          Open the Dashboard →
+        </a>
+        <div style="color:#6b7280;font-size:12px;margin-top:12px;">
+          Your trial runs for 7 days. No credit card required to explore.
+        </div>
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td style="background:#0d1117;padding:20px 44px;border-top:1px solid #21262d;">
+        <p style="color:#4b5563;font-size:11px;line-height:1.6;margin:0;text-align:center;">
+          You're receiving this because you created an account at accentorai.com.
+          If you have questions, reply to this email — we read every one.
+        </p>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+        msg.attach(MIMEText(html_body, 'html'))
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(from_email, app_password)
+            server.sendmail(from_email, to_email, msg.as_string())
+        app_logger.info(f"Registration welcome email sent to {to_email}")
+    except Exception as e:
+        app_logger.warning(f"Registration welcome email failed for {to_email}: {e}")
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -4804,7 +4982,7 @@ def _send_trial_expiry_reminders():
                 # Format expiry to a readable date (e.g. "May 16, 2026")
                 try:
                     exp_dt    = datetime.fromisoformat(str(expires_at))
-                    exp_label = exp_dt.strftime('%B %-d, %Y')   # e.g. "May 16, 2026"
+                    exp_label = exp_dt.strftime('%B %d, %Y').replace(' 0', ' ')  # "May 9, 2026"
                 except Exception:
                     exp_label = str(expires_at)[:10]
 
