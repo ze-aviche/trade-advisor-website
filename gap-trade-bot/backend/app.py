@@ -1425,8 +1425,8 @@ def get_historical_data(ticker):
             historical_data = []
         
         app_logger.info(f"✅ Successfully retrieved {len(historical_data)} records for {ticker}")
-        
-        return jsonify({
+
+        resp = jsonify({
             'success': True,
             'data': historical_data,
             'ticker': ticker,
@@ -1434,6 +1434,8 @@ def get_historical_data(ticker):
             'count': len(historical_data),
             'timestamp': datetime.now().isoformat()
         })
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        return resp
         
     except Exception as e:
         app_logger.error(f"❌ Unexpected error getting historical data for {ticker}: {e}")

@@ -4357,7 +4357,7 @@ const app = createApp({
                 console.log(`📈 Loading historical data for ${this.historicalTicker}...`);
                 this.loading.historical = true;
 
-                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}`);
+                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}&_t=${Date.now()}`, { cache: 'no-store' });
                 const data = await response.json();
 
                 if (data.success) {
@@ -4379,9 +4379,10 @@ const app = createApp({
         
         getPeriodDescription() {
             const days = parseInt(this.selectedPeriod);
-            if (days === 180) return '6 Months';
-            if (days === 365) return '1 Year';
-            if (days === 730) return '2 Years';
+            if (days === 0)    return 'All Time';
+            if (days === 180)  return '6 Months';
+            if (days === 365)  return '1 Year';
+            if (days === 730)  return '2 Years';
             if (days === 1095) return '3 Years';
             if (days === 1825) return '5 Years';
             return `${days} Days`;
