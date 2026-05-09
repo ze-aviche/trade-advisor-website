@@ -163,7 +163,18 @@ class DatabaseManager:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_type ON daily_positions(type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_date ON daily_positions(snapshot_date)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_symbol_date ON daily_positions(symbol, snapshot_date)')
-            
+
+            # Email leads for landing page capture
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS email_leads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    source TEXT DEFAULT 'landing_popup',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    welcome_sent INTEGER DEFAULT 0
+                )
+            ''')
+
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
 
@@ -189,6 +200,7 @@ class DatabaseManager:
                 ('address', 'TEXT DEFAULT NULL'),
                 ('profession', 'TEXT DEFAULT NULL'),
                 ('annual_income_range', 'TEXT DEFAULT NULL'),
+                ('trial_expires_at', 'TIMESTAMP DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -283,16 +295,19 @@ class DatabaseManager:
         if system_role is None and self._get_user_count() == 0:
             system_role = 'super_admin'
 
+        trial_expires_at = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO users (username, email, password_hash, system_role, subscription_tier,
                                        subscription_status, is_active, preferences,
-                                       first_name, last_name, address, profession, annual_income_range)
-                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?)
+                                       first_name, last_name, address, profession, annual_income_range,
+                                       trial_expires_at)
+                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?)
                 ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences),
-                      first_name, last_name, address, profession, annual_income_range))
+                      first_name, last_name, address, profession, annual_income_range, trial_expires_at))
                 conn.commit()
                 return True, "User created successfully"
         except sqlite3.IntegrityError:
@@ -1945,6 +1960,44 @@ class DatabaseManager:
         except Exception as e:
             print(f"Database error fetching ticker history for {ticker}: {e}")
             return []
+
+
+    def save_email_lead(self, email: str, source: str = 'landing_popup') -> tuple:
+        """Save a lead email. Returns (True, 'new'|'exists')."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT OR IGNORE INTO email_leads (email, source) VALUES (?, ?)',
+                    (email.lower().strip(), source)
+                )
+                conn.commit()
+                if cursor.rowcount:
+                    return True, 'new'
+                return True, 'exists'
+        except Exception as e:
+            print(f"Database error saving email lead: {e}")
+            return False, str(e)
+
+    def get_email_leads(self) -> list:
+        """Return all email leads (admin use)."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM email_leads ORDER BY created_at DESC')
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching leads: {e}")
+            return []
+
+    def mark_welcome_sent(self, email: str):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE email_leads SET welcome_sent=1 WHERE email=?', (email.lower().strip(),))
+                conn.commit()
+        except Exception as e:
+            print(f"Database error marking welcome sent: {e}")
 
 
 # Global database manager instance

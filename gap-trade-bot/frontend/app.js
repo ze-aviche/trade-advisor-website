@@ -250,6 +250,9 @@ const app = createApp({
                 stockNews: null,
                 _historicalCharts: {},
 
+                // Trial banner
+                trialBannerDismissed: false,
+
                 // Swing Trading tab
                 swingTicker: '',
                 swingTechnicals: null,
@@ -440,6 +443,15 @@ const app = createApp({
             },
             isAdmin() {
                 return this.isSuperAdmin;
+            },
+            trialActive() {
+                return this.user && this.user.trial_active === true;
+            },
+            trialDaysLeft() {
+                return this.user ? (this.user.trial_days_left || 0) : 0;
+            },
+            showTrialBanner() {
+                return this.trialActive && !this.trialBannerDismissed && !this.isGuest;
             },
             lockedTabInfo() {
                 const map = {
