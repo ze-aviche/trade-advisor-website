@@ -4351,30 +4351,27 @@ const app = createApp({
                 this.showNotification('Please enter a ticker symbol', 'warning');
                 return;
             }
-            
+
             try {
                 console.log(`📈 Loading historical data for ${this.historicalTicker}...`);
                 this.loading.historical = true;
-                
-                // Use the correct endpoint format: /api/historical-data/<ticker>
+
                 const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     this.historicalData = data.data || [];
                     console.log(`✅ Loaded ${this.historicalData.length} days of historical data for ${this.historicalTicker}`);
                     this.showNotification(`Loaded ${this.historicalData.length} days of historical data`, 'success');
-                    
-                    // Debug the data structure
                     this.debugHistoricalData();
-                    } else {
+                } else {
                     console.error('Failed to load historical data:', data.error);
                     this.showNotification('Failed to load historical data: ' + data.error, 'error');
-                    }
-                } catch (error) {
+                }
+            } catch (error) {
                 console.error('Error loading historical data:', error);
                 this.showNotification('Error loading historical data: ' + error.message, 'error');
-                } finally {
+            } finally {
                 this.loading.historical = false;
             }
         },
@@ -4401,7 +4398,7 @@ const app = createApp({
             console.log(`📊 Gap-up days count: ${count} (from ${this.historicalData.length} total days)`);
             return count;
         },
-        
+
         getRunnerDaysCount() {
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
@@ -4411,7 +4408,7 @@ const app = createApp({
             console.log(`🏃 Runner days count: ${count}`);
             return count;
         },
-        
+
         getFaderDaysCount() {
             const count = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;
@@ -4421,7 +4418,7 @@ const app = createApp({
             console.log(`📉 Fader days count: ${count}`);
             return count;
         },
-        
+
         getAverageGapPercent() {
             const gapUpDays = this.historicalData.filter(day => {
                 const gapPercent = parseFloat(day['gap up % at open']) || 0;

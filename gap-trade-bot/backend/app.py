@@ -1322,6 +1322,23 @@ def get_gap_up_snapshot(date):
         app_logger.error(f"Error fetching gap-up snapshot for {date}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/gap-ups/history/<ticker>')
+def get_gap_up_ticker_history(ticker):
+    """Return all gap-up snapshot records for a ticker from the local database."""
+    try:
+        from database import db_manager
+        days = request.args.get('days', None, type=int)
+        records = db_manager.get_gap_up_ticker_history(ticker.upper(), days=days)
+        return jsonify({
+            'success': True,
+            'ticker': ticker.upper(),
+            'data': records,
+            'count': len(records)
+        })
+    except Exception as e:
+        app_logger.error(f"Error fetching gap-up history for {ticker}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/historical-data/<ticker>')
 def get_historical_data(ticker):
     """Get historical data for a specific ticker"""
