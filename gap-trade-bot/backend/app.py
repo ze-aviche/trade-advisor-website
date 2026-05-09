@@ -734,12 +734,31 @@ def get_auth_profile():
         user = auth_manager.get_user_by_session(session_token)
         if not user:
             return jsonify({'success': False, 'error': 'Invalid or expired session'}), 401
+        # ── Trial calculation ──────────────────────────────────────────────
+        trial_expires_raw = user.get('trial_expires_at')
+        trial_active = False
+        trial_days_left = 0
+        if trial_expires_raw:
+            try:
+                trial_exp = datetime.fromisoformat(str(trial_expires_raw))
+                delta = trial_exp - datetime.now()
+                if delta.total_seconds() > 0:
+                    trial_active = True
+                    trial_days_left = max(1, delta.days + 1)
+            except Exception:
+                pass
+
+        base_tier = user.get('subscription_tier', 'basic')
+        # Grant beginner access during trial for basic-tier users
+        effective_tier = 'beginner' if (trial_active and base_tier == 'basic') else base_tier
+
         safe_user = {
             'id': user.get('id'),
             'username': user.get('username'),
             'email': user.get('email'),
             'system_role': user.get('system_role'),
-            'subscription_tier': user.get('subscription_tier', 'basic'),
+            'subscription_tier': effective_tier,
+            'subscription_tier_actual': base_tier,
             'subscription_status': user.get('subscription_status', 'active'),
             'has_billing_account': bool(user.get('stripe_customer_id')),
             'is_active': user.get('is_active', 1),
@@ -751,6 +770,9 @@ def get_auth_profile():
             'address': user.get('address') or '',
             'profession': user.get('profession') or '',
             'annual_income_range': user.get('annual_income_range') or '',
+            'trial_active': trial_active,
+            'trial_days_left': trial_days_left,
+            'trial_expires_at': str(trial_expires_raw) if trial_expires_raw else None,
         }
         return jsonify({'success': True, 'data': safe_user})
     except Exception as e:
@@ -1886,6 +1908,107 @@ def get_stock_news_endpoint(ticker):
     }
     _cache_set(_news_cache, ticker, result)
     return jsonify(result)
+
+
+@app.route('/api/lead-capture', methods=['POST'])
+def lead_capture():
+    """
+    Save a landing-page email lead and send a welcome email with a
+    free market analysis / gap-up overview.
+    """
+    data  = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    source = data.get('source', 'landing_popup')
+
+    if not email or '@' not in email:
+        return jsonify({'success': False, 'error': 'Valid email required'}), 400
+
+    from database import db_manager as _db
+    ok, status = _db.save_email_lead(email, source)
+    if not ok:
+        return jsonify({'success': False, 'error': 'Could not save email'}), 500
+
+    # Send welcome email (fire-and-forget; don't fail the request if SMTP isn't configured)
+    from_email   = os.getenv('CONTACT_EMAIL_FROM', '')
+    app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+    if from_email and app_password and status == 'new':
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = 'Welcome to Accentor AI — Your Free Market Edge Starts Here'
+            msg['From']    = from_email
+            msg['To']      = email
+
+            html_body = """
+<html><body style="margin:0;padding:0;background:#0d1117;font-family:Arial,sans-serif;color:#e2e8f0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d1117;padding:40px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;">
+      <!-- Header -->
+      <tr><td style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);padding:32px 40px;text-align:center;">
+        <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px;">Accentor <span style="color:#93c5fd;">AI</span></div>
+        <div style="color:#bfdbfe;font-size:13px;margin-top:6px;">AI-Powered Gap-Up Trading Intelligence</div>
+      </td></tr>
+      <!-- Body -->
+      <tr><td style="padding:36px 40px;">
+        <h2 style="color:#fff;font-size:20px;margin:0 0 12px;">Welcome — you're in! 🎉</h2>
+        <p style="color:#9ca3af;font-size:14px;line-height:1.7;margin:0 0 20px;">
+          Thanks for joining. Every trading day you'll get the edge that most retail traders miss:
+          pre-market gap-up scans, sector momentum shifts, and AI-powered swing setups — straight to your inbox.
+        </p>
+        <!-- Feature list -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+          <tr><td style="padding:10px 0;border-bottom:1px solid #21262d;">
+            <span style="color:#60a5fa;font-size:13px;">📈</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;"><strong style="color:#fff;">Daily Gap-Up Scan</strong> — pre-market movers filtered for momentum</span>
+          </td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #21262d;">
+            <span style="color:#60a5fa;font-size:13px;">🤖</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;"><strong style="color:#fff;">AI Market Summary</strong> — sector context and key levels to watch</span>
+          </td></tr>
+          <tr><td style="padding:10px 0;border-bottom:1px solid #21262d;">
+            <span style="color:#60a5fa;font-size:13px;">🔥</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;"><strong style="color:#fff;">Hot Swing Picks</strong> — top 6-8 setups ranked by AI each session</span>
+          </td></tr>
+          <tr><td style="padding:10px 0;">
+            <span style="color:#60a5fa;font-size:13px;">📰</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;"><strong style="color:#fff;">News Digest</strong> — catalyst headlines summarised for traders</span>
+          </td></tr>
+        </table>
+        <!-- CTA -->
+        <div style="text-align:center;margin-bottom:28px;">
+          <a href="https://accentorai.com/login?view=register"
+             style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;
+                    font-weight:700;font-size:14px;padding:14px 32px;border-radius:10px;
+                    letter-spacing:0.02em;">
+            Start Your Free 7-Day Trial →
+          </a>
+          <div style="color:#6b7280;font-size:11px;margin-top:10px;">No credit card required</div>
+        </div>
+        <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0;">
+          You're receiving this because you signed up at accentorai.com.
+          You can <a href="#" style="color:#60a5fa;">unsubscribe</a> at any time.
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+            msg.attach(MIMEText(html_body, 'html'))
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(from_email, app_password)
+                server.sendmail(from_email, email, msg.as_string())
+            _db.mark_welcome_sent(email)
+            app_logger.info(f"Welcome email sent to lead: {email}")
+        except Exception as mail_err:
+            app_logger.warning(f"Welcome email failed for {email}: {mail_err}")
+
+    return jsonify({
+        'success': True,
+        'status':  status,   # 'new' or 'exists'
+        'message': "You're on the list! Check your inbox for your free market analysis."
+            if status == 'new' else "You're already on the list — watch your inbox!"
+    })
 
 
 @app.route('/api/test-historical/<ticker>')

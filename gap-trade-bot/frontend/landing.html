@@ -1071,5 +1071,173 @@
         track.style.animationDuration = duration + 's';
     })();
     </script>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         Lead Capture Popup — shown after 10 s to non-logged-in visitors
+         Not shown again if already submitted or dismissed in last 7 days.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <div id="lead-popup" style="display:none;"
+        class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+        onclick="if(event.target===this)dismissLeadPopup()">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+
+        <!-- Card -->
+        <div class="relative bg-[#161b22] border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+            <!-- Dismiss -->
+            <button onclick="dismissLeadPopup()"
+                class="absolute top-3 right-3 text-gray-500 hover:text-gray-300 transition-colors z-10 p-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                </svg>
+            </button>
+
+            <!-- Gradient top bar -->
+            <div class="h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500"></div>
+
+            <!-- Content -->
+            <div class="px-8 pt-8 pb-6">
+                <!-- Icon -->
+                <div class="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center mx-auto mb-5">
+                    <i class="fas fa-chart-line text-blue-400 text-xl"></i>
+                </div>
+
+                <h2 class="text-white text-xl font-bold text-center mb-2">Get Free Daily Market Analysis</h2>
+                <p class="text-gray-400 text-sm text-center mb-6 leading-relaxed">
+                    Join traders getting our <span class="text-white font-medium">AI-powered gap-up scans</span>,
+                    hot swing picks, and market digest — free, every trading day.
+                </p>
+
+                <!-- Bullet points -->
+                <ul class="space-y-2 mb-6">
+                    <li class="flex items-center gap-2.5 text-sm text-gray-300">
+                        <i class="fas fa-check-circle text-green-400 text-xs flex-shrink-0"></i>
+                        Pre-market gap-up scanner results
+                    </li>
+                    <li class="flex items-center gap-2.5 text-sm text-gray-300">
+                        <i class="fas fa-check-circle text-green-400 text-xs flex-shrink-0"></i>
+                        Top swing setups ranked by AI each session
+                    </li>
+                    <li class="flex items-center gap-2.5 text-sm text-gray-300">
+                        <i class="fas fa-check-circle text-green-400 text-xs flex-shrink-0"></i>
+                        Sector momentum + key news digest
+                    </li>
+                </ul>
+
+                <!-- Form -->
+                <div id="lead-form-wrap">
+                    <form onsubmit="submitLeadEmail(event)" class="space-y-3">
+                        <input id="lead-email-input" type="email" required
+                            placeholder="Enter your email address"
+                            class="w-full bg-gray-900 border border-gray-600 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors" />
+                        <button type="submit" id="lead-submit-btn"
+                            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+                            <span id="lead-btn-text">Send Me Free Analysis</span>
+                            <i id="lead-btn-icon" class="fas fa-arrow-right text-xs"></i>
+                        </button>
+                    </form>
+                    <p class="text-gray-600 text-xs text-center mt-3">No spam, ever. Unsubscribe anytime.</p>
+                </div>
+
+                <!-- Success state -->
+                <div id="lead-success" class="hidden text-center py-4">
+                    <div class="w-12 h-12 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-check text-green-400 text-lg"></i>
+                    </div>
+                    <p class="text-white font-semibold mb-1">You're on the list!</p>
+                    <p class="text-gray-400 text-sm">Check your inbox — your first market analysis is on its way.</p>
+                    <a href="/login?view=register"
+                        class="mt-5 inline-block bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold px-6 py-2.5 rounded-xl transition-all">
+                        Start Your Free 7-Day Trial →
+                    </a>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-8 pb-5 text-center">
+                <a href="/login?view=register"
+                    class="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                    Skip — start my free 7-day trial instead →
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ── Lead capture popup logic ──────────────────────────────────────────────
+
+    const LEAD_KEY     = 'accentor_lead_dismissed';
+    const LEAD_DELAY   = 10_000; // 10 seconds
+
+    function shouldShowPopup() {
+        // Don't show if user is logged in
+        if (localStorage.getItem('session_token')) return false;
+        // Don't show if already submitted
+        if (localStorage.getItem('accentor_lead_submitted')) return false;
+        // Don't show if dismissed within 7 days
+        const dismissed = localStorage.getItem(LEAD_KEY);
+        if (dismissed && Date.now() - parseInt(dismissed) < 7 * 24 * 3600 * 1000) return false;
+        return true;
+    }
+
+    function showLeadPopup() {
+        const popup = document.getElementById('lead-popup');
+        if (!popup) return;
+        popup.style.display = 'flex';
+        requestAnimationFrame(() => {
+            popup.style.opacity = '0';
+            popup.style.transition = 'opacity 0.4s ease';
+            requestAnimationFrame(() => { popup.style.opacity = '1'; });
+        });
+    }
+
+    function dismissLeadPopup() {
+        const popup = document.getElementById('lead-popup');
+        if (!popup) return;
+        popup.style.opacity = '0';
+        setTimeout(() => { popup.style.display = 'none'; }, 400);
+        localStorage.setItem(LEAD_KEY, Date.now().toString());
+    }
+
+    async function submitLeadEmail(e) {
+        e.preventDefault();
+        const email  = document.getElementById('lead-email-input').value.trim();
+        const btn    = document.getElementById('lead-submit-btn');
+        const btnTxt = document.getElementById('lead-btn-text');
+        const btnIco = document.getElementById('lead-btn-icon');
+
+        btn.disabled = true;
+        btnTxt.textContent = 'Sending…';
+        btnIco.className = 'fas fa-spinner fa-spin text-xs';
+
+        try {
+            const res  = await fetch('/api/lead-capture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, source: 'landing_popup' }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                localStorage.setItem('accentor_lead_submitted', '1');
+                document.getElementById('lead-form-wrap').classList.add('hidden');
+                document.getElementById('lead-success').classList.remove('hidden');
+            } else {
+                btnTxt.textContent = 'Try again';
+                btnIco.className = 'fas fa-arrow-right text-xs';
+                btn.disabled = false;
+            }
+        } catch {
+            btnTxt.textContent = 'Try again';
+            btnIco.className = 'fas fa-arrow-right text-xs';
+            btn.disabled = false;
+        }
+    }
+
+    if (shouldShowPopup()) {
+        setTimeout(showLeadPopup, LEAD_DELAY);
+    }
+    </script>
 </body>
 </html>
