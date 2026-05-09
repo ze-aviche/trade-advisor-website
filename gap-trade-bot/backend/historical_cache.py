@@ -25,6 +25,7 @@ class HistoricalDataCache:
         
         self.db_file = db_file
         self.init_cache_tables()
+        self._run_once_migration_premarket_fix()
     
     @contextmanager
     def get_connection(self):
@@ -268,6 +269,40 @@ class HistoricalDataCache:
             logger.error(f"❌ Error clearing cache: {e}")
             return False
     
+    def _run_once_migration_premarket_fix(self) -> None:
+        """One-time migration: clear cached records with null premarket open so they are re-fetched
+        with the first-premarket-bar fallback. Skipped if already applied (tracked via a sentinel row)."""
+        SENTINEL = '_MIGRATION:premarket_bar_open_fallback_v1'
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT ticker FROM cache_metadata WHERE ticker = ?", (SENTINEL,))
+                if cursor.fetchone():
+                    return  # already ran
+                cursor.execute("SELECT ticker, date, data_json FROM historical_data_cache")
+                to_delete = []
+                for row in cursor.fetchall():
+                    try:
+                        data = json.loads(row['data_json'])
+                        if data.get('premarket open') is None:
+                            to_delete.append((row['ticker'], row['date']))
+                    except Exception:
+                        pass
+                if to_delete:
+                    cursor.executemany(
+                        "DELETE FROM historical_data_cache WHERE ticker = ? AND date = ?",
+                        to_delete
+                    )
+                # Write sentinel so this never runs again
+                cursor.execute(
+                    "INSERT OR REPLACE INTO cache_metadata (ticker, last_updated) VALUES (?, CURRENT_TIMESTAMP)",
+                    (SENTINEL,)
+                )
+                conn.commit()
+                logger.info(f"🔧 Migration premarket_bar_open_fallback_v1: cleared {len(to_delete)} records with null premarket open")
+        except Exception as e:
+            logger.error(f"❌ Migration premarket_bar_open_fallback_v1 failed: {e}")
+
     def get_cache_stats(self) -> Dict:
         """Get overall cache statistics"""
         try:

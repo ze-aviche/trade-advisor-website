@@ -111,15 +111,18 @@ def get_premarket_high_low_data(ticker, polygon_client, date_str):
         
         if not aggs_list:
             logger.debug(f"⚠️ No premarket data found for {ticker} on {date_str}")
-            return None, None, None, None
-        
+            return None, None, None, None, None
+
         logger.debug(f"📊 Found {len(aggs_list)} premarket bars for {ticker} on {date_str}")
-        
+
+        # aggs_list is already in chronological order; first bar's open = premarket open price
+        first_bar_open = aggs_list[0].open
+
         max_high = -1
         high_timestamp = None
         min_low = float('inf')
         low_timestamp = None
-        
+
         for bar in aggs_list:
             if bar.high > max_high:
                 max_high = bar.high
@@ -127,25 +130,25 @@ def get_premarket_high_low_data(ticker, polygon_client, date_str):
             if bar.low < min_low:
                 min_low = bar.low
                 low_timestamp = bar.timestamp
-        
+
         high_timestamp_est = None
         if high_timestamp:
             high_datetime_utc = dt.fromtimestamp(high_timestamp / 1000, tz=pytz.utc)
             high_datetime_est = high_datetime_utc.astimezone(est_timezone)
             high_timestamp_est = high_datetime_est.strftime('%H:%M')
-        
+
         low_timestamp_est = None
         if low_timestamp:
             low_datetime_utc = dt.fromtimestamp(low_timestamp / 1000, tz=pytz.utc)
             low_datetime_est = low_datetime_utc.astimezone(est_timezone)
             low_timestamp_est = low_datetime_est.strftime('%H:%M')
-        
-        logger.debug(f"✅ Premarket data for {ticker} on {date_str}: High={max_high}@{high_timestamp_est}, Low={min_low}@{low_timestamp_est}")
-        return max_high, high_timestamp_est, min_low, low_timestamp_est
-        
+
+        logger.debug(f"✅ Premarket data for {ticker} on {date_str}: High={max_high}@{high_timestamp_est}, Low={min_low}@{low_timestamp_est}, FirstOpen={first_bar_open}")
+        return max_high, high_timestamp_est, min_low, low_timestamp_est, first_bar_open
+
     except Exception as e:
         logger.error(f"❌ Error fetching premarket data for {ticker} on {date_str}: {e}")
-        return None, None, None, None
+        return None, None, None, None, None
 
 def get_daily_high_low_data(ticker, polygon_client, date_str):
     """
@@ -283,12 +286,12 @@ def fetch_single_day_data(ticker, polygon_client, date_str):
             gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
         
         # Get premarket data
-        premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, date_str)
+        premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, polygon_client, date_str)
         premarket_volume = get_premarket_volume(polygon_client, ticker, date_str)
-        
+
         # Get daily high/low data
         daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, date_str)
-        
+
         # Calculate percentages
         percent_gap_high = None
         closing_percent = None
@@ -296,7 +299,7 @@ def fetch_single_day_data(ticker, polygon_client, date_str):
             if daily_high:
                 percent_gap_high = round(((daily_high - previous_day_close) / previous_day_close) * 100, 2)
             closing_percent = round(((agg.close - previous_day_close) / previous_day_close) * 100, 2)
-        
+
         # Get daily summary for premarket open and afterhours close
         try:
             daily_summary = polygon_client.get_daily_open_close_agg(
@@ -304,11 +307,11 @@ def fetch_single_day_data(ticker, polygon_client, date_str):
                 date=date_str,
                 adjusted="true",
             )
-            premarket_open = daily_summary.pre_market if daily_summary.pre_market else None
+            premarket_open = daily_summary.pre_market if daily_summary.pre_market else premarket_bar_open
             afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
         except Exception as e:
             print(f"Error fetching daily summary for {ticker} on {date_str}: {e}")
-            premarket_open = None
+            premarket_open = premarket_bar_open
             afterhours_close = None
         
         # Determine Runner/Fader
@@ -445,15 +448,15 @@ def process_batch_data_to_gap_ups(ticker, daily_data, min_gap_percent=5):
                 
                 # Get premarket data for gap-up days only (efficient approach)
                 polygon_client = get_polygon_client()
-                premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, date_str)
+                premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, polygon_client, date_str)
                 premarket_volume = get_premarket_volume(polygon_client, ticker, date_str)
-                
+
                 # Get daily high/low data for gap-up days
                 daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, date_str)
-                
+
                 # Get VWAP crosses for gap-up days
                 vwap_crosses = count_vwap_crosses(polygon_client, ticker, date_str)
-                
+
                 # Get daily summary for premarket open and afterhours close
                 try:
                     logger.debug(f"🔍 Fetching daily summary for {ticker} on {date_str}")
@@ -462,12 +465,12 @@ def process_batch_data_to_gap_ups(ticker, daily_data, min_gap_percent=5):
                         date=date_str,
                         adjusted="true",
                     )
-                    premarket_open = daily_summary.pre_market if daily_summary.pre_market else None
+                    premarket_open = daily_summary.pre_market if daily_summary.pre_market else premarket_bar_open
                     afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
                     logger.debug(f"📊 Daily summary for {ticker} on {date_str}: Pre-market={premarket_open}, After-hours={afterhours_close}")
                 except Exception as e:
                     logger.warning(f"❌ Error fetching daily summary for {ticker} on {date_str}: {e}")
-                    premarket_open = None
+                    premarket_open = premarket_bar_open
                     afterhours_close = None
                 
                 data_point = {
@@ -908,15 +911,15 @@ def get_batch_delta_data(ticker, missing_dates, min_gap_percent=5):
                 # Only process if the gap meets the minimum threshold
                 if gap_percent and gap_percent >= min_gap_percent:
                     # Get premarket data for gap-up days only
-                    premarket_high, premarket_high_time, _, _ = get_premarket_high_low_data(ticker, polygon_client, missing_date)
+                    premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, polygon_client, missing_date)
                     premarket_volume = get_premarket_volume(polygon_client, ticker, missing_date)
-                    
+
                     # Get daily high/low data for gap-up days
                     daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, missing_date)
-                    
+
                     # Get VWAP crosses for gap-up days
                     vwap_crosses = count_vwap_crosses(polygon_client, ticker, missing_date)
-                    
+
                     # Get daily summary for premarket open and afterhours close
                     try:
                         logger.debug(f"🔍 Fetching daily summary for {ticker} on {missing_date}")
@@ -925,12 +928,12 @@ def get_batch_delta_data(ticker, missing_dates, min_gap_percent=5):
                             date=missing_date,
                             adjusted="true",
                         )
-                        premarket_open = daily_summary.pre_market if daily_summary.pre_market else None
+                        premarket_open = daily_summary.pre_market if daily_summary.pre_market else premarket_bar_open
                         afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
                         logger.debug(f"📊 Daily summary for {ticker} on {missing_date}: Pre-market={premarket_open}, After-hours={afterhours_close}")
                     except Exception as e:
                         logger.warning(f"❌ Error fetching daily summary for {ticker} on {missing_date}: {e}")
-                        premarket_open = None
+                        premarket_open = premarket_bar_open
                         afterhours_close = None
                     
                     # Calculate percentages
