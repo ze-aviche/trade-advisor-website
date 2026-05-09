@@ -948,6 +948,13 @@
                                     class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap">
                                 <i class="fas fa-file-csv mr-1"></i>CSV
                             </button>
+                            <button @click="runHistoricalAnalysis"
+                                    :disabled="historicalData.length === 0 || loading.historicalAnalysis"
+                                    class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap">
+                                <i v-if="!loading.historicalAnalysis" class="fas fa-robot mr-1"></i>
+                                <i v-else class="fas fa-spinner fa-spin mr-1"></i>
+                                {{ loading.historicalAnalysis ? 'Predicting…' : 'AI Predict' }}
+                            </button>
                         </div>
                     </div>
                     
@@ -1008,6 +1015,120 @@
                             </div>
                         </div>
                         
+                        <!-- Behavioral Charts -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h5 class="text-xs font-medium text-gray-400 mb-1 text-center uppercase tracking-wide">Runner / Fader Split</h5>
+                                <div style="height:140px;position:relative;"><canvas id="runnerFaderChart"></canvas></div>
+                                <p class="text-center text-xs text-gray-500 mt-1">{{ Math.round(getRunnerDaysCount() / historicalData.length * 100) }}% runner rate</p>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h5 class="text-xs font-medium text-gray-400 mb-1 text-center uppercase tracking-wide">Gap Size Distribution</h5>
+                                <div style="height:140px;position:relative;"><canvas id="gapDistChart"></canvas></div>
+                                <p class="text-center text-xs text-gray-500 mt-1">avg {{ getAverageGapPercent() }}% gap</p>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h5 class="text-xs font-medium text-gray-400 mb-1 text-center uppercase tracking-wide">Closing Behavior</h5>
+                                <div style="height:140px;position:relative;"><canvas id="closingBehaviorChart"></canvas></div>
+                                <p class="text-center text-xs text-gray-500 mt-1">positive vs negative close</p>
+                            </div>
+                        </div>
+
+                        <!-- AI Analysis Result Card -->
+                        <div v-if="loading.historicalAnalysis" class="bg-gray-700 rounded-lg p-6 mb-6 text-center">
+                            <i class="fas fa-robot text-purple-400 text-2xl mb-2"></i>
+                            <p class="text-gray-300 font-medium">Claude is analyzing {{ historicalData.length }} gap-up events…</p>
+                            <p class="text-gray-500 text-sm mt-1">Comparing runner/fader patterns, volume signals, and timing</p>
+                        </div>
+
+                        <div v-if="historicalAnalysis && !loading.historicalAnalysis" id="ai-analysis-card"
+                             :class="getOutlookBg(historicalAnalysis.outlook)"
+                             class="rounded-lg p-4 mb-6">
+                            <!-- Header row -->
+                            <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                <div>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <i class="fas fa-robot text-purple-400"></i>
+                                        <span class="text-sm font-medium text-gray-300">AI Prediction · {{ historicalData.length }} events · {{ getPeriodDescription() }}</span>
+                                    </div>
+                                    <p class="text-white font-semibold text-base">{{ historicalAnalysis.summary }}</p>
+                                    <p v-if="historicalAnalysis.regime_note" class="text-xs text-gray-400 mt-1 italic">{{ historicalAnalysis.regime_note }}</p>
+                                </div>
+                                <div class="text-right flex-shrink-0">
+                                    <span :class="getOutlookColor(historicalAnalysis.outlook)"
+                                          class="text-lg font-bold block">{{ historicalAnalysis.outlook }}</span>
+                                    <span class="text-xs text-gray-400">Confidence: {{ historicalAnalysis.confidence }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Entry / Exit / Caution columns -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                                <!-- Entry -->
+                                <div class="bg-black/20 rounded-lg p-3">
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <i class="fas fa-sign-in-alt text-green-400 text-xs"></i>
+                                        <span class="text-xs font-semibold text-green-400 uppercase tracking-wide">Entry</span>
+                                    </div>
+                                    <p class="text-white text-sm font-medium mb-1">{{ historicalAnalysis.entry?.signal }}</p>
+                                    <p v-if="historicalAnalysis.entry?.price_context" class="text-gray-400 text-xs mb-2">{{ historicalAnalysis.entry.price_context }}</p>
+                                    <ul class="space-y-1">
+                                        <li v-for="c in (historicalAnalysis.entry?.conditions || [])" :key="c"
+                                            class="text-xs text-gray-300 flex items-start gap-1">
+                                            <span class="text-green-500 mt-0.5">•</span><span>{{ c }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <!-- Exit -->
+                                <div class="bg-black/20 rounded-lg p-3">
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <i class="fas fa-sign-out-alt text-blue-400 text-xs"></i>
+                                        <span class="text-xs font-semibold text-blue-400 uppercase tracking-wide">Exit Target</span>
+                                    </div>
+                                    <p class="text-white text-sm font-medium mb-1">{{ historicalAnalysis.exit?.target }}</p>
+                                    <p v-if="historicalAnalysis.exit?.timing" class="text-gray-400 text-xs mb-2">{{ historicalAnalysis.exit.timing }}</p>
+                                    <ul class="space-y-1">
+                                        <li v-for="c in (historicalAnalysis.exit?.conditions || [])" :key="c"
+                                            class="text-xs text-gray-300 flex items-start gap-1">
+                                            <span class="text-blue-500 mt-0.5">•</span><span>{{ c }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <!-- Caution -->
+                                <div class="bg-black/20 rounded-lg p-3">
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <i class="fas fa-exclamation-triangle text-yellow-400 text-xs"></i>
+                                        <span class="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Caution</span>
+                                        <span :class="getCautionColor(historicalAnalysis.caution?.level)"
+                                              class="text-xs font-bold ml-auto">{{ historicalAnalysis.caution?.level }}</span>
+                                    </div>
+                                    <ul class="space-y-1">
+                                        <li v-for="f in (historicalAnalysis.caution?.factors || [])" :key="f"
+                                            class="text-xs text-gray-300 flex items-start gap-1">
+                                            <span class="text-yellow-500 mt-0.5">•</span><span>{{ f }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Pattern insights -->
+                            <div v-if="historicalAnalysis.insights?.length" class="bg-black/20 rounded-lg p-3">
+                                <div class="flex items-center gap-1.5 mb-2">
+                                    <i class="fas fa-lightbulb text-yellow-300 text-xs"></i>
+                                    <span class="text-xs font-semibold text-yellow-300 uppercase tracking-wide">Pattern Insights</span>
+                                </div>
+                                <ul class="grid grid-cols-1 md:grid-cols-3 gap-1">
+                                    <li v-for="ins in historicalAnalysis.insights" :key="ins"
+                                        class="text-xs text-gray-300 flex items-start gap-1">
+                                        <span class="text-purple-400 mt-0.5">→</span><span>{{ ins }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <p class="text-xs text-gray-600 mt-3">⚠ AI predictions are based on historical patterns only and are not financial advice. Always use your own judgment.</p>
+                        </div>
+
                         <!-- Historical Data Table -->
                         <div class="bg-gray-700 rounded-lg" style="overflow: visible;">
                             <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-400 border-b border-gray-600">

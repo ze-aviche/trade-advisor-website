@@ -1481,6 +1481,79 @@ def get_historical_data(ticker):
             'error': f'Unexpected error: {str(e)}'
         }), 500
 
+@app.route('/api/historical-analysis/<ticker>', methods=['POST'])
+def get_historical_analysis(ticker):
+    """Use Claude AI to analyze historical gap-up patterns and predict next gap-up day behavior."""
+    try:
+        if not AI_AGENT_AVAILABLE or not _ai_agent:
+            return jsonify({'success': False, 'error': 'AI analysis not available'}), 503
+
+        body = request.get_json(force=True) or {}
+        stats = body.get('stats', {})
+
+        prompt = f"""You are analyzing historical gap-up trading data for {ticker.upper()}. Based on the statistics below, predict how this stock will likely behave on its NEXT gap-up day and give actionable trading guidance.
+
+HISTORICAL GAP-UP STATISTICS ({stats.get('period', 'N/A')}, {stats.get('minGap', 0)}%+ gaps only):
+- Total gap-up events: {stats.get('totalDays', 0)}
+- Runner days (closed above open): {stats.get('runnerDays', 0)} ({stats.get('runnerPct', 0)}%)
+- Fader days (closed below open): {stats.get('faderDays', 0)} ({stats.get('faderPct', 0)}%)
+- Neutral days: {stats.get('neutralDays', 0)} ({stats.get('neutralPct', 0)}%)
+- Average gap-up %: {stats.get('avgGap', 0)}%
+- Average day high %: {stats.get('avgDayHigh', 0)}%  (from prev close)
+- Average closing %: {stats.get('avgClose', 0)}%  (from prev close)
+- Average premarket volume: {stats.get('avgPremarketVol', 0)}M shares
+- Most common day high time: {stats.get('commonHighTime', 'N/A')} EST
+- Gap size distribution: {stats.get('gapDistribution', {})}
+- RECENT TREND (last 30 days): runner rate {stats.get('recent30RunnerPct', 0)}% vs full-period {stats.get('runnerPct', 0)}%
+- High-volume runner rate (top 50% vol days): {stats.get('highVolRunnerPct', 0)}%
+
+Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
+{{
+  "outlook": "Bullish" | "Bearish" | "Mixed" | "Neutral",
+  "confidence": "High" | "Medium" | "Low",
+  "summary": "One concise sentence predicting next gap-up day behavior based on the data",
+  "regime_note": "One sentence comparing recent 30-day trend vs full-period trend — is behavior shifting?",
+  "entry": {{
+    "signal": "e.g. Buy at open / Wait for first pullback / Short bias — avoid long",
+    "price_context": "brief context (e.g. target near premarket high, enter above VWAP)",
+    "conditions": ["specific condition 1", "specific condition 2"]
+  }},
+  "exit": {{
+    "target": "+X% from open (based on avg day high of {stats.get('avgDayHigh', 0)}%)",
+    "timing": "typical exit time based on common high time {stats.get('commonHighTime', 'N/A')} EST",
+    "conditions": ["exit condition 1", "exit condition 2"]
+  }},
+  "caution": {{
+    "level": "High" | "Medium" | "Low",
+    "factors": ["specific risk factor 1", "specific risk factor 2"]
+  }},
+  "insights": ["data-backed pattern insight 1", "data-backed pattern insight 2", "data-backed pattern insight 3"]
+}}"""
+
+        response = _ai_agent.process_message(prompt, user_id=f"hist_analysis_{ticker.upper()}")
+        if not response.get('success'):
+            return jsonify({'success': False, 'error': response.get('error', 'AI analysis failed')}), 500
+
+        import re
+        text = response.get('response', '')
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            analysis = json.loads(json_match.group(0))
+        else:
+            analysis = {'summary': text, 'outlook': 'Mixed', 'confidence': 'Low',
+                        'regime_note': '', 'entry': {}, 'exit': {}, 'caution': {}, 'insights': []}
+
+        return jsonify({'success': True, 'analysis': analysis, 'ticker': ticker.upper(),
+                        'stats': stats})
+
+    except json.JSONDecodeError as e:
+        app_logger.error(f"JSON parse error in historical analysis for {ticker}: {e}")
+        return jsonify({'success': False, 'error': 'AI returned malformed response, try again'}), 500
+    except Exception as e:
+        app_logger.error(f"Error in historical analysis for {ticker}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/test-historical/<ticker>')
 def test_historical_data(ticker):
     """Test endpoint for historical data functionality"""
