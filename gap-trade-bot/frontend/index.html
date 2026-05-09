@@ -72,7 +72,7 @@
         .mp-progress-fill {
             position: absolute;
             left: 0; top: 0; bottom: 0;
-            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            background: linear-gradient(90deg, #f97316, #fb923c);
             border-radius: 2px;
             transition: width 0.3s linear;
         }
@@ -90,7 +90,7 @@
             -webkit-appearance: none;
             width: 10px; height: 10px;
             border-radius: 50%;
-            background: #3b82f6;
+            background: #f97316;
             cursor: pointer;
         }
         @keyframes mp-spin { to { transform: rotate(360deg); } }
@@ -123,90 +123,80 @@
                     </div>
                 </div>
 
-                <!-- ── Music Player (center, logged-in only) ── -->
+                <!-- ── Music Player (center, logged-in only — powered by SoundCloud Widget) ── -->
                 <div v-if="!isGuest" class="mp-wrap flex flex-col items-center justify-center gap-1 px-4">
 
-                    <!-- Search row -->
+                    <!-- Controls row -->
                     <div class="flex items-center gap-2">
-                        <div v-if="mp.showSearch" class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-blue-500/60 transition-colors">
-                            <i class="fas fa-search text-gray-500 text-xs"></i>
+
+                        <!-- Search box -->
+                        <div v-if="mp.showSearch" class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-orange-500/60 transition-colors">
+                            <i class="fab fa-soundcloud text-orange-400 text-xs"></i>
                             <input
                                 v-model="mp.query"
                                 @keyup.enter="mpSearch"
-                                @keyup.escape="mp.showSearch = false; mp.results = []"
-                                placeholder="Search a song…"
+                                @keyup.escape="mp.showSearch = false"
+                                placeholder="Search SoundCloud…"
                                 class="bg-transparent text-xs text-white outline-none w-44 placeholder-gray-600"
                                 autofocus
                             >
-                            <button v-if="mp.searching" class="text-blue-400 text-xs"><i class="fas fa-circle-notch mp-spin"></i></button>
-                            <button v-else @click="mpSearch" class="text-blue-400 text-xs hover:text-blue-300"><i class="fas fa-arrow-right"></i></button>
+                            <button @click="mpSearch" class="text-orange-400 hover:text-orange-300 text-xs"><i class="fas fa-arrow-right"></i></button>
                         </div>
-                        <button v-else @click="mp.showSearch = true" class="text-gray-500 hover:text-blue-400 transition-colors text-xs px-1" title="Search music">
+                        <button v-else @click="mp.showSearch = true" class="text-gray-500 hover:text-orange-400 transition-colors text-xs px-1" title="Search SoundCloud">
                             <i class="fas fa-search"></i>
                         </button>
 
-                        <!-- Current track info -->
-                        <div v-if="mpCurrentTrack()" class="hidden sm:flex items-center gap-2 max-w-[160px]">
-                            <img :src="mpCurrentTrack().cover" class="w-6 h-6 rounded object-cover flex-shrink-0">
-                            <div class="overflow-hidden">
-                                <div class="text-xs text-white font-semibold truncate leading-tight" style="max-width:110px">{{ mpCurrentTrack().title }}</div>
-                                <div class="text-[10px] text-gray-500 truncate leading-tight" style="max-width:110px">{{ mpCurrentTrack().artist }}</div>
+                        <!-- Album art + track info -->
+                        <div v-if="mpCurrentTrack()" class="hidden sm:flex items-center gap-2">
+                            <img v-if="mpCurrentTrack().cover" :src="mpCurrentTrack().cover" class="w-7 h-7 rounded object-cover flex-shrink-0 ring-1 ring-orange-500/30">
+                            <i v-else class="fab fa-soundcloud text-orange-400 text-lg"></i>
+                            <div class="overflow-hidden" style="max-width:130px">
+                                <div class="text-xs text-white font-semibold truncate leading-tight">{{ mpCurrentTrack().title }}</div>
+                                <div class="text-[10px] text-gray-500 truncate leading-tight">{{ mpCurrentTrack().artist }}</div>
                             </div>
                         </div>
-                        <span v-else-if="!mp.showSearch" class="text-xs text-gray-600 hidden sm:block">No song playing</span>
+                        <span v-else-if="!mp.showSearch" class="text-xs text-gray-600 hidden sm:block italic">Search a song to play</span>
 
-                        <!-- Controls -->
-                        <div class="flex items-center gap-1.5 ml-1">
-                            <button @click="mpPrev" :disabled="mp.queue.length < 2" class="text-gray-500 hover:text-white transition-colors disabled:opacity-30 text-xs"><i class="fas fa-step-backward"></i></button>
-                            <button @click="mpToggle" :disabled="!mpCurrentTrack()"
-                                class="w-6 h-6 rounded-full flex items-center justify-center transition-all text-xs"
-                                :class="mpCurrentTrack() ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-800 text-gray-600 cursor-not-allowed'">
-                                <i :class="mp.isPlaying ? 'fas fa-pause' : 'fas fa-play'" style="margin-left:1px"></i>
+                        <!-- Prev / Play-Pause / Next -->
+                        <div class="flex items-center gap-1.5 ml-0.5">
+                            <button @click="mpPrev" class="text-gray-500 hover:text-white transition-colors text-xs"><i class="fas fa-step-backward"></i></button>
+                            <button @click="mpToggle"
+                                class="w-7 h-7 rounded-full flex items-center justify-center transition-all text-xs"
+                                :class="mpCurrentTrack() ? 'bg-orange-500 hover:bg-orange-400 text-white shadow-md shadow-orange-500/30' : 'bg-gray-800 text-gray-600 cursor-not-allowed'">
+                                <i :class="mp.isPlaying ? 'fas fa-pause' : 'fas fa-play pl-0.5'"></i>
                             </button>
-                            <button @click="mpNext" :disabled="mp.queue.length < 2" class="text-gray-500 hover:text-white transition-colors disabled:opacity-30 text-xs"><i class="fas fa-step-forward"></i></button>
+                            <button @click="mpNext" class="text-gray-500 hover:text-white transition-colors text-xs"><i class="fas fa-step-forward"></i></button>
                         </div>
 
                         <!-- Volume -->
-                        <div class="hidden md:flex items-center gap-1.5">
+                        <div class="hidden md:flex items-center gap-1.5 ml-0.5">
                             <button @click="mp.showVolume = !mp.showVolume" class="text-gray-600 hover:text-gray-300 text-xs transition-colors">
-                                <i :class="mp.volume === 0 ? 'fas fa-volume-mute' : 'fas fa-volume-down'"></i>
+                                <i :class="mp.volume === 0 ? 'fas fa-volume-mute' : mp.volume < 50 ? 'fas fa-volume-down' : 'fas fa-volume-up'"></i>
                             </button>
-                            <input v-if="mp.showVolume" type="range" min="0" max="1" step="0.05"
+                            <input v-if="mp.showVolume" type="range" min="0" max="100" step="5"
                                 :value="mp.volume"
                                 @input="mpSetVolume($event.target.value)"
                                 class="mp-vol-slider">
                         </div>
 
                         <!-- Stop -->
-                        <button v-if="mpCurrentTrack()" @click="mpStop" class="text-gray-700 hover:text-red-400 transition-colors text-xs ml-0.5" title="Stop & clear"><i class="fas fa-times"></i></button>
+                        <button v-if="mpCurrentTrack()" @click="mpStop" class="text-gray-700 hover:text-red-400 transition-colors text-xs ml-0.5" title="Stop"><i class="fas fa-times"></i></button>
                     </div>
 
                     <!-- Progress bar -->
-                    <div v-if="mpCurrentTrack()" class="w-full flex items-center gap-2" style="max-width:380px">
-                        <span class="text-[10px] text-gray-600 w-6 text-right">{{ Math.floor(mp.progress) }}s</span>
+                    <div v-if="mpCurrentTrack()" class="w-full flex items-center gap-2" style="max-width:400px">
+                        <span class="text-[10px] text-gray-600 w-7 text-right tabular-nums">{{ mpFormatTime(mp.progress) }}</span>
                         <div class="mp-progress-bar" @click="mpSeek($event)">
                             <div class="mp-progress-fill" :style="{ width: mpProgressPct() + '%' }"></div>
                         </div>
-                        <span class="text-[10px] text-gray-600 w-6">30s</span>
+                        <span class="text-[10px] text-gray-600 w-7 tabular-nums">{{ mpFormatTime(mp.duration) }}</span>
                     </div>
 
-                    <!-- Search results dropdown -->
-                    <div v-if="mp.results.length" class="mp-search-drop">
-                        <div class="px-3 py-2 border-b border-gray-800 flex items-center justify-between">
-                            <span class="text-xs text-gray-500 font-medium">Results (30s previews · Deezer)</span>
-                            <button @click="mp.results = []" class="text-gray-600 hover:text-gray-400 text-xs"><i class="fas fa-times"></i></button>
-                        </div>
-                        <div v-for="track in mp.results" :key="track.id" class="mp-result" @click="mpPlay(track, false)">
-                            <img :src="track.cover" :alt="track.title">
-                            <div class="mp-result-info flex-1">
-                                <div class="mp-result-title">{{ track.title }}</div>
-                                <div class="mp-result-artist">{{ track.artist }}</div>
-                            </div>
-                            <i class="fas fa-play text-blue-500 text-xs opacity-60"></i>
-                        </div>
-                    </div>
+                    <!-- Error -->
+                    <div v-if="mp.error" class="text-[10px] text-red-400 mt-0.5">{{ mp.error }}</div>
+
                 </div>
-                <!-- End music player — guests see nothing here (column stays empty) -->
+                <!-- guests: empty center column -->
                 <div v-else></div>
 
                 <div class="flex items-center justify-end space-x-2 md:space-x-3">
@@ -3441,5 +3431,13 @@
             }
         }, 3000);
     </script>
+
+    <!-- Hidden SoundCloud Widget iframe (controlled by SC Widget API) -->
+    <iframe id="sc-widget"
+        src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/tracks/293&auto_play=false&buying=false&liking=false&download=false&sharing=false&show_artwork=false&show_playcount=false&show_user=false&hide_related=true&show_comments=false&show_teaser=false&visual=false"
+        allow="autoplay"
+        style="position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0;overflow:hidden;"
+        aria-hidden="true">
+    </iframe>
 </body>
 </html> 

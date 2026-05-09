@@ -169,21 +169,19 @@ const app = createApp({
                 
 
                 
-                // Music player
+                // Music player (SoundCloud Widget)
                 mp: {
                     showSearch: false,
                     query: '',
-                    results: [],
-                    searching: false,
-                    queue: [],
-                    queueIndex: -1,
                     isPlaying: false,
-                    progress: 0,
-                    duration: 30,
-                    volume: 0.7,
+                    progress: 0,   // ms
+                    duration: 0,   // ms
+                    volume: 70,    // 0-100
                     showVolume: false,
-                    _audio: null,
-                    _timer: null,
+                    currentSound: null,
+                    ready: false,
+                    error: '',
+                    _widget: null,
                 },
 
                 // User data
@@ -682,6 +680,12 @@ const app = createApp({
                     this.loadGapUps();
                 }
             }, 2 * 60 * 1000); // 2 minutes
+
+            // Load SoundCloud Widget API and init music player
+            const scScript = document.createElement('script');
+            scScript.src = 'https://w.soundcloud.com/player/api.js';
+            scScript.onload = () => this.mpInitWidget();
+            document.head.appendChild(scScript);
 
             // Add page load event listener for automatic refresh
             window.addEventListener('load', () => {
@@ -5423,87 +5427,86 @@ const app = createApp({
             }
         },
 
-        // ── Music Player ──────────────────────────────────────────────
-        async mpSearch() {
-            const q = this.mp.query.trim();
-            if (!q) return;
-            this.mp.searching = true;
-            this.mp.results = [];
-            try {
-                const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`);
-                const json = await res.json();
-                this.mp.results = json.tracks || [];
-            } catch (_) {}
-            this.mp.searching = false;
-        },
-        mpPlay(track, fromQueue) {
-            // Build/extend queue
-            if (!fromQueue) {
-                this.mp.queue = this.mp.results;
-                this.mp.queueIndex = this.mp.results.findIndex(t => t.id === track.id);
-                if (this.mp.queueIndex < 0) this.mp.queueIndex = 0;
-            }
-            // Teardown previous
-            if (this.mp._audio) {
-                this.mp._audio.pause();
-                this.mp._audio = null;
-            }
-            clearInterval(this.mp._timer);
-            const audio = new Audio(track.preview);
-            audio.volume = this.mp.volume;
-            audio.play().catch(() => {});
-            audio.addEventListener('timeupdate', () => {
-                this.mp.progress = audio.currentTime;
-                this.mp.duration = audio.duration || 30;
+        // ── Music Player (SoundCloud Widget) ─────────────────────────
+        mpInitWidget() {
+            const iframe = document.getElementById('sc-widget');
+            if (!iframe || !window.SC) return;
+            const W = window.SC.Widget;
+            const widget = W(iframe);
+            this.mp._widget = widget;
+            widget.bind(W.Events.READY, () => {
+                this.mp.ready = true;
+                widget.setVolume(this.mp.volume);
             });
-            audio.addEventListener('ended', () => this.mpNext());
-            this.mp._audio = audio;
-            this.mp.isPlaying = true;
+            widget.bind(W.Events.PLAY, () => {
+                this.mp.isPlaying = true;
+                this.mp.error = '';
+                widget.getCurrentSound(s => { this.mp.currentSound = s; });
+                widget.getDuration(d => { this.mp.duration = d; });
+            });
+            widget.bind(W.Events.PAUSE, () => { this.mp.isPlaying = false; });
+            widget.bind(W.Events.FINISH, () => { this.mp.isPlaying = false; });
+            widget.bind(W.Events.PLAY_PROGRESS, data => {
+                this.mp.progress = data.currentPosition;
+            });
+            widget.bind(W.Events.ERROR, () => {
+                this.mp.error = 'Track unavailable — try a different search.';
+                this.mp.isPlaying = false;
+            });
+        },
+        mpSearch() {
+            const q = this.mp.query.trim();
+            if (!q || !this.mp._widget) return;
+            this.mp.error = '';
+            // Load SoundCloud search results as a playlist and auto-play
+            this.mp._widget.load(
+                `https://soundcloud.com/search/sounds?q=${encodeURIComponent(q)}`,
+                { auto_play: true, buying: false, liking: false, download: false,
+                  sharing: false, show_playcount: false, show_reposts: false }
+            );
             this.mp.showSearch = false;
-            this.mp.results = [];
         },
         mpToggle() {
-            if (!this.mp._audio) return;
-            if (this.mp.isPlaying) {
-                this.mp._audio.pause();
-                this.mp.isPlaying = false;
-            } else {
-                this.mp._audio.play().catch(() => {});
-                this.mp.isPlaying = true;
-            }
+            if (!this.mp._widget) return;
+            this.mp._widget.isPaused(paused => {
+                if (paused) this.mp._widget.play();
+                else        this.mp._widget.pause();
+            });
         },
-        mpNext() {
-            if (!this.mp.queue.length) return;
-            this.mp.queueIndex = (this.mp.queueIndex + 1) % this.mp.queue.length;
-            this.mpPlay(this.mp.queue[this.mp.queueIndex], true);
-        },
-        mpPrev() {
-            if (!this.mp.queue.length) return;
-            this.mp.queueIndex = (this.mp.queueIndex - 1 + this.mp.queue.length) % this.mp.queue.length;
-            this.mpPlay(this.mp.queue[this.mp.queueIndex], true);
-        },
+        mpNext() { if (this.mp._widget) this.mp._widget.next(); },
+        mpPrev() { if (this.mp._widget) this.mp._widget.prev(); },
         mpSeek(e) {
-            if (!this.mp._audio) return;
+            if (!this.mp._widget || !this.mp.duration) return;
             const rect = e.currentTarget.getBoundingClientRect();
-            const pct = (e.clientX - rect.left) / rect.width;
-            this.mp._audio.currentTime = pct * (this.mp._audio.duration || 30);
+            const pct  = (e.clientX - rect.left) / rect.width;
+            this.mp._widget.seekTo(Math.round(pct * this.mp.duration));
         },
         mpSetVolume(v) {
-            this.mp.volume = parseFloat(v);
-            if (this.mp._audio) this.mp._audio.volume = this.mp.volume;
+            this.mp.volume = parseInt(v);
+            if (this.mp._widget) this.mp._widget.setVolume(this.mp.volume);
         },
         mpCurrentTrack() {
-            return this.mp.queue[this.mp.queueIndex] || null;
+            const s = this.mp.currentSound;
+            if (!s) return null;
+            return {
+                title:  s.title || 'Unknown',
+                artist: s.user ? s.user.username : '',
+                cover:  s.artwork_url ? s.artwork_url.replace('-large', '-t50x50') : '',
+            };
         },
         mpProgressPct() {
             return this.mp.duration > 0 ? (this.mp.progress / this.mp.duration) * 100 : 0;
         },
+        mpFormatTime(ms) {
+            if (!ms) return '0:00';
+            const s = Math.floor(ms / 1000);
+            return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        },
         mpStop() {
-            if (this.mp._audio) { this.mp._audio.pause(); this.mp._audio = null; }
+            if (this.mp._widget) this.mp._widget.pause();
             this.mp.isPlaying = false;
-            this.mp.progress = 0;
-            this.mp.queue = [];
-            this.mp.queueIndex = -1;
+            this.mp.progress  = 0;
+            this.mp.currentSound = null;
         },
         }
     });
