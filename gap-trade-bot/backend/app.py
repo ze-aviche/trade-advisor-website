@@ -4119,13 +4119,15 @@ def get_active_positions():
         # Convert positions to list format for frontend
         positions_list = []
         for position_id, position in active_positions.items():
+            entry_params = position.get('entry_params', {})
             positions_list.append({
                 'position_id': position_id,
                 'symbol': position['symbol'],
                 'entry_price': position['entry_price'],
                 'entry_time': position['entry_time'],
                 'quantity': position['quantity'],
-                'status': position['status']
+                'status': position['status'],
+                'position_type': entry_params.get('position_type', 'day'),
             })
         
         return jsonify({
