@@ -1992,8 +1992,62 @@ class DatabaseManager:
     # Gap-up snapshot methods
     # ------------------------------------------------------------------
 
+    def upsert_gap_up_stocks(self, date_str: str, stocks: list) -> int:
+        """
+        Upsert gap-up stocks for the day, preserving the original session tag on
+        conflict.  Re-fetching during market hours will update price/volume/etc.
+        but will NOT overwrite a premarket tag with intraday — the session column
+        is intentionally excluded from the ON CONFLICT UPDATE clause.
+        Returns number of rows affected.
+        """
+        if not stocks:
+            return 0
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.executemany(
+                    '''INSERT INTO gap_up_snapshots
+                       (date, ticker, session, company_name, price, previous_close,
+                        change_amount, gap_percent, volume, market_cap, float_shares, sector, data_source)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(date, ticker) DO UPDATE SET
+                           company_name   = excluded.company_name,
+                           price          = excluded.price,
+                           previous_close = excluded.previous_close,
+                           change_amount  = excluded.change_amount,
+                           gap_percent    = excluded.gap_percent,
+                           volume         = excluded.volume,
+                           market_cap     = excluded.market_cap,
+                           float_shares   = excluded.float_shares,
+                           sector         = excluded.sector,
+                           data_source    = excluded.data_source''',
+                    [
+                        (
+                            date_str,
+                            s.get('ticker'),
+                            s.get('session', 'intraday'),
+                            s.get('company_name'),
+                            s.get('price'),
+                            s.get('previous_close'),
+                            s.get('change'),
+                            s.get('gap_percent'),
+                            s.get('volume'),
+                            s.get('market_cap'),
+                            s.get('float_shares', 0),
+                            s.get('sector'),
+                            s.get('data_source'),
+                        )
+                        for s in stocks if s.get('ticker')
+                    ]
+                )
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            print(f"Database error upserting gap-up stocks: {e}")
+            return 0
+
     def save_gap_up_snapshot(self, date_str: str, stocks: list) -> int:
-        """Upsert all stocks for a trading day. Returns number of rows saved."""
+        """End-of-day snapshot save (overwrites all fields including session)."""
         if not stocks:
             return 0
         try:

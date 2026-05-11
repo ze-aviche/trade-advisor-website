@@ -5,7 +5,6 @@ Based on the trading-advisor project implementation
 """
 
 import os
-import json
 import datetime
 import sqlite3
 from datetime import datetime as dt, timedelta
@@ -26,7 +25,7 @@ GAP_TRACKER_AVAILABLE = False
 
 # Session tracker: remembers which market session each ticker was FIRST detected in today.
 # Maps ticker -> {'session': 'premarket'|'intraday'|'afterhours', 'date': 'YYYY-MM-DD'}
-# Persisted to disk so server restarts don't reset session tags mid-day.
+# Backed by gap_up_snapshots DB so session tags survive server restarts mid-day.
 _session_tracker: dict = {}
 
 _SESSION_MAP = {
@@ -36,35 +35,29 @@ _SESSION_MAP = {
     'closed':      'intraday',   # outside hours → bucket into intraday as fallback
 }
 
-_SESSION_TRACKER_FILE = os.path.join(os.path.dirname(__file__), 'session_tracker.json')
-
-
 def _load_session_tracker():
-    """Load today's session tags from disk so they survive server restarts."""
+    """
+    Restore today's session tags from gap_up_snapshots DB on startup.
+    This means a server restart mid-day won't re-classify pre-market gappers
+    as intraday — their original session is preserved in the DB.
+    """
     global _session_tracker
     try:
-        if os.path.exists(_SESSION_TRACKER_FILE):
-            with open(_SESSION_TRACKER_FILE, 'r') as f:
-                data = json.load(f)
-            et_tz = pytz.timezone('US/Eastern')
-            today = dt.now(et_tz).date().isoformat()
-            _session_tracker = {t: v for t, v in data.items() if v.get('date') == today}
-            if _session_tracker:
-                logger.info(f"Restored {len(_session_tracker)} session tracker entries from disk")
+        from database import db_manager
+        et_tz = pytz.timezone('US/Eastern')
+        today = dt.now(et_tz).date().isoformat()
+        rows = db_manager.get_gap_up_snapshot(today)
+        _session_tracker = {
+            row['ticker']: {'session': row['session'], 'date': today}
+            for row in rows if row.get('session')
+        }
+        if _session_tracker:
+            logger.info(f"Restored {len(_session_tracker)} session tracker entries from DB")
     except Exception as e:
-        logger.warning(f"Could not load session tracker from disk: {e}")
+        logger.warning(f"Could not restore session tracker from DB: {e}")
 
 
-def _save_session_tracker():
-    """Flush session tracker to disk after new entries are added."""
-    try:
-        with open(_SESSION_TRACKER_FILE, 'w') as f:
-            json.dump(_session_tracker, f)
-    except Exception as e:
-        logger.warning(f"Could not save session tracker to disk: {e}")
-
-
-# Load persisted tags at module import time
+# Restore today's session tags at module import
 _load_session_tracker()
 
 
@@ -72,14 +65,13 @@ def _tag_with_session(stocks: list) -> list:
     """
     Stamp each stock dict with a 'session' key reflecting when it was
     FIRST detected as a gapper today. Subsequent polls keep the original tag.
-    Tags are persisted to disk so a server restart mid-day doesn't re-classify
+    Session tags are backed by the DB so server restarts don't re-classify
     pre-market gappers as intraday.
     """
     et_tz   = pytz.timezone('US/Eastern')
     today   = dt.now(et_tz).date().isoformat()
     session = _SESSION_MAP.get(check_market_timing(), 'intraday')
 
-    new_entries = False
     for stock in stocks:
         ticker = stock.get('ticker')
         if not ticker:
@@ -90,15 +82,11 @@ def _tag_with_session(stocks: list) -> list:
         else:
             _session_tracker[ticker] = {'session': session, 'date': today}
             stock['session'] = session
-            new_entries = True
 
     # Purge stale entries from previous trading days
     stale = [t for t, v in _session_tracker.items() if v['date'] != today]
     for t in stale:
         del _session_tracker[t]
-
-    if new_entries or stale:
-        _save_session_tracker()
 
     return stocks
 
@@ -519,9 +507,20 @@ def get_gap_up_stocks_for_frontend():
 
     merged.sort(key=lambda x: x['gap_percent'], reverse=True)
     _tag_with_session(merged)
+
+    # Persist tagged stocks to DB — session column is never overwritten on conflict
+    # so pre-market tags survive subsequent intraday re-fetches.  This also makes
+    # past-date viewing accurate throughout the day, not just after the 8 PM save.
+    try:
+        from database import db_manager
+        et_tz = pytz.timezone('US/Eastern')
+        today = dt.now(et_tz).date().isoformat()
+        db_manager.upsert_gap_up_stocks(today, merged)
+    except Exception as e:
+        logger.warning(f"Could not persist gap-up stocks to DB: {e}")
+
     polygon_only = len(polygon_stocks)
     yf_day_only  = sum(1 for s in yf_stocks if s['ticker'] not in {p['ticker'] for p in polygon_stocks})
-    yf_extra_only = len(yf_extra) - sum(1 for s in yf_extra if s['ticker'] in seen - {s['ticker'] for s in yf_extra})
     logger.info(
         f"Merged result: {len(merged)} gap-up stocks "
         f"({polygon_only} polygon, {yf_day_only} yfinance day_gainers, {len(yf_extra)} small-cap extra)"
