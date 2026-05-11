@@ -78,6 +78,14 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import trading bot: {e}")
     BOT_AVAILABLE = False
 
+# Import BrownBot risk manager
+try:
+    from bot.risk_manager import RiskManager
+    RISK_MANAGER_AVAILABLE = True
+except ImportError as e:
+    app_logger.warning(f"Warning: Could not import RiskManager: {e}")
+    RISK_MANAGER_AVAILABLE = False
+
 # Import Stripe manager
 try:
     from stripe_manager import StripeManager
@@ -151,6 +159,17 @@ _entry_bot_log_id = 0  # Monotonic counter for unique log entry IDs
 tracking_thread = None  # Background thread for continuous tracking
 tracking_active = False  # Flag to control tracking thread
 active_positions = {}  # Store active positions entered by the bot
+
+# BrownBot global state
+_brown_bot_running = False
+_brown_bot_thread = None
+_brown_bot_logs = []
+_brown_bot_log_id = 0
+_brown_bot_stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
+_brown_bot_active_positions = {}  # position_id -> position dict
+_brown_bot_lock = threading.Lock()
+_brown_risk_manager = None  # instantiated on start from config
+_brown_exit_thread = None
 
 
 class _DasDirectSocket:
@@ -260,6 +279,25 @@ def add_entry_bot_log(level, message):
     else:
         app_logger.info(f"Entry Bot: {message}")
 
+
+def _add_brown_log(level: str, message: str):
+    """Add a log entry to the BrownBot activity log."""
+    global _brown_bot_logs, _brown_bot_log_id
+    _brown_bot_log_id += 1
+    _brown_bot_logs.append({
+        'id': _brown_bot_log_id,
+        'timestamp': datetime.now().isoformat(),
+        'level': level,
+        'message': message,
+    })
+    if len(_brown_bot_logs) > 200:
+        _brown_bot_logs = _brown_bot_logs[-200:]
+    if level == 'error':
+        app_logger.error(f"BrownBot: {message}")
+    elif level == 'warning':
+        app_logger.warning(f"BrownBot: {message}")
+    else:
+        app_logger.info(f"BrownBot: {message}")
 
 
 # Global DAS connection for reuse
@@ -2593,6 +2631,679 @@ def update_swing_bot_config():
     except Exception as e:
         app_logger.error(f"Error updating swing config: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ── BrownBot core logic ────────────────────────────────────────────────────
+
+def _check_swing_signal(symbol, config):
+    """
+    Two-stage swing entry filter.
+    Stage 1 (cheap): SMA20 price rule + volume surge.
+    Stage 2 (expensive): Claude AI tiebreaker for borderline candidates.
+    Returns (enter: bool, reason: str, score: float).
+    """
+    if not AI_AGENT_AVAILABLE or not _ai_agent:
+        return False, 'AI agent not available', 0.0
+    try:
+        tech = _ai_agent._get_technical_analysis(symbol)
+    except Exception as e:
+        return False, f'Technical analysis failed: {e}', 0.0
+    if 'error' in tech:
+        return False, f'Tech data error: {tech["error"]}', 0.0
+
+    sma10 = tech.get('sma10', 0)
+    sma20 = tech.get('sma20', 0)
+    latest_close = tech.get('latest_close', 0)
+    recent_bars = tech.get('recent_bars', [])
+
+    if not (sma20 and latest_close):
+        return False, 'Insufficient price data', 0.0
+
+    above_sma20 = latest_close > sma20
+    if not above_sma20:
+        return False, f'Price ${latest_close:.2f} below SMA20 ${sma20:.2f}', 0.0
+
+    # Volume surge: latest bar vs average of preceding bars
+    vols = [b.get('v', 0) for b in recent_bars if b.get('v')]
+    avg_vol = sum(vols[:-1]) / max(len(vols) - 1, 1) if len(vols) > 1 else 0
+    latest_vol = vols[-1] if vols else 0
+    vol_surge = avg_vol > 0 and latest_vol > avg_vol * 1.5
+
+    score = 0.6 + (0.15 if vol_surge else 0.0)
+    reason_parts = [f'close ${latest_close:.2f} > SMA20 ${sma20:.2f}']
+    if vol_surge:
+        reason_parts.append(f'vol surge ({latest_vol:,} vs avg {avg_vol:,.0f})')
+
+    # Stage 2: Claude AI tiebreaker for borderline candidates
+    if score < 0.8:
+        try:
+            prompt = (
+                f"BrownBot swing check for {symbol}. "
+                f"Close ${latest_close:.2f}, SMA10 ${sma10:.2f}, SMA20 ${sma20:.2f}. "
+                f"{'Volume surge detected. ' if vol_surge else ''}"
+                f"Should I enter a swing trade on {symbol}? Reply BUY or HOLD with one sentence reason."
+            )
+            ai_result = _ai_agent.process_message(prompt, user_id='brown_bot_swing')
+            if ai_result.get('success'):
+                reply = ai_result['response'].upper()
+                snippet = ai_result['response'][:80]
+                if 'BUY' in reply:
+                    score = 0.85
+                    reason_parts.append(f'AI: BUY — {snippet}')
+                else:
+                    score = 0.45
+                    reason_parts.append(f'AI: HOLD — {snippet}')
+        except Exception as e:
+            _add_brown_log('warning', f'AI tiebreaker failed for {symbol}: {e}')
+
+    return score >= 0.7, ', '.join(reason_parts), score
+
+
+def _brown_enter_position(symbol, position_type, config, approx_price):
+    """Place a BUY order for BrownBot and record the position in memory."""
+    global _brown_bot_active_positions, _brown_bot_stats
+    quantity = 100
+    success, order_id, result = place_das_order(symbol, 'B', 'SMAT', quantity, 'MKT')
+    if not success:
+        _add_brown_log('error', f'Order rejected for {symbol}: {result}')
+        return
+
+    if position_type == 'day':
+        tgt_pct = float(config.get('day_profit_target_pct', 5.0))
+        stp_pct = float(config.get('day_stop_loss_pct', 2.5))
+    else:
+        tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
+        stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
+
+    price = float(approx_price or 0)
+    profit_target = round(price * (1 + tgt_pct / 100), 2) if price else None
+    stop_loss = round(price * (1 - stp_pct / 100), 2) if price else None
+    position_id = f"BROWN_{symbol}_{int(time.time())}"
+
+    position = {
+        'position_id': position_id,
+        'symbol': symbol,
+        'position_type': position_type,
+        'entry_price': price,
+        'quantity': quantity,
+        'profit_target': profit_target,
+        'profit_target_pct': tgt_pct,
+        'stop_loss': stop_loss,
+        'stop_loss_pct': stp_pct,
+        'entry_time': datetime.now().isoformat(),
+        'unrealized_pnl': 0.0,
+    }
+    with _brown_bot_lock:
+        _brown_bot_active_positions[position_id] = position
+
+    if position_type == 'day':
+        _brown_bot_stats['day_entered'] += 1
+    else:
+        _brown_bot_stats['swing_entered'] += 1
+
+    _add_brown_log(
+        'info',
+        f"ENTERED {position_type.upper()} {symbol} ~${price:.2f} | "
+        f"target ${profit_target} (+{tgt_pct}%) | stop ${stop_loss} (-{stp_pct}%)"
+    )
+
+
+def _brown_bot_scan_and_enter():
+    """One iteration of the BrownBot entry loop: scan, filter, gate, order."""
+    global _brown_bot_running, _brown_risk_manager
+
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    now_et = datetime.now(_et)
+
+    config = db_manager.get_brown_bot_config()
+
+    # Fetch scanner candidates
+    from gap_up_detector import get_gap_up_stocks_for_frontend
+    try:
+        raw_gaps = get_gap_up_stocks_for_frontend()
+    except Exception as e:
+        _add_brown_log('warning', f'Gap-up fetch failed: {e}')
+        raw_gaps = []
+
+    min_gap = float(config.get('min_gap_pct', 10.0))
+    min_price = float(config.get('min_price', 5.0))
+    max_price = float(config.get('max_price', 500.0))
+    min_vol_m = float(config.get('min_volume_m', 0.5))
+
+    scanner_hits = {
+        s['ticker']: s for s in raw_gaps
+        if s.get('gap_percent', 0) >= min_gap
+        and min_price <= s.get('price', 0) <= max_price
+        and s.get('volume', 0) / 1_000_000 >= min_vol_m
+    }
+
+    # Snapshot active state under lock
+    with _brown_bot_lock:
+        active_symbols = {p['symbol'] for p in _brown_bot_active_positions.values()}
+        active_copy = dict(_brown_bot_active_positions)
+
+    # Day time gate: 09:35–10:30 ET
+    day_open = now_et.replace(hour=9, minute=35, second=0, microsecond=0)
+    day_close = now_et.replace(hour=10, minute=30, second=0, microsecond=0)
+    day_window_open = day_open <= now_et <= day_close
+
+    # ── Process auto-scanned gap-up candidates (day trade) ──
+    for symbol, s in scanner_hits.items():
+        if not _brown_bot_running:
+            return
+        if symbol in active_symbols:
+            continue
+        if not day_window_open:
+            continue
+        if _brown_risk_manager:
+            allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
+            if not allowed:
+                _add_brown_log('warning', f'SKIP {symbol} (day): {reason}')
+                continue
+        _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
+        _brown_enter_position(symbol, 'day', config, s.get('price', 0))
+        # Refresh active state after entry
+        with _brown_bot_lock:
+            active_symbols.add(symbol)
+            active_copy = dict(_brown_bot_active_positions)
+
+    # ── Process manual watchlist candidates ──
+    try:
+        watchlist = db_manager.get_brown_watchlist()
+    except Exception as e:
+        _add_brown_log('warning', f'Watchlist fetch failed: {e}')
+        watchlist = []
+
+    for w in watchlist:
+        if not _brown_bot_running:
+            return
+        symbol = w['symbol']
+        if symbol in active_symbols:
+            continue
+
+        trade_type = w.get('trade_type', 'day')
+        # 'auto': use day if gap-up scanned, else skip (swing requires explicit selection)
+        if trade_type == 'auto':
+            trade_type = 'day' if symbol in scanner_hits else None
+        if not trade_type:
+            continue
+
+        if trade_type == 'day':
+            if not day_window_open:
+                continue
+        elif trade_type == 'swing':
+            enter, reason, score = _check_swing_signal(symbol, config)
+            if not enter:
+                _add_brown_log('info', f'SKIP {symbol} swing: {reason} (score={score:.2f})')
+                continue
+            _add_brown_log('info', f'Swing signal OK for {symbol}: {reason} (score={score:.2f})')
+
+        if _brown_risk_manager:
+            allowed, reason = _brown_risk_manager.can_enter(symbol, trade_type, active_copy)
+            if not allowed:
+                _add_brown_log('warning', f'SKIP {symbol} ({trade_type}): {reason}')
+                continue
+
+        approx_price = scanner_hits.get(symbol, {}).get('price', 0)
+        _add_brown_log('info', f'Entering {trade_type.upper()} {symbol} from watchlist')
+        _brown_enter_position(symbol, trade_type, config, approx_price)
+        with _brown_bot_lock:
+            active_symbols.add(symbol)
+            active_copy = dict(_brown_bot_active_positions)
+
+
+def _brown_bot_scanner_loop():
+    """BrownBot daemon thread: scans and enters every 30 seconds."""
+    global _brown_bot_running
+    _add_brown_log('info', 'BrownBot scanner loop started')
+    while _brown_bot_running:
+        try:
+            _brown_bot_scan_and_enter()
+        except Exception as e:
+            logger.error(f'BrownBot scanner error: {e}', exc_info=True)
+            _add_brown_log('error', f'Scanner loop error: {e}')
+        # Sleep 30 s in 1-second ticks for clean shutdown
+        for _ in range(30):
+            if not _brown_bot_running:
+                break
+            time.sleep(1)
+    _add_brown_log('info', 'BrownBot scanner loop stopped')
+
+
+def _brown_get_current_price(symbol):
+    """Fetch current price for an open BrownBot position via DAS Level 1."""
+    if not DAS_ENABLED:
+        return None
+    try:
+        data = get_real_stock_data(symbol)
+        if data and data.get('current_price'):
+            return float(data['current_price'])
+    except Exception as e:
+        logger.debug(f'BrownBot price fetch failed for {symbol}: {e}')
+    return None
+
+
+def _brown_close_position(position_id, position, exit_reason):
+    """Place a SELL market order, record the trade, and remove from active positions."""
+    global _brown_bot_active_positions, _brown_bot_stats
+    symbol = position['symbol']
+    quantity = int(position.get('quantity', 100))
+    current_price = position.get('_current_price') or position.get('entry_price', 0)
+    entry_price = float(position.get('entry_price', 0))
+    position_type = position.get('position_type', 'day')
+
+    success, order_id, result = place_das_order(symbol, 'S', 'SMAT', quantity, 'MKT')
+    if not success:
+        _add_brown_log('error', f'SELL order failed for {symbol}: {result}')
+        return False
+
+    realized_pnl = round((float(current_price) - entry_price) * quantity, 2) if entry_price else 0.0
+
+    # Calculate days held for swing trades
+    days_held = None
+    entry_time_str = position.get('entry_time', '')
+    if entry_time_str:
+        try:
+            entry_dt = datetime.fromisoformat(entry_time_str)
+            days_held = (datetime.now() - entry_dt).days
+        except Exception:
+            pass
+
+    # Write the closing trade to DB
+    try:
+        import uuid as _uuid
+        trade_data = {
+            'trade_id': f'BROWN_EXIT_{symbol}_{int(time.time())}',
+            'symbol': symbol,
+            'side': 'S',
+            'quantity': quantity,
+            'price': float(current_price),
+            'route': 'SMAT',
+            'trade_time': datetime.now().isoformat(),
+            'order_id': str(order_id) if order_id else None,
+            'liquidity': None,
+            'ecn_fee': 0.0,
+            'pnl': realized_pnl,
+            'trade_date': datetime.now().strftime('%Y-%m-%d'),
+            'position_type': position_type,
+            'days_held': days_held,
+        }
+        db_manager.add_trade(trade_data)
+    except Exception as e:
+        _add_brown_log('warning', f'DB trade write failed for {symbol}: {e}')
+
+    with _brown_bot_lock:
+        _brown_bot_active_positions.pop(position_id, None)
+
+    if position_type == 'day':
+        _brown_bot_stats['day_exited'] += 1
+    else:
+        _brown_bot_stats['swing_exited'] += 1
+
+    pnl_str = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
+    _add_brown_log('info', f'EXITED {position_type.upper()} {symbol} [{exit_reason}] P&L {pnl_str}')
+    return True
+
+
+def _brown_bot_check_exits(check_swing_specific=False):
+    """Evaluate all open BrownBot positions for exit conditions."""
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    now_et = datetime.now(_et)
+
+    config = db_manager.get_brown_bot_config()
+
+    # Parse EOD time from config (e.g. '15:45')
+    eod_str = config.get('day_eod_exit_time', '15:45')
+    try:
+        eod_h, eod_m = map(int, eod_str.split(':'))
+    except Exception:
+        eod_h, eod_m = 15, 45
+    eod_time = now_et.replace(hour=eod_h, minute=eod_m, second=0, microsecond=0)
+
+    # Earnings calendar (fetched once per swing check cycle to avoid redundant calls)
+    earnings_symbols_soon = set()
+    if check_swing_specific and config.get('swing_earnings_protection_enabled') and AI_AGENT_AVAILABLE and _ai_agent:
+        try:
+            earnings_exit_days = int(config.get('swing_earnings_exit_days', 2))
+            cal = _ai_agent._get_earnings_calendar()
+            if cal and 'earnings_next_5_days' in cal:
+                today = datetime.now().date()
+                for item in cal['earnings_next_5_days']:
+                    try:
+                        earn_date = datetime.strptime(item['date'], '%Y-%m-%d').date()
+                        days_to_earn = (earn_date - today).days
+                        if 0 <= days_to_earn <= earnings_exit_days:
+                            earnings_symbols_soon.add((item.get('symbol') or '').upper())
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug(f'Earnings calendar fetch failed: {e}')
+
+    with _brown_bot_lock:
+        positions_snapshot = dict(_brown_bot_active_positions)
+
+    for position_id, position in positions_snapshot.items():
+        if not _brown_bot_running:
+            return
+        symbol = position['symbol']
+        position_type = position.get('position_type', 'day')
+
+        current_price = _brown_get_current_price(symbol)
+        if current_price is None:
+            continue
+
+        entry_price = float(position.get('entry_price', 0))
+        quantity = int(position.get('quantity', 0))
+        unrealized_pnl = round((current_price - entry_price) * quantity, 2) if entry_price else 0.0
+
+        # Update unrealized P&L and current price in shared state
+        with _brown_bot_lock:
+            if position_id in _brown_bot_active_positions:
+                _brown_bot_active_positions[position_id]['unrealized_pnl'] = unrealized_pnl
+                _brown_bot_active_positions[position_id]['_current_price'] = current_price
+
+        profit_target = position.get('profit_target')
+        stop_loss = position.get('stop_loss')
+
+        # Breakeven stop: move stop to entry once price reaches halfway to target
+        if (not position.get('_at_breakeven')
+                and profit_target and entry_price
+                and profit_target > entry_price):
+            breakeven_pct = float(config.get(f'{position_type}_breakeven_trigger_pct', 50.0))
+            progress = (current_price - entry_price) / (profit_target - entry_price) * 100
+            if progress >= breakeven_pct:
+                with _brown_bot_lock:
+                    if position_id in _brown_bot_active_positions:
+                        _brown_bot_active_positions[position_id]['stop_loss'] = entry_price
+                        _brown_bot_active_positions[position_id]['_at_breakeven'] = True
+                stop_loss = entry_price
+                _add_brown_log('info', f'{symbol}: stop moved to breakeven ${entry_price:.2f} ({progress:.0f}% to target)')
+
+        # ── Exit condition checks ──
+        exit_reason = None
+
+        if profit_target and current_price >= profit_target:
+            exit_reason = 'PROFIT_TARGET'
+        elif stop_loss and current_price <= stop_loss:
+            exit_reason = 'STOP_LOSS'
+        elif position_type == 'day' and now_et >= eod_time:
+            exit_reason = f'EOD_FLATTEN ({eod_str} ET)'
+        elif position_type == 'swing' and check_swing_specific:
+            # Max hold days
+            entry_time_str = position.get('entry_time', '')
+            if entry_time_str:
+                try:
+                    entry_dt = datetime.fromisoformat(entry_time_str)
+                    days_held = (datetime.now() - entry_dt).days
+                    max_hold = int(config.get('swing_max_hold_days', 20))
+                    if days_held >= max_hold:
+                        exit_reason = f'MAX_HOLD_DAYS ({days_held}d)'
+                except Exception:
+                    pass
+            # Earnings protection
+            if not exit_reason and symbol.upper() in earnings_symbols_soon:
+                exit_reason = 'EARNINGS_PROTECTION'
+
+        if exit_reason:
+            position_with_price = {**position, '_current_price': current_price}
+            _brown_close_position(position_id, position_with_price, exit_reason)
+
+
+def _brown_bot_exit_loop():
+    """BrownBot exit daemon: checks open positions for exit conditions every 2 seconds."""
+    global _brown_bot_running
+    _add_brown_log('info', 'BrownBot exit loop started')
+    tick = 0
+    while _brown_bot_running:
+        try:
+            # Check swing-specific conditions (hold days, earnings) every 30 ticks (60 s)
+            _brown_bot_check_exits(check_swing_specific=(tick % 30 == 0))
+            tick += 1
+        except Exception as e:
+            logger.error(f'BrownBot exit loop error: {e}', exc_info=True)
+            _add_brown_log('error', f'Exit loop error: {e}')
+        time.sleep(2)
+    _add_brown_log('info', 'BrownBot exit loop stopped')
+
+
+# ── BrownBot API endpoints ─────────────────────────────────────────────────
+
+@app.route('/api/brown-bot/status', methods=['GET'])
+def get_brown_bot_status():
+    """Return BrownBot running state, stats, and active position count."""
+    global _brown_bot_running, _brown_bot_stats, _brown_bot_active_positions
+    das_ok = DAS_ENABLED and _das_direct is not None
+    with _brown_bot_lock:
+        active_count = len(_brown_bot_active_positions)
+        positions_list = list(_brown_bot_active_positions.values())
+    return jsonify({
+        'success': True,
+        'running': _brown_bot_running,
+        'das_enabled': DAS_ENABLED,
+        'das_connected': das_ok,
+        'stats': _brown_bot_stats,
+        'active_positions_count': active_count,
+        'active_positions': positions_list,
+    })
+
+
+@app.route('/api/brown-bot/start', methods=['POST'])
+@require_auth
+def start_brown_bot():
+    """Start BrownBot — instantiates RiskManager from current config."""
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager
+    if _brown_bot_running:
+        return jsonify({'success': False, 'error': 'BrownBot is already running'})
+    # Instantiate risk manager from saved config
+    if RISK_MANAGER_AVAILABLE:
+        try:
+            config = db_manager.get_brown_bot_config()
+            _brown_risk_manager = RiskManager(config)
+            _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
+                                   f'day limit {config.get("max_concurrent_day", 3)}, '
+                                   f'swing limit {config.get("max_concurrent_swing", 5)}')
+        except Exception as e:
+            _add_brown_log('warning', f'RiskManager init failed: {e}')
+    _brown_bot_running = True
+    _brown_bot_thread = threading.Thread(
+        target=_brown_bot_scanner_loop, daemon=True, name='BrownBotScanner'
+    )
+    _brown_bot_thread.start()
+    _brown_exit_thread = threading.Thread(
+        target=_brown_bot_exit_loop, daemon=True, name='BrownBotExits'
+    )
+    _brown_exit_thread.start()
+    _add_brown_log('info', 'BrownBot scanner + exit loops launched')
+    return jsonify({'success': True, 'message': 'BrownBot started'})
+
+
+@app.route('/api/brown-bot/stop', methods=['POST'])
+@require_auth
+def stop_brown_bot():
+    """Stop BrownBot — clears the running flag and joins both threads."""
+    global _brown_bot_running, _brown_bot_thread, _brown_exit_thread
+    if not _brown_bot_running:
+        return jsonify({'success': False, 'error': 'BrownBot is not running'})
+    _brown_bot_running = False
+    if _brown_bot_thread and _brown_bot_thread.is_alive():
+        _brown_bot_thread.join(timeout=35)
+    if _brown_exit_thread and _brown_exit_thread.is_alive():
+        _brown_exit_thread.join(timeout=10)
+    _brown_bot_thread = None
+    _brown_exit_thread = None
+    _add_brown_log('info', 'BrownBot stopped')
+    return jsonify({'success': True, 'message': 'BrownBot stopped'})
+
+
+@app.route('/api/brown-bot/config', methods=['GET'])
+@require_auth
+def get_brown_bot_config_endpoint():
+    """Return current BrownBot config."""
+    try:
+        cfg = db_manager.get_brown_bot_config()
+        return jsonify({'success': True, 'config': cfg})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/config', methods=['POST'])
+@require_auth
+def update_brown_bot_config_endpoint():
+    """Persist BrownBot config."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        ok, msg = db_manager.update_brown_bot_config(data)
+        if not ok:
+            return jsonify({'success': False, 'error': msg}), 500
+        return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/logs', methods=['GET'])
+@require_auth
+def get_brown_bot_logs():
+    """Return recent BrownBot activity logs."""
+    return jsonify({'success': True, 'logs': list(reversed(_brown_bot_logs[-100:]))})
+
+
+@app.route('/api/brown-bot/risk-status', methods=['GET'])
+@require_auth
+def get_brown_bot_risk_status():
+    """Return live risk snapshot: daily P&L, open positions, circuit breaker state."""
+    global _brown_risk_manager, _brown_bot_active_positions
+    with _brown_bot_lock:
+        positions = dict(_brown_bot_active_positions)
+    if _brown_risk_manager is not None:
+        snapshot = _brown_risk_manager.status(positions)
+    else:
+        # Risk manager not started — return defaults from config
+        try:
+            config = db_manager.get_brown_bot_config()
+        except Exception:
+            config = {}
+        from datetime import datetime as _dt
+        today = _dt.now().strftime('%Y-%m-%d')
+        try:
+            summary = db_manager.get_trade_summary(start_date=today, end_date=today)
+            daily_pnl = float(summary.get('total_pnl', 0.0)) if summary else 0.0
+        except Exception:
+            daily_pnl = 0.0
+        max_loss = float(config.get('max_daily_loss', -500.0))
+        snapshot = {
+            'daily_pnl': round(daily_pnl, 2),
+            'max_daily_loss': max_loss,
+            'open_day': 0,
+            'max_concurrent_day': int(config.get('max_concurrent_day', 3)),
+            'open_swing': 0,
+            'max_concurrent_swing': int(config.get('max_concurrent_swing', 5)),
+            'circuit_breaker_open': daily_pnl <= max_loss,
+        }
+    return jsonify({'success': True, 'risk': snapshot})
+
+
+@app.route('/api/brown-bot/candidates', methods=['GET'])
+@require_auth
+def get_brown_bot_candidates():
+    """Return gap-up scanner results filtered by config thresholds, merged with watchlist."""
+    try:
+        config = db_manager.get_brown_bot_config()
+        min_gap = config.get('min_gap_pct', 10.0)
+        min_price = config.get('min_price', 5.0)
+        max_price = config.get('max_price', 500.0)
+        min_vol_m = config.get('min_volume_m', 0.5)
+
+        from gap_up_detector import get_gap_up_stocks_for_frontend
+        raw = get_gap_up_stocks_for_frontend()
+
+        scanner_hits = []
+        for s in raw:
+            if s.get('gap_percent', 0) < min_gap:
+                continue
+            price = s.get('price', 0)
+            if price < min_price or price > max_price:
+                continue
+            vol_m = s.get('volume', 0) / 1_000_000
+            if vol_m < min_vol_m:
+                continue
+            scanner_hits.append({**s, 'source': 'scanner', 'trade_type': 'day', 'note': ''})
+
+        watchlist = db_manager.get_brown_watchlist()
+        wl_symbols = {w['symbol'] for w in watchlist}
+        scanner_symbols = {s['ticker'] for s in scanner_hits}
+
+        # Mark scanner hits that are also on the watchlist
+        for s in scanner_hits:
+            if s['ticker'] in wl_symbols:
+                s['on_watchlist'] = True
+
+        # Build watchlist entries (enrich with scanner data if available)
+        scanner_map = {s['ticker']: s for s in scanner_hits}
+        wl_entries = []
+        for w in watchlist:
+            base = scanner_map.get(w['symbol'], {
+                'ticker': w['symbol'], 'price': None, 'gap_percent': None,
+                'volume': None, 'company_name': w['symbol']
+            })
+            wl_entries.append({
+                **base,
+                'source': 'watchlist',
+                'trade_type': w.get('trade_type', 'day'),
+                'note': w.get('note', ''),
+                'on_watchlist': True,
+            })
+
+        return jsonify({'success': True, 'scanner': scanner_hits, 'watchlist': wl_entries})
+    except Exception as e:
+        logger.error(f'Error fetching BrownBot candidates: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/watchlist', methods=['GET'])
+@require_auth
+def get_brown_bot_watchlist():
+    """Return current BrownBot watchlist."""
+    try:
+        return jsonify({'success': True, 'watchlist': db_manager.get_brown_watchlist()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/watchlist', methods=['POST'])
+@require_auth
+def add_brown_bot_watchlist():
+    """Add a symbol to the BrownBot watchlist."""
+    data = request.get_json() or {}
+    symbol = (data.get('symbol') or '').strip().upper()
+    if not symbol:
+        return jsonify({'success': False, 'error': 'symbol is required'}), 400
+    note = data.get('note', '')
+    trade_type = data.get('trade_type', 'day')
+    if trade_type not in ('day', 'swing', 'auto'):
+        trade_type = 'day'
+    try:
+        db_manager.add_to_brown_watchlist(symbol, note, trade_type)
+        _add_brown_log('info', f'Added {symbol} ({trade_type}) to watchlist')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/watchlist/<symbol>', methods=['DELETE'])
+@require_auth
+def remove_brown_bot_watchlist(symbol):
+    """Remove a symbol from the BrownBot watchlist."""
+    symbol = symbol.strip().upper()
+    try:
+        db_manager.remove_from_brown_watchlist(symbol)
+        _add_brown_log('info', f'Removed {symbol} from watchlist')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/bot/unsubscribe-stocks', methods=['POST'])
 def unsubscribe_stocks():

@@ -24,6 +24,9 @@
     
     <!-- SheetJS for Excel export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- marked.js for AI chat markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
     
     
@@ -150,6 +153,11 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-robot text-xs"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
+                <button @click="handleTabClick('brown-bot')"
+                    :class="activeTab === 'brown-bot' ? 'bg-amber-600 border-amber-600 text-white shadow-md shadow-amber-600/20' : canAccessTab('brown-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-amber-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-brain text-xs"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
                 <button @click="handleTabClick('trades')"
                     :class="activeTab === 'trades' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('trades') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
@@ -210,6 +218,7 @@
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : canAccessTab('entry-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : canAccessTab('bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : canAccessTab('stats') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -2200,6 +2209,458 @@
                 </div>
             </div>
 
+            <!-- BrownBot Tab -->
+            <div v-if="activeTab === 'brown-bot' && canAccessTab('brown-bot')" class="space-y-6">
+
+                <!-- Status Bar -->
+                <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="relative">
+                                <div :class="brownBotStatus.running ? 'bg-amber-400' : 'bg-gray-500'"
+                                     class="w-3 h-3 rounded-full transition-colors"
+                                     :style="brownBotStatus.running ? 'box-shadow: 0 0 8px #f59e0b' : ''"></div>
+                            </div>
+                            <div>
+                                <div class="text-white font-semibold flex items-center gap-2">
+                                    <i class="fas fa-brain text-amber-400"></i>
+                                    BrownBot
+                                    <span :class="brownBotStatus.running ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-gray-700 text-gray-400 border-gray-600'"
+                                          class="text-xs px-2 py-0.5 rounded-full border font-medium">
+                                        {{ brownBotStatus.running ? 'RUNNING' : 'STOPPED' }}
+                                    </span>
+                                </div>
+                                <div class="text-xs text-gray-400 mt-0.5">Autonomous day &amp; swing trading · Yogi tier</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <!-- Stats chips -->
+                            <div class="hidden sm:flex items-center gap-2 text-xs text-gray-400">
+                                <span class="bg-gray-700 px-2 py-1 rounded">
+                                    <i class="fas fa-sun text-yellow-400 mr-1"></i>Day: {{ brownBotStatus.stats?.day_entered || 0 }} in / {{ brownBotStatus.stats?.day_exited || 0 }} out
+                                </span>
+                                <span class="bg-gray-700 px-2 py-1 rounded">
+                                    <i class="fas fa-moon text-blue-400 mr-1"></i>Swing: {{ brownBotStatus.stats?.swing_entered || 0 }} in / {{ brownBotStatus.stats?.swing_exited || 0 }} out
+                                </span>
+                            </div>
+                            <button @click="toggleBrownBot" :disabled="loading.brownBotToggle"
+                                    :class="brownBotStatus.running ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'"
+                                    class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50">
+                                <i v-if="loading.brownBotToggle" class="fas fa-spinner fa-spin"></i>
+                                <i v-else :class="brownBotStatus.running ? 'fas fa-stop' : 'fas fa-play'"></i>
+                                {{ loading.brownBotToggle ? '...' : brownBotStatus.running ? 'Stop' : 'Start' }}
+                            </button>
+                        </div>
+                    </div>
+                    <!-- DAS warning -->
+                    <div v-if="!brownBotStatus.das_enabled" class="mt-3 text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>DAS is not enabled. Set <code>DAS_ENABLED=true</code> in your environment to allow live trading.
+                    </div>
+                </div>
+
+                <!-- Config Panel -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="flex items-center gap-2 text-white font-semibold">
+                            <i class="fas fa-sliders-h text-amber-400"></i> Configuration
+                        </div>
+                        <button @click="saveBrownBotConfig" :disabled="loading.brownBotConfig"
+                                class="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-all">
+                            <i v-if="loading.brownBotConfig" class="fas fa-spinner fa-spin mr-1"></i>
+                            <i v-else class="fas fa-save mr-1"></i>Save
+                        </button>
+                    </div>
+                    <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Day Trading -->
+                        <div>
+                            <div class="text-xs font-semibold text-yellow-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                <i class="fas fa-sun"></i>Day Trade Settings
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Profit Target %</label>
+                                    <input v-model.number="brownBotConfig.day_profit_target_pct" type="number" step="0.5" min="1" max="50"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Stop Loss %</label>
+                                    <input v-model.number="brownBotConfig.day_stop_loss_pct" type="number" step="0.5" min="0.5" max="20"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">EOD Exit Time (ET)</label>
+                                    <input v-model="brownBotConfig.day_eod_exit_time" type="time"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input v-model="brownBotConfig.day_trailing_stop_enabled" type="checkbox" id="bb-day-trail" class="rounded border-gray-600">
+                                    <label for="bb-day-trail" class="text-xs text-gray-300">Trailing Stop</label>
+                                    <input v-if="brownBotConfig.day_trailing_stop_enabled" v-model.number="brownBotConfig.day_trailing_stop_pct"
+                                           type="number" step="0.5" min="0.5" max="10" placeholder="%"
+                                           class="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Swing Trading -->
+                        <div>
+                            <div class="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                <i class="fas fa-moon"></i>Swing Trade Settings
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Profit Target %</label>
+                                    <input v-model.number="brownBotConfig.swing_profit_target_pct" type="number" step="1" min="5" max="100"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Stop Loss %</label>
+                                    <input v-model.number="brownBotConfig.swing_stop_loss_pct" type="number" step="1" min="2" max="30"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Hold Days</label>
+                                    <input v-model.number="brownBotConfig.swing_max_hold_days" type="number" step="1" min="1" max="90"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input v-model="brownBotConfig.swing_earnings_protection_enabled" type="checkbox" id="bb-earn" class="rounded border-gray-600">
+                                    <label for="bb-earn" class="text-xs text-gray-300">Earnings Protection</label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Risk & Scanner -->
+                        <div>
+                            <div class="text-xs font-semibold text-red-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                <i class="fas fa-shield-alt"></i>Risk &amp; Scanner
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Daily Loss ($)</label>
+                                    <input v-model.number="brownBotConfig.max_daily_loss" type="number" step="50" max="-1"
+                                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500">
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Max Day Pos</label>
+                                        <input v-model.number="brownBotConfig.max_concurrent_day" type="number" min="1" max="10"
+                                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Max Swing Pos</label>
+                                        <input v-model.number="brownBotConfig.max_concurrent_swing" type="number" min="1" max="20"
+                                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Min Gap %</label>
+                                        <input v-model.number="brownBotConfig.min_gap_pct" type="number" step="1" min="1"
+                                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Min Vol (M)</label>
+                                        <input v-model.number="brownBotConfig.min_volume_m" type="number" step="0.1" min="0.1"
+                                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Min Price ($)</label>
+                                        <input v-model.number="brownBotConfig.min_price" type="number" step="1" min="1"
+                                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Max Price ($)</label>
+                                        <input v-model.number="brownBotConfig.max_price" type="number" step="50" min="10"
+                                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Candidates Panel -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-search-dollar text-amber-400"></i>
+                            Candidates
+                            <span class="bg-amber-600/20 text-amber-300 border border-amber-600/40 text-xs px-2 py-0.5 rounded-full">
+                                {{ (brownBotCandidates.scanner.length + brownBotCandidates.watchlist.length) }}
+                            </span>
+                        </div>
+                        <button @click="loadBrownBotCandidates" :disabled="loading.brownBotCandidates"
+                                class="text-xs text-gray-400 hover:text-amber-400 transition-colors disabled:opacity-50 flex items-center gap-1">
+                            <i :class="loading.brownBotCandidates ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                            Refresh
+                        </button>
+                    </div>
+
+                    <!-- Two-column layout -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-700">
+
+                        <!-- Auto-Scanned (Gap-Ups) -->
+                        <div>
+                            <div class="px-4 py-2 bg-gray-700/40 text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                                <i class="fas fa-bolt text-yellow-400"></i> Auto-Scanned
+                                <span class="text-gray-500">({{ brownBotCandidates.scanner.length }})</span>
+                            </div>
+                            <div v-if="!brownBotCandidates.scanner.length" class="px-4 py-5 text-center text-gray-500 text-xs">
+                                No gap-ups pass current filters
+                            </div>
+                            <div v-else class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-gray-500 border-b border-gray-700">
+                                            <th class="px-4 py-2 text-left">Symbol</th>
+                                            <th class="px-4 py-2 text-right">Gap %</th>
+                                            <th class="px-4 py-2 text-right">Price</th>
+                                            <th class="px-4 py-2 text-right">Vol (M)</th>
+                                            <th class="px-4 py-2 text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="s in brownBotCandidates.scanner" :key="s.ticker"
+                                            class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                                            <td class="px-4 py-2 font-mono font-bold text-white">
+                                                {{ s.ticker }}
+                                                <span v-if="s.on_watchlist" class="ml-1 text-amber-400 text-xs" title="On watchlist">★</span>
+                                            </td>
+                                            <td class="px-4 py-2 text-right text-green-400 font-semibold">+{{ s.gap_percent?.toFixed(1) }}%</td>
+                                            <td class="px-4 py-2 text-right text-gray-300">${{ s.price?.toFixed(2) }}</td>
+                                            <td class="px-4 py-2 text-right text-gray-400">{{ ((s.volume || 0) / 1e6).toFixed(2) }}</td>
+                                            <td class="px-4 py-2 text-center">
+                                                <button v-if="!s.on_watchlist"
+                                                        @click="addToWatchlist(s.ticker, 'day')"
+                                                        class="text-amber-400 hover:text-amber-300 transition-colors" title="Add to watchlist">
+                                                    <i class="fas fa-plus-circle"></i>
+                                                </button>
+                                                <span v-else class="text-gray-600 text-xs">added</span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Watchlist -->
+                        <div>
+                            <div class="px-4 py-2 bg-gray-700/40 text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                                <i class="fas fa-star text-amber-400"></i> Watchlist
+                                <span class="text-gray-500">({{ brownBotCandidates.watchlist.length }})</span>
+                            </div>
+
+                            <!-- Manual add form -->
+                            <div class="px-4 py-2 border-b border-gray-700/60 flex items-center gap-2">
+                                <input v-model="brownBotWatchlistForm.symbol" type="text" placeholder="TICKER"
+                                       class="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white uppercase font-mono focus:outline-none focus:border-amber-500"
+                                       @keyup.enter="addToWatchlist(brownBotWatchlistForm.symbol, brownBotWatchlistForm.trade_type)">
+                                <select v-model="brownBotWatchlistForm.trade_type"
+                                        class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500">
+                                    <option value="day">Day</option>
+                                    <option value="swing">Swing</option>
+                                    <option value="auto">Auto</option>
+                                </select>
+                                <button @click="addToWatchlist(brownBotWatchlistForm.symbol, brownBotWatchlistForm.trade_type)"
+                                        class="bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded text-xs transition-colors">
+                                    <i class="fas fa-plus"></i> Add
+                                </button>
+                            </div>
+
+                            <div v-if="!brownBotCandidates.watchlist.length" class="px-4 py-5 text-center text-gray-500 text-xs">
+                                Watchlist is empty
+                            </div>
+                            <div v-else class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-gray-500 border-b border-gray-700">
+                                            <th class="px-4 py-2 text-left">Symbol</th>
+                                            <th class="px-4 py-2 text-center">Type</th>
+                                            <th class="px-4 py-2 text-right">Gap %</th>
+                                            <th class="px-4 py-2 text-right">Price</th>
+                                            <th class="px-4 py-2 text-center">Remove</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="w in brownBotCandidates.watchlist" :key="w.ticker"
+                                            class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                                            <td class="px-4 py-2 font-mono font-bold text-white">{{ w.ticker }}</td>
+                                            <td class="px-4 py-2 text-center">
+                                                <span :class="w.trade_type === 'swing' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : w.trade_type === 'auto' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'"
+                                                      class="text-xs px-1.5 py-0.5 rounded border">
+                                                    {{ w.trade_type }}
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-2 text-right" :class="w.gap_percent ? 'text-green-400' : 'text-gray-600'">
+                                                {{ w.gap_percent ? '+' + w.gap_percent.toFixed(1) + '%' : '—' }}
+                                            </td>
+                                            <td class="px-4 py-2 text-right text-gray-300">
+                                                {{ w.price ? '$' + w.price.toFixed(2) : '—' }}
+                                            </td>
+                                            <td class="px-4 py-2 text-center">
+                                                <button @click="removeFromWatchlist(w.ticker)"
+                                                        class="text-red-400 hover:text-red-300 transition-colors" title="Remove">
+                                                    <i class="fas fa-times-circle"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Risk Status Panel -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-shield-alt text-amber-400"></i>
+                            Risk Status
+                        </div>
+                        <button @click="loadBrownBotRiskStatus" class="text-xs text-gray-400 hover:text-amber-400 transition-colors flex items-center gap-1">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700">
+                        <!-- Daily P&L -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Daily P&L</div>
+                            <div class="text-xl font-bold font-mono"
+                                 :class="(brownBotRiskStatus.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ (brownBotRiskStatus.daily_pnl || 0) >= 0 ? '+' : '' }}${{ (brownBotRiskStatus.daily_pnl || 0).toFixed(0) }}
+                            </div>
+                            <div class="text-xs text-gray-600 mt-1">limit {{ brownBotRiskStatus.max_daily_loss }}</div>
+                        </div>
+                        <!-- Open Day -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Day Positions</div>
+                            <div class="text-xl font-bold font-mono text-yellow-300">
+                                {{ brownBotRiskStatus.open_day || 0 }}
+                                <span class="text-sm text-gray-500">/ {{ brownBotRiskStatus.max_concurrent_day || 3 }}</span>
+                            </div>
+                        </div>
+                        <!-- Open Swing -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Swing Positions</div>
+                            <div class="text-xl font-bold font-mono text-blue-300">
+                                {{ brownBotRiskStatus.open_swing || 0 }}
+                                <span class="text-sm text-gray-500">/ {{ brownBotRiskStatus.max_concurrent_swing || 5 }}</span>
+                            </div>
+                        </div>
+                        <!-- Circuit Breaker -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Circuit Breaker</div>
+                            <div :class="brownBotRiskStatus.circuit_breaker_open ? 'text-red-400' : 'text-green-400'"
+                                 class="text-xl font-bold flex items-center justify-center gap-1">
+                                <i :class="brownBotRiskStatus.circuit_breaker_open ? 'fas fa-ban' : 'fas fa-check-circle'"></i>
+                                {{ brownBotRiskStatus.circuit_breaker_open ? 'OPEN' : 'OK' }}
+                            </div>
+                            <div v-if="brownBotRiskStatus.circuit_breaker_open" class="text-xs text-red-400 mt-1">Trading halted</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Positions -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-chart-line text-amber-400"></i>
+                            Active Positions
+                            <span class="bg-amber-600/20 text-amber-300 border border-amber-600/40 text-xs px-2 py-0.5 rounded-full">
+                                {{ brownBotStatus.active_positions_count || 0 }}
+                            </span>
+                        </div>
+                        <button @click="loadBrownBotStatus" class="text-xs text-gray-400 hover:text-white transition-colors">
+                            <i class="fas fa-sync-alt mr-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div v-if="!brownBotStatus.active_positions?.length" class="px-5 py-8 text-center text-gray-500 text-sm">
+                        <i class="fas fa-inbox text-2xl mb-2 block"></i>
+                        No active BrownBot positions
+                    </div>
+                    <div v-else class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-750 border-b border-gray-700">
+                                <tr class="text-xs text-gray-400 uppercase tracking-wider">
+                                    <th class="px-4 py-3 text-left">Symbol</th>
+                                    <th class="px-4 py-3 text-left">Type</th>
+                                    <th class="px-4 py-3 text-right">Entry</th>
+                                    <th class="px-4 py-3 text-right">Target</th>
+                                    <th class="px-4 py-3 text-right">Stop</th>
+                                    <th class="px-4 py-3 text-right">Unrealized P&L</th>
+                                    <th class="px-4 py-3 text-right hidden sm:table-cell">Held</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="pos in brownBotStatus.active_positions" :key="pos.position_id"
+                                    class="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+                                    <td class="px-4 py-3 font-mono font-bold text-white">{{ pos.symbol }}</td>
+                                    <td class="px-4 py-3">
+                                        <span :class="pos.position_type === 'swing' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'"
+                                              class="text-xs px-2 py-0.5 rounded-full border">
+                                            {{ pos.position_type === 'swing' ? 'Swing' : 'Day' }}
+                                        </span>
+                                        <span v-if="pos._at_breakeven" class="ml-1 text-xs text-amber-400" title="Stop at breakeven">BE</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-right font-mono text-gray-200">${{ pos.entry_price?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-green-400">${{ pos.profit_target?.toFixed(2) ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-red-400">${{ pos.stop_loss?.toFixed(2) ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-mono"
+                                        :class="(pos.unrealized_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ (pos.unrealized_pnl || 0) >= 0 ? '+' : '' }}${{ (pos.unrealized_pnl || 0).toFixed(2) }}
+                                    </td>
+                                    <td class="px-4 py-3 text-right text-gray-500 text-xs hidden sm:table-cell">
+                                        {{ pos.entry_time ? brownBotDaysHeld(pos.entry_time) : '—' }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Activity Log -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-list-alt text-amber-400"></i>Activity Log
+                        </div>
+                        <button @click="brownBotLogs = []" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                            <i class="fas fa-trash mr-1"></i>Clear
+                        </button>
+                    </div>
+                    <div v-if="!brownBotLogs.length" class="px-5 py-6 text-center text-gray-500 text-sm">
+                        <i class="fas fa-terminal text-xl mb-2 block"></i>
+                        No activity yet. Start BrownBot to see logs.
+                    </div>
+                    <div v-else class="overflow-y-auto max-h-80">
+                        <table class="w-full text-xs">
+                            <tbody>
+                                <tr v-for="log in brownBotLogs" :key="log.id"
+                                    class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                                    <td class="px-4 py-2 text-gray-500 whitespace-nowrap font-mono w-40">
+                                        {{ new Date(log.timestamp).toLocaleTimeString() }}
+                                    </td>
+                                    <td class="px-2 py-2 w-16">
+                                        <span :class="{
+                                            'text-red-400': log.level === 'error',
+                                            'text-yellow-400': log.level === 'warning',
+                                            'text-amber-400': log.level === 'trade',
+                                            'text-gray-400': log.level === 'info'
+                                        }" class="font-semibold uppercase">{{ log.level }}</span>
+                                    </td>
+                                    <td class="px-2 py-2 text-gray-300">{{ log.message }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+            <!-- /BrownBot Tab -->
+
             <!-- Trade History Tab -->
             <div v-if="activeTab === 'trades' && canAccessTab('trades')" class="space-y-6">
                 <!-- Header Section -->
@@ -3678,32 +4139,41 @@
                     </div>
                     
                     <!-- Chat Messages -->
-                    <div class="h-96 overflow-y-auto mb-4 p-4 bg-gray-700 rounded-lg">
+                    <div class="h-[520px] overflow-y-auto mb-4 p-4 bg-gray-700 rounded-lg" ref="aiChatScroll">
                         <div v-if="aiChatMessages.length === 0" class="text-center py-8 text-gray-400">
                             <i class="fas fa-comments text-4xl mb-4"></i>
                             <p class="text-lg font-medium mb-2">Start a conversation with your AI assistant</p>
                             <p class="text-sm">Ask about stocks, market analysis, or trading strategies</p>
                         </div>
-                        
-                        <div v-for="message in aiChatMessages" :key="message.id" 
-                             class="mb-4" :class="message.type === 'user' ? 'text-right' : 'text-left'">
-                            <div :class="message.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-white'"
-                                 class="inline-block max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
-                                <div class="whitespace-pre-wrap text-sm">{{ message.content }}</div>
-                                <div class="flex items-center justify-between mt-2 text-xs opacity-75">
-                                    <span>{{ formatAITime(message.timestamp) }}</span>
-                                    <div v-if="message.tools_used && message.tools_used.length > 0" class="flex items-center space-x-1">
-                                        <i class="fas fa-tools"></i>
-                                        <span>{{ message.tools_used.length }} tools</span>
-                                    </div>
+
+                        <div v-for="message in aiChatMessages" :key="message.id" class="mb-4">
+                            <!-- User message — right-aligned bubble -->
+                            <div v-if="message.type === 'user'" class="flex justify-end">
+                                <div class="bg-blue-600 text-white max-w-xs lg:max-w-lg px-4 py-2 rounded-lg rounded-br-sm">
+                                    <div class="text-sm whitespace-pre-wrap">{{ message.content }}</div>
+                                    <div class="mt-1 text-xs opacity-70 text-right">{{ formatAITime(message.timestamp) }}</div>
                                 </div>
-                                <div v-if="message.symbols_analyzed && message.symbols_analyzed.length > 0" 
-                                     class="mt-2 text-xs opacity-75">
-                                    <span class="font-medium">Symbols:</span> {{ message.symbols_analyzed.join(', ') }}
+                            </div>
+
+                            <!-- Bot message — full-width card with markdown rendering -->
+                            <div v-else class="flex justify-start">
+                                <div class="w-full bg-gray-600 text-white px-4 py-3 rounded-lg rounded-bl-sm ai-chat-response">
+                                    <div class="text-sm ai-chat-body" v-html="renderMarkdown(message.content)"></div>
+                                    <div class="flex items-center justify-between mt-3 pt-2 border-t border-white/10 text-xs opacity-60">
+                                        <span>{{ formatAITime(message.timestamp) }}</span>
+                                        <div class="flex items-center gap-3">
+                                            <div v-if="message.symbols_analyzed && message.symbols_analyzed.length > 0">
+                                                <i class="fas fa-chart-line mr-1"></i>{{ message.symbols_analyzed.join(', ') }}
+                                            </div>
+                                            <div v-if="message.tools_used && message.tools_used.length > 0" class="flex items-center space-x-1">
+                                                <i class="fas fa-tools mr-1"></i>{{ message.tools_used.length }} tool{{ message.tools_used.length > 1 ? 's' : '' }} used
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div v-if="aiChatLoading" class="text-center py-4">
                             <div class="flex items-center justify-center space-x-2">
                                 <i class="fas fa-spinner fa-spin text-blue-400"></i>

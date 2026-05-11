@@ -263,6 +263,48 @@ class DatabaseManager:
             if cursor.fetchone()['cnt'] == 0:
                 cursor.execute('INSERT INTO swing_bot_config (user_id) VALUES (1)')
 
+            # brown_bot_config: autonomous BrownBot settings (day + swing + risk + scanner)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_bot_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    day_profit_target_pct REAL DEFAULT 5.0,
+                    day_stop_loss_pct REAL DEFAULT 2.5,
+                    day_trailing_stop_enabled INTEGER DEFAULT 0,
+                    day_trailing_stop_pct REAL DEFAULT 1.5,
+                    day_eod_exit_time TEXT DEFAULT '15:45',
+                    day_breakeven_trigger_pct REAL DEFAULT 50.0,
+                    swing_profit_target_pct REAL DEFAULT 15.0,
+                    swing_stop_loss_pct REAL DEFAULT 7.0,
+                    swing_max_hold_days INTEGER DEFAULT 20,
+                    swing_earnings_protection_enabled INTEGER DEFAULT 1,
+                    swing_earnings_exit_days INTEGER DEFAULT 2,
+                    swing_breakeven_trigger_pct REAL DEFAULT 50.0,
+                    max_daily_loss REAL DEFAULT -500.0,
+                    max_concurrent_day INTEGER DEFAULT 3,
+                    max_concurrent_swing INTEGER DEFAULT 5,
+                    min_gap_pct REAL DEFAULT 10.0,
+                    min_price REAL DEFAULT 5.0,
+                    max_price REAL DEFAULT 500.0,
+                    min_volume_m REAL DEFAULT 0.5,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute('SELECT COUNT(*) as cnt FROM brown_bot_config')
+            if cursor.fetchone()['cnt'] == 0:
+                cursor.execute('INSERT INTO brown_bot_config (user_id) VALUES (1)')
+
+            # brown_watchlist: manually pinned symbols for BrownBot
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_watchlist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL UNIQUE,
+                    note TEXT,
+                    trade_type TEXT DEFAULT 'day',
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             conn.commit()
 
     def _get_user_count(self):
@@ -2185,6 +2227,98 @@ class DatabaseManager:
                 return True, "Swing config updated"
         except Exception as e:
             return False, f"Database error updating swing config: {e}"
+
+
+    # ── BrownBot config ──────────────────────────────────────────────────────
+
+    def get_brown_bot_config(self, user_id: int = 1) -> dict:
+        defaults = {
+            'day_profit_target_pct': 5.0, 'day_stop_loss_pct': 2.5,
+            'day_trailing_stop_enabled': False, 'day_trailing_stop_pct': 1.5,
+            'day_eod_exit_time': '15:45', 'day_breakeven_trigger_pct': 50.0,
+            'swing_profit_target_pct': 15.0, 'swing_stop_loss_pct': 7.0,
+            'swing_max_hold_days': 20, 'swing_earnings_protection_enabled': True,
+            'swing_earnings_exit_days': 2, 'swing_breakeven_trigger_pct': 50.0,
+            'max_daily_loss': -500.0, 'max_concurrent_day': 3, 'max_concurrent_swing': 5,
+            'min_gap_pct': 10.0, 'min_price': 5.0, 'max_price': 500.0, 'min_volume_m': 0.5,
+        }
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM brown_bot_config WHERE user_id=? LIMIT 1', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    cfg = dict(row)
+                    cfg['day_trailing_stop_enabled'] = bool(cfg.get('day_trailing_stop_enabled', 0))
+                    cfg['swing_earnings_protection_enabled'] = bool(cfg.get('swing_earnings_protection_enabled', 1))
+                    return cfg
+        except Exception as e:
+            print(f"Database error fetching brown_bot_config: {e}")
+        return defaults
+
+    def update_brown_bot_config(self, config: dict, user_id: int = 1) -> tuple:
+        fields = [
+            'day_profit_target_pct', 'day_stop_loss_pct', 'day_trailing_stop_enabled',
+            'day_trailing_stop_pct', 'day_eod_exit_time', 'day_breakeven_trigger_pct',
+            'swing_profit_target_pct', 'swing_stop_loss_pct', 'swing_max_hold_days',
+            'swing_earnings_protection_enabled', 'swing_earnings_exit_days',
+            'swing_breakeven_trigger_pct', 'max_daily_loss', 'max_concurrent_day',
+            'max_concurrent_swing', 'min_gap_pct', 'min_price', 'max_price', 'min_volume_m',
+        ]
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT id FROM brown_bot_config WHERE user_id=?', (user_id,))
+                row = cursor.fetchone()
+                sets = ', '.join(f'{f}=?' for f in fields if f in config)
+                vals = [config[f] for f in fields if f in config]
+                if sets:
+                    if row:
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE brown_bot_config SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE user_id=?', vals)
+                    else:
+                        cursor.execute('INSERT INTO brown_bot_config (user_id) VALUES (?)', (user_id,))
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE brown_bot_config SET {sets} WHERE user_id=?', vals)
+                conn.commit()
+                return True, "BrownBot config updated"
+        except Exception as e:
+            return False, f"Database error updating brown_bot_config: {e}"
+
+    # ── BrownBot watchlist ────────────────────────────────────────────────────
+
+    def get_brown_watchlist(self) -> list:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT symbol, note, trade_type, added_at FROM brown_watchlist ORDER BY added_at DESC')
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching brown_watchlist: {e}")
+            return []
+
+    def add_to_brown_watchlist(self, symbol: str, note: str = '', trade_type: str = 'day') -> tuple:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT OR REPLACE INTO brown_watchlist (symbol, note, trade_type) VALUES (?, ?, ?)',
+                    (symbol.upper().strip(), note, trade_type)
+                )
+                conn.commit()
+                return True, "Added to watchlist"
+        except Exception as e:
+            return False, str(e)
+
+    def remove_from_brown_watchlist(self, symbol: str) -> tuple:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM brown_watchlist WHERE symbol=?', (symbol.upper().strip(),))
+                conn.commit()
+                return True, "Removed from watchlist"
+        except Exception as e:
+            return False, str(e)
 
 
 # Global database manager instance

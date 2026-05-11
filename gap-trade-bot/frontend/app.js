@@ -87,6 +87,10 @@ const app = createApp({
                     swingRecommendation: false,
                     swingNews: false,
                     swingDailyPicks: false,
+                    // BrownBot loading states
+                    brownBotToggle: false,
+                    brownBotConfig: false,
+                    brownBotCandidates: false,
                 },
                 
                 // Charts
@@ -339,7 +343,50 @@ const app = createApp({
             
             // Debug Logs
             debugLogs: [],
-            
+
+            // BrownBot
+            brownBotStatus: {
+                running: false,
+                das_enabled: false,
+                active_positions: [],
+                active_positions_count: 0,
+                stats: { day_entered: 0, swing_entered: 0, day_exited: 0, swing_exited: 0 }
+            },
+            brownBotConfig: {
+                day_profit_target_pct: 5.0,
+                day_stop_loss_pct: 2.5,
+                day_trailing_stop_enabled: false,
+                day_trailing_stop_pct: 1.5,
+                day_eod_exit_time: '15:45',
+                day_breakeven_trigger_pct: 50.0,
+                swing_profit_target_pct: 15.0,
+                swing_stop_loss_pct: 7.0,
+                swing_max_hold_days: 20,
+                swing_earnings_protection_enabled: true,
+                swing_earnings_exit_days: 2,
+                swing_breakeven_trigger_pct: 50.0,
+                max_daily_loss: -500.0,
+                max_concurrent_day: 3,
+                max_concurrent_swing: 5,
+                min_gap_pct: 10.0,
+                min_price: 5.0,
+                max_price: 500.0,
+                min_volume_m: 0.5,
+            },
+            brownBotLogs: [],
+            brownBotPollingInterval: null,
+            brownBotCandidates: { scanner: [], watchlist: [] },
+            brownBotWatchlistForm: { symbol: '', trade_type: 'day', note: '' },
+            brownBotRiskStatus: {
+                daily_pnl: 0,
+                max_daily_loss: -500,
+                open_day: 0,
+                max_concurrent_day: 3,
+                open_swing: 0,
+                max_concurrent_swing: 5,
+                circuit_breaker_open: false,
+            },
+
                             // Continuous tracking interval
                 trackingInterval: null,
 
@@ -540,6 +587,16 @@ const app = createApp({
                             { icon: 'fa-dollar-sign',   text: 'Simulated P&L with configurable capital and sizing' },
                             { icon: 'fa-chart-area',    text: 'Equity curve chart and drawdown analysis' },
                             { icon: 'fa-balance-scale', text: 'Compare multiple strategies side by side' },
+                        ],
+                    },
+                    'brown-bot': {
+                        label: 'BrownBot', plan: 'Yogi Trader', price: '$25/mo', tier: 'yogi', icon: 'fa-brain', color: 'yellow',
+                        tagline: 'Fully autonomous day & swing trading bot.',
+                        features: [
+                            { icon: 'fa-search-dollar', text: 'Auto gap-up scanning — no manual symbol entry needed' },
+                            { icon: 'fa-robot',         text: 'AI-powered swing signal tiebreaker via Claude' },
+                            { icon: 'fa-shield-alt',    text: 'Portfolio risk manager with daily loss circuit breaker' },
+                            { icon: 'fa-clock',         text: 'Hard EOD flatten + earnings-protection exits' },
                         ],
                     },
                 };
@@ -924,6 +981,16 @@ const app = createApp({
                     }
                 } else if (tabName === 'account') {
                     // account page loads from user object already in state
+                } else if (tabName === 'brown-bot') {
+                    console.log('🤖 BrownBot tab selected - loading status...');
+                    this.stopPositionHistoryUpdates();
+                    this.stopContinuousTracking();
+                    this.loadBrownBotStatus();
+                    this.loadBrownBotConfig();
+                    this.fetchBrownBotLogs();
+                    this.loadBrownBotCandidates();
+                    this.loadBrownBotRiskStatus();
+                    this.startBrownBotPolling();
                 }
             },
 
@@ -937,7 +1004,7 @@ const app = createApp({
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
                     advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -5465,7 +5532,7 @@ const app = createApp({
                 this.aiChatLoading = false;
                 // Scroll to bottom of chat
                 this.$nextTick(() => {
-                    const chatContainer = document.querySelector('.h-96.overflow-y-auto');
+                    const chatContainer = this.$refs.aiChatScroll;
                     if (chatContainer) {
                         chatContainer.scrollTop = chatContainer.scrollHeight;
                     }
@@ -5489,6 +5556,16 @@ const app = createApp({
             if (!timestamp) return '';
             const date = new Date(timestamp);
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        },
+
+        renderMarkdown(content) {
+            if (!content) return '';
+            if (typeof marked === 'undefined') return content.replace(/\n/g, '<br>');
+            try {
+                return marked.parse(content, { breaks: true, gfm: true });
+            } catch (e) {
+                return content.replace(/\n/g, '<br>');
+            }
         },
         updateActivePositions(newPositions) {
             const currentPositions = this.botStatus.active_positions || [];
@@ -5889,6 +5966,167 @@ const app = createApp({
                 }
             } catch (error) {
                 console.error('Error updating debug logs:', error);
+            }
+        },
+
+        // ── BrownBot methods ───────────────────────────────────────────────
+        async loadBrownBotStatus() {
+            try {
+                const response = await axios.get('/api/brown-bot/status');
+                if (response.data.success) {
+                    this.brownBotStatus = response.data.data;
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot status:', error);
+            }
+        },
+
+        async loadBrownBotConfig() {
+            try {
+                const response = await axios.get('/api/brown-bot/config');
+                if (response.data.success) {
+                    this.brownBotConfig = { ...this.brownBotConfig, ...response.data.config };
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot config:', error);
+            }
+        },
+
+        async toggleBrownBot() {
+            try {
+                this.loading.brownBotToggle = true;
+                const action = this.brownBotStatus.running ? 'stop' : 'start';
+                const response = await axios.post(`/api/brown-bot/${action}`);
+                if (response.data.success) {
+                    await this.loadBrownBotStatus();
+                    await this.fetchBrownBotLogs();
+                }
+            } catch (error) {
+                console.error('Error toggling BrownBot:', error);
+            } finally {
+                this.loading.brownBotToggle = false;
+            }
+        },
+
+        async saveBrownBotConfig() {
+            try {
+                this.loading.brownBotConfig = true;
+                const response = await axios.post('/api/brown-bot/config', this.brownBotConfig);
+                if (response.data.success) {
+                    this.showNotification('BrownBot configuration saved', 'success');
+                } else {
+                    this.showNotification('Failed to save config: ' + (response.data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error saving BrownBot config:', error);
+                this.showNotification('Error saving BrownBot config', 'error');
+            } finally {
+                this.loading.brownBotConfig = false;
+            }
+        },
+
+        async fetchBrownBotLogs() {
+            try {
+                const response = await axios.get('/api/brown-bot/logs');
+                if (response.data.success) {
+                    this.brownBotLogs = response.data.logs || [];
+                }
+            } catch (error) {
+                console.error('Error fetching BrownBot logs:', error);
+            }
+        },
+
+        async loadBrownBotCandidates() {
+            try {
+                this.loading.brownBotCandidates = true;
+                const response = await axios.get('/api/brown-bot/candidates');
+                if (response.data.success) {
+                    this.brownBotCandidates = {
+                        scanner: response.data.scanner || [],
+                        watchlist: response.data.watchlist || [],
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot candidates:', error);
+            } finally {
+                this.loading.brownBotCandidates = false;
+            }
+        },
+
+        async addToWatchlist(symbol, tradeType) {
+            symbol = (symbol || '').trim().toUpperCase();
+            if (!symbol) return;
+            try {
+                const response = await axios.post('/api/brown-bot/watchlist', {
+                    symbol,
+                    trade_type: tradeType || this.brownBotWatchlistForm.trade_type,
+                    note: this.brownBotWatchlistForm.note,
+                });
+                if (response.data.success) {
+                    this.brownBotWatchlistForm.symbol = '';
+                    this.brownBotWatchlistForm.note = '';
+                    await this.loadBrownBotCandidates();
+                } else {
+                    this.showNotification(response.data.error || 'Failed to add to watchlist', 'error');
+                }
+            } catch (error) {
+                console.error('Error adding to watchlist:', error);
+                this.showNotification('Error adding to watchlist', 'error');
+            }
+        },
+
+        async removeFromWatchlist(symbol) {
+            try {
+                const response = await axios.delete(`/api/brown-bot/watchlist/${symbol}`);
+                if (response.data.success) {
+                    await this.loadBrownBotCandidates();
+                } else {
+                    this.showNotification(response.data.error || 'Failed to remove', 'error');
+                }
+            } catch (error) {
+                console.error('Error removing from watchlist:', error);
+                this.showNotification('Error removing from watchlist', 'error');
+            }
+        },
+
+        async loadBrownBotRiskStatus() {
+            try {
+                const response = await axios.get('/api/brown-bot/risk-status');
+                if (response.data.success) {
+                    this.brownBotRiskStatus = response.data.risk;
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot risk status:', error);
+            }
+        },
+
+        startBrownBotPolling() {
+            this.stopBrownBotPolling();
+            this.brownBotPollingInterval = setInterval(() => {
+                if (this.activeTab === 'brown-bot') {
+                    this.loadBrownBotStatus();
+                    this.fetchBrownBotLogs();
+                    this.loadBrownBotRiskStatus();
+                } else {
+                    this.stopBrownBotPolling();
+                }
+            }, 2000);
+        },
+
+        stopBrownBotPolling() {
+            if (this.brownBotPollingInterval) {
+                clearInterval(this.brownBotPollingInterval);
+                this.brownBotPollingInterval = null;
+            }
+        },
+
+        brownBotDaysHeld(entryTimeStr) {
+            try {
+                const entry = new Date(entryTimeStr);
+                const days = Math.floor((Date.now() - entry.getTime()) / 86400000);
+                return days === 0 ? 'today' : `${days}d`;
+            } catch {
+                return '—';
             }
         },
 
