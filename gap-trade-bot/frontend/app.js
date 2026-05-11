@@ -887,7 +887,7 @@ const app = createApp({
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.loadEntryBotStatus();
                     this.updateTrackingStatus();
-                    this.updateActivePositions();
+                    this.fetchEntryBotPositions();
                     this.updateDebugLogs();
                     // Start continuous tracking every 1 second
                     this.startContinuousTracking();
@@ -5850,7 +5850,7 @@ const app = createApp({
                 // Update tracking status without loading states (smooth updates)
                 this.updateTrackingStatus();
                 // Update active positions without loading states (smooth updates)
-                this.updateActivePositions();
+                this.fetchEntryBotPositions();
                 // Update debug logs without loading states (smooth updates)
                 this.updateDebugLogs();
             }, 1000);
@@ -5879,10 +5879,10 @@ const app = createApp({
             }
         },
         
-        async updateActivePositions() {
+        async fetchEntryBotPositions() {
             try {
                 const response = await axios.get('/api/entry-bot/active-positions');
-                
+
                 if (response.data.success) {
                     this.activePositions = response.data.data;
                 }

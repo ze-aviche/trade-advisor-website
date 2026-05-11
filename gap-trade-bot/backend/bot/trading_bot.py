@@ -55,9 +55,10 @@ class PriceData:
 
 class Connection:
     """DAS Trader Connection Class - Working implementation"""
-    
+
     def __init__(self):
         self.s = socket.socket()
+        self._lock = threading.Lock()  # Serialises all socket I/O across threads
     
     def Connect(self, host, port):
         self.s.settimeout(2)
@@ -173,33 +174,37 @@ class Connection:
         return data
     
     def SendScript(self, script):
-        try:
-            self.s.sendall(script)
-        except socket.gaierror as e:
-            logger.error(f"Address-related error: {e}")
-        except socket.herror as e:
-            logger.error(f"Host-related error: {e}")
-        except socket.timeout as e:
-            logger.error(f"Timeout error: {e}")
-        except socket.error as e:
-            logger.error(f"General socket error: {e}")
-        finally: 
-            getCMD = script[:3]
-            newordCMD = script[:8]
-            shortCMD = script[:2]
-        
-            if(getCMD.decode("ascii") == "GET" or newordCMD.decode("ascii") == "NEWORDER" or shortCMD.decode("ascii") == "SL" or "MINCHART" in script.decode("ascii") or "DAYCHART" in script.decode("ascii")):
-                time.sleep(.1)
-            elif("REPLACE" in script.decode("ascii") or "COMPLEXORDER" in script.decode("ascii")):
-                time.sleep(.2)
-            else:
-                time.sleep(.0005)
+        with self._lock:
+            try:
+                self.s.sendall(script)
+            except socket.gaierror as e:
+                logger.error(f"Address-related error: {e}")
+            except socket.herror as e:
+                logger.error(f"Host-related error: {e}")
+            except socket.timeout as e:
+                logger.error(f"Timeout error: {e}")
+            except socket.error as e:
+                logger.error(f"General socket error: {e}")
+            finally:
+                getCMD = script[:3]
+                newordCMD = script[:8]
+                shortCMD = script[:2]
 
-        try:
-            data = self.recvall()
-        except socket.timeout:
-            return ""
-        return data.decode("ascii").strip()
+                if (getCMD.decode("ascii") == "GET" or newordCMD.decode("ascii") == "NEWORDER"
+                        or shortCMD.decode("ascii") == "SL"
+                        or "MINCHART" in script.decode("ascii")
+                        or "DAYCHART" in script.decode("ascii")):
+                    time.sleep(.1)
+                elif "REPLACE" in script.decode("ascii") or "COMPLEXORDER" in script.decode("ascii"):
+                    time.sleep(.2)
+                else:
+                    time.sleep(.0005)
+
+            try:
+                data = self.recvall()
+            except socket.timeout:
+                return ""
+            return data.decode("ascii").strip()
 
     def Disconnect(self):
         try:
@@ -883,17 +888,21 @@ class TradingBot:
         try:
             logger.info("Connecting to DAS server...")
             self.connection = Connection()
-            self.connection.ConnectToServer()
-            
+            connected = self.connection.ConnectToServer()
+
+            if not connected:
+                logger.error("ConnectToServer returned False — DAS login failed or server unreachable")
+                return False
+
             # Initialize components after connection
             self.price_manager = PriceManager(self.connection)
             self.order_manager = OrderManager(self.connection)
-            
-            logger.info("✅ Successfully connected to DAS server")
+
+            logger.info("Successfully connected to DAS server")
             return True
-                
+
         except Exception as e:
-            logger.error(f"❌ Error connecting to DAS: {e}")
+            logger.error(f"Error connecting to DAS: {e}")
             return False
     
     def force_reconnect_das(self) -> bool:
@@ -1069,28 +1078,28 @@ class TradingBot:
             # Track discovered positions
             with self._positions_lock:
                 for pos_data in discovered_positions:
-                    symbol = pos_data['symbol']
+                    symbol = pos_data['symbol'].upper()
                     quantity = pos_data.get('quantity', 0)
-                    
+
                     # Skip positions with 0 quantity
                     if quantity == 0:
-                        logger.info(f"⏭️ Skipping {symbol} with 0 quantity during position discovery")
+                        logger.info(f"Skipping {symbol} with 0 quantity during position discovery")
                         continue
-                    
+
                     if symbol not in self.active_positions:
-                        logger.info(f"📊 Adding {symbol} to active positions tracking...")
-                        
+                        logger.info(f"Adding {symbol} to active positions tracking...")
+
                         # Create position object
                         position = self._create_position_object(pos_data)
                         self.active_positions[symbol] = position
-                        
+
                         # Subscribe to Level 1 data for this symbol
                         if self.price_manager:
                             self.price_manager.subscribe_to_symbol(symbol)
-                        
-                        logger.info(f"✅ Added {symbol} to tracking: {position.type} {position.size} @ ${position.entry_price:.2f}, profit target: ${position.profit_target:.2f}, stop loss: ${position.stop_loss:.2f}")
+
+                        logger.info(f"Added {symbol}: {position.type} {position.size} @ ${position.entry_price:.2f}, target: ${position.profit_target:.2f}, stop: ${position.stop_loss:.2f}")
                     else:
-                        logger.info(f"ℹ️ {symbol} already in active positions, skipping")
+                        logger.info(f"{symbol} already in active positions, skipping")
                 
                 self.active_positions_count = len(self.active_positions)
             logger.info(f"📊 Total discovered positions: {len(discovered_positions)}")
@@ -1150,24 +1159,40 @@ class TradingBot:
             logger.warning(f"Error checking for new positions: {e}")
     
     def _check_position_exists_in_das(self, positions_raw: str, symbol: str) -> bool:
-        """Check if a position exists in DAS by properly parsing the positions data"""
+        """Check if a position exists in DAS by properly parsing the positions data.
+
+        Returns True (keep tracking) when:
+          - the symbol is found in the response, OR
+          - the response is empty/blank (communication error — benefit of the doubt)
+        Returns False (stop tracking) only when DAS returned real data that does NOT
+        include this symbol, meaning the position was genuinely closed.
+        """
         try:
             if not positions_raw or positions_raw.strip() == "":
-                return False
-            
+                # Empty response = communication error, not a confirmed closure.
+                logger.debug(f"Empty DAS response for {symbol} existence check — keeping position")
+                return True
+
             # Parse all position lines
             lines = positions_raw.split('\n')
-            
+            has_any_pos_line = False
             for line in lines:
                 position = PositionParser.parse_position_line(line)
-                if position and position['symbol'].upper() == symbol.upper():
-                    return True
-            
-            return False
-            
+                if position:
+                    has_any_pos_line = True
+                    if position['symbol'].upper() == symbol.upper():
+                        return True
+
+            # DAS returned data but this symbol wasn't in it — position is gone.
+            if has_any_pos_line:
+                return False
+
+            # Response had no %POS lines at all (e.g. only whitespace/OK) — keep position.
+            return True
+
         except Exception as e:
             logger.error(f"Error checking if position exists for {symbol}: {e}")
-            return False
+            return True  # Default to keeping on error
     
     def _detect_manual_trades(self, positions_raw: str):
         """Detect manual trades by monitoring realized PnL changes"""

@@ -741,7 +741,7 @@ class DatabaseManager:
                 existing = cursor.fetchone()
                 
                 if existing:
-                    # Update existing position
+                    # Update existing position (preserve swing fields if not provided)
                     cursor.execute('''
                         UPDATE positions SET
                             quantity = ?,
@@ -752,6 +752,12 @@ class DatabaseManager:
                             create_time = ?,
                             date = ?,
                             unrealized = ?,
+                            position_type = COALESCE(?, position_type),
+                            entry_date = COALESCE(?, entry_date),
+                            swing_stop_loss = COALESCE(?, swing_stop_loss),
+                            swing_target = COALESCE(?, swing_target),
+                            swing_entry_reason = COALESCE(?, swing_entry_reason),
+                            max_hold_days = COALESCE(?, max_hold_days),
                             last_updated = CURRENT_TIMESTAMP
                         WHERE symbol = ? AND type = ?
                     ''', (
@@ -763,6 +769,12 @@ class DatabaseManager:
                         position_data['create_time'],
                         position_data['date'],
                         position_data.get('unrealized', 0.0),
+                        position_data.get('position_type'),
+                        position_data.get('entry_date'),
+                        position_data.get('swing_stop_loss'),
+                        position_data.get('swing_target'),
+                        position_data.get('swing_entry_reason'),
+                        position_data.get('max_hold_days'),
                         position_data['symbol'],
                         position_data['type']
                     ))
@@ -771,8 +783,10 @@ class DatabaseManager:
                     cursor.execute('''
                         INSERT INTO positions (
                             symbol, type, quantity, avg_cost, init_quantity, init_price,
-                            realized, create_time, date, unrealized
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            realized, create_time, date, unrealized,
+                            position_type, entry_date, swing_stop_loss, swing_target,
+                            swing_entry_reason, max_hold_days
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         position_data['symbol'],
                         position_data['type'],
@@ -783,15 +797,22 @@ class DatabaseManager:
                         position_data.get('realized', 0.0),
                         position_data['create_time'],
                         position_data['date'],
-                        position_data.get('unrealized', 0.0)
+                        position_data.get('unrealized', 0.0),
+                        position_data.get('position_type', 'day'),
+                        position_data.get('entry_date'),
+                        position_data.get('swing_stop_loss'),
+                        position_data.get('swing_target'),
+                        position_data.get('swing_entry_reason'),
+                        position_data.get('max_hold_days'),
                     ))
-                
+
                 # Save daily snapshot - upsert to avoid duplicates for the same day
                 cursor.execute('''
                     INSERT OR REPLACE INTO daily_positions (
                         symbol, type, quantity, avg_cost, init_quantity, init_price,
-                        realized, create_time, date, unrealized, snapshot_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        realized, create_time, date, unrealized, snapshot_date,
+                        position_type, swing_stop_loss, swing_target
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     position_data['symbol'],
                     position_data['type'],
@@ -803,7 +824,10 @@ class DatabaseManager:
                     position_data['create_time'],
                     position_data['date'],
                     position_data.get('unrealized', 0.0),
-                    current_date
+                    current_date,
+                    position_data.get('position_type', 'day'),
+                    position_data.get('swing_stop_loss'),
+                    position_data.get('swing_target'),
                 ))
                 
                 conn.commit()

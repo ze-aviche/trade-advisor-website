@@ -32,7 +32,8 @@ def seed():
 
     if CLEAR:
         c.execute('DELETE FROM positions')
-        print('Cleared existing positions.')
+        c.execute('DELETE FROM daily_positions')
+        print('Cleared existing positions and daily_positions.')
 
     today = datetime.now().date()
     five_days_ago = (today - timedelta(days=5)).isoformat()
@@ -105,34 +106,63 @@ def seed():
         c.execute('SELECT id FROM positions WHERE symbol=? AND type=?', (p['symbol'], p['type']))
         if c.fetchone():
             skipped += 1
-            print(f'  Skip  {p["symbol"]} (already exists)')
-            continue
+            print(f'  Skip  {p["symbol"]} (already exists in positions)')
+        else:
+            c.execute('''
+                INSERT INTO positions (
+                    symbol, type, quantity, avg_cost, init_quantity, init_price,
+                    realized, create_time, date, unrealized,
+                    position_type, entry_date, swing_stop_loss, swing_target,
+                    swing_entry_reason, max_hold_days
+                ) VALUES (
+                    :symbol, :type, :quantity, :avg_cost, :init_quantity, :init_price,
+                    :realized, :create_time, :date, :unrealized,
+                    :position_type, :entry_date, :swing_stop_loss, :swing_target,
+                    :swing_entry_reason, :max_hold_days
+                )
+            ''', p)
+            inserted += 1
+            side = 'LONG' if p['type'] == 2 else 'SHORT'
+            days = (today - datetime.strptime(p['entry_date'], '%Y-%m-%d').date()).days
+            label = f"[{p['position_type'].upper()}]"
+            days_str = f' | {days}d held' if p['position_type'] == 'swing' else ''
+            print(f'  Seeded {p["symbol"]:5s} {side:5s} {p["quantity"]:4d} @ ${p["avg_cost"]:.2f} {label}{days_str}')
 
+        # Also upsert into daily_positions so data appears in Positions History tab
+        # Use entry_date as snapshot_date so swing history shows across multiple days
+        snapshot_date = p['entry_date'] if p['position_type'] == 'swing' else today_str
         c.execute('''
-            INSERT INTO positions (
+            INSERT OR REPLACE INTO daily_positions (
                 symbol, type, quantity, avg_cost, init_quantity, init_price,
-                realized, create_time, date, unrealized,
-                position_type, entry_date, swing_stop_loss, swing_target,
-                swing_entry_reason, max_hold_days
+                realized, create_time, date, unrealized, snapshot_date,
+                position_type, swing_stop_loss, swing_target
             ) VALUES (
                 :symbol, :type, :quantity, :avg_cost, :init_quantity, :init_price,
-                :realized, :create_time, :date, :unrealized,
-                :position_type, :entry_date, :swing_stop_loss, :swing_target,
-                :swing_entry_reason, :max_hold_days
+                :realized, :create_time, :date, :unrealized, :snapshot_date,
+                :position_type, :swing_stop_loss, :swing_target
             )
-        ''', p)
-        inserted += 1
-        side = 'LONG' if p['type'] == 2 else 'SHORT'
-        days = (today - datetime.strptime(p['entry_date'], '%Y-%m-%d').date()).days
-        label = f"[{p['position_type'].upper()}]"
-        days_str = f' | {days}d held' if p['position_type'] == 'swing' else ''
-        print(f'  Seeded {p["symbol"]:5s} {side:5s} {p["quantity"]:4d} @ ${p["avg_cost"]:.2f} {label}{days_str}')
+        ''', {**p, 'snapshot_date': snapshot_date})
+        # Also seed today's snapshot for swing positions so they show as current
+        if p['position_type'] == 'swing' and snapshot_date != today_str:
+            c.execute('''
+                INSERT OR REPLACE INTO daily_positions (
+                    symbol, type, quantity, avg_cost, init_quantity, init_price,
+                    realized, create_time, date, unrealized, snapshot_date,
+                    position_type, swing_stop_loss, swing_target
+                ) VALUES (
+                    :symbol, :type, :quantity, :avg_cost, :init_quantity, :init_price,
+                    :realized, :create_time, :date, :unrealized, :snapshot_date,
+                    :position_type, :swing_stop_loss, :swing_target
+                )
+            ''', {**p, 'snapshot_date': today_str})
 
     conn.commit()
     conn.close()
 
-    print(f'\nDone. Inserted {inserted}, skipped {skipped}.')
-    print('Reload the dashboard → Positions tab to see the seeded data.')
+    print(f'\nDone. Inserted {inserted} positions, skipped {skipped}.')
+    print('Seeded into both "positions" and "daily_positions" tables.')
+    print('→ Positions History tab: reload dashboard and open the Positions tab')
+    print('→ Exit Bot active positions: start the mock DAS server, then click "Start Bot"')
 
 if __name__ == '__main__':
     seed()

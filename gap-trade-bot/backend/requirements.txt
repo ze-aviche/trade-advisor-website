@@ -1,5 +1,8 @@
 # Production server
 gunicorn==21.2.0
+
+# Error monitoring
+sentry-sdk[flask]==2.19.2
 eventlet==0.35.2
 
 # Core Flask Dependencies

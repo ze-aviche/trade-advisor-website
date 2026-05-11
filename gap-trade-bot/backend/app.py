@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import random
+import socket
 import threading
 import time
 import smtplib
@@ -104,6 +105,8 @@ if not DAS_ENABLED:
     BOT_AVAILABLE = False
     SCHEDULED_SYNC_AVAILABLE = False
 
+app_logger.info(f"[STARTUP] DAS_ENABLED={DAS_ENABLED}  BOT_AVAILABLE={BOT_AVAILABLE}  SCHEDULED_SYNC={SCHEDULED_SYNC_AVAILABLE}")
+
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 
 app = Flask(__name__)
@@ -144,9 +147,66 @@ entry_bot_stats = {
 }
 tracking_symbols = {}  # Store tracking data for each symbol
 entry_bot_logs = []  # Store debug logs for Entry Bot
+_entry_bot_log_id = 0  # Monotonic counter for unique log entry IDs
 tracking_thread = None  # Background thread for continuous tracking
 tracking_active = False  # Flag to control tracking thread
 active_positions = {}  # Store active positions entered by the bot
+
+
+class _DasDirectSocket:
+    """Raw TCP connection to DAS / mock server.
+    Used as a fallback when the CMDAPI library is unavailable (mock testing).
+    Thread-safe; reconnects automatically on failure.
+    """
+    def __init__(self):
+        self._sock = None
+        self._lock = threading.Lock()
+        self._host = os.environ.get('DAS_HOST', '127.0.0.1')
+        self._port = int(os.environ.get('DAS_PORT', '9800'))
+
+    def _connect(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5.0)
+        s.connect((self._host, self._port))
+        s.sendall(b'LOGIN IDAS12181\r\n')
+        time.sleep(0.1)
+        try:
+            s.recv(4096)  # discard login banner
+        except socket.timeout:
+            pass
+        self._sock = s
+
+    def send_script(self, cmd: str) -> str:
+        with self._lock:
+            for attempt in range(2):
+                try:
+                    if self._sock is None:
+                        self._connect()
+                    self._sock.sendall(cmd.encode('ascii'))
+                    time.sleep(0.15)
+                    data = b''
+                    self._sock.settimeout(0.5)
+                    try:
+                        while True:
+                            chunk = self._sock.recv(4096)
+                            if not chunk:
+                                break
+                            data += chunk
+                    except socket.timeout:
+                        pass
+                    return data.decode('ascii', errors='replace')
+                except Exception as e:
+                    app_logger.warning(f"DAS direct socket error (attempt {attempt + 1}): {e}")
+                    try:
+                        self._sock.close()
+                    except Exception:
+                        pass
+                    self._sock = None
+            return ''
+
+
+_das_direct = _DasDirectSocket()
+
 
 def start_position_sync_scheduler():
     """Start automatic position sync every 10 seconds"""
@@ -177,9 +237,11 @@ def start_position_sync_scheduler():
 # Entry Bot helper functions
 def add_entry_bot_log(level, message):
     """Add a log entry to the Entry Bot logs"""
-    global entry_bot_logs
+    global entry_bot_logs, _entry_bot_log_id
+    _entry_bot_log_id += 1
     timestamp = datetime.now().isoformat()
     log_entry = {
+        'id': _entry_bot_log_id,
         'timestamp': timestamp,
         'level': level,
         'message': message
@@ -239,41 +301,59 @@ def close_das_connection():
             finally:
                 _das_connection = None
 
+def _send_das_script(script: str) -> str:
+    """Send a raw DAS script and return the response.
+
+    Priority:
+    1. trading_bot.connection — the exit bot's established, lock-protected socket.
+       This is the preferred path: no extra connection needed, works with mock server.
+    2. _das_direct — a separate persistent TCP socket to 127.0.0.1:9800.
+       Fallback when the exit bot has not been started.
+
+    The CMDAPI library is intentionally NOT used here. Its class-level shared socket
+    is not thread-safe and conflicts with reconnection logic.
+    """
+    script_bytes = bytearray(script, encoding="ascii")
+
+    # Path 1: reuse the exit bot's connection (thread-safe via its own lock)
+    if BOT_AVAILABLE:
+        try:
+            conn = trading_bot.connection
+            if conn is not None:
+                result = conn.SendScript(script_bytes)
+                if result:
+                    return result
+        except Exception as e:
+            app_logger.warning(f"trading_bot socket error for script '{script.strip()}': {e}")
+
+    # Path 2: dedicated direct TCP socket
+    try:
+        result = _das_direct.send_script(script)
+        if result:
+            return result
+    except Exception as e:
+        app_logger.error(f"_das_direct failed for script '{script.strip()}': {e}")
+
+    return ""
+
+
 def get_real_stock_data(symbol):
-    """Get real stock data using DAS CMDAPI Level 1 subscription"""
+    """Get real stock data via DAS Level 1 subscription."""
     if not DAS_ENABLED:
         return None
 
-    try:
-        from datetime import datetime
+    result = _send_das_script(f"SB {symbol.upper()} Lv1\r\n")
+    if result:
+        quote_data = _parse_das_level1_response(result, symbol.upper())
+        if quote_data:
+            app_logger.info(
+                f"Level 1 {symbol}: ${quote_data['current_price']} "
+                f"Vol={quote_data['volume']}M DolVol=${quote_data['dollar_volume']}M"
+            )
+            return quote_data
 
-        # Get the shared DAS connection
-        connection = get_das_connection()
-        if connection is None:
-            app_logger.error(f"❌ No DAS connection available for {symbol}")
-            return None
-        
-        # Subscribe to Level 1 data for the symbol
-        subscribe_script = f"SB {symbol.upper()} Lv1\r\n"
-        result = connection.SendScript(bytearray(subscribe_script, encoding="ascii"))
-        
-        if result and result.strip():
-            # Parse the Level 1 response
-            quote_data = _parse_das_level1_response(result, symbol.upper())
-            if quote_data:
-                app_logger.info(f"✅ DAS Level 1 data for {symbol}: Price=${quote_data['current_price']}, Volume={quote_data['volume']}M, Dollar Vol=${quote_data['dollar_volume']}M")
-                return quote_data
-        
-        app_logger.warning(f"No DAS Level 1 data available for {symbol}")
-        return None
-        
-    except Exception as e:
-        app_logger.error(f"Error in get_real_stock_data for {symbol}: {e}")
-        # If there's a connection error, try to reset the connection
-        if "already connected" in str(e) or "10056" in str(e):
-            app_logger.warning("🔄 Resetting DAS connection due to connection error")
-            close_das_connection()
-        return None
+    app_logger.warning(f"No Level 1 data available for {symbol}")
+    return None
 
 def _parse_das_level1_response(response: str, symbol: str):
     """Parse DAS Level 1 response to extract volume, price, and dollar volume"""
@@ -360,24 +440,41 @@ def _parse_das_level1_response(response: str, symbol: str):
         return None
 
 def check_entry_conditions(symbol_data, entry_params):
-    """Check if entry conditions are met for a symbol"""
+    """Check if entry conditions are met for a symbol.
+    Swing trades have no volume/time conditions — they enter immediately.
+    """
+    current_time_str = datetime.now().time().strftime('%H:%M:%S')
+
+    # Swing trades: no volume or time gate — enter at current price right away
+    if entry_params.get('position_type') == 'swing':
+        return {
+            'conditions_met': True,
+            'volume_met': None,
+            'dollar_volume_met': None,
+            'time_met': None,
+            'current_volume': symbol_data.get('volume'),
+            'current_dollar_volume': symbol_data.get('dollar_volume'),
+            'current_time': current_time_str,
+            'entry_time': None,
+        }
+
     try:
         current_volume = symbol_data['volume']
         current_dollar_volume = symbol_data['dollar_volume']
         current_time = datetime.now().time()
-        
+
         # Parse entry time (assuming format like "10:00")
         entry_time_str = entry_params['entry_time']
         entry_hour, entry_minute = map(int, entry_time_str.split(':'))
         entry_time = time_class(entry_hour, entry_minute)
-        
+
         # Check conditions
         volume_met = current_volume >= float(entry_params['total_volume'])
         dollar_volume_met = current_dollar_volume >= float(entry_params['dollar_volume'])
         time_met = current_time >= entry_time
-        
+
         conditions_met = volume_met and dollar_volume_met and time_met
-        
+
         return {
             'conditions_met': conditions_met,
             'volume_met': volume_met,
@@ -399,56 +496,31 @@ def check_entry_conditions(symbol_data, entry_params):
         }
 
 def place_das_order(symbol, order_side, route, quantity, order_type, limit_price=None):
-    """Place an order in DAS using CMDAPI"""
+    """Place an order via DAS using _send_das_script (trading_bot socket → _das_direct)."""
     if not DAS_ENABLED:
         return False, None, "DAS integration is disabled"
 
-    try:
-        # Import CMDAPI classes
-        from cmdapi.CMDAPI_PYTHON import cmdAPI
-        import uuid
-        
-        # Get the shared DAS connection
-        connection = get_das_connection()
-        if connection is None:
-            add_entry_bot_log('error', f"❌ No DAS connection available for order placement")
-            return False, None, "No DAS connection available"
-        
-        # Generate unique order ID
-        unID = int(uuid.uuid4())
-        
-        # Build the NEWORDER command based on order type
-        if order_type == 'MKT':
-            # Market order: NEWORDER token b/s symbol route share MKT TIF=DAY
-            script = f"NEWORDER {unID} {order_side} {symbol.upper()} {route} {quantity} MKT TIF=DAY"
-        elif order_type == 'LIMIT':
-            # Limit order: NEWORDER token b/s symbol route share price TIF=DAY
-            script = f"NEWORDER {unID} {order_side} {symbol.upper()} {route} {quantity} {limit_price} TIF=DAY"
-        else:
-            raise ValueError(f"Unsupported order type: {order_type}")
-        
-        add_entry_bot_log('info', f"📡 Sending DAS order: {script}")
-        
-        # Send order to DAS
-        result = connection.SendScript(bytearray(script + "\r\n", encoding="ascii"))
-        
-        add_entry_bot_log('info', f"📋 DAS order result: {result}")
-        
-        # Check if order was successful
-        if "SUCCESS" in result.upper() or "ACCEPTED" in result.upper():
-            add_entry_bot_log('info', f"✅ DAS order placed successfully for {symbol}")
-            return True, unID, result
-        else:
-            add_entry_bot_log('error', f"❌ DAS order failed for {symbol}: {result}")
-            return False, None, result
-            
-    except Exception as e:
-        add_entry_bot_log('error', f"❌ Error placing DAS order for {symbol}: {e}")
-        # If there's a connection error, try to reset the connection
-        if "already connected" in str(e) or "10056" in str(e):
-            add_entry_bot_log('warning', "🔄 Resetting DAS connection due to connection error")
-            close_das_connection()
-        return False, None, str(e)
+    import uuid
+    unID = int(uuid.uuid4()) % (2 ** 31)
+
+    if order_type == 'MKT':
+        script = f"NEWORDER {unID} {order_side} {symbol.upper()} {route} {quantity} MKT TIF=DAY\r\n"
+    elif order_type == 'LIMIT':
+        script = f"NEWORDER {unID} {order_side} {symbol.upper()} {route} {quantity} {limit_price} TIF=DAY\r\n"
+    else:
+        return False, None, f"Unsupported order type: {order_type}"
+
+    add_entry_bot_log('info', f"Sending DAS order: {script.strip()}")
+
+    result = _send_das_script(script)
+    add_entry_bot_log('info', f"DAS order result: {result.strip() if result else '(no response)'}")
+
+    if result and ("SUCCESS" in result.upper() or "ACCEPTED" in result.upper()):
+        return True, unID, result
+
+    add_entry_bot_log('error', f"Order rejected or no response: {result.strip() if result else '(no response)'}")
+    return False, None, result or "No response from DAS"
+
 
 def enter_position(symbol, entry_price, entry_params):
     """Enter a position for a symbol at the given price using DAS"""
@@ -2415,11 +2487,13 @@ def start_bot():
     """Start the trading bot"""
     try:
         if not BOT_AVAILABLE:
+            app_logger.warning("start_bot called but BOT_AVAILABLE=False (DAS_ENABLED may be False or bot import failed)")
             return jsonify({
                 'success': False,
                 'error': 'Bot not available'
             }), 503
-        
+
+        app_logger.info("start_bot: calling trading_bot.start()...")
         success = trading_bot.start()
         if success:
             return jsonify({
@@ -2560,22 +2634,9 @@ def get_bot_positions():
                 'error': 'Bot not available'
             }), 503
         
-        # Get active positions from bot
-        active_positions = trading_bot.active_positions
-        
-        # Convert positions to serializable format
-        positions_data = []
-        for symbol, position in active_positions.items():
-            positions_data.append({
-                'symbol': position.symbol,
-                'type': position.type,
-                'size': position.size,
-                'entry_price': position.entry_price,
-                'profit_target': position.profit_target,
-                'stop_loss': position.stop_loss,
-                'entry_time': position.entry_time,
-                'position_id': position.position_id
-            })
+        # Get active positions snapshot (thread-safe copy via get_status)
+        status = trading_bot.get_status()
+        positions_data = status.get('active_positions', [])
         
         return jsonify({
             'success': True,

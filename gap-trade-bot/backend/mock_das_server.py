@@ -4,24 +4,27 @@ Mock DAS Trader server for local testing without a real DAS subscription.
 
 Listens on 127.0.0.1:9800 and responds to every DAS command the bot sends.
 Simulates slow price drift so exit conditions can be triggered.
+
 Run this BEFORE starting the Flask app and bot.
 
 Usage:
-    python mock_das_server.py                    # normal mode
-    python mock_das_server.py --scenario eod     # day positions exit at 15:45
-    python mock_das_server.py --scenario swing   # only swing positions (never EOD)
-    python mock_das_server.py --scenario mixed   # one day + one swing position
-    python mock_das_server.py --drift target     # prices drift toward profit targets
-    python mock_das_server.py --drift stop       # prices drift toward stop losses
+    python mock_das_server.py                        # mixed scenario, neutral drift
+    python mock_das_server.py --scenario entry       # empty positions; entry bot creates them
+    python mock_das_server.py --scenario mixed       # 1 day + 1 swing (pre-existing)
+    python mock_das_server.py --scenario day         # 2 day positions
+    python mock_das_server.py --scenario swing       # 2 swing positions
+    python mock_das_server.py --scenario eod         # 1 SPY day position
+    python mock_das_server.py --drift target         # prices drift toward profit targets
+    python mock_das_server.py --drift stop           # prices drift toward stop losses
+    python mock_das_server.py --ramp 15              # volume ramps up after 15 s (default)
 """
 
 import socket
 import threading
 import time
 import sys
-import re
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 HOST = '127.0.0.1'
@@ -29,40 +32,59 @@ PORT = 9800
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TEST SCENARIOS
-# Each position: (symbol, type_num, qty, avg_cost, realized, create_time, position_type)
+# Each position: (symbol, type_num, qty, avg_cost, realized, create_time, label)
 # type_num: 2 = LONG, 3 = SHORT
-# position_type: only used for logging/notes; DAS itself doesn't know about it
 # ──────────────────────────────────────────────────────────────────────────────
 
 SCENARIOS = {
+    # No pre-existing positions.  Entry bot will open them via NEWORDER.
+    'entry': [],
     'mixed': [
-        # Symbol     type  qty   avg_cost  realized  create_time   label
-        ('NVDA',      2,   100,  480.00,   0.00,     '09:31:00',  'day'),
-        ('AAPL',      2,    50,  175.00,   0.00,     '09:35:00',  'swing'),
+        ('NVDA',  2,  100,  480.00,  0.00,  '09:31:00',  'day'),
+        ('AAPL',  2,   50,  175.00,  0.00,  '09:35:00',  'swing'),
     ],
     'day': [
-        ('TSLA',      2,    75,  250.00,   0.00,     '09:30:00',  'day'),
-        ('AMD',       3,   200,   95.00,   0.00,     '10:00:00',  'day'),
+        ('TSLA',  2,   75,  250.00,  0.00,  '09:30:00',  'day'),
+        ('AMD',   3,  200,   95.00,  0.00,  '10:00:00',  'day'),
     ],
     'swing': [
-        ('MSFT',      2,    30,  410.00,   0.00,     '09:30:00',  'swing'),
-        ('META',      2,    20,  520.00,   0.00,     '09:30:00',  'swing'),
+        ('MSFT',  2,   30,  410.00,  0.00,  '09:30:00',  'swing'),
+        ('META',  2,   20,  520.00,  0.00,  '09:30:00',  'swing'),
     ],
     'eod': [
-        ('SPY',       2,   100,  510.00,   0.00,     '09:30:00',  'day'),
+        ('SPY',   2,  100,  510.00,  0.00,  '09:30:00',  'day'),
     ],
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# LIVE PRICE STATE  (mutated by drift thread)
-# ──────────────────────────────────────────────────────────────────────────────
-# Prices start at avg_cost; drift thread moves them ± slowly
+# Default prices for symbols not in the scenario (used by entry scenario so
+# the entry bot can get Level 1 data before a position exists).
+SYMBOL_DEFAULTS = {
+    'NVDA': 480.00,
+    'AAPL': 175.00,
+    'MSFT': 415.00,
+    'META': 520.00,
+    'TSLA': 250.00,
+    'AMD':   95.00,
+    'SPY':  510.00,
+    'AMZN': 185.00,
+    'GOOG': 170.00,
+    'NFLX': 620.00,
+}
 
-prices = {}   # symbol -> {'bid': float, 'ask': float, 'last': float}
-positions = []  # list of position dicts (mutable - removed when order closed)
+# ──────────────────────────────────────────────────────────────────────────────
+# LIVE STATE  (mutated by drift thread / NEWORDER handler)
+# ──────────────────────────────────────────────────────────────────────────────
+
+prices = {}          # symbol -> {'bid', 'ask', 'last'}
+positions = []       # list of position dicts (removed when closed)
 closed_symbols = set()
 
-drift_direction = 'neutral'  # 'target' | 'stop' | 'neutral'
+drift_direction = 'neutral'   # 'target' | 'stop' | 'neutral'
+
+# Volume ramp: starts low, jumps to high after `volume_ramp_seconds` seconds.
+server_start_time = None
+volume_ramp_seconds = 15   # overridden by --ramp flag
+_volume_ramped = False      # internal flag so we only print the banner once
 
 ET = pytz.timezone('US/Eastern')
 
@@ -71,13 +93,30 @@ ET = pytz.timezone('US/Eastern')
 # HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _current_volume_shares(symbol: str) -> int:
+    """Return the simulated share volume for the symbol.
+    Low (100 K) until the ramp window passes; then high (3 M).
+    """
+    global _volume_ramped
+    elapsed = time.time() - server_start_time
+    if elapsed >= volume_ramp_seconds:
+        if not _volume_ramped:
+            _volume_ramped = True
+            print(
+                f'\n[SERVER] Volume ramped up after {volume_ramp_seconds}s '
+                '— day-trade entry conditions should trigger now\n'
+            )
+        return 3_000_000
+    return 100_000
+
+
 def build_positions_response():
     lines = []
     for p in positions:
         if p['symbol'] in closed_symbols:
             continue
-        # %POS symbol type qty avgcost initqty initprice realized createtime unrealized
-        unrealized = (prices.get(p['symbol'], {}).get('bid', p['avg_cost']) - p['avg_cost']) * p['qty']
+        bid = prices.get(p['symbol'], {}).get('bid', p['avg_cost'])
+        unrealized = (bid - p['avg_cost']) * p['qty']
         line = (
             f"%POS {p['symbol']} {p['type_num']} {p['qty']} {p['avg_cost']:.2f} "
             f"{p['qty']} {p['avg_cost']:.2f} {p['realized']:.2f} "
@@ -87,17 +126,29 @@ def build_positions_response():
     return '\r\n'.join(lines) + '\r\n' if lines else '\r\n'
 
 
-def build_level1_response(symbol):
+def build_level1_response(symbol: str) -> str:
     sym = symbol.upper()
     p = prices.get(sym)
     if not p:
-        return f'$Quote {sym} A:0 Asz:0 B:0 Bsz:0 L:0\r\n'
+        # Auto-create a price for any known symbol (supports entry scenario)
+        default = SYMBOL_DEFAULTS.get(sym)
+        if default:
+            prices[sym] = {
+                'bid':  round(default - 0.05, 2),
+                'ask':  round(default + 0.05, 2),
+                'last': default,
+            }
+            p = prices[sym]
+        else:
+            return f'$Quote {sym} A:0 Asz:0 B:0 Bsz:0 L:0 V:0\r\n'
+
+    volume = _current_volume_shares(sym)
     return (
         f'$Quote {sym} '
         f'A:{p["ask"]:.2f} Asz:100 '
         f'B:{p["bid"]:.2f} Bsz:200 '
         f'L:{p["last"]:.2f} '
-        f'V:1500000 Vt:2500000\r\n'
+        f'V:{volume} Vt:{int(volume * 1.5)}\r\n'
     )
 
 
@@ -118,7 +169,8 @@ def handle_command(cmd: str) -> str:
 
     if upper.startswith('GET POSITIONS'):
         resp = build_positions_response()
-        print(f'  [DAS→bot] (positions response, {len(positions)} positions)')
+        open_count = sum(1 for p in positions if p['symbol'] not in closed_symbols)
+        print(f'  [DAS→bot] (positions response, {open_count} open)')
         return resp
 
     if upper.startswith('RETURNFULLLV1'):
@@ -134,15 +186,50 @@ def handle_command(cmd: str) -> str:
         return 'OK\r\n'
 
     if upper.startswith('NEWORDER'):
-        # NEWORDER {id} [S|B] {symbol} SMAT {qty} MKT
+        # NEWORDER {id} {B|S} {symbol} {route} {qty} {MKT|price} ...
         parts = cmd.split()
-        if len(parts) >= 6:
+        if len(parts) >= 4:
             order_id = parts[1]
-            side = parts[2].upper()
-            symbol = parts[3].upper()
-            qty = parts[5] if len(parts) > 5 else '?'
-            print(f'  [DAS→bot] ORDER ACCEPTED: {side} {qty} {symbol} (id={order_id})')
-            closed_symbols.add(symbol)
+            side     = parts[2].upper()
+            symbol   = parts[3].upper()
+            qty      = int(parts[5]) if len(parts) > 5 else 100
+
+            is_open = any(
+                p['symbol'] == symbol and symbol not in closed_symbols
+                for p in positions
+            )
+
+            if side == 'B' and not is_open:
+                # Opening a new long position (entry bot buy)
+                last = prices.get(symbol, {}).get('last', SYMBOL_DEFAULTS.get(symbol, 100.0))
+                # Ensure price state exists
+                if symbol not in prices:
+                    prices[symbol] = {
+                        'bid':  round(last - 0.05, 2),
+                        'ask':  round(last + 0.05, 2),
+                        'last': last,
+                    }
+                positions.append({
+                    'symbol':      symbol,
+                    'type_num':    2,
+                    'qty':         qty,
+                    'avg_cost':    last,
+                    'realized':    0.0,
+                    'create_time': datetime.now(ET).strftime('%H:%M:%S'),
+                    'label':       'entry-bot',
+                })
+                print(f'  [DAS→bot] POSITION OPENED: LONG {qty} {symbol} @ ${last:.2f} (id={order_id})')
+            else:
+                # Closing an existing position (exit bot sell / short sell)
+                closed_symbols.add(symbol)
+                pnl = 0.0
+                for p in positions:
+                    if p['symbol'] == symbol:
+                        bid = prices.get(symbol, {}).get('bid', p['avg_cost'])
+                        pnl = (bid - p['avg_cost']) * p['qty'] if p['type_num'] == 2 else (p['avg_cost'] - bid) * p['qty']
+                        break
+                print(f'  [DAS→bot] POSITION CLOSED: {side} {qty} {symbol}  PnL≈${pnl:.2f} (id={order_id})')
+
             return f'Order Submitted SUCCESS orderId={order_id}\r\n'
         return 'Order Submitted SUCCESS\r\n'
 
@@ -153,12 +240,11 @@ def handle_command(cmd: str) -> str:
         parts = cmd.split()
         symbol = parts[2].upper() if len(parts) >= 3 else ''
         p = prices.get(symbol, {})
-        bid = p.get('bid', 0)
-        ask = p.get('ask', 0)
+        bid  = p.get('bid',  0)
+        ask  = p.get('ask',  0)
         last = p.get('last', 0)
         return f'%QUOTE {symbol} {bid:.2f} {ask:.2f} {last:.2f}\r\n'
 
-    # Unknown command — return empty OK
     return 'OK\r\n'
 
 
@@ -168,32 +254,32 @@ def handle_command(cmd: str) -> str:
 
 def drift_thread(scenario_positions):
     """
-    Slowly moves prices every 5 seconds.
-    'target'  → toward profit target   (+5% for LONG, -5% for SHORT)
-    'stop'    → toward stop loss       (-2.5% for LONG, +2.5% for SHORT)
-    'neutral' → small random oscillation
+    Moves prices every 5 seconds.
+    'target'  → toward profit target  (+0.3%/tick for LONG)
+    'stop'    → toward stop loss      (-0.2%/tick for LONG)
+    'neutral' → ±0.1% random oscillation
     """
     import random
     tick = 0
     while True:
         time.sleep(5)
         tick += 1
-        for p in scenario_positions:
-            sym = p['symbol']
+        for sym, p_info in list(prices.items()):
             if sym in closed_symbols:
                 continue
-            cur = prices[sym]
-            entry = p['avg_cost']
-            is_long = p['type_num'] == 2
+            # Determine if this is a long or short position
+            is_long = True
+            for pos in positions:
+                if pos['symbol'] == sym:
+                    is_long = pos['type_num'] == 2
+                    break
 
+            cur = p_info
             if drift_direction == 'target':
-                # Slowly move 0.3% per tick toward target
                 factor = 1.003 if is_long else 0.997
             elif drift_direction == 'stop':
-                # Slowly move 0.2% per tick toward stop
                 factor = 0.998 if is_long else 1.002
             else:
-                # Small oscillation ±0.1%
                 factor = 1 + random.uniform(-0.001, 0.001)
 
             new_last = round(cur['last'] * factor, 2)
@@ -201,9 +287,15 @@ def drift_thread(scenario_positions):
             new_ask  = round(new_last + 0.05, 2)
             prices[sym] = {'bid': new_bid, 'ask': new_ask, 'last': new_last}
 
+            # Find entry price for pct display
+            entry = new_last
+            for pos in positions:
+                if pos['symbol'] == sym:
+                    entry = pos['avg_cost']
+                    break
             pct = (new_last - entry) / entry * 100
-            direction_arrow = '▲' if new_last > cur['last'] else '▼'
-            print(f'  [PRICE] {sym}: ${new_last:.2f} ({pct:+.2f}% vs entry) {direction_arrow}')
+            arrow = '▲' if new_last > cur['last'] else '▼'
+            print(f'  [PRICE] {sym}: ${new_last:.2f} ({pct:+.2f}% vs entry) {arrow}')
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -245,8 +337,9 @@ class ClientHandler(threading.Thread):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def main():
+    global drift_direction, volume_ramp_seconds, server_start_time, _volume_ramped
+
     scenario_name = 'mixed'
-    global drift_direction
 
     args = sys.argv[1:]
     i = 0
@@ -257,6 +350,9 @@ def main():
         elif args[i] == '--drift' and i + 1 < len(args):
             drift_direction = args[i + 1]
             i += 2
+        elif args[i] == '--ramp' and i + 1 < len(args):
+            volume_ramp_seconds = int(args[i + 1])
+            i += 2
         else:
             i += 1
 
@@ -266,16 +362,15 @@ def main():
 
     scenario_positions = SCENARIOS[scenario_name]
 
-    # Build mutable positions list and initial prices
     for sym, type_num, qty, avg_cost, realized, create_time, label in scenario_positions:
         positions.append({
-            'symbol': sym,
-            'type_num': type_num,
-            'qty': qty,
-            'avg_cost': avg_cost,
-            'realized': realized,
+            'symbol':      sym,
+            'type_num':    type_num,
+            'qty':         qty,
+            'avg_cost':    avg_cost,
+            'realized':    realized,
             'create_time': create_time,
-            'label': label,
+            'label':       label,
         })
         prices[sym] = {
             'bid':  round(avg_cost - 0.05, 2),
@@ -283,28 +378,36 @@ def main():
             'last': avg_cost,
         }
 
-    print('=' * 60)
+    server_start_time = time.time()
+
+    print('=' * 62)
     print('  MOCK DAS SERVER')
-    print('=' * 60)
+    print('=' * 62)
     print(f'  Scenario  : {scenario_name}')
     print(f'  Drift     : {drift_direction}')
     print(f'  Listening : {HOST}:{PORT}')
+    print(f'  Vol ramp  : {volume_ramp_seconds}s  (low=100K → high=3M shares)')
     print()
-    print('  Positions:')
-    for p in positions:
-        side = 'LONG' if p['type_num'] == 2 else 'SHORT'
-        print(f'    {p["symbol"]:6s} {side:5s} {p["qty"]:4d} @ ${p["avg_cost"]:.2f}  [{p["label"]}]')
+    if positions:
+        print('  Pre-seeded positions:')
+        for p in positions:
+            side = 'LONG' if p['type_num'] == 2 else 'SHORT'
+            print(f'    {p["symbol"]:6s} {side:5s} {p["qty"]:4d} @ ${p["avg_cost"]:.2f}  [{p["label"]}]')
+    else:
+        print('  No pre-seeded positions (entry bot will open them via NEWORDER)')
     print()
-    print('  Price drift commands (type in terminal):')
-    print('    t → drift toward targets')
-    print('    s → drift toward stops')
+    print('  Keyboard commands:')
+    print('    t → drift toward profit targets')
+    print('    s → drift toward stop losses')
     print('    n → neutral oscillation')
+    print('    v → manually trigger volume ramp now')
+    print('    p → print current prices')
+    print('    c → show closed positions')
     print('    q → quit server')
-    print('=' * 60)
+    print('=' * 62)
 
     # Start price drift thread
-    t = threading.Thread(target=drift_thread, args=(positions,), daemon=True)
-    t.start()
+    threading.Thread(target=drift_thread, args=(positions,), daemon=True).start()
 
     # Start TCP server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -322,11 +425,15 @@ def main():
                 ClientHandler(conn, addr).start()
             except socket.timeout:
                 continue
-            except Exception:
-                break
+            except OSError as e:
+                # Server socket was closed — exit the loop
+                if server.fileno() == -1:
+                    break
+                print(f'[SERVER] Accept error (continuing): {e}')
+            except Exception as e:
+                print(f'[SERVER] Accept error (continuing): {e}')
 
-    accept_thread = threading.Thread(target=accept_loop, daemon=True)
-    accept_thread.start()
+    threading.Thread(target=accept_loop, daemon=True).start()
 
     # Interactive keyboard control
     try:
@@ -345,15 +452,22 @@ def main():
             elif key == 'n':
                 drift_direction = 'neutral'
                 print('[SERVER] Drift → neutral')
-            elif key == 'q':
-                break
+            elif key == 'v':
+                # Manually trigger volume ramp immediately
+                server_start_time = time.time() - volume_ramp_seconds - 1
+                _volume_ramped = False  # let the banner print on the next SB call
+                print('[SERVER] Volume ramped to 3 M shares — next SB response will meet day-trade thresholds')
             elif key == 'p':
                 print('\n[SERVER] Current prices:')
                 for sym, p in prices.items():
-                    if sym not in closed_symbols:
-                        print(f'  {sym}: bid=${p["bid"]:.2f} ask=${p["ask"]:.2f} last=${p["last"]:.2f}')
+                    status = ' [CLOSED]' if sym in closed_symbols else ''
+                    print(f'  {sym}: bid=${p["bid"]:.2f} ask=${p["ask"]:.2f} last=${p["last"]:.2f}{status}')
             elif key == 'c':
                 print(f'[SERVER] Closed positions: {closed_symbols or "(none)"}')
+                open_syms = [p['symbol'] for p in positions if p['symbol'] not in closed_symbols]
+                print(f'[SERVER] Open positions:   {open_syms or "(none)"}')
+            elif key == 'q':
+                break
     except KeyboardInterrupt:
         pass
     finally:

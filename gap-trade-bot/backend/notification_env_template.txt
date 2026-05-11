@@ -1,6 +1,10 @@
 # Notification Service Environment Variables
 # Add these to your .env file to enable SMS and Email notifications
 
+# Sentry error monitoring
+# Get your DSN from https://sentry.io → Settings → Projects → Client Keys (DSN)
+SENTRY_DSN=https://your-key@oXXXXXX.ingest.sentry.io/XXXXXXX
+
 # Email Configuration (Gmail recommended)
 EMAIL_USERNAME=your_email@gmail.com
 EMAIL_PASSWORD=your_app_password
