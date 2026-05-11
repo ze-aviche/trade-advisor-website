@@ -451,6 +451,69 @@ def _fetch_from_yfinance_extra(min_price):
     return stocks
 
 
+def _fetch_afterhours_from_yfinance(min_price):
+    """
+    After-hours specific scanner.  yfinance's standard screeners (day_gainers,
+    small_cap_gainers) only expose regularMarketPrice, so they miss stocks whose
+    only catalyst arrived after 4 PM ET.  This function reads postMarketPrice and
+    postMarketChangePercent from the most_actives screener to surface them.
+
+    Gap% here is AH price vs today's regular close (not yesterday's close),
+    because that is the meaningful move for an AH catalyst.
+    """
+    import yfinance as yf
+
+    AH_MIN_MOVE_PCT = 2.0  # ignore trivial AH ticks
+    seen   = set()
+    stocks = []
+
+    for screener_name in ('most_actives', 'day_gainers', 'small_cap_gainers'):
+        try:
+            result = yf.screen(screener_name)
+            quotes = result.get('quotes', [])
+            logger.info(f"yfinance AH scan ({screener_name}): {len(quotes)} stocks to check")
+            for q in quotes:
+                ticker = q.get('symbol')
+                if not ticker or ticker in seen:
+                    continue
+                if q.get('quoteType', '') != 'EQUITY':
+                    continue
+
+                post_price    = q.get('postMarketPrice')
+                regular_close = q.get('regularMarketPrice')  # today's close as AH baseline
+                if not post_price or not regular_close or regular_close == 0:
+                    continue
+                if post_price < min_price:
+                    continue
+
+                ah_gap_pct = ((post_price - regular_close) / regular_close) * 100
+                if ah_gap_pct < AH_MIN_MOVE_PCT:
+                    continue
+
+                seen.add(ticker)
+                stocks.append({
+                    'ticker':         ticker,
+                    'company_name':   q.get('longName') or q.get('shortName') or ticker,
+                    'price':          round(post_price, 2),
+                    'previous_close': round(regular_close, 2),
+                    'change':         round(post_price - regular_close, 2),
+                    'change_percent': round(ah_gap_pct, 2),
+                    'gap_percent':    round(ah_gap_pct, 2),
+                    'volume':         int(q.get('regularMarketVolume') or 0),
+                    'market_cap':     int(q.get('marketCap') or 0),
+                    'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
+                    'sector':         'Unknown',
+                    'list_date':      None,
+                    'data_source':    'yfinance_ah',
+                })
+        except Exception as e:
+            logger.warning(f"yfinance AH {screener_name} unavailable: {e}")
+
+    stocks.sort(key=lambda x: x['gap_percent'], reverse=True)
+    logger.info(f"yfinance AH scan — {len(stocks)} after-hours movers found")
+    return stocks
+
+
 def get_gap_up_stocks_for_frontend():
     """
     Fetch gap-up stocks from Polygon and yfinance, merge them, and return a
@@ -505,6 +568,19 @@ def get_gap_up_stocks_for_frontend():
             merged.append(s)
             seen.add(s['ticker'])
 
+    # After-hours specific scan: yfinance standard screeners use regularMarketPrice only,
+    # so AH-only catalysts (AMBO/XOS-type) are invisible without this dedicated path.
+    yf_ah = []
+    if check_market_timing() == 'after_hours':
+        try:
+            yf_ah = _fetch_afterhours_from_yfinance(GAP_UP_MIN_PRICE)
+        except Exception as e:
+            logger.warning(f"yfinance AH scan unavailable: {e}")
+        for s in yf_ah:
+            if s['ticker'] not in seen:
+                merged.append(s)
+                seen.add(s['ticker'])
+
     merged.sort(key=lambda x: x['gap_percent'], reverse=True)
     _tag_with_session(merged)
 
@@ -523,7 +599,8 @@ def get_gap_up_stocks_for_frontend():
     yf_day_only  = sum(1 for s in yf_stocks if s['ticker'] not in {p['ticker'] for p in polygon_stocks})
     logger.info(
         f"Merged result: {len(merged)} gap-up stocks "
-        f"({polygon_only} polygon, {yf_day_only} yfinance day_gainers, {len(yf_extra)} small-cap extra)"
+        f"({polygon_only} polygon, {yf_day_only} yfinance day_gainers, "
+        f"{len(yf_extra)} small-cap extra, {len(yf_ah)} AH)"
     )
 
     gap_up_cache.set(cache_key, merged, "real_time")
