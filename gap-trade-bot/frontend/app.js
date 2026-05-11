@@ -5714,14 +5714,9 @@ const app = createApp({
         async refreshActivePositions() {
             try {
                 this.loading.refreshPositions = true;
-                const response = await axios.get('/api/entry-bot/active-positions');
-                
-                if (response.data.success) {
-                    this.activePositions = response.data.data;
-                    this.addDebugLog('info', `Active positions refreshed - ${this.activePositions.length} positions active`);
-                } else {
-                    this.addDebugLog('error', `Failed to refresh active positions: ${response.data.error}`);
-                }
+                await this.loadBotStatus();
+                const count = (this.botStatus.active_positions || []).length;
+                this.addDebugLog('info', `Active positions refreshed - ${count} positions active`);
             } catch (error) {
                 console.error('Error refreshing active positions:', error);
                 this.addDebugLog('error', `Error refreshing active positions: ${error.message}`);
@@ -5880,15 +5875,9 @@ const app = createApp({
         },
         
         async fetchEntryBotPositions() {
-            try {
-                const response = await axios.get('/api/entry-bot/active-positions');
-
-                if (response.data.success) {
-                    this.activePositions = response.data.data;
-                }
-            } catch (error) {
-                console.error('Error updating active positions:', error);
-            }
+            // Active positions are the same as the exit bot's — read from DAS via botStatus.
+            // Just refresh bot status so botStatus.active_positions stays current.
+            await this.loadBotStatus();
         },
         
         async updateDebugLogs() {
