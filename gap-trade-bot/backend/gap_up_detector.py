@@ -5,6 +5,7 @@ Based on the trading-advisor project implementation
 """
 
 import os
+import json
 import datetime
 import sqlite3
 from datetime import datetime as dt, timedelta
@@ -25,7 +26,7 @@ GAP_TRACKER_AVAILABLE = False
 
 # Session tracker: remembers which market session each ticker was FIRST detected in today.
 # Maps ticker -> {'session': 'premarket'|'intraday'|'afterhours', 'date': 'YYYY-MM-DD'}
-# Resets automatically on a new trading day.
+# Persisted to disk so server restarts don't reset session tags mid-day.
 _session_tracker: dict = {}
 
 _SESSION_MAP = {
@@ -35,29 +36,69 @@ _SESSION_MAP = {
     'closed':      'intraday',   # outside hours → bucket into intraday as fallback
 }
 
+_SESSION_TRACKER_FILE = os.path.join(os.path.dirname(__file__), 'session_tracker.json')
+
+
+def _load_session_tracker():
+    """Load today's session tags from disk so they survive server restarts."""
+    global _session_tracker
+    try:
+        if os.path.exists(_SESSION_TRACKER_FILE):
+            with open(_SESSION_TRACKER_FILE, 'r') as f:
+                data = json.load(f)
+            et_tz = pytz.timezone('US/Eastern')
+            today = dt.now(et_tz).date().isoformat()
+            _session_tracker = {t: v for t, v in data.items() if v.get('date') == today}
+            if _session_tracker:
+                logger.info(f"Restored {len(_session_tracker)} session tracker entries from disk")
+    except Exception as e:
+        logger.warning(f"Could not load session tracker from disk: {e}")
+
+
+def _save_session_tracker():
+    """Flush session tracker to disk after new entries are added."""
+    try:
+        with open(_SESSION_TRACKER_FILE, 'w') as f:
+            json.dump(_session_tracker, f)
+    except Exception as e:
+        logger.warning(f"Could not save session tracker to disk: {e}")
+
+
+# Load persisted tags at module import time
+_load_session_tracker()
+
+
 def _tag_with_session(stocks: list) -> list:
     """
     Stamp each stock dict with a 'session' key reflecting when it was
     FIRST detected as a gapper today. Subsequent polls keep the original tag.
+    Tags are persisted to disk so a server restart mid-day doesn't re-classify
+    pre-market gappers as intraday.
     """
     et_tz   = pytz.timezone('US/Eastern')
     today   = dt.now(et_tz).date().isoformat()
     session = _SESSION_MAP.get(check_market_timing(), 'intraday')
 
+    new_entries = False
     for stock in stocks:
         ticker = stock.get('ticker')
         if not ticker:
             continue
         entry = _session_tracker.get(ticker)
         if entry and entry['date'] == today:
-            stock['session'] = entry['session']   # keep original
+            stock['session'] = entry['session']   # keep original session
         else:
             _session_tracker[ticker] = {'session': session, 'date': today}
             stock['session'] = session
+            new_entries = True
 
     # Purge stale entries from previous trading days
-    for t in [t for t, v in _session_tracker.items() if v['date'] != today]:
+    stale = [t for t, v in _session_tracker.items() if v['date'] != today]
+    for t in stale:
         del _session_tracker[t]
+
+    if new_entries or stale:
+        _save_session_tracker()
 
     return stocks
 
@@ -222,14 +263,27 @@ def _fetch_from_polygon(min_price):
             continue
 
         try:
-            prev_day = getattr(item, 'prev_day', None)
-            day      = getattr(item, 'day', None)
+            prev_day   = getattr(item, 'prev_day', None)
+            day        = getattr(item, 'day', None)
+            last_trade = getattr(item, 'last_trade', None)  # most recent trade (pre-market aware)
 
             previous_close = getattr(prev_day, 'close', None) if prev_day else None
-            current_price  = getattr(day, 'close', None)  if day  else None
-            volume         = getattr(day, 'volume', 0)     if day  else 0
 
-            if previous_close is None or current_price is None or previous_close == 0:
+            # Prefer last_trade price: it reflects pre-market activity during pre-market hours,
+            # whereas day.close may still be yesterday's close before any trades execute today.
+            last_trade_price = (getattr(last_trade, 'price', None)
+                                or getattr(last_trade, 'p', None)) if last_trade else None
+            current_price    = last_trade_price or (getattr(day, 'close', None) if day else None)
+            volume           = getattr(day, 'volume', 0) if day else 0
+
+            # todaysChangePerc is computed server-side by Polygon using the most recent price
+            # vs prevDay.close — more accurate than recomputing from day.close.
+            todays_change_perc = getattr(item, 'todays_change_perc', None)
+
+            if previous_close is None or previous_close == 0:
+                skipped_no_data += 1
+                continue
+            if current_price is None or current_price == 0:
                 skipped_no_data += 1
                 continue
 
@@ -264,7 +318,11 @@ def _fetch_from_polygon(min_price):
                     continue
                 logger.warning(f"Ticker details not found for {ticker}; including based on suffix check")
 
-            gap_percent = ((current_price - previous_close) / previous_close) * 100
+            # Use server-side percent when available; fall back to local computation
+            if todays_change_perc is not None:
+                gap_percent = float(todays_change_perc)
+            else:
+                gap_percent = ((current_price - previous_close) / previous_close) * 100
 
             gap_up_stocks.append({
                 'ticker':         ticker,
@@ -348,6 +406,63 @@ def _fetch_from_yfinance(min_price):
     return gap_up_stocks
 
 
+def _fetch_from_yfinance_extra(min_price):
+    """
+    Supplemental small-cap gainer scan using additional yfinance screeners.
+    Catches stocks that don't appear in the top-N of the standard day_gainers
+    snapshot — notably micro/small caps like DRTS, CRCA.
+    Returns data in the same shape as _fetch_from_polygon/_fetch_from_yfinance.
+    """
+    import yfinance as yf
+
+    extra_screeners = ['small_cap_gainers', 'aggressive_small_caps']
+    seen = set()
+    stocks = []
+
+    for screener_name in extra_screeners:
+        try:
+            result = yf.screen(screener_name)
+            quotes = result.get('quotes', [])
+            logger.info(f"yfinance {screener_name} returned {len(quotes)} results")
+            for q in quotes:
+                try:
+                    ticker     = q.get('symbol')
+                    quote_type = q.get('quoteType', '')
+                    if not ticker or ticker in seen or quote_type != 'EQUITY':
+                        continue
+                    current_price = q.get('regularMarketPrice')
+                    prev_close    = q.get('regularMarketPreviousClose')
+                    if current_price is None or prev_close is None or prev_close == 0:
+                        continue
+                    if current_price < min_price:
+                        continue
+                    gap_percent = ((current_price - prev_close) / prev_close) * 100
+                    seen.add(ticker)
+                    stocks.append({
+                        'ticker':         ticker,
+                        'company_name':   q.get('longName') or q.get('shortName') or ticker,
+                        'price':          round(current_price, 2),
+                        'previous_close': round(prev_close, 2),
+                        'change':         round(current_price - prev_close, 2),
+                        'change_percent': round(gap_percent, 2),
+                        'gap_percent':    round(gap_percent, 2),
+                        'volume':         int(q.get('regularMarketVolume') or 0),
+                        'market_cap':     int(q.get('marketCap') or 0),
+                        'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
+                        'sector':         'Unknown',
+                        'list_date':      None,
+                        'data_source':    'yfinance',
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing {screener_name} quote {q.get('symbol')}: {e}")
+        except Exception as e:
+            logger.warning(f"yfinance {screener_name} screener unavailable: {e}")
+
+    stocks.sort(key=lambda x: x['gap_percent'], reverse=True)
+    logger.info(f"yfinance extra screeners — {len(stocks)} unique small-cap gap-ups found")
+    return stocks
+
+
 def get_gap_up_stocks_for_frontend():
     """
     Fetch gap-up stocks from Polygon and yfinance, merge them, and return a
@@ -383,16 +498,34 @@ def get_gap_up_stocks_for_frontend():
             raise polygon_error
         raise RuntimeError("No gap-up data available from any source")
 
-    # Merge: Polygon entries take priority; yfinance fills in any tickers not already present
+    # Merge: Polygon entries take priority; yfinance day_gainers fills in missing tickers
     seen   = {s['ticker'] for s in polygon_stocks}
     merged = list(polygon_stocks)
     for s in yf_stocks:
         if s['ticker'] not in seen:
             merged.append(s)
+            seen.add(s['ticker'])
+
+    # Supplemental small-cap scan: catches micro/small caps not in top-N of either source
+    yf_extra = []
+    try:
+        yf_extra = _fetch_from_yfinance_extra(GAP_UP_MIN_PRICE)
+    except Exception as e:
+        logger.warning(f"yfinance extra screeners unavailable: {e}")
+    for s in yf_extra:
+        if s['ticker'] not in seen:
+            merged.append(s)
+            seen.add(s['ticker'])
 
     merged.sort(key=lambda x: x['gap_percent'], reverse=True)
     _tag_with_session(merged)
-    logger.info(f"Merged result: {len(merged)} gap-up stocks ({len(polygon_stocks)} polygon + {len(yf_stocks) - len(seen & {s['ticker'] for s in yf_stocks})} yfinance-only)")
+    polygon_only = len(polygon_stocks)
+    yf_day_only  = sum(1 for s in yf_stocks if s['ticker'] not in {p['ticker'] for p in polygon_stocks})
+    yf_extra_only = len(yf_extra) - sum(1 for s in yf_extra if s['ticker'] in seen - {s['ticker'] for s in yf_extra})
+    logger.info(
+        f"Merged result: {len(merged)} gap-up stocks "
+        f"({polygon_only} polygon, {yf_day_only} yfinance day_gainers, {len(yf_extra)} small-cap extra)"
+    )
 
     gap_up_cache.set(cache_key, merged, "real_time")
     return merged
