@@ -47,13 +47,16 @@ The shared DAS socket is in `bot/trading_bot.py → Connection`. The entry bot (
 
 `_send_das_script()` in `app.py` routes through the exit bot's connection first (preferred), then falls back to a direct socket (`_das_direct`). Never use the `cmdapi/CMDAPI_PYTHON.py` class for new code — it is not thread-safe.
 
-### Two-bot design
+### Three-bot design
 | Bot | Where | Trigger | Loop interval |
 |-----|-------|---------|---------------|
 | **Entry Bot** | `app.py` (`submit_entry_parameters`, `_tracking_loop`) | User submits symbol + params via UI | 1 s (day), immediate (swing) |
 | **Exit Bot** | `bot/trading_bot.py → TradingBot` | User clicks "Start Bot" in UI | 5 s (day), 60 s (swing) |
+| **BrownBot** | `app.py` (`_brown_bot_scanner_loop`, `_brown_bot_exit_loop`) | User clicks "Start" in BrownBot tab | Scanner: 30 s · Exits: 2 s |
 
 Entry bot state (`tracking_symbols`, `active_positions`, `entry_bot_logs`) is in-memory global dicts in `app.py`. Exit bot state is in `TradingBot` instance attributes. Both persist positions to the SQLite DB via `database.py → db_manager`.
+
+BrownBot state (`_brown_bot_active_positions`, `_brown_bot_stats`, `_brown_bot_logs`) lives in module-level globals in `app.py`. BrownBot positions are **not** in the `positions` table — they live in memory and are written to `trades` on exit only.
 
 ### Position lifecycle
 1. Entry bot checks `check_entry_conditions()` — volume, dollar-volume, time gates (day) or immediate (swing)
@@ -68,9 +71,11 @@ Schema is managed by `init_database()` + `_migrate_schema()` (additive `ALTER TA
 - `users`, `sessions` — auth
 - `positions` — current live positions (upserted on every DAS sync)
 - `daily_positions` — daily snapshots of positions (append-only, one row per symbol per day)
-- `trades` — individual fills from DAS
+- `trades` — individual fills from DAS; BrownBot writes a closing record here on exit
 - `gap_up_snapshots` — daily gap-up scan results
 - `swing_bot_config` — per-user swing exit settings
+- `brown_bot_config` — BrownBot day/swing targets, risk limits, scanner thresholds (one row per user)
+- `brown_watchlist` — manual symbols added by the user for BrownBot to trade
 
 `db_manager` is a module-level singleton imported everywhere.
 
@@ -96,6 +101,65 @@ Vanilla JS + Vue 3 (CDN, no build step) + Tailwind CSS (CDN). All logic is in `f
 
 ### Deployment
 Render.com. The persistent disk mounts at `/data`; set `DATABASE_PATH=/data/trading_advisor.db`. The Dockerfile is in `gap-trade-bot/` (not the repo root). `docker-compose.yml` is for local use only.
+
+### BrownBot
+
+BrownBot is a fully autonomous bot that finds its own candidates, gates entries through a portfolio risk manager, and exits positions without manual intervention. It is gated to the **Yogi** subscription tier and operates independently of the Entry Bot and Exit Bot — never modify those bots when working on BrownBot.
+
+#### Runtime threads
+Two daemon threads are started together on `POST /api/brown-bot/start` and stopped on `POST /api/brown-bot/stop`:
+
+| Thread | Function | Interval |
+|--------|----------|----------|
+| `BrownBotScanner` | `_brown_bot_scanner_loop()` → `_brown_bot_scan_and_enter()` | 30 s |
+| `BrownBotExits` | `_brown_bot_exit_loop()` → `_brown_bot_check_exits()` | 2 s (swing-specific checks every 60 s) |
+
+The running flag `_brown_bot_running` is the only shutdown signal — both loops poll it and exit cleanly.
+
+#### Entry pipeline (`_brown_bot_scan_and_enter`)
+1. Fetch gap-up candidates from `get_gap_up_stocks_for_frontend()`, filter by config thresholds (`min_gap_pct`, `min_price`, `max_price`, `min_volume_m`).
+2. Merge with `brown_watchlist` from DB.
+3. **Day trades** (scanner hits + watchlist `trade_type='day'`): time-gated to 09:35–10:30 ET.
+4. **Swing trades** (watchlist `trade_type='swing'`): run `_check_swing_signal()` first.
+5. All candidates: `RiskManager.can_enter()` check before any order.
+6. `_brown_enter_position()` → `place_das_order()` → store in `_brown_bot_active_positions`.
+
+#### Swing signal check (`_check_swing_signal`)
+Two-stage gate to balance quality vs. API cost:
+- **Stage 1** (cheap, always): `close > SMA20` + optional volume surge (1.5× 10-bar avg). Score 0.60–0.75. Uses `_ai_agent._get_technical_analysis()` (Polygon bars).
+- **Stage 2** (expensive, only when score < 0.8): `_ai_agent.process_message()` asks Claude for BUY/HOLD. BUY → score 0.85, HOLD → score 0.45.
+- Enter if final score ≥ 0.70.
+
+#### Risk manager (`bot/risk_manager.py → RiskManager`)
+Instantiated from `brown_bot_config` when the bot starts. `can_enter(symbol, position_type, active_positions)` returns `(allowed, reason)` and enforces:
+- `max_daily_loss`: circuit breaker — halts all new entries if today's realized P&L ≤ threshold.
+- `max_concurrent_day` / `max_concurrent_swing`: slot caps.
+
+The `GET /api/brown-bot/risk-status` endpoint returns a live snapshot even before the bot is started (reads config + today's P&L from DB directly).
+
+#### Exit pipeline (`_brown_bot_check_exits`)
+For each position in `_brown_bot_active_positions`:
+1. Fetch current price via `_brown_get_current_price()` → `get_real_stock_data()` → `SB {sym} Lv1`.
+2. Update `unrealized_pnl` in the shared dict.
+3. **Breakeven stop**: once price reaches `{type}_breakeven_trigger_pct`% of the way from entry to target, move stop to entry price (sets `_at_breakeven` flag; shown as "BE" badge in UI).
+4. Exit conditions checked in order: profit target → stop loss → EOD flatten (day, at `day_eod_exit_time` ET) → max hold days (swing) → earnings protection (swing, queries Nasdaq calendar via `_ai_agent._get_earnings_calendar()`).
+5. `_brown_close_position()` → `place_das_order(S)` → `db_manager.add_trade()` → remove from dict.
+
+#### Position discriminator
+`position_type` field in `_brown_bot_active_positions` is `'day'` or `'swing'`. BrownBot positions are **never** written to the `positions` table (which is owned by the DAS sync / Exit Bot). The Exit Bot ignores them; BrownBot's exit loop manages them exclusively.
+
+#### API endpoints (`/api/brown-bot/*`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/status` | — | Running state, stats, active positions list |
+| POST | `/start` | ✓ | Instantiate RiskManager, launch threads |
+| POST | `/stop` | ✓ | Clear flag, join threads |
+| GET/POST | `/config` | ✓ | Read / write `brown_bot_config` |
+| GET | `/logs` | ✓ | Last 100 activity log entries (reversed) |
+| GET | `/risk-status` | ✓ | Live risk snapshot (daily P&L, slots, circuit breaker) |
+| GET | `/candidates` | ✓ | Filtered gap-ups + watchlist merged |
+| GET/POST | `/watchlist` | ✓ | List / add watchlist symbols |
+| DELETE | `/watchlist/<symbol>` | ✓ | Remove watchlist symbol |
 
 ## Key constraints
 
