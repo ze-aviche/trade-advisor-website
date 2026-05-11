@@ -1089,6 +1089,9 @@ class TradingBot:
                     if symbol not in self.active_positions:
                         logger.info(f"Adding {symbol} to active positions tracking...")
 
+                        # Enrich with position_type from DB (DAS doesn't know day vs swing)
+                        pos_data['position_type'] = db_manager.get_position_type(symbol)
+
                         # Create position object
                         position = self._create_position_object(pos_data)
                         self.active_positions[symbol] = position
@@ -1136,7 +1139,10 @@ class TradingBot:
                     # Check if this is a new position not in our tracking
                     if symbol.upper() not in self.active_positions:
                         logger.info(f"Found new position: {symbol}")
-                        
+
+                        # Enrich with position_type from DB (DAS doesn't know day vs swing)
+                        pos_data['position_type'] = db_manager.get_position_type(symbol.upper())
+
                         # Create position object
                         position = self._create_position_object(pos_data)
                         self.active_positions[symbol.upper()] = position

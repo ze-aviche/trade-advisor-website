@@ -874,7 +874,23 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error getting positions: {e}")
             return []
-    
+
+    def get_position_type(self, symbol: str) -> str:
+        """Return the stored position_type ('day' or 'swing') for a symbol, or 'day' if not found."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT position_type FROM positions WHERE symbol = ? ORDER BY last_updated DESC LIMIT 1',
+                    (symbol.upper(),)
+                )
+                row = cursor.fetchone()
+                if row and row['position_type']:
+                    return row['position_type']
+        except Exception as e:
+            print(f"Error looking up position_type for {symbol}: {e}")
+        return 'day'
+
     def get_position_summary(self, symbol=None, type_filter=None):
         """Get position summary statistics"""
         try:
