@@ -218,6 +218,93 @@ class DatabaseManager:
                 if cursor.rowcount:
                     print("✅ Promoted earliest user to super_admin")
 
+            # ── Swing trading columns ─────────────────────────────────────────
+            for tbl, col, defn in [
+                # positions: tag each row as day or swing
+                ('positions',       'position_type',      "TEXT DEFAULT 'day'"),
+                ('positions',       'swing_stop_loss',    'REAL DEFAULT NULL'),
+                ('positions',       'swing_target',       'REAL DEFAULT NULL'),
+                ('positions',       'swing_entry_reason', 'TEXT DEFAULT NULL'),
+                ('positions',       'max_hold_days',      'INTEGER DEFAULT NULL'),
+                ('positions',       'entry_date',         'TEXT DEFAULT NULL'),
+                # daily_positions: same tags for history
+                ('daily_positions', 'position_type',      "TEXT DEFAULT 'day'"),
+                ('daily_positions', 'swing_stop_loss',    'REAL DEFAULT NULL'),
+                ('daily_positions', 'swing_target',       'REAL DEFAULT NULL'),
+                # trades: track which style produced the trade
+                ('trades',          'position_type',      "TEXT DEFAULT 'day'"),
+                ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
+            # swing_bot_config: per-user swing exit settings
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_bot_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    profit_target_pct REAL DEFAULT 15.0,
+                    stop_loss_pct REAL DEFAULT 7.0,
+                    trailing_stop_enabled INTEGER DEFAULT 0,
+                    trailing_stop_pct REAL DEFAULT 4.0,
+                    max_hold_days INTEGER DEFAULT 20,
+                    earnings_protection_enabled INTEGER DEFAULT 1,
+                    earnings_exit_days INTEGER DEFAULT 2,
+                    daily_close_exit_enabled INTEGER DEFAULT 1,
+                    breakeven_stop_enabled INTEGER DEFAULT 1,
+                    breakeven_trigger_pct REAL DEFAULT 50.0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # seed a default row if table is empty
+            cursor.execute('SELECT COUNT(*) as cnt FROM swing_bot_config')
+            if cursor.fetchone()['cnt'] == 0:
+                cursor.execute('INSERT INTO swing_bot_config (user_id) VALUES (1)')
+
+            # brown_bot_config: autonomous BrownBot settings (day + swing + risk + scanner)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_bot_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    day_profit_target_pct REAL DEFAULT 5.0,
+                    day_stop_loss_pct REAL DEFAULT 2.5,
+                    day_trailing_stop_enabled INTEGER DEFAULT 0,
+                    day_trailing_stop_pct REAL DEFAULT 1.5,
+                    day_eod_exit_time TEXT DEFAULT '15:45',
+                    day_breakeven_trigger_pct REAL DEFAULT 50.0,
+                    swing_profit_target_pct REAL DEFAULT 15.0,
+                    swing_stop_loss_pct REAL DEFAULT 7.0,
+                    swing_max_hold_days INTEGER DEFAULT 20,
+                    swing_earnings_protection_enabled INTEGER DEFAULT 1,
+                    swing_earnings_exit_days INTEGER DEFAULT 2,
+                    swing_breakeven_trigger_pct REAL DEFAULT 50.0,
+                    max_daily_loss REAL DEFAULT -500.0,
+                    max_concurrent_day INTEGER DEFAULT 3,
+                    max_concurrent_swing INTEGER DEFAULT 5,
+                    min_gap_pct REAL DEFAULT 10.0,
+                    min_price REAL DEFAULT 5.0,
+                    max_price REAL DEFAULT 500.0,
+                    min_volume_m REAL DEFAULT 0.5,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute('SELECT COUNT(*) as cnt FROM brown_bot_config')
+            if cursor.fetchone()['cnt'] == 0:
+                cursor.execute('INSERT INTO brown_bot_config (user_id) VALUES (1)')
+
+            # brown_watchlist: manually pinned symbols for BrownBot
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_watchlist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL UNIQUE,
+                    note TEXT,
+                    trade_type TEXT DEFAULT 'day',
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             conn.commit()
 
     def _get_user_count(self):
@@ -653,9 +740,10 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO trades (
-                        trade_id, symbol, side, quantity, price, route, 
-                        trade_time, order_id, liquidity, ecn_fee, pnl, trade_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        trade_id, symbol, side, quantity, price, route,
+                        trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
+                        position_type, days_held
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -668,7 +756,9 @@ class DatabaseManager:
                     trade_data.get('liquidity'),
                     trade_data.get('ecn_fee', 0.0),
                     trade_data.get('pnl', 0.0),
-                    trade_data['trade_date']
+                    trade_data['trade_date'],
+                    trade_data.get('position_type', 'day'),
+                    trade_data.get('days_held'),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -693,7 +783,7 @@ class DatabaseManager:
                 existing = cursor.fetchone()
                 
                 if existing:
-                    # Update existing position
+                    # Update existing position (preserve swing fields if not provided)
                     cursor.execute('''
                         UPDATE positions SET
                             quantity = ?,
@@ -704,6 +794,12 @@ class DatabaseManager:
                             create_time = ?,
                             date = ?,
                             unrealized = ?,
+                            position_type = COALESCE(?, position_type),
+                            entry_date = COALESCE(?, entry_date),
+                            swing_stop_loss = COALESCE(?, swing_stop_loss),
+                            swing_target = COALESCE(?, swing_target),
+                            swing_entry_reason = COALESCE(?, swing_entry_reason),
+                            max_hold_days = COALESCE(?, max_hold_days),
                             last_updated = CURRENT_TIMESTAMP
                         WHERE symbol = ? AND type = ?
                     ''', (
@@ -715,6 +811,12 @@ class DatabaseManager:
                         position_data['create_time'],
                         position_data['date'],
                         position_data.get('unrealized', 0.0),
+                        position_data.get('position_type'),
+                        position_data.get('entry_date'),
+                        position_data.get('swing_stop_loss'),
+                        position_data.get('swing_target'),
+                        position_data.get('swing_entry_reason'),
+                        position_data.get('max_hold_days'),
                         position_data['symbol'],
                         position_data['type']
                     ))
@@ -723,8 +825,10 @@ class DatabaseManager:
                     cursor.execute('''
                         INSERT INTO positions (
                             symbol, type, quantity, avg_cost, init_quantity, init_price,
-                            realized, create_time, date, unrealized
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            realized, create_time, date, unrealized,
+                            position_type, entry_date, swing_stop_loss, swing_target,
+                            swing_entry_reason, max_hold_days
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         position_data['symbol'],
                         position_data['type'],
@@ -735,15 +839,22 @@ class DatabaseManager:
                         position_data.get('realized', 0.0),
                         position_data['create_time'],
                         position_data['date'],
-                        position_data.get('unrealized', 0.0)
+                        position_data.get('unrealized', 0.0),
+                        position_data.get('position_type', 'day'),
+                        position_data.get('entry_date'),
+                        position_data.get('swing_stop_loss'),
+                        position_data.get('swing_target'),
+                        position_data.get('swing_entry_reason'),
+                        position_data.get('max_hold_days'),
                     ))
-                
+
                 # Save daily snapshot - upsert to avoid duplicates for the same day
                 cursor.execute('''
                     INSERT OR REPLACE INTO daily_positions (
                         symbol, type, quantity, avg_cost, init_quantity, init_price,
-                        realized, create_time, date, unrealized, snapshot_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        realized, create_time, date, unrealized, snapshot_date,
+                        position_type, swing_stop_loss, swing_target
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     position_data['symbol'],
                     position_data['type'],
@@ -755,7 +866,10 @@ class DatabaseManager:
                     position_data['create_time'],
                     position_data['date'],
                     position_data.get('unrealized', 0.0),
-                    current_date
+                    current_date,
+                    position_data.get('position_type', 'day'),
+                    position_data.get('swing_stop_loss'),
+                    position_data.get('swing_target'),
                 ))
                 
                 conn.commit()
@@ -802,7 +916,23 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error getting positions: {e}")
             return []
-    
+
+    def get_position_type(self, symbol: str) -> str:
+        """Return the stored position_type ('day' or 'swing') for a symbol, or 'day' if not found."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT position_type FROM positions WHERE symbol = ? ORDER BY last_updated DESC LIMIT 1',
+                    (symbol.upper(),)
+                )
+                row = cursor.fetchone()
+                if row and row['position_type']:
+                    return row['position_type']
+        except Exception as e:
+            print(f"Error looking up position_type for {symbol}: {e}")
+        return 'day'
+
     def get_position_summary(self, symbol=None, type_filter=None):
         """Get position summary statistics"""
         try:
@@ -2034,6 +2164,161 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             print(f"Database error marking welcome sent: {e}")
+
+    # ── Swing bot config ──────────────────────────────────────────────────────
+
+    def get_swing_bot_config(self, user_id: int = 1) -> dict:
+        """Return swing bot config for user_id. Falls back to defaults if row missing."""
+        defaults = {
+            'profit_target_pct': 15.0,
+            'stop_loss_pct': 7.0,
+            'trailing_stop_enabled': False,
+            'trailing_stop_pct': 4.0,
+            'max_hold_days': 20,
+            'earnings_protection_enabled': True,
+            'earnings_exit_days': 2,
+            'daily_close_exit_enabled': True,
+            'breakeven_stop_enabled': True,
+            'breakeven_trigger_pct': 50.0,
+        }
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM swing_bot_config WHERE user_id=? LIMIT 1', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    cfg = dict(row)
+                    cfg['trailing_stop_enabled'] = bool(cfg.get('trailing_stop_enabled', 0))
+                    cfg['earnings_protection_enabled'] = bool(cfg.get('earnings_protection_enabled', 1))
+                    cfg['daily_close_exit_enabled'] = bool(cfg.get('daily_close_exit_enabled', 1))
+                    cfg['breakeven_stop_enabled'] = bool(cfg.get('breakeven_stop_enabled', 1))
+                    return cfg
+        except Exception as e:
+            print(f"Database error fetching swing config: {e}")
+        return defaults
+
+    def update_swing_bot_config(self, config: dict, user_id: int = 1) -> tuple:
+        """Upsert swing bot config for user_id."""
+        fields = [
+            'profit_target_pct', 'stop_loss_pct', 'trailing_stop_enabled',
+            'trailing_stop_pct', 'max_hold_days', 'earnings_protection_enabled',
+            'earnings_exit_days', 'daily_close_exit_enabled',
+            'breakeven_stop_enabled', 'breakeven_trigger_pct',
+        ]
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT id FROM swing_bot_config WHERE user_id=?', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    sets = ', '.join(f'{f}=?' for f in fields if f in config)
+                    vals = [config[f] for f in fields if f in config]
+                    if sets:
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE swing_bot_config SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE user_id=?', vals)
+                else:
+                    cursor.execute('INSERT INTO swing_bot_config (user_id) VALUES (?)', (user_id,))
+                    sets = ', '.join(f'{f}=?' for f in fields if f in config)
+                    vals = [config[f] for f in fields if f in config]
+                    if sets:
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE swing_bot_config SET {sets} WHERE user_id=?', vals)
+                conn.commit()
+                return True, "Swing config updated"
+        except Exception as e:
+            return False, f"Database error updating swing config: {e}"
+
+
+    # ── BrownBot config ──────────────────────────────────────────────────────
+
+    def get_brown_bot_config(self, user_id: int = 1) -> dict:
+        defaults = {
+            'day_profit_target_pct': 5.0, 'day_stop_loss_pct': 2.5,
+            'day_trailing_stop_enabled': False, 'day_trailing_stop_pct': 1.5,
+            'day_eod_exit_time': '15:45', 'day_breakeven_trigger_pct': 50.0,
+            'swing_profit_target_pct': 15.0, 'swing_stop_loss_pct': 7.0,
+            'swing_max_hold_days': 20, 'swing_earnings_protection_enabled': True,
+            'swing_earnings_exit_days': 2, 'swing_breakeven_trigger_pct': 50.0,
+            'max_daily_loss': -500.0, 'max_concurrent_day': 3, 'max_concurrent_swing': 5,
+            'min_gap_pct': 10.0, 'min_price': 5.0, 'max_price': 500.0, 'min_volume_m': 0.5,
+        }
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM brown_bot_config WHERE user_id=? LIMIT 1', (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    cfg = dict(row)
+                    cfg['day_trailing_stop_enabled'] = bool(cfg.get('day_trailing_stop_enabled', 0))
+                    cfg['swing_earnings_protection_enabled'] = bool(cfg.get('swing_earnings_protection_enabled', 1))
+                    return cfg
+        except Exception as e:
+            print(f"Database error fetching brown_bot_config: {e}")
+        return defaults
+
+    def update_brown_bot_config(self, config: dict, user_id: int = 1) -> tuple:
+        fields = [
+            'day_profit_target_pct', 'day_stop_loss_pct', 'day_trailing_stop_enabled',
+            'day_trailing_stop_pct', 'day_eod_exit_time', 'day_breakeven_trigger_pct',
+            'swing_profit_target_pct', 'swing_stop_loss_pct', 'swing_max_hold_days',
+            'swing_earnings_protection_enabled', 'swing_earnings_exit_days',
+            'swing_breakeven_trigger_pct', 'max_daily_loss', 'max_concurrent_day',
+            'max_concurrent_swing', 'min_gap_pct', 'min_price', 'max_price', 'min_volume_m',
+        ]
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT id FROM brown_bot_config WHERE user_id=?', (user_id,))
+                row = cursor.fetchone()
+                sets = ', '.join(f'{f}=?' for f in fields if f in config)
+                vals = [config[f] for f in fields if f in config]
+                if sets:
+                    if row:
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE brown_bot_config SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE user_id=?', vals)
+                    else:
+                        cursor.execute('INSERT INTO brown_bot_config (user_id) VALUES (?)', (user_id,))
+                        vals.append(user_id)
+                        cursor.execute(f'UPDATE brown_bot_config SET {sets} WHERE user_id=?', vals)
+                conn.commit()
+                return True, "BrownBot config updated"
+        except Exception as e:
+            return False, f"Database error updating brown_bot_config: {e}"
+
+    # ── BrownBot watchlist ────────────────────────────────────────────────────
+
+    def get_brown_watchlist(self) -> list:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT symbol, note, trade_type, added_at FROM brown_watchlist ORDER BY added_at DESC')
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error fetching brown_watchlist: {e}")
+            return []
+
+    def add_to_brown_watchlist(self, symbol: str, note: str = '', trade_type: str = 'day') -> tuple:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT OR REPLACE INTO brown_watchlist (symbol, note, trade_type) VALUES (?, ?, ?)',
+                    (symbol.upper().strip(), note, trade_type)
+                )
+                conn.commit()
+                return True, "Added to watchlist"
+        except Exception as e:
+            return False, str(e)
+
+    def remove_from_brown_watchlist(self, symbol: str) -> tuple:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM brown_watchlist WHERE symbol=?', (symbol.upper().strip(),))
+                conn.commit()
+                return True, "Removed from watchlist"
+        except Exception as e:
+            return False, str(e)
 
 
 # Global database manager instance
