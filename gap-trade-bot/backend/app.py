@@ -3205,6 +3205,101 @@ def get_brown_bot_risk_status():
     return jsonify({'success': True, 'risk': snapshot})
 
 
+# ==============================================================================
+# Broker abstraction layer — /api/broker/*
+# ==============================================================================
+
+@app.route('/api/broker/supported', methods=['GET'])
+def get_supported_brokers():
+    """Return list of all supported broker names and their required config keys."""
+    try:
+        from bot.broker import get_supported_brokers as _get_brokers
+        return jsonify({'success': True, 'brokers': _get_brokers()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/broker/configs', methods=['GET'])
+@require_auth
+def list_broker_configs():
+    """Return all saved broker configs for the current user (no secrets in response)."""
+    user_id = getattr(request.user, 'id', 1)
+    configs = db_manager.get_broker_configs(user_id)
+    return jsonify({'success': True, 'configs': configs})
+
+
+@app.route('/api/broker/config/<broker_name>', methods=['POST'])
+@require_auth
+def save_broker_config(broker_name):
+    """
+    Save (upsert) a broker config.  Pass api_key / api_secret only when the user
+    explicitly updates them — omitting them preserves the stored values.
+    """
+    user_id = getattr(request.user, 'id', 1)
+    data = request.get_json() or {}
+    ok, msg = db_manager.upsert_broker_config(broker_name, data, user_id)
+    if ok:
+        return jsonify({'success': True, 'message': msg})
+    return jsonify({'success': False, 'error': msg}), 400
+
+
+@app.route('/api/broker/config/<broker_name>', methods=['DELETE'])
+@require_auth
+def delete_broker_config(broker_name):
+    """Remove a broker config (revoke access)."""
+    user_id = getattr(request.user, 'id', 1)
+    ok, msg = db_manager.delete_broker_config(broker_name, user_id)
+    if ok:
+        return jsonify({'success': True, 'message': msg})
+    return jsonify({'success': False, 'error': msg}), 400
+
+
+@app.route('/api/broker/test/<broker_name>', methods=['POST'])
+@require_auth
+def test_broker_connection(broker_name):
+    """
+    Attempt to connect with the stored credentials and return live account info.
+    Used by the UI "Test Connection" button.
+    """
+    user_id = getattr(request.user, 'id', 1)
+    row = db_manager.get_broker_config(broker_name, user_id)
+    if not row:
+        return jsonify({'success': False,
+                        'error': f'No config saved for {broker_name}'}), 404
+    try:
+        from bot.broker import create_broker
+        cfg = {
+            'api_key':      row.get('api_key', ''),
+            'api_secret':   row.get('api_secret', ''),
+            'account_id':   row.get('account_id', ''),
+            'paper':        bool(row.get('paper_trading', 1)),
+            **row.get('extra_config', {}),
+        }
+        broker = create_broker(broker_name, cfg)
+        connected = broker.connect()
+        if connected:
+            account = broker.get_account()
+            return jsonify({
+                'success':      True,
+                'connected':    True,
+                'broker':       broker.name,
+                'account_id':   account.account_id,
+                'equity':       account.equity,
+                'buying_power': account.buying_power,
+                'paper':        account.paper_trading,
+            })
+        return jsonify({'success': False, 'connected': False,
+                        'error': 'Could not connect — check credentials'})
+    except Exception as e:
+        return jsonify({'success': False, 'connected': False, 'error': str(e)}), 500
+
+
+@app.route('/api/broker/candidates', methods=['GET'])
+def get_broker_candidates():
+    """Alias kept for future use — see /api/broker/supported."""
+    return get_supported_brokers()
+
+
 @app.route('/api/brown-bot/candidates', methods=['GET'])
 @require_auth
 def get_brown_bot_candidates():
