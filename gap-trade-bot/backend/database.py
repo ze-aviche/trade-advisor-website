@@ -305,6 +305,30 @@ class DatabaseManager:
                 )
             ''')
 
+            # broker_configs: per-user broker API credentials
+            # api_key and api_secret are stored as-is; encrypt at the app layer
+            # if required. paper_trading=1 means sandbox/paper environment.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS broker_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    broker_name TEXT NOT NULL,
+                    api_key TEXT DEFAULT '',
+                    api_secret TEXT DEFAULT '',
+                    account_id TEXT DEFAULT '',
+                    extra_config TEXT DEFAULT '{}',
+                    paper_trading INTEGER DEFAULT 1,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, broker_name)
+                )
+            ''')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_broker_configs_user '
+                'ON broker_configs(user_id)'
+            )
+
             conn.commit()
 
     def _get_user_count(self):
@@ -2371,6 +2395,126 @@ class DatabaseManager:
                 cursor.execute('DELETE FROM brown_watchlist WHERE symbol=?', (symbol.upper().strip(),))
                 conn.commit()
                 return True, "Removed from watchlist"
+        except Exception as e:
+            return False, str(e)
+
+    # ------------------------------------------------------------------
+    # Broker config CRUD
+    # ------------------------------------------------------------------
+
+    def get_broker_configs(self, user_id: int = 1) -> list:
+        """Return all broker configs for *user_id*, newest first."""
+        try:
+            import json
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT broker_name, api_key, api_secret, account_id,
+                              extra_config, paper_trading, is_active, updated_at
+                       FROM broker_configs WHERE user_id=? ORDER BY updated_at DESC''',
+                    (user_id,)
+                )
+                rows = []
+                for r in cursor.fetchall():
+                    row = dict(r)
+                    try:
+                        row['extra_config'] = json.loads(row.get('extra_config') or '{}')
+                    except Exception:
+                        row['extra_config'] = {}
+                    # Never send secrets to the caller in plaintext
+                    row['api_key_set']    = bool(row.get('api_key'))
+                    row['api_secret_set'] = bool(row.get('api_secret'))
+                    del row['api_key'], row['api_secret']
+                    rows.append(row)
+                return rows
+        except Exception as e:
+            print(f'Database error fetching broker_configs: {e}')
+            return []
+
+    def get_broker_config(self, broker_name: str, user_id: int = 1) -> dict:
+        """Return the raw config (including secrets) for a specific broker."""
+        try:
+            import json
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT broker_name, api_key, api_secret, account_id,
+                              extra_config, paper_trading, is_active
+                       FROM broker_configs WHERE user_id=? AND broker_name=? LIMIT 1''',
+                    (user_id, broker_name)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return {}
+                result = dict(row)
+                try:
+                    result['extra_config'] = json.loads(result.get('extra_config') or '{}')
+                except Exception:
+                    result['extra_config'] = {}
+                return result
+        except Exception as e:
+            print(f'Database error fetching broker_config {broker_name}: {e}')
+            return {}
+
+    def upsert_broker_config(self, broker_name: str, config: dict,
+                              user_id: int = 1) -> tuple:
+        """
+        Insert or update a broker config row.
+        Pass api_key / api_secret only when the user explicitly sets them
+        (empty string means "leave existing value unchanged").
+        """
+        import json
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT id, api_key, api_secret FROM broker_configs '
+                    'WHERE user_id=? AND broker_name=?',
+                    (user_id, broker_name)
+                )
+                existing = cursor.fetchone()
+
+                api_key    = config.get('api_key',    '') or (existing['api_key']    if existing else '')
+                api_secret = config.get('api_secret', '') or (existing['api_secret'] if existing else '')
+                account_id    = config.get('account_id', '')
+                extra_config  = json.dumps(config.get('extra_config', {}))
+                paper_trading = int(config.get('paper_trading', 1))
+                is_active     = int(config.get('is_active', 1))
+
+                if existing:
+                    cursor.execute(
+                        '''UPDATE broker_configs
+                           SET api_key=?, api_secret=?, account_id=?,
+                               extra_config=?, paper_trading=?, is_active=?,
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE user_id=? AND broker_name=?''',
+                        (api_key, api_secret, account_id, extra_config,
+                         paper_trading, is_active, user_id, broker_name)
+                    )
+                else:
+                    cursor.execute(
+                        '''INSERT INTO broker_configs
+                           (user_id, broker_name, api_key, api_secret, account_id,
+                            extra_config, paper_trading, is_active)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (user_id, broker_name, api_key, api_secret, account_id,
+                         extra_config, paper_trading, is_active)
+                    )
+                conn.commit()
+                return True, 'Broker config saved'
+        except Exception as e:
+            return False, str(e)
+
+    def delete_broker_config(self, broker_name: str, user_id: int = 1) -> tuple:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'DELETE FROM broker_configs WHERE user_id=? AND broker_name=?',
+                    (user_id, broker_name)
+                )
+                conn.commit()
+                return True, 'Broker config deleted'
         except Exception as e:
             return False, str(e)
 

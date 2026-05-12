@@ -160,6 +160,62 @@ tracking_thread = None  # Background thread for continuous tracking
 tracking_active = False  # Flag to control tracking thread
 active_positions = {}  # Store active positions entered by the bot
 
+# Broker abstraction layer — active broker instance cache (lazy-loaded per user)
+# Key: user_id (int), Value: BrokerBase instance (already connected)
+_broker_cache: dict = {}
+_broker_cache_lock = threading.Lock()
+
+
+def _get_broker(user_id: int = 1):
+    """
+    Return the active BrokerBase instance for *user_id*, lazy-loading from DB.
+    Returns None if no broker is configured or connection fails.
+    Falls back to the legacy DAS path when DAS_ENABLED and no broker configured.
+    """
+    with _broker_cache_lock:
+        if user_id in _broker_cache:
+            broker = _broker_cache[user_id]
+            if broker.is_connected():
+                return broker
+            # Stale — remove and re-connect below
+            del _broker_cache[user_id]
+
+    try:
+        configs = db_manager.get_broker_configs(user_id)
+        active = next((c for c in configs if c.get('is_active')), None)
+        if not active:
+            return None
+        broker_name = active['broker_name']
+        row = db_manager.get_broker_config(broker_name, user_id)
+        if not row:
+            return None
+
+        from bot.broker import create_broker
+        cfg = {
+            'api_key':    row.get('api_key', ''),
+            'api_secret': row.get('api_secret', ''),
+            'account_id': row.get('account_id', ''),
+            'paper':      bool(row.get('paper_trading', 1)),
+            **row.get('extra_config', {}),
+        }
+        broker = create_broker(broker_name, cfg)
+        if broker.connect():
+            with _broker_cache_lock:
+                _broker_cache[user_id] = broker
+            app_logger.info(f'[Broker] Connected: {broker.name} (user {user_id})')
+            return broker
+        app_logger.warning(f'[Broker] Connection failed for {broker_name} (user {user_id})')
+    except Exception as e:
+        app_logger.warning(f'[Broker] _get_broker error: {e}')
+    return None
+
+
+def _invalidate_broker_cache(user_id: int = 1):
+    """Call after saving new broker credentials so the next request re-connects."""
+    with _broker_cache_lock:
+        _broker_cache.pop(user_id, None)
+
+
 # BrownBot global state
 _brown_bot_running = False
 _brown_bot_thread = None
@@ -375,22 +431,47 @@ def _send_das_script(script: str) -> str:
     return ""
 
 
-def get_real_stock_data(symbol):
-    """Get real stock data via DAS Level 1 subscription."""
+def get_real_stock_data(symbol, user_id: int = 1):
+    """
+    Get real-time quote data for *symbol*.
+    Tries the configured broker first; falls back to DAS Level 1 if DAS_ENABLED.
+    Returns a dict compatible with the legacy DAS quote format, or None on failure.
+    """
+    sym = symbol.upper()
+
+    # ── Path 1: cloud broker ─────────────────────────────────────────
+    broker = _get_broker(user_id)
+    if broker:
+        try:
+            q = broker.get_quote(sym)
+            mid = (q.bid + q.ask) / 2 if q.bid and q.ask else (q.last or 0)
+            dollar_vol = round(mid * q.volume / 1_000_000, 2) if q.volume else 0.0
+            return {
+                'symbol':         sym,
+                'current_price':  round(q.last or mid, 2),
+                'bid':            q.bid,
+                'ask':            q.ask,
+                'volume':         round(q.volume / 1_000_000, 2),   # millions
+                'dollar_volume':  dollar_vol,
+            }
+        except Exception as e:
+            app_logger.warning(f'[Broker] get_quote {sym} failed: {e}')
+
+    # ── Path 2: legacy DAS Level 1 ───────────────────────────────────
     if not DAS_ENABLED:
         return None
 
-    result = _send_das_script(f"SB {symbol.upper()} Lv1\r\n")
+    result = _send_das_script(f"SB {sym} Lv1\r\n")
     if result:
-        quote_data = _parse_das_level1_response(result, symbol.upper())
+        quote_data = _parse_das_level1_response(result, sym)
         if quote_data:
             app_logger.info(
-                f"Level 1 {symbol}: ${quote_data['current_price']} "
+                f"Level 1 {sym}: ${quote_data['current_price']} "
                 f"Vol={quote_data['volume']}M DolVol=${quote_data['dollar_volume']}M"
             )
             return quote_data
 
-    app_logger.warning(f"No Level 1 data available for {symbol}")
+    app_logger.warning(f"No quote data available for {sym}")
     return None
 
 def _parse_das_level1_response(response: str, symbol: str):
@@ -560,25 +641,71 @@ def place_das_order(symbol, order_side, route, quantity, order_type, limit_price
     return False, None, result or "No response from DAS"
 
 
+def place_order(symbol: str, side: str, quantity: int,
+                order_type: str = 'MKT', limit_price=None,
+                user_id: int = 1) -> tuple:
+    """
+    Unified order placement — routes through the configured broker if available,
+    falls back to the legacy DAS path if DAS_ENABLED and no broker is set.
+
+    Returns (success: bool, order_id, message: str).
+    `side` accepts 'B'/'BUY'/'buy' for buys, 'S'/'SELL'/'sell' for sells.
+    """
+    from bot.broker.base import OrderSide, OrderType as OType
+
+    # Normalise side
+    side_upper = side.upper()
+    broker_side = OrderSide.BUY if side_upper in ('B', 'BUY') else OrderSide.SELL
+
+    # Normalise order type
+    otype_map = {'MKT': OType.MARKET, 'MARKET': OType.MARKET,
+                 'LIMIT': OType.LIMIT, 'LMT': OType.LIMIT,
+                 'STOP': OType.STOP, 'STPLMT': OType.STOP_LIMIT}
+    broker_otype = otype_map.get(order_type.upper(), OType.MARKET)
+
+    # ── Path 1: cloud broker ──────────────────────────────────────────
+    broker = _get_broker(user_id)
+    if broker:
+        try:
+            order = broker.place_order(
+                symbol      = symbol,
+                side        = broker_side,
+                qty         = float(quantity),
+                order_type  = broker_otype,
+                limit_price = limit_price,
+            )
+            app_logger.info(
+                f'[Broker:{broker.name}] {side_upper} {quantity} {symbol} '
+                f'→ order_id={order.order_id} status={order.status}'
+            )
+            return True, order.order_id, str(order.status)
+        except Exception as e:
+            app_logger.error(f'[Broker] place_order failed: {e}')
+            return False, None, str(e)
+
+    # ── Path 2: legacy DAS fallback ───────────────────────────────────
+    das_side = 'B' if broker_side == OrderSide.BUY else 'S'
+    return place_das_order(symbol, das_side, 'SMAT', quantity, order_type, limit_price)
+
+
 def enter_position(symbol, entry_price, entry_params):
-    """Enter a position for a symbol at the given price using DAS"""
+    """Enter a position for a symbol at the given price."""
     global active_positions, entry_bot_stats
-    
+
     try:
         # Extract order parameters from entry_params
-        order_side = entry_params.get('order_side', 'B')
-        route = entry_params.get('route', 'SMAT')
-        quantity = entry_params.get('quantity', 100)
-        order_type = entry_params.get('order_type', 'MKT')
+        order_side  = entry_params.get('order_side', 'B')
+        quantity    = entry_params.get('quantity', 100)
+        order_type  = entry_params.get('order_type', 'MKT')
         limit_price = entry_params.get('limit_price')
-        
-        # Place the actual order in DAS
-        success, order_id, result = place_das_order(
-            symbol, order_side, route, quantity, order_type, limit_price
+
+        # Route through broker abstraction layer (falls back to DAS if no broker configured)
+        success, order_id, result = place_order(
+            symbol, order_side, quantity, order_type, limit_price
         )
-        
+
         if not success:
-            add_entry_bot_log('error', f"❌ Failed to place DAS order for {symbol}")
+            add_entry_bot_log('error', f"❌ Failed to place order for {symbol}")
             return False, None
         
         # Generate a unique position ID
@@ -2508,9 +2635,11 @@ def get_bot_status():
             }), 503
         
         status = trading_bot.get_status()
+        broker = _get_broker()
         return jsonify({
             'success': True,
             'data': status,
+            'broker': broker.to_dict() if broker else None,
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -2532,19 +2661,23 @@ def start_bot():
             }), 503
 
         app_logger.info("start_bot: calling trading_bot.start()...")
+        broker = _get_broker()
+        trading_bot.set_broker(broker)
         success = trading_bot.start()
         if success:
+            msg = (f'Bot started via {broker.name}' if broker
+                   else 'Bot started via DAS Trader')
             return jsonify({
                 'success': True,
-                'message': 'Bot started successfully',
+                'message': msg,
                 'timestamp': datetime.now().isoformat()
             })
         else:
-            # Enhanced error message for DAS connection issues
             return jsonify({
                 'success': False,
-                'error': 'Failed to start bot: DAS Trader is not connected. Please ensure DAS Trader is running and connected.',
-                'details': 'The bot requires a connection to DAS Trader to function. Please check that DAS Trader is running and the connection is established.'
+                'error': ('Failed to start bot: could not connect to broker or DAS Trader. '
+                          'Check your broker credentials or ensure DAS Trader is running.'),
+                'details': 'Configure a broker in the Account → Broker Connection tab, or ensure DAS Trader is running.'
             }), 500
     except Exception as e:
         app_logger.error(f"Error starting bot: {e}")
@@ -2702,7 +2835,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     """Place a BUY order for BrownBot and record the position in memory."""
     global _brown_bot_active_positions, _brown_bot_stats
     quantity = 100
-    success, order_id, result = place_das_order(symbol, 'B', 'SMAT', quantity, 'MKT')
+    success, order_id, result = place_order(symbol, 'B', quantity, 'MKT')
     if not success:
         _add_brown_log('error', f'Order rejected for {symbol}: {result}')
         return
@@ -2892,7 +3025,7 @@ def _brown_close_position(position_id, position, exit_reason):
     entry_price = float(position.get('entry_price', 0))
     position_type = position.get('position_type', 'day')
 
-    success, order_id, result = place_das_order(symbol, 'S', 'SMAT', quantity, 'MKT')
+    success, order_id, result = place_order(symbol, 'S', quantity, 'MKT')
     if not success:
         _add_brown_log('error', f'SELL order failed for {symbol}: {result}')
         return False
@@ -3074,6 +3207,9 @@ def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
     global _brown_bot_running, _brown_bot_stats, _brown_bot_active_positions
     das_ok = DAS_ENABLED and _das_direct is not None
+    # Check cloud broker connection
+    broker = _get_broker()
+    broker_info = broker.to_dict() if broker else None
     with _brown_bot_lock:
         active_count = len(_brown_bot_active_positions)
         positions_list = list(_brown_bot_active_positions.values())
@@ -3082,6 +3218,7 @@ def get_brown_bot_status():
         'running': _brown_bot_running,
         'das_enabled': DAS_ENABLED,
         'das_connected': das_ok,
+        'broker': broker_info,
         'stats': _brown_bot_stats,
         'active_positions_count': active_count,
         'active_positions': positions_list,
@@ -3203,6 +3340,102 @@ def get_brown_bot_risk_status():
             'circuit_breaker_open': daily_pnl <= max_loss,
         }
     return jsonify({'success': True, 'risk': snapshot})
+
+
+# ==============================================================================
+# Broker abstraction layer — /api/broker/*
+# ==============================================================================
+
+@app.route('/api/broker/supported', methods=['GET'])
+def get_supported_brokers():
+    """Return list of all supported broker names and their required config keys."""
+    try:
+        from bot.broker import get_supported_brokers as _get_brokers
+        return jsonify({'success': True, 'brokers': _get_brokers()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/broker/configs', methods=['GET'])
+@require_auth
+def list_broker_configs():
+    """Return all saved broker configs for the current user (no secrets in response)."""
+    user_id = getattr(request.user, 'id', 1)
+    configs = db_manager.get_broker_configs(user_id)
+    return jsonify({'success': True, 'configs': configs})
+
+
+@app.route('/api/broker/config/<broker_name>', methods=['POST'])
+@require_auth
+def save_broker_config(broker_name):
+    """
+    Save (upsert) a broker config.  Pass api_key / api_secret only when the user
+    explicitly updates them — omitting them preserves the stored values.
+    """
+    user_id = getattr(request.user, 'id', 1)
+    data = request.get_json() or {}
+    ok, msg = db_manager.upsert_broker_config(broker_name, data, user_id)
+    if ok:
+        _invalidate_broker_cache(user_id)
+        return jsonify({'success': True, 'message': msg})
+    return jsonify({'success': False, 'error': msg}), 400
+
+
+@app.route('/api/broker/config/<broker_name>', methods=['DELETE'])
+@require_auth
+def delete_broker_config(broker_name):
+    """Remove a broker config (revoke access)."""
+    user_id = getattr(request.user, 'id', 1)
+    ok, msg = db_manager.delete_broker_config(broker_name, user_id)
+    if ok:
+        return jsonify({'success': True, 'message': msg})
+    return jsonify({'success': False, 'error': msg}), 400
+
+
+@app.route('/api/broker/test/<broker_name>', methods=['POST'])
+@require_auth
+def test_broker_connection(broker_name):
+    """
+    Attempt to connect with the stored credentials and return live account info.
+    Used by the UI "Test Connection" button.
+    """
+    user_id = getattr(request.user, 'id', 1)
+    row = db_manager.get_broker_config(broker_name, user_id)
+    if not row:
+        return jsonify({'success': False,
+                        'error': f'No config saved for {broker_name}'}), 404
+    try:
+        from bot.broker import create_broker
+        cfg = {
+            'api_key':      row.get('api_key', ''),
+            'api_secret':   row.get('api_secret', ''),
+            'account_id':   row.get('account_id', ''),
+            'paper':        bool(row.get('paper_trading', 1)),
+            **row.get('extra_config', {}),
+        }
+        broker = create_broker(broker_name, cfg)
+        connected = broker.connect()
+        if connected:
+            account = broker.get_account()
+            return jsonify({
+                'success':      True,
+                'connected':    True,
+                'broker':       broker.name,
+                'account_id':   account.account_id,
+                'equity':       account.equity,
+                'buying_power': account.buying_power,
+                'paper':        account.paper_trading,
+            })
+        return jsonify({'success': False, 'connected': False,
+                        'error': 'Could not connect — check credentials'})
+    except Exception as e:
+        return jsonify({'success': False, 'connected': False, 'error': str(e)}), 500
+
+
+@app.route('/api/broker/candidates', methods=['GET'])
+def get_broker_candidates():
+    """Alias kept for future use — see /api/broker/supported."""
+    return get_supported_brokers()
 
 
 @app.route('/api/brown-bot/candidates', methods=['GET'])

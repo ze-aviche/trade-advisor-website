@@ -791,6 +791,9 @@ class TradingBot:
         self.connection: Optional[Connection] = None
         self.price_manager: Optional[PriceManager] = None
         self.order_manager: Optional[OrderManager] = None
+
+        # Broker abstraction (set via set_broker() before start())
+        self._broker = None
         
         # Configuration
         self.config = config or {}
@@ -858,6 +861,84 @@ class TradingBot:
             return db_manager.get_swing_bot_config()
         except Exception:
             return {}
+
+    def set_broker(self, broker) -> None:
+        """Inject a BrokerBase instance. Call before start(). Passing None reverts to DAS."""
+        self._broker = broker
+        if broker:
+            logger.info(f"[ExitBot] Broker set: {broker.name}")
+
+    def _get_price(self, symbol: str) -> Optional[float]:
+        """Get current price — broker first, DAS fallback."""
+        if self._broker:
+            try:
+                q = self._broker.get_quote(symbol)
+                return q.last or q.bid or q.ask or None
+            except Exception as e:
+                logger.warning(f"[ExitBot] broker.get_quote({symbol}) failed: {e}")
+                return None
+        return self.price_manager.get_current_price(symbol) if self.price_manager else None
+
+    def _get_positions_as_list(self) -> list:
+        """Fetch open positions as a list of dicts. Broker first, DAS fallback."""
+        if self._broker:
+            try:
+                broker_positions = self._broker.get_positions()
+                result = []
+                for p in broker_positions:
+                    qty = abs(int(p.qty))
+                    if qty == 0:
+                        continue
+                    result.append({
+                        'symbol': p.symbol.upper(),
+                        'type': 'LONG' if p.qty > 0 else 'SHORT',
+                        'quantity': qty,
+                        'avg_price': p.avg_entry_price,
+                        'current_price': p.current_price,
+                        'realized_pnl': 0.0,
+                    })
+                return result
+            except Exception as e:
+                logger.warning(f"[ExitBot] broker.get_positions() failed: {e}")
+                return []
+        raw = self.get_current_positions()
+        return PositionParser.parse_positions_raw(raw)
+
+    def _execute_close_order(self, symbol: str, position: 'Position',
+                              current_price: float, exit_reason: str) -> bool:
+        """Place closing order — broker first, DAS fallback via order_manager."""
+        if self._broker:
+            try:
+                from bot.broker.base import OrderSide
+                side = OrderSide.SELL if position.type == 'LONG' else OrderSide.BUY
+                order = self._broker.place_order(symbol, side, abs(position.size))
+                exec_price = current_price or position.entry_price
+                pnl = ((exec_price - position.entry_price) * position.size
+                       if position.type == 'LONG'
+                       else (position.entry_price - exec_price) * position.size)
+                logger.info(f"✅ [Broker] Closed {symbol} via {self._broker.name}: {exit_reason}, P&L ${pnl:.2f}")
+                try:
+                    trade_side = 'S' if position.type == 'LONG' else 'B'
+                    db_manager.add_trade({
+                        'trade_id': int(time.time() * 1000) % 1000000,
+                        'symbol': symbol.upper(),
+                        'side': trade_side,
+                        'quantity': abs(position.size),
+                        'price': exec_price,
+                        'total': exec_price * abs(position.size),
+                        'pnl': round(pnl, 2),
+                        'exit_reason': exit_reason,
+                        'position_type': getattr(position, 'position_type', 'day'),
+                    })
+                except Exception as db_e:
+                    logger.warning(f"[ExitBot] DB write after broker close failed: {db_e}")
+                return True
+            except Exception as e:
+                logger.error(f"[ExitBot] broker.place_order({symbol}) failed: {e}")
+                return False
+        if self.order_manager:
+            return self.order_manager.close_position(symbol, position, current_price, exit_reason)
+        return False
 
     def _is_market_hours(self) -> bool:
         """Return True if current ET time is within extended trading window (4 AM – 8 PM)."""
@@ -1063,17 +1144,12 @@ class TradingBot:
     def discover_existing_positions(self):
         """Discover and track all existing positions in the account"""
         logger.info("🔍 Discovering existing positions...")
-        
+
         try:
-            # Get current positions from DAS
-            positions_raw = self.get_current_positions()
-            
-            if not positions_raw or positions_raw.strip() == "":
+            discovered_positions = self._get_positions_as_list()
+            if not discovered_positions:
                 logger.info("ℹ️ No existing positions found in account")
                 return
-            
-            # Parse positions
-            discovered_positions = PositionParser.parse_positions_raw(positions_raw)
             
             # Track discovered positions
             with self._positions_lock:
@@ -1114,14 +1190,9 @@ class TradingBot:
     def check_for_new_positions(self):
         """Check for new positions that might have been opened manually"""
         try:
-            # Get current positions from DAS
-            positions_raw = self.get_current_positions()
-            
-            if not positions_raw or positions_raw.strip() == "":
+            current_positions = self._get_positions_as_list()
+            if not current_positions:
                 return
-            
-            # Parse positions
-            current_positions = PositionParser.parse_positions_raw(positions_raw)
             current_symbols = set()
             new_positions_found = []
             
@@ -1613,11 +1684,13 @@ class TradingBot:
                         if symbol.upper() in self.price_manager.subscribed_symbols:
                             self.price_manager.update_price_data(symbol)
 
-                # Get current positions from DAS
-                current_positions_raw = self.get_current_positions()
+                # Get current positions (broker or DAS)
+                current_positions_list = self._get_positions_as_list()
+                current_positions_raw = self.get_current_positions() if not self._broker else ""
 
-                # Detect manual trades by monitoring realized PnL changes
-                self._detect_manual_trades(current_positions_raw)
+                # Detect manual trades (DAS-only — broker path skips)
+                if not self._broker:
+                    self._detect_manual_trades(current_positions_raw)
 
                 # Get a copy of active positions to iterate over
                 with self._positions_lock:
@@ -1639,9 +1712,8 @@ class TradingBot:
                                 logger.info(f"⏰ EOD force-exit triggered at {et_now.strftime('%H:%M')} ET — closing {len(day_positions)} day position(s)")
                                 self._eod_exited_today = True
                                 for sym, pos in day_positions.items():
-                                    eod_price = self.price_manager.get_current_price(sym) if self.price_manager else None
-                                    if self.order_manager:
-                                        self.order_manager.close_position(sym, pos, eod_price or pos.entry_price, "EOD_FORCE_EXIT")
+                                    eod_price = self._get_price(sym)
+                                    self._execute_close_order(sym, pos, eod_price or pos.entry_price, "EOD_FORCE_EXIT")
                                     with self._positions_lock:
                                         if sym in self.active_positions:
                                             del self.active_positions[sym]
@@ -1683,8 +1755,11 @@ class TradingBot:
 
                     logger.info(f"Checking {'swing' if is_swing else 'day'} position: {symbol} ({position.type} {position.size} @ ${position.entry_price:.2f}, target: ${position.profit_target:.2f}, stop: ${position.stop_loss:.2f})")
 
-                    # Check if position still exists in DAS
-                    if not self._check_position_exists_in_das(current_positions_raw, symbol):
+                    # Check if position still exists (broker or DAS)
+                    still_open = (any(p['symbol'] == symbol for p in current_positions_list)
+                                  if self._broker
+                                  else self._check_position_exists_in_das(current_positions_raw, symbol))
+                    if not still_open:
                         logger.info(f"Position {symbol} no longer exists in DAS, removing from tracking")
                         with self._positions_lock:
                             if symbol in self.active_positions:
@@ -1695,7 +1770,7 @@ class TradingBot:
                         swing_last_checked.pop(symbol, None)
                         continue
 
-                    current_price = self.price_manager.get_current_price(symbol) if self.price_manager else None
+                    current_price = self._get_price(symbol)
 
                     if current_price:
                         logger.info(f"Current price for {symbol}: ${current_price:.2f}")
@@ -1754,16 +1829,15 @@ class TradingBot:
 
                         if should_exit:
                             logger.info(f"Exit condition met for {symbol}: {exit_reason} at ${current_price:.2f}")
-                            if self.order_manager:
-                                success = self.order_manager.close_position(symbol, position, current_price, exit_reason)
-                                if success:
-                                    with self._positions_lock:
-                                        if symbol in self.active_positions:
-                                            del self.active_positions[symbol]
-                                            self.active_positions_count = len(self.active_positions)
-                                    if self.price_manager:
-                                        self.price_manager.unsubscribe_from_symbol(symbol)
-                                    swing_last_checked.pop(symbol, None)
+                            success = self._execute_close_order(symbol, position, current_price, exit_reason)
+                            if success:
+                                with self._positions_lock:
+                                    if symbol in self.active_positions:
+                                        del self.active_positions[symbol]
+                                        self.active_positions_count = len(self.active_positions)
+                                if self.price_manager:
+                                    self.price_manager.unsubscribe_from_symbol(symbol)
+                                swing_last_checked.pop(symbol, None)
                         else:
                             logger.info(f"No exit conditions met for {symbol} at ${current_price:.2f}")
                     else:
@@ -1784,12 +1858,20 @@ class TradingBot:
         try:
             self.is_running = True
             self.last_update = datetime.now()
-            
-            # Connect to DAS
-            if not self.connect_to_das():
-                logger.error("❌ Failed to connect to DAS, cannot start bot")
-                logger.error("💡 Please ensure DAS Trader is running and the connection is established")
-                return False
+
+            if self._broker:
+                # Broker path — no DAS TCP socket needed
+                if not self._broker.is_connected():
+                    if not self._broker.connect():
+                        logger.error(f"❌ Failed to connect to broker {self._broker.name}")
+                        return False
+                logger.info(f"✅ Exit Bot connected via broker: {self._broker.name}")
+            else:
+                # DAS path
+                if not self.connect_to_das():
+                    logger.error("❌ Failed to connect to DAS, cannot start bot")
+                    logger.error("💡 Please ensure DAS Trader is running and the connection is established")
+                    return False
             
             # Discover existing positions
             self.discover_existing_positions()
@@ -2073,20 +2155,18 @@ class TradingBot:
         """
         try:
             logger.warning("🚨 PANIC EXIT INITIATED - CLOSING ALL POSITIONS AT MARKET")
-            
-            if not self.connection:
-                logger.error("❌ Not connected to DAS - cannot execute panic exit")
+
+            if not self._broker and not self.connection:
+                logger.error("❌ Not connected to any broker or DAS - cannot execute panic exit")
                 return {
                     'success': False,
-                    'error': 'Not connected to DAS server',
+                    'error': 'Not connected to DAS server or broker',
                     'positions_closed': 0,
                     'positions_failed': 0,
                     'details': []
                 }
-            
-            # Get current positions
-            positions_raw = self.get_current_positions()
-            positions = PositionParser.parse_positions_raw(positions_raw)
+
+            positions = self._get_positions_as_list()
             
             if not positions:
                 logger.info("ℹ️ No positions found to close")
@@ -2108,23 +2188,23 @@ class TradingBot:
                 logger.info(f"[{i}/{len(positions)}] Closing {position['symbol']} {position['type']} {position['quantity']}")
                 
                 try:
-                    # Generate unique order ID
-                    unID = int(time.time() * 1000) % 1000000  # Simple unique ID
-                    
-                    # Determine order side based on position type
-                    if position['type'] == "LONG":
-                        # Sell to close long position
-                        script = f"NEWORDER {unID} S {position['symbol'].upper()} SMAT {position['quantity']} MKT"
-                        order_side = "SELL"
+                    order_placed = False
+                    if self._broker:
+                        from bot.broker.base import OrderSide
+                        side = OrderSide.SELL if position['type'] == 'LONG' else OrderSide.BUY
+                        self._broker.place_order(position['symbol'].upper(), side, position['quantity'])
+                        order_placed = True
                     else:
-                        # Buy to close short position
-                        script = f"NEWORDER {unID} B {position['symbol'].upper()} SMAT {position['quantity']} MKT"
-                        order_side = "BUY"
-                    
-                    logger.info(f"Sending order: {script}")
-                    result = self.connection.SendScript(bytearray(script + "\r\n", encoding="ascii"))
-                    
-                    if "SUCCESS" in result.upper() or "ACCEPTED" in result.upper():
+                        unID = int(time.time() * 1000) % 1000000
+                        if position['type'] == "LONG":
+                            script = f"NEWORDER {unID} S {position['symbol'].upper()} SMAT {position['quantity']} MKT"
+                        else:
+                            script = f"NEWORDER {unID} B {position['symbol'].upper()} SMAT {position['quantity']} MKT"
+                        logger.info(f"Sending order: {script}")
+                        result = self.connection.SendScript(bytearray(script + "\r\n", encoding="ascii"))
+                        order_placed = "SUCCESS" in result.upper() or "ACCEPTED" in result.upper()
+
+                    if order_placed:
                         successful_closes += 1
                         status = "SUCCESS"
                         logger.info(f"✅ Successfully closed {position['symbol']} {position['type']}")

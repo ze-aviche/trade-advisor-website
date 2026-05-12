@@ -91,6 +91,9 @@ const app = createApp({
                     brownBotToggle: false,
                     brownBotConfig: false,
                     brownBotCandidates: false,
+                    // Broker loading states
+                    brokerSave: false,
+                    brokerTest: false,
                 },
                 
                 // Charts
@@ -386,6 +389,18 @@ const app = createApp({
                 max_concurrent_swing: 5,
                 circuit_breaker_open: false,
             },
+
+            // Broker connection settings
+            supportedBrokers: [],
+            brokerConfigs: [],
+            brokerForm: {
+                broker_name: '',
+                api_key: '',
+                api_secret: '',
+                paper_trading: true,
+                extra_config: {},
+            },
+            brokerTestResult: null,
 
                             // Continuous tracking interval
                 trackingInterval: null,
@@ -6127,6 +6142,103 @@ const app = createApp({
                 return days === 0 ? 'today' : `${days}d`;
             } catch {
                 return '—';
+            }
+        },
+
+        // ── Broker connection methods ──────────────────────────────────
+
+        async loadBrokerConfigs() {
+            try {
+                const [supportedRes, configsRes] = await Promise.all([
+                    axios.get('/api/broker/supported'),
+                    axios.get('/api/broker/configs', { headers: this.authHeaders() }),
+                ]);
+                if (supportedRes.data.success) this.supportedBrokers = supportedRes.data.brokers;
+                if (configsRes.data.success)   this.brokerConfigs    = configsRes.data.configs;
+            } catch (e) {
+                console.error('loadBrokerConfigs error', e);
+            }
+        },
+
+        onBrokerSelect() {
+            this.brokerTestResult = null;
+            // Reset form fields but keep broker_name
+            this.brokerForm.api_key = '';
+            this.brokerForm.api_secret = '';
+            this.brokerForm.paper_trading = true;
+            this.brokerForm.extra_config = {};
+            // Pre-fill extra_config defaults for DAS
+            if (this.brokerForm.broker_name === 'das') {
+                this.brokerForm.extra_config = { host: '127.0.0.1', port: 9800 };
+            }
+        },
+
+        async saveBrokerConfig() {
+            if (!this.brokerForm.broker_name) return;
+            this.loading.brokerSave = true;
+            try {
+                const payload = {
+                    api_key:       this.brokerForm.api_key,
+                    api_secret:    this.brokerForm.api_secret,
+                    paper_trading: this.brokerForm.paper_trading ? 1 : 0,
+                    extra_config:  this.brokerForm.extra_config || {},
+                };
+                // For Tastytrade, credentials live in extra_config
+                if (this.brokerForm.broker_name === 'tastytrade') {
+                    payload.extra_config = {
+                        username: this.brokerForm.extra_config.username || '',
+                        password: this.brokerForm.extra_config.password || '',
+                    };
+                }
+                const res = await axios.post(
+                    `/api/broker/config/${this.brokerForm.broker_name}`,
+                    payload,
+                    { headers: this.authHeaders() }
+                );
+                if (res.data.success) {
+                    this.showSuccess?.('Broker config saved');
+                    await this.loadBrokerConfigs();
+                } else {
+                    this.showError?.(res.data.error || 'Save failed');
+                }
+            } catch (e) {
+                this.showError?.(e.response?.data?.error || 'Save failed');
+            } finally {
+                this.loading.brokerSave = false;
+            }
+        },
+
+        async testBrokerConnection() {
+            if (!this.brokerForm.broker_name) return;
+            this.loading.brokerTest = true;
+            this.brokerTestResult = null;
+            try {
+                const res = await axios.post(
+                    `/api/broker/test/${this.brokerForm.broker_name}`,
+                    {},
+                    { headers: this.authHeaders() }
+                );
+                this.brokerTestResult = res.data;
+            } catch (e) {
+                this.brokerTestResult = {
+                    connected: false,
+                    error: e.response?.data?.error || 'Connection test failed',
+                };
+            } finally {
+                this.loading.brokerTest = false;
+            }
+        },
+
+        async deleteBrokerConfig(brokerName) {
+            if (!brokerName || !confirm(`Remove ${brokerName} connection?`)) return;
+            try {
+                await axios.delete(`/api/broker/config/${brokerName}`,
+                                   { headers: this.authHeaders() });
+                this.brokerForm.broker_name = '';
+                this.brokerTestResult = null;
+                await this.loadBrokerConfigs();
+            } catch (e) {
+                this.showError?.(e.response?.data?.error || 'Delete failed');
             }
         },
 
