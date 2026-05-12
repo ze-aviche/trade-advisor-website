@@ -2661,19 +2661,23 @@ def start_bot():
             }), 503
 
         app_logger.info("start_bot: calling trading_bot.start()...")
+        broker = _get_broker()
+        trading_bot.set_broker(broker)
         success = trading_bot.start()
         if success:
+            msg = (f'Bot started via {broker.name}' if broker
+                   else 'Bot started via DAS Trader')
             return jsonify({
                 'success': True,
-                'message': 'Bot started successfully',
+                'message': msg,
                 'timestamp': datetime.now().isoformat()
             })
         else:
-            # Enhanced error message for DAS connection issues
             return jsonify({
                 'success': False,
-                'error': 'Failed to start bot: DAS Trader is not connected. Please ensure DAS Trader is running and connected.',
-                'details': 'The bot requires a connection to DAS Trader to function. Please check that DAS Trader is running and the connection is established.'
+                'error': ('Failed to start bot: could not connect to broker or DAS Trader. '
+                          'Check your broker credentials or ensure DAS Trader is running.'),
+                'details': 'Configure a broker in the Account → Broker Connection tab, or ensure DAS Trader is running.'
             }), 500
     except Exception as e:
         app_logger.error(f"Error starting bot: {e}")
