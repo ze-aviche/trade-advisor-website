@@ -11,31 +11,13 @@ from .base import BrokerBase
 
 
 # Registry: broker_name → (display_label, required_config_keys)
+# Add additional brokers here when ready to expose them in the UI.
 _BROKER_REGISTRY: dict[str, dict] = {
     'alpaca': {
         'label':    'Alpaca Markets',
         'required': ['api_key', 'api_secret'],
         'optional': {'paper': True},
         'docs_url': 'https://alpaca.markets/docs/trading/',
-    },
-    'tradier': {
-        'label':    'Tradier',
-        'required': ['api_key'],
-        'optional': {'paper': True},
-        'docs_url': 'https://documentation.tradier.com/',
-    },
-    'tastytrade': {
-        'label':    'Tastytrade',
-        'required': ['username', 'password'],
-        'optional': {'paper': False},
-        'docs_url': 'https://developer.tastytrade.com/',
-    },
-    'das': {
-        'label':    'DAS Trader Pro (local)',
-        'required': [],
-        'optional': {'host': '127.0.0.1', 'port': 9800,
-                     'username': '', 'password': '', 'account': ''},
-        'docs_url': 'https://dastrader.com/',
     },
 }
 

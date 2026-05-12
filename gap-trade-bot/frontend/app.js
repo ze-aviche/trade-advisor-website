@@ -6149,14 +6149,16 @@ const app = createApp({
 
         async loadBrokerConfigs() {
             try {
-                const [supportedRes, configsRes] = await Promise.all([
-                    axios.get('/api/broker/supported'),
-                    axios.get('/api/broker/configs', { headers: this.authHeaders() }),
-                ]);
+                const supportedRes = await axios.get('/api/broker/supported');
                 if (supportedRes.data.success) this.supportedBrokers = supportedRes.data.brokers;
-                if (configsRes.data.success)   this.brokerConfigs    = configsRes.data.configs;
             } catch (e) {
-                console.error('loadBrokerConfigs error', e);
+                console.error('loadBrokerConfigs/supported error', e);
+            }
+            try {
+                const configsRes = await axios.get('/api/broker/configs', { headers: this.authHeaders() });
+                if (configsRes.data.success) this.brokerConfigs = configsRes.data.configs;
+            } catch (e) {
+                console.error('loadBrokerConfigs/configs error', e);
             }
         },
 
