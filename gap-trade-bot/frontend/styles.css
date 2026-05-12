@@ -770,4 +770,121 @@ canvas {
 .active-positions-table tr.exiting-active {
     opacity: 0;
     transform: translateY(-10px);
-} 
+}
+
+/* ═══════════════════════════════════════════════════════
+   AI CHAT — markdown / table rendering
+   ═══════════════════════════════════════════════════════ */
+
+.ai-chat-body {
+    line-height: 1.6;
+    overflow-x: auto;
+}
+
+/* Headings */
+.ai-chat-body h1, .ai-chat-body h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #93c5fd;
+    margin: 12px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(147,197,253,0.3);
+}
+.ai-chat-body h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #86efac;
+    margin: 10px 0 4px;
+}
+
+/* Tables */
+.ai-chat-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ai-chat-body thead tr {
+    background-color: rgba(59,130,246,0.25);
+}
+.ai-chat-body th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #bfdbfe;
+    border-bottom: 2px solid rgba(59,130,246,0.4);
+    white-space: nowrap;
+}
+.ai-chat-body td {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    vertical-align: middle;
+}
+.ai-chat-body tbody tr:nth-child(even) td {
+    background-color: rgba(255,255,255,0.04);
+}
+.ai-chat-body tbody tr:hover td {
+    background-color: rgba(59,130,246,0.12);
+}
+
+/* Lists */
+.ai-chat-body ul, .ai-chat-body ol {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+.ai-chat-body li {
+    margin: 4px 0;
+}
+
+/* Paragraphs */
+.ai-chat-body p {
+    margin: 6px 0;
+}
+
+/* Bold / emphasis */
+.ai-chat-body strong {
+    color: #f9fafb;
+    font-weight: 600;
+}
+.ai-chat-body em {
+    color: #d1d5db;
+}
+
+/* Inline code */
+.ai-chat-body code {
+    background-color: rgba(0,0,0,0.35);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.85em;
+    color: #fbbf24;
+}
+
+/* Block quotes */
+.ai-chat-body blockquote {
+    border-left: 3px solid #3b82f6;
+    padding-left: 10px;
+    margin: 8px 0;
+    color: #9ca3af;
+    font-style: italic;
+}
+
+/* Light mode overrides */
+html.light .ai-chat-body h1, html.light .ai-chat-body h2 {
+    color: #1d4ed8;
+    border-bottom-color: rgba(29,78,216,0.25);
+}
+html.light .ai-chat-body h3 { color: #15803d; }
+html.light .ai-chat-body thead tr { background-color: rgba(29,78,216,0.1); }
+html.light .ai-chat-body th {
+    color: #1e40af;
+    border-bottom-color: rgba(29,78,216,0.3);
+}
+html.light .ai-chat-body td { border-bottom-color: rgba(0,0,0,0.07); }
+html.light .ai-chat-body tbody tr:nth-child(even) td { background-color: rgba(0,0,0,0.03); }
+html.light .ai-chat-body tbody tr:hover td { background-color: rgba(29,78,216,0.06); }
+html.light .ai-chat-body strong { color: #111827; }
+html.light .ai-chat-body code { background-color: rgba(0,0,0,0.08); color: #b45309; }
+html.light .ai-chat-body blockquote { border-left-color: #1d4ed8; color: #6b7280; }
