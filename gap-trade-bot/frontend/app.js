@@ -995,7 +995,7 @@ const app = createApp({
                         this.activeTab = 'about';
                     }
                 } else if (tabName === 'account') {
-                    // account page loads from user object already in state
+                    this.loadBrokerConfigs();
                 } else if (tabName === 'brown-bot') {
                     console.log('🤖 BrownBot tab selected - loading status...');
                     this.stopPositionHistoryUpdates();
