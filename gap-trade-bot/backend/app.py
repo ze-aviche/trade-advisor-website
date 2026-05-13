@@ -6082,166 +6082,117 @@ def swing_daily_picks_latest():
     })
 
 
-@app.route('/api/swing-daily-picks')
-def swing_daily_picks():
+def _compute_and_save_swing_picks(session_date: str, polygon_key: str,
+                                   market_open: bool = None) -> dict:
     """
-    Compute (or return cached) swing picks for today's trading session.
-    Persists results to DB so they survive restarts and are served instantly
-    by /api/swing-daily-picks/latest on subsequent loads.
+    Full swing picks pipeline: fetch candidates → filter → SMA/cap/trend checks →
+    Claude AI ranking → persist to DB → warm memory cache.
+    Returns the result dict. Raises on error (caller should catch).
+    Called by both the HTTP endpoint and the EOD scheduler thread.
     """
     import requests as _req
+    import concurrent.futures as _cf
+    import anthropic as _anthropic
 
-    polygon_key = os.environ.get('POLYGON_API_KEY', '')
-    market_open  = _is_market_open()
-    session_date = _last_trading_date()
+    if market_open is None:
+        market_open = _is_market_open()
 
-    # 1. Memory cache hit (fastest)
-    if session_date in _daily_picks_cache:
-        payload = dict(_daily_picks_cache[session_date])
-        payload['cached'] = True
-        payload['market_open'] = market_open
-        return jsonify(payload)
+    # ── Step 1: fetch gainers + losers in parallel ────────────────────────
+    def _fetch_movers(direction):
+        url = (f'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}'
+               f'?apiKey={polygon_key}')
+        r = _req.get(url, timeout=12)
+        r.raise_for_status()
+        return r.json().get('tickers', [])
 
-    # 2. DB cache hit — survives server restarts
-    db_row = db_manager.get_swing_picks(session_date)
-    if db_row:
-        payload = {
-            'success': True, 'cached': True, 'is_today': True,
-            'market_open': market_open, 'date': session_date,
-            'picks': db_row['picks'], 'market_note': db_row['market_note'],
-            'candidates_scanned': db_row['candidates_scanned'],
-            'source_counts': db_row['source_counts'],
-            'sources_tickers': db_row['sources_tickers'],
+    with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
+        gainers = _pool.submit(_fetch_movers, 'gainers').result()
+        losers  = _pool.submit(_fetch_movers, 'losers').result()
+
+    all_movers = gainers + losers
+
+    # ── Step 2: filter movers — strict first, relax if thin ──────────────
+    candidates = _filter_candidates(all_movers, min_vol=500_000, min_chg=1.0)
+    if len(candidates) < 6:
+        candidates = _filter_candidates(all_movers, min_vol=300_000, min_chg=0.3)
+
+    known_tickers = {c['ticker'] for c in candidates}
+
+    # ── Step 2b: gap-up stocks in memory (free) ──────────────────────────
+    for g in list(real_time_gap_ups):
+        sym = g.get('ticker', '')
+        if sym in known_tickers or not _is_valid_swing_ticker(sym):
+            continue
+        price = g.get('price', 0)
+        vol   = g.get('volume', 0)
+        chg   = g.get('gap_percent', 0)
+        if not (10 <= price <= 700 and vol >= 300_000 and 1.0 <= chg <= 22):
+            continue
+        if (price * vol) < 3_000_000:
+            continue
+        candidates.append({
+            'ticker': sym, 'price': round(price, 2), 'chg_pct': round(chg, 2),
+            'volume_m': round(vol / 1_000_000, 2),
+            'dollar_vol_m': round(price * vol / 1_000_000, 1),
+            'day_range': 0, 'direction': 'gap-up', 'vol_ratio': None,
+        })
+        known_tickers.add(sym)
+
+    # ── Step 2c: volume-surge scan ────────────────────────────────────────
+    candidates.extend(_fetch_volume_surge_candidates(
+        polygon_key, known_tickers, min_surge=1.5, min_vol=300_000, limit=20))
+
+    # ── Step 2d: market-cap enrichment + micro-cap filter ────────────────
+    if polygon_key and candidates:
+        try:
+            syms_param = '&'.join(f'ticker={c["ticker"]}' for c in candidates)
+            ref_r = _req.get(
+                f'https://api.polygon.io/v3/reference/tickers?{syms_param}&limit=250&apiKey={polygon_key}',
+                timeout=10)
+            if ref_r.status_code == 200:
+                cap_map = {item['ticker']: round(item['market_cap'] / 1_000_000, 0)
+                           for item in ref_r.json().get('results', [])
+                           if item.get('market_cap')}
+                filtered = []
+                for c in candidates:
+                    mc_m = cap_map.get(c['ticker'])
+                    if mc_m is not None:
+                        if mc_m < 300:
+                            continue
+                        c['market_cap_m'] = mc_m
+                    filtered.append(c)
+                candidates = filtered
+        except Exception:
+            pass  # fail-open
+
+    # ── Step 2e: SMA-10 trend filter ─────────────────────────────────────
+    candidates = _enrich_with_sma_trend(candidates, polygon_key)
+
+    if not candidates:
+        return {
+            'success': True, 'market_open': market_open, 'date': session_date,
+            'picks': [], 'candidates_scanned': 0,
+            'market_note': 'No qualifying candidates found for this session.',
+            'source_counts': {}, 'sources_tickers': {}, 'cached': False,
         }
-        _daily_picks_cache[session_date] = payload  # warm memory cache
-        return jsonify(payload)
 
-    if not AI_AGENT_AVAILABLE:
-        return jsonify({'success': False, 'error': 'AI not available'}), 503
-
-    try:
-        # ── Step 1: fetch gainers + losers + full-market snapshot in parallel ─
-        import concurrent.futures as _cf
-
-        def _fetch_movers(direction):
-            url = (f'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}'
-                   f'?apiKey={polygon_key}')
-            r = _req.get(url, timeout=12)
-            r.raise_for_status()
-            return r.json().get('tickers', [])
-
-        with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
-            _g_fut = _pool.submit(_fetch_movers, 'gainers')
-            _l_fut = _pool.submit(_fetch_movers, 'losers')
-            gainers = _g_fut.result()
-            losers  = _l_fut.result()
-
-        all_movers = gainers + losers
-
-        # ── Step 2: filter movers — strict first, relax if thin ───────────
-        candidates = _filter_candidates(all_movers, min_vol=500_000, min_chg=1.0)
-        if len(candidates) < 6:
-            candidates = _filter_candidates(all_movers, min_vol=300_000, min_chg=0.3)
-
-        known_tickers = {c['ticker'] for c in candidates}
-
-        # ── Step 2b: gap-up stocks already in memory (free) ──────────────
-        for g in list(real_time_gap_ups):
-            sym = g.get('ticker', '')
-            if sym in known_tickers:
-                continue
-            if not _is_valid_swing_ticker(sym):
-                continue
-            price = g.get('price', 0)
-            vol   = g.get('volume', 0)
-            chg   = g.get('gap_percent', 0)
-            if not (10 <= price <= 700 and vol >= 300_000 and 1.0 <= chg <= 22):
-                continue
-            if (price * vol) < 3_000_000:
-                continue
-            candidates.append({
-                'ticker':    sym,
-                'price':     round(price, 2),
-                'chg_pct':   round(chg, 2),
-                'volume_m':  round(vol / 1_000_000, 2),
-                'dollar_vol_m': round(price * vol / 1_000_000, 1),
-                'day_range': 0,
-                'direction': 'gap-up',
-                'vol_ratio': None,
-            })
-            known_tickers.add(sym)
-
-        # ── Step 2c: full-market volume-surge scan (Polygon all-tickers) ──
-        surge = _fetch_volume_surge_candidates(polygon_key, known_tickers,
-                                               min_surge=1.5, min_vol=300_000, limit=20)
-        candidates.extend(surge)
-
-        # ── Step 2d: market-cap enrichment + filter ───────────────────────
-        # One Polygon reference batch call to annotate candidates with market cap
-        # and drop micro-caps (< $300M). Fail-open: if the call errors or a ticker
-        # has no market_cap data, it is kept.
-        if polygon_key and candidates:
-            try:
-                syms_param = '&'.join(f'ticker={c["ticker"]}' for c in candidates)
-                ref_url = (f'https://api.polygon.io/v3/reference/tickers?{syms_param}'
-                           f'&limit=250&apiKey={polygon_key}')
-                ref_r = _req.get(ref_url, timeout=10)
-                if ref_r.status_code == 200:
-                    cap_map = {}
-                    for item in ref_r.json().get('results', []):
-                        mc = item.get('market_cap')
-                        if mc:
-                            cap_map[item['ticker']] = round(mc / 1_000_000, 0)
-                    filtered_by_cap = []
-                    for c in candidates:
-                        mc_m = cap_map.get(c['ticker'])
-                        if mc_m is not None:
-                            if mc_m < 300:
-                                continue
-                            c['market_cap_m'] = mc_m
-                        filtered_by_cap.append(c)
-                    candidates = filtered_by_cap
-            except Exception:
-                pass  # fail-open
-
-        # ── Step 2e: multi-day trend filter (SMA-10) ─────────────────────
-        # Fetches ~15 daily bars per candidate in parallel and drops stocks
-        # whose close is more than 3% below their 10-day SMA — broken patterns.
-        candidates = _enrich_with_sma_trend(candidates, polygon_key)
-
-        if not candidates:
-            # Polygon returned nothing — likely a holiday or API issue.
-            # Still return success so the frontend can show a clear message.
-            return jsonify({
-                'success':     True,
-                'market_open': market_open,
-                'picks':       [],
-                'market_note': 'No market data available — Polygon may be returning an empty snapshot. Try again after the next trading session opens.',
-                'date':        session_date,
-                'cached':      False,
-            })
-
-        # ── Step 3: send to Claude for ranking ────────────────────────────
-        def _row(c):
-            vol_tag  = (f'  surge {c["vol_ratio"]:.1f}×' if c.get('vol_ratio') else '')
-            cap_tag  = (f'  mktcap ${c["market_cap_m"]/1000:.1f}B' if c.get('market_cap_m') and c['market_cap_m'] >= 1000
-                        else f'  mktcap ${c["market_cap_m"]:.0f}M' if c.get('market_cap_m') else '')
-            sma_tag  = (f'  sma10 ${c["sma10"]:.2f}' if c.get('sma10') else '')
-            cpos_tag = (f'  cpos {c["close_pos"]:.0%}' if c.get('close_pos') is not None else '')
-            return (
-                f"{c['ticker']:6s}  ${c['price']:>7.2f}"
+    # ── Step 3: Claude ranking ────────────────────────────────────────────
+    def _row(c):
+        vol_tag  = (f'  surge {c["vol_ratio"]:.1f}×' if c.get('vol_ratio') else '')
+        cap_tag  = (f'  mktcap ${c["market_cap_m"]/1000:.1f}B'
+                    if c.get('market_cap_m') and c['market_cap_m'] >= 1000
+                    else f'  mktcap ${c["market_cap_m"]:.0f}M' if c.get('market_cap_m') else '')
+        sma_tag  = (f'  sma10 ${c["sma10"]:.2f}' if c.get('sma10') else '')
+        cpos_tag = (f'  cpos {c["close_pos"]:.0%}' if c.get('close_pos') is not None else '')
+        return (f"{c['ticker']:6s}  ${c['price']:>7.2f}"
                 f"  {'+' if c['chg_pct'] >= 0 else ''}{c['chg_pct']:>6.2f}%"
                 f"  vol {c['volume_m']:.1f}M  range {c['day_range']}%"
-                f"  [{c['direction']}]{vol_tag}{cap_tag}{sma_tag}{cpos_tag}"
-            )
-        rows = '\n'.join(_row(c) for c in candidates)
+                f"  [{c['direction']}]{vol_tag}{cap_tag}{sma_tag}{cpos_tag}")
 
-        market_ctx = (
-            "Note: this data is from the most recent completed trading session (market is currently closed)."
-            if not market_open else ""
-        )
+    market_ctx = ("Note: this data is from the most recent completed trading session "
+                  "(market is currently closed)." if not market_open else "")
 
-        prompt = f"""You are an expert swing trader scanning for the best setups on {session_date}.
+    prompt = f"""You are an expert swing trader scanning for the best setups on {session_date}.
 {market_ctx}
 
 Candidates are pre-filtered: all pass min $10 price, $3M+ daily dollar volume, $300M+ market cap, close above 10-day SMA, and bullish intraday price structure (close in upper range, close ≥ VWAP). Broken patterns and sell-off volume have already been removed.
@@ -6255,7 +6206,7 @@ Prefer: strong volume confirmation on up moves, gap-ups with continuation potent
 Avoid: extended moves without consolidation, low-grade setups where the only edge is momentum without structure.
 
 CANDIDATES
-{rows}
+{chr(10).join(_row(c) for c in candidates)}
 
 Return ONLY a JSON object — no markdown, no commentary:
 {{
@@ -6273,66 +6224,166 @@ Return ONLY a JSON object — no markdown, no commentary:
   "market_note": "1-2 sentence overall market context for swing traders"
 }}"""
 
-        import anthropic as _anthropic
-        client = _anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
-        msg = client.messages.create(
-            model='claude-haiku-4-5-20251001',
-            max_tokens=2000,
-            messages=[{'role': 'user', 'content': prompt}],
-        )
-        raw = msg.content[0].text.strip()
-        if raw.startswith('```'):
-            raw = raw.split('```')[1]
-            if raw.startswith('json'):
-                raw = raw[4:]
-            raw = raw.strip()
+    client = _anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
+    msg    = client.messages.create(model='claude-haiku-4-5-20251001', max_tokens=2000,
+                                    messages=[{'role': 'user', 'content': prompt}])
+    raw = msg.content[0].text.strip()
+    if raw.startswith('```'):
+        raw = raw.split('```')[1]
+        if raw.startswith('json'):
+            raw = raw[4:]
+        raw = raw.strip()
 
-        ai_result = json.loads(raw)
+    ai_result = json.loads(raw)  # raises JSONDecodeError on bad response
 
-        # Build per-source ticker lists and a lookup for tagging picks
-        ticker_source = {c['ticker']: c['direction'] for c in candidates}
-        sources_tickers = {
-            'movers':    [c['ticker'] for c in candidates if c['direction'] in ('gainer', 'loser')],
-            'gap_ups':   [c['ticker'] for c in candidates if c['direction'] == 'gap-up'],
-            'vol_surge': [c['ticker'] for c in candidates if c['direction'] == 'vol-surge'],
+    ticker_source = {c['ticker']: c['direction'] for c in candidates}
+    sources_tickers = {
+        'movers':    [c['ticker'] for c in candidates if c['direction'] in ('gainer', 'loser')],
+        'gap_ups':   [c['ticker'] for c in candidates if c['direction'] == 'gap-up'],
+        'vol_surge': [c['ticker'] for c in candidates if c['direction'] == 'vol-surge'],
+    }
+    source_counts = {k: len(v) for k, v in sources_tickers.items()}
+
+    picks = ai_result.get('picks', [])
+    for p in picks:
+        p['source'] = ticker_source.get(p.get('ticker', ''), 'unknown')
+
+    result = {
+        'success': True, 'market_open': market_open, 'date': session_date,
+        'picks': picks, 'market_note': ai_result.get('market_note', ''),
+        'candidates_scanned': len(candidates),
+        'source_counts': source_counts, 'sources_tickers': sources_tickers,
+        'cached': False,
+    }
+
+    # Persist and warm memory cache
+    _daily_picks_cache[session_date] = result
+    db_manager.save_swing_picks(
+        date=session_date, picks=picks,
+        market_note=ai_result.get('market_note', ''),
+        candidates_scanned=len(candidates),
+        source_counts=source_counts, sources_tickers=sources_tickers,
+    )
+    return result
+
+
+@app.route('/api/swing-daily-picks')
+def swing_daily_picks():
+    """
+    Return cached swing picks for today's session (memory → DB → compute).
+    Computation is also triggered automatically by the EOD scheduler at 8 PM ET.
+    """
+    polygon_key  = os.environ.get('POLYGON_API_KEY', '')
+    market_open  = _is_market_open()
+    session_date = _last_trading_date()
+
+    # 1. Memory cache
+    if session_date in _daily_picks_cache:
+        payload = dict(_daily_picks_cache[session_date])
+        payload.update({'cached': True, 'is_today': True, 'market_open': market_open})
+        return jsonify(payload)
+
+    # 2. DB cache (survives restarts)
+    db_row = db_manager.get_swing_picks(session_date)
+    if db_row:
+        payload = {
+            'success': True, 'cached': True, 'is_today': True,
+            'market_open': market_open, 'date': session_date,
+            'picks': db_row['picks'], 'market_note': db_row['market_note'],
+            'candidates_scanned': db_row['candidates_scanned'],
+            'source_counts': db_row['source_counts'],
+            'sources_tickers': db_row['sources_tickers'],
         }
-        source_counts = {k: len(v) for k, v in sources_tickers.items()}
+        _daily_picks_cache[session_date] = payload
+        return jsonify(payload)
 
-        # Tag each Claude pick with its source
-        picks = ai_result.get('picks', [])
-        for p in picks:
-            p['source'] = ticker_source.get(p.get('ticker', ''), 'unknown')
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI not available'}), 503
 
-        result = {
-            'success':            True,
-            'market_open':        market_open,
-            'date':               session_date,
-            'picks':              picks,
-            'market_note':        ai_result.get('market_note', ''),
-            'candidates_scanned': len(candidates),
-            'source_counts':      source_counts,
-            'sources_tickers':    sources_tickers,
-            'cached':             False,
-        }
-        _daily_picks_cache[session_date] = result
-
-        # Persist to DB so picks survive restarts and load instantly next time
-        db_manager.save_swing_picks(
-            date=session_date,
-            picks=picks,
-            market_note=ai_result.get('market_note', ''),
-            candidates_scanned=len(candidates),
-            source_counts=source_counts,
-            sources_tickers=sources_tickers,
-        )
-
+    try:
+        result = _compute_and_save_swing_picks(session_date, polygon_key, market_open)
         return jsonify(result)
-
     except json.JSONDecodeError as jde:
         return jsonify({'success': False, 'error': f'AI parse error: {jde}'}), 500
     except Exception as exc:
-        app_logger.error(f"swing-daily-picks error: {exc}")
+        app_logger.error(f'swing-daily-picks error: {exc}')
         return jsonify({'success': False, 'error': str(exc)}), 500
+
+
+def _swing_picks_eod_scheduler():
+    """
+    Daemon thread: ensures swing picks are computed and saved to DB every trading
+    day at 8 PM ET — after the market has been closed for 4 hours and all EOD
+    data (bars, VWAP, SMA) is final.
+
+    On startup: if today is a trading day, it's already past 4 PM ET, and today's
+    picks are not yet in the DB, runs immediately to catch up.
+    Then sleeps until the next 8 PM ET firing on each subsequent trading day.
+    At 8 PM the cache is invalidated so the run fetches fresh EOD data, even if
+    picks were computed earlier in the session.
+    """
+    import pytz as _pytz
+
+    _et = _pytz.timezone('US/Eastern')
+    app_logger.info('Swing picks EOD scheduler started')
+
+    polygon_key = os.environ.get('POLYGON_API_KEY', '')
+
+    # ── Startup catch-up ─────────────────────────────────────────────────
+    # If server restarted after market close and today's picks are missing, fill in now.
+    try:
+        now_et       = datetime.now(_et)
+        session_date = _last_trading_date()
+        today_str    = now_et.strftime('%Y-%m-%d')
+        is_trading_day = (session_date == today_str)   # _last_trading_date returns prev weekday on weekends
+
+        if (is_trading_day
+                and now_et.hour >= 16              # market closed
+                and polygon_key
+                and AI_AGENT_AVAILABLE
+                and not db_manager.get_swing_picks(session_date)):
+            app_logger.info(f'Swing picks scheduler: catch-up run for {session_date}')
+            _compute_and_save_swing_picks(session_date, polygon_key)
+            app_logger.info(f'Swing picks scheduler: catch-up saved for {session_date}')
+    except Exception as _e:
+        app_logger.error(f'Swing picks scheduler catch-up failed: {_e}')
+
+    # ── Daily 8 PM ET loop ───────────────────────────────────────────────
+    while True:
+        now_et = datetime.now(_et)
+        target = now_et.replace(hour=20, minute=0, second=0, microsecond=0)
+        if now_et >= target:
+            target = target + timedelta(days=1)
+
+        wait_secs = (target - now_et).total_seconds()
+        app_logger.debug(f'Swing picks scheduler: next EOD run in {wait_secs / 3600:.1f}h')
+        time.sleep(wait_secs)
+
+        # Re-read env in case it changed (e.g. during testing)
+        polygon_key  = os.environ.get('POLYGON_API_KEY', '')
+        now_et       = datetime.now(_et)
+        session_date = _last_trading_date()
+        today_str    = now_et.strftime('%Y-%m-%d')
+
+        if session_date != today_str:
+            app_logger.info(f'Swing picks scheduler: {today_str} is not a trading day — skip')
+            continue
+
+        if not polygon_key or not AI_AGENT_AVAILABLE:
+            app_logger.warning('Swing picks scheduler: missing API keys — skip')
+            continue
+
+        try:
+            app_logger.info(f'Swing picks scheduler: EOD run for {session_date}')
+            # Invalidate memory cache so we always fetch fresh EOD data
+            _daily_picks_cache.pop(session_date, None)
+            result = _compute_and_save_swing_picks(session_date, polygon_key,
+                                                   market_open=False)
+            app_logger.info(
+                f'Swing picks scheduler: saved {len(result.get("picks", []))} picks '
+                f'for {session_date}')
+        except Exception as _e:
+            app_logger.error(f'Swing picks scheduler EOD run failed: {_e}', exc_info=True)
 
 
 def _compute_technicals(bars: list) -> dict:
@@ -6805,6 +6856,11 @@ def _start_background_tasks():
         reminder_thread = threading.Thread(target=_send_trial_expiry_reminders, daemon=True)
         reminder_thread.start()
         app_logger.info("✅ Trial expiry reminder service started")
+
+        swing_sched_thread = threading.Thread(
+            target=_swing_picks_eod_scheduler, daemon=True, name='SwingPicksEOD')
+        swing_sched_thread.start()
+        app_logger.info("✅ Swing picks EOD scheduler started (fires daily at 8 PM ET)")
 
 _start_background_tasks()
 
