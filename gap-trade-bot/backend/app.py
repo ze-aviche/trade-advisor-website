@@ -3176,6 +3176,56 @@ def _brown_bot_scan_and_enter():
             active_symbols.add(symbol)
             active_copy = dict(_brown_bot_active_positions)
 
+    # ── Process swing hot picks from the daily AI ranking ────────────────
+    # Source: today's Claude-ranked picks from the Swing tab (Grade A/B, Bullish).
+    # These are already fully vetted (SMA-10, intraday structure, market cap, AI rank)
+    # so _check_swing_signal() is skipped — avoid double AI cost.
+    # Only today's session picks are used; stale picks from prior days are ignored.
+    session_key   = _last_trading_date()
+    picks_payload = _daily_picks_cache.get(session_key)
+    if not picks_payload:
+        db_row = db_manager.get_swing_picks(session_key)
+        if db_row:
+            picks_payload = db_row
+            _daily_picks_cache[session_key] = db_row  # warm cache for next loop
+
+    hot_swing_picks = [
+        p for p in (picks_payload or {}).get('picks', [])
+        if p.get('grade') in ('A', 'B') and p.get('bias', '').lower() == 'bullish'
+    ]
+
+    for pick in hot_swing_picks:
+        if not _brown_bot_running:
+            return
+        symbol = pick.get('ticker', '').upper()
+        if not symbol:
+            continue
+        if symbol in active_symbols:
+            continue
+        # Already entered (or attempted) this session — don't re-enter same pick
+        if _brown_entry_counts.get(symbol, 0) > 0:
+            continue
+
+        if _brown_risk_manager:
+            allowed, reason = _brown_risk_manager.can_enter(symbol, 'swing', active_copy)
+            if not allowed:
+                _add_brown_log('warning', f'SKIP swing pick {symbol}: {reason}')
+                continue
+
+        # Fetch live price so profit_target / stop_loss are set correctly at entry
+        live_price = _brown_get_current_price(symbol) or 0
+
+        grade      = pick.get('grade', '?')
+        pick_reason = pick.get('reason', '')
+        entry_zone  = pick.get('entry_zone', '')
+        _add_brown_log('info',
+            f'Entering SWING {symbol} [Grade {grade}] hot pick — {pick_reason}'
+            + (f' · entry zone: {entry_zone}' if entry_zone else ''))
+        _brown_enter_position(symbol, 'swing', config, live_price)
+        with _brown_bot_lock:
+            active_symbols.add(symbol)
+            active_copy = dict(_brown_bot_active_positions)
+
 
 def _brown_bot_scanner_loop():
     """BrownBot daemon thread: scans and enters every 30 seconds."""
