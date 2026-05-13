@@ -329,6 +329,36 @@ class DatabaseManager:
                 'ON broker_configs(user_id)'
             )
 
+            # brown_bot_config: additive migrations
+            for col, defn in [
+                ('day_time_gate_enabled',  'INTEGER DEFAULT 1'),
+                ('day_time_gate_start',    "TEXT DEFAULT '09:35'"),
+                ('day_time_gate_end',      "TEXT DEFAULT '10:30'"),
+                ('max_float_m',            'REAL DEFAULT 0.0'),
+                ('float_operator',         "TEXT DEFAULT '<='"),
+                ('day_check_vwap',         'INTEGER DEFAULT 0'),
+                ('day_check_candle',       'INTEGER DEFAULT 0'),
+                ('day_max_extension_pct',  'REAL DEFAULT 0.0'),
+                ('day_check_volume_surge', 'INTEGER DEFAULT 0'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
+            # swing_daily_picks: persisted AI-ranked swing picks keyed by trading date
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_daily_picks (
+                    date TEXT PRIMARY KEY,
+                    picks_json TEXT NOT NULL,
+                    market_note TEXT DEFAULT '',
+                    candidates_scanned INTEGER DEFAULT 0,
+                    source_counts_json TEXT DEFAULT '{}',
+                    sources_tickers_json TEXT DEFAULT '{}',
+                    created_at TEXT
+                )
+            ''')
+
             conn.commit()
 
     def _get_user_count(self):
@@ -500,6 +530,21 @@ class DatabaseManager:
                 return True
         except Exception as e:
             print(f"Database error creating session: {e}")
+            return False
+
+    def update_session_expiry(self, session_token, expires_at):
+        """Extend an existing session's expiry time."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'UPDATE sessions SET expires_at = ? WHERE session_token = ?',
+                    (expires_at.isoformat(), session_token)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Database error updating session expiry: {e}")
             return False
     
     def get_session(self, session_token):
@@ -2314,11 +2359,15 @@ class DatabaseManager:
             'day_profit_target_pct': 5.0, 'day_stop_loss_pct': 2.5,
             'day_trailing_stop_enabled': False, 'day_trailing_stop_pct': 1.5,
             'day_eod_exit_time': '15:45', 'day_breakeven_trigger_pct': 50.0,
+            'day_time_gate_enabled': True, 'day_time_gate_start': '09:35', 'day_time_gate_end': '10:30',
             'swing_profit_target_pct': 15.0, 'swing_stop_loss_pct': 7.0,
             'swing_max_hold_days': 20, 'swing_earnings_protection_enabled': True,
             'swing_earnings_exit_days': 2, 'swing_breakeven_trigger_pct': 50.0,
             'max_daily_loss': -500.0, 'max_concurrent_day': 3, 'max_concurrent_swing': 5,
             'min_gap_pct': 10.0, 'min_price': 5.0, 'max_price': 500.0, 'min_volume_m': 0.5,
+            'max_float_m': 0.0, 'float_operator': '<=',
+            'day_check_vwap': False, 'day_check_candle': False,
+            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False,
         }
         try:
             with self.get_connection() as conn:
@@ -2329,6 +2378,10 @@ class DatabaseManager:
                     cfg = dict(row)
                     cfg['day_trailing_stop_enabled'] = bool(cfg.get('day_trailing_stop_enabled', 0))
                     cfg['swing_earnings_protection_enabled'] = bool(cfg.get('swing_earnings_protection_enabled', 1))
+                    cfg['day_time_gate_enabled'] = bool(cfg.get('day_time_gate_enabled', 1))
+                    cfg['day_check_vwap'] = bool(cfg.get('day_check_vwap', 0))
+                    cfg['day_check_candle'] = bool(cfg.get('day_check_candle', 0))
+                    cfg['day_check_volume_surge'] = bool(cfg.get('day_check_volume_surge', 0))
                     return cfg
         except Exception as e:
             print(f"Database error fetching brown_bot_config: {e}")
@@ -2338,10 +2391,13 @@ class DatabaseManager:
         fields = [
             'day_profit_target_pct', 'day_stop_loss_pct', 'day_trailing_stop_enabled',
             'day_trailing_stop_pct', 'day_eod_exit_time', 'day_breakeven_trigger_pct',
+            'day_time_gate_enabled', 'day_time_gate_start', 'day_time_gate_end',
             'swing_profit_target_pct', 'swing_stop_loss_pct', 'swing_max_hold_days',
             'swing_earnings_protection_enabled', 'swing_earnings_exit_days',
             'swing_breakeven_trigger_pct', 'max_daily_loss', 'max_concurrent_day',
             'max_concurrent_swing', 'min_gap_pct', 'min_price', 'max_price', 'min_volume_m',
+            'max_float_m', 'float_operator',
+            'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge',
         ]
         try:
             with self.get_connection() as conn:
@@ -2397,6 +2453,57 @@ class DatabaseManager:
                 return True, "Removed from watchlist"
         except Exception as e:
             return False, str(e)
+
+    # ------------------------------------------------------------------
+    # Swing daily picks persistence
+    # ------------------------------------------------------------------
+
+    def save_swing_picks(self, date: str, picks: list, market_note: str = '',
+                         candidates_scanned: int = 0, source_counts: dict = None,
+                         sources_tickers: dict = None) -> bool:
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''INSERT OR REPLACE INTO swing_daily_picks
+                       (date, picks_json, market_note, candidates_scanned,
+                        source_counts_json, sources_tickers_json, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                    (date, json.dumps(picks), market_note or '', candidates_scanned,
+                     json.dumps(source_counts or {}), json.dumps(sources_tickers or {}),
+                     datetime.now().isoformat())
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error saving swing_daily_picks: {e}')
+            return False
+
+    def get_swing_picks(self, date: str = None) -> dict | None:
+        """Return picks for *date*, or the most recent row if date is None."""
+        try:
+            with self.get_connection() as conn:
+                if date:
+                    row = conn.execute(
+                        'SELECT * FROM swing_daily_picks WHERE date = ?', (date,)
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        'SELECT * FROM swing_daily_picks ORDER BY date DESC LIMIT 1'
+                    ).fetchone()
+                if not row:
+                    return None
+                return {
+                    'date':               row['date'],
+                    'picks':              json.loads(row['picks_json'] or '[]'),
+                    'market_note':        row['market_note'] or '',
+                    'candidates_scanned': row['candidates_scanned'] or 0,
+                    'source_counts':      json.loads(row['source_counts_json'] or '{}'),
+                    'sources_tickers':    json.loads(row['sources_tickers_json'] or '{}'),
+                    'created_at':         row['created_at'],
+                }
+        except Exception as e:
+            print(f'Database error fetching swing_daily_picks: {e}')
+            return None
 
     # ------------------------------------------------------------------
     # Broker config CRUD

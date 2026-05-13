@@ -52,6 +52,8 @@ except ImportError as e:
     app_logger.warning(f"Warning: Could not import gap_up_detector: {e}")
     REAL_DATA_AVAILABLE = False
 
+from database import db_manager
+
 # Import auth functions (these should always be available)
 try:
     from auth import auth_manager, require_auth, require_role
@@ -223,6 +225,7 @@ _brown_bot_logs = []
 _brown_bot_log_id = 0
 _brown_bot_stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
 _brown_bot_active_positions = {}  # position_id -> position dict
+_brown_entry_counts: dict = {}    # symbol -> total entries this session
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_exit_thread = None
@@ -838,6 +841,11 @@ def serve_app():
 @app.route('/login')
 def serve_login():
     return send_from_directory(FRONTEND_DIR, 'login.html')
+
+@app.route('/brownbot-logs')
+@app.route('/brownbot-logs.html')
+def serve_brownbot_logs():
+    return send_from_directory(FRONTEND_DIR, 'brownbot-logs.html')
 
 
 @app.route('/api/music/search')
@@ -2767,6 +2775,134 @@ def update_swing_bot_config():
 
 # ── BrownBot core logic ────────────────────────────────────────────────────
 
+def _get_intraday_bars(symbol):
+    """Fetch 1-min bars from 09:30 ET to now. Returns list of {o,h,l,c,v} dicts."""
+    import os, requests as _req
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    now_et = datetime.now(_et)
+    today_str = now_et.strftime('%Y-%m-%d')
+
+    # Try Alpaca data client (already configured for price checks)
+    broker = _get_broker()
+    if broker and hasattr(broker, '_data_client') and broker._data_client:
+        try:
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+            start_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+            req = StockBarsRequest(
+                symbol_or_symbols=symbol.upper(),
+                timeframe=TimeFrame.Minute,
+                start=start_et,
+                end=now_et,
+            )
+            data = broker._data_client.get_stock_bars(req)
+            bars = data.get(symbol.upper(), [])
+            if bars:
+                return [{'o': float(b.open), 'h': float(b.high),
+                         'l': float(b.low),  'c': float(b.close), 'v': float(b.volume)}
+                        for b in bars]
+        except Exception as e:
+            app_logger.debug(f'Alpaca intraday bars {symbol}: {e}')
+
+    # Polygon fallback
+    api_key = os.environ.get('POLYGON_API_KEY', '')
+    if not api_key:
+        return []
+    try:
+        url = (f'https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/minute/'
+               f'{today_str}/{today_str}?adjusted=true&sort=asc&limit=500&apiKey={api_key}')
+        resp = _req.get(url, timeout=6)
+        data = resp.json()
+        if data.get('results'):
+            return [{'o': b['o'], 'h': b['h'], 'l': b['l'], 'c': b['c'], 'v': b['v']}
+                    for b in data['results']]
+    except Exception as e:
+        app_logger.debug(f'Polygon intraday bars {symbol}: {e}')
+    return []
+
+
+def _check_day_entry_signal(symbol, current_price, gap_price, config):
+    """
+    Intraday trend checks for day trade entries.
+    Returns (enter: bool, checks: list[dict], reason: str).
+    Each check dict: {name, label, passed, detail}
+    If no checks are enabled, always returns (True, [], 'No trend filters enabled').
+    """
+    vwap_on   = bool(config.get('day_check_vwap', False))
+    candle_on = bool(config.get('day_check_candle', False))
+    ext_pct   = float(config.get('day_max_extension_pct', 0.0))
+    vol_on    = bool(config.get('day_check_volume_surge', False))
+
+    if not (vwap_on or candle_on or ext_pct > 0 or vol_on):
+        return True, [], 'No trend filters enabled'
+
+    bars = _get_intraday_bars(symbol)
+    checks = []
+    all_pass = True
+
+    # ── VWAP (session VWAP from 09:30) ──────────────────────────────────
+    vwap = None
+    if bars:
+        tp_vol  = sum(((b['h'] + b['l'] + b['c']) / 3) * b['v'] for b in bars)
+        total_v = sum(b['v'] for b in bars)
+        vwap    = round(tp_vol / total_v, 2) if total_v > 0 else None
+
+    if vwap_on:
+        if vwap is None:
+            passed, detail = False, 'No bar data for VWAP'
+        else:
+            passed = float(current_price) >= vwap
+            detail = f'${float(current_price):.2f} {"≥" if passed else "<"} VWAP ${vwap:.2f}'
+        checks.append({'name': 'vwap', 'label': 'Above VWAP', 'passed': passed, 'detail': detail})
+        if not passed:
+            all_pass = False
+
+    # ── Last 1-min candle direction ──────────────────────────────────────
+    if candle_on:
+        if not bars:
+            passed, detail = False, 'No bar data'
+        else:
+            last   = bars[-1]
+            passed = last['c'] >= last['o']
+            direction = 'bullish' if passed else 'bearish'
+            detail = f'O:${last["o"]:.2f} C:${last["c"]:.2f} — {direction}'
+        checks.append({'name': 'candle', 'label': 'Bullish candle', 'passed': passed, 'detail': detail})
+        if not passed:
+            all_pass = False
+
+    # ── Extension from gap price ─────────────────────────────────────────
+    if ext_pct > 0:
+        if not gap_price:
+            passed, detail = True, 'No gap price reference'
+        else:
+            ext    = round((float(current_price) - float(gap_price)) / float(gap_price) * 100, 1)
+            passed = ext <= ext_pct
+            detail = f'+{ext:.1f}% from gap (max +{ext_pct:.1f}%)'
+        checks.append({'name': 'extension', 'label': f'Not over-extended (≤{ext_pct:.0f}%)',
+                       'passed': passed, 'detail': detail})
+        if not passed:
+            all_pass = False
+
+    # ── Volume surge on latest bar ───────────────────────────────────────
+    if vol_on:
+        if len(bars) < 3:
+            passed, detail = False, 'Not enough bars'
+        else:
+            vols    = [b['v'] for b in bars]
+            avg_v   = sum(vols[:-1]) / (len(vols) - 1)
+            latest_v = vols[-1]
+            passed  = avg_v > 0 and latest_v >= avg_v * 1.5
+            ratio   = (latest_v / avg_v) if avg_v > 0 else 0
+            detail  = f'{latest_v:,.0f} vs avg {avg_v:,.0f} ({ratio:.1f}×)'
+        checks.append({'name': 'vol_surge', 'label': 'Volume surge (≥1.5×)', 'passed': passed, 'detail': detail})
+        if not passed:
+            all_pass = False
+
+    parts = [f'{"✓" if c["passed"] else "✗"} {c["label"]}: {c["detail"]}' for c in checks]
+    return all_pass, checks, ' | '.join(parts)
+
+
 def _check_swing_signal(symbol, config):
     """
     Two-stage swing entry filter.
@@ -2833,7 +2969,7 @@ def _check_swing_signal(symbol, config):
 
 def _brown_enter_position(symbol, position_type, config, approx_price):
     """Place a BUY order for BrownBot and record the position in memory."""
-    global _brown_bot_active_positions, _brown_bot_stats
+    global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts
     quantity = 100
     success, order_id, result = place_order(symbol, 'B', quantity, 'MKT')
     if not success:
@@ -2863,19 +2999,41 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
         'stop_loss': stop_loss,
         'stop_loss_pct': stp_pct,
         'entry_time': datetime.now().isoformat(),
+        'entry_time_epoch': time.time(),
         'unrealized_pnl': 0.0,
     }
     with _brown_bot_lock:
         _brown_bot_active_positions[position_id] = position
 
-    if position_type == 'day':
-        _brown_bot_stats['day_entered'] += 1
-    else:
-        _brown_bot_stats['swing_entered'] += 1
+    # Persist entry to DB so stats survive server restarts
+    try:
+        db_manager.add_trade({
+            'trade_id':      f'BROWN_ENTRY_{symbol}_{int(time.time())}',
+            'symbol':        symbol,
+            'side':          'B',
+            'quantity':      quantity,
+            'price':         price,
+            'route':         'SMAT',
+            'trade_time':    datetime.now().isoformat(),
+            'order_id':      str(order_id) if order_id else None,
+            'liquidity':     None,
+            'ecn_fee':       0.0,
+            'pnl':           0.0,
+            'trade_date':    datetime.now().strftime('%Y-%m-%d'),
+            'position_type': position_type,
+            'days_held':     None,
+        })
+    except Exception as _e:
+        _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
+
+    _brown_entry_counts[symbol] = _brown_entry_counts.get(symbol, 0) + 1
+    entry_num = _brown_entry_counts[symbol]
+    times_str = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-entry ×{entry_num - 1})'
+    position['entry_num'] = entry_num
 
     _add_brown_log(
         'info',
-        f"ENTERED {position_type.upper()} {symbol} ~${price:.2f} | "
+        f"ENTERED {position_type.upper()} {symbol} {times_str} ~${price:.2f} | "
         f"target ${profit_target} (+{tgt_pct}%) | stop ${stop_loss} (-{stp_pct}%)"
     )
 
@@ -2890,24 +3048,40 @@ def _brown_bot_scan_and_enter():
 
     config = db_manager.get_brown_bot_config()
 
-    # Fetch scanner candidates
-    from gap_up_detector import get_gap_up_stocks_for_frontend
-    try:
-        raw_gaps = get_gap_up_stocks_for_frontend()
-    except Exception as e:
-        _add_brown_log('warning', f'Gap-up fetch failed: {e}')
-        raw_gaps = []
+    # Use the live in-memory data kept current by the gap-up monitor loop.
+    # Falls back to today's DB snapshot when the monitor hasn't populated yet.
+    # Never drives a new Polygon API call from inside the BrownBot loop.
+    raw_gaps = list(real_time_gap_ups)
+    if not raw_gaps:
+        try:
+            _today_str = now_et.date().isoformat()
+            raw_gaps = db_manager.get_gap_up_snapshot(_today_str) or []
+            if raw_gaps:
+                _add_brown_log('info', f'Scanner using DB snapshot ({len(raw_gaps)} stocks)')
+        except Exception as e:
+            _add_brown_log('warning', f'DB snapshot fallback failed: {e}')
 
     min_gap = float(config.get('min_gap_pct', 10.0))
     min_price = float(config.get('min_price', 5.0))
     max_price = float(config.get('max_price', 500.0))
     min_vol_m = float(config.get('min_volume_m', 0.5))
+    float_val = float(config.get('max_float_m', 0.0))
+    float_op  = config.get('float_operator', '<=')
+
+    def _float_ok(s):
+        if float_val <= 0:
+            return True
+        f = s.get('float_shares', 0) / 1_000_000
+        if f == 0:
+            return True  # no float data — don't exclude
+        return f <= float_val if float_op == '<=' else f >= float_val
 
     scanner_hits = {
         s['ticker']: s for s in raw_gaps
         if s.get('gap_percent', 0) >= min_gap
         and min_price <= s.get('price', 0) <= max_price
         and s.get('volume', 0) / 1_000_000 >= min_vol_m
+        and _float_ok(s)
     }
 
     # Snapshot active state under lock
@@ -2915,10 +3089,19 @@ def _brown_bot_scan_and_enter():
         active_symbols = {p['symbol'] for p in _brown_bot_active_positions.values()}
         active_copy = dict(_brown_bot_active_positions)
 
-    # Day time gate: 09:35–10:30 ET
-    day_open = now_et.replace(hour=9, minute=35, second=0, microsecond=0)
-    day_close = now_et.replace(hour=10, minute=30, second=0, microsecond=0)
-    day_window_open = day_open <= now_et <= day_close
+    # Day time gate (configurable, default 09:35–10:30 ET)
+    _gate_enabled = bool(config.get('day_time_gate_enabled', True))
+    if _gate_enabled:
+        try:
+            _gs = config.get('day_time_gate_start', '09:35').split(':')
+            _ge = config.get('day_time_gate_end',   '10:30').split(':')
+            day_open  = now_et.replace(hour=int(_gs[0]), minute=int(_gs[1]), second=0, microsecond=0)
+            day_close = now_et.replace(hour=int(_ge[0]), minute=int(_ge[1]), second=0, microsecond=0)
+            day_window_open = day_open <= now_et <= day_close
+        except Exception:
+            day_window_open = True  # parse error → don't block entries
+    else:
+        day_window_open = True  # gate disabled → always allow
 
     # ── Process auto-scanned gap-up candidates (day trade) ──
     for symbol, s in scanner_hits.items():
@@ -2928,6 +3111,15 @@ def _brown_bot_scan_and_enter():
             continue
         if not day_window_open:
             continue
+        # Intraday trend signal check
+        sig_ok, sig_checks, sig_reason = _check_day_entry_signal(
+            symbol, s.get('price', 0), s.get('price', 0), config)
+        if not sig_ok:
+            _add_brown_log('info', f'SKIP {symbol} [TREND] {sig_reason}')
+            continue
+        if sig_checks:
+            _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}')
+
         if _brown_risk_manager:
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
             if not allowed:
@@ -2993,7 +3185,7 @@ def _brown_bot_scanner_loop():
         try:
             _brown_bot_scan_and_enter()
         except Exception as e:
-            logger.error(f'BrownBot scanner error: {e}', exc_info=True)
+            app_logger.error(f'BrownBot scanner error: {e}', exc_info=True)
             _add_brown_log('error', f'Scanner loop error: {e}')
         # Sleep 30 s in 1-second ticks for clean shutdown
         for _ in range(30):
@@ -3004,20 +3196,18 @@ def _brown_bot_scanner_loop():
 
 
 def _brown_get_current_price(symbol):
-    """Fetch current price for an open BrownBot position via DAS Level 1."""
-    if not DAS_ENABLED:
-        return None
+    """Fetch current price for an open BrownBot position via broker or DAS Level 1."""
     try:
         data = get_real_stock_data(symbol)
         if data and data.get('current_price'):
             return float(data['current_price'])
     except Exception as e:
-        logger.debug(f'BrownBot price fetch failed for {symbol}: {e}')
+        app_logger.debug(f'BrownBot price fetch failed for {symbol}: {e}')
     return None
 
 
 def _brown_close_position(position_id, position, exit_reason):
-    """Place a SELL market order, record the trade, and remove from active positions."""
+    """Close a BrownBot position, record the trade, and remove from active positions."""
     global _brown_bot_active_positions, _brown_bot_stats
     symbol = position['symbol']
     quantity = int(position.get('quantity', 100))
@@ -3025,10 +3215,48 @@ def _brown_close_position(position_id, position, exit_reason):
     entry_price = float(position.get('entry_price', 0))
     position_type = position.get('position_type', 'day')
 
-    success, order_id, result = place_order(symbol, 'S', quantity, 'MKT')
-    if not success:
-        _add_brown_log('error', f'SELL order failed for {symbol}: {result}')
-        return False
+    broker = _get_broker()
+    order_id = None
+
+    if broker:
+        # Verify the broker actually holds this position before selling.
+        # If it doesn't exist (e.g. BUY never filled), abort cleanly.
+        try:
+            bp = broker.get_position(symbol)
+        except Exception:
+            bp = None
+        if not bp:
+            _add_brown_log('warning',
+                f'No open position for {symbol} in broker — removing from tracking (no sell placed)')
+            with _brown_bot_lock:
+                _brown_bot_active_positions.pop(position_id, None)
+            return False
+
+        # Use broker's close_position so we can never accidentally short.
+        try:
+            order = broker.close_position(symbol)
+            order_id = order.order_id
+        except Exception as e:
+            _add_brown_log('error', f'SELL order failed for {symbol}: {e}')
+            return False
+
+        # Poll for actual fill price — Alpaca market orders fill within ~1-2 s.
+        for _ in range(3):
+            time.sleep(1)
+            try:
+                filled = broker.get_order(str(order_id))
+                if filled.filled_avg_price:
+                    current_price = float(filled.filled_avg_price)
+                    quantity = int(filled.filled_qty or quantity)
+                    break
+            except Exception:
+                break
+    else:
+        # DAS fallback
+        success, order_id, result = place_order(symbol, 'S', quantity, 'MKT')
+        if not success:
+            _add_brown_log('error', f'SELL order failed for {symbol}: {result}')
+            return False
 
     realized_pnl = round((float(current_price) - entry_price) * quantity, 2) if entry_price else 0.0
 
@@ -3073,8 +3301,15 @@ def _brown_close_position(position_id, position, exit_reason):
     else:
         _brown_bot_stats['swing_exited'] += 1
 
-    pnl_str = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
-    _add_brown_log('info', f'EXITED {position_type.upper()} {symbol} [{exit_reason}] P&L {pnl_str}')
+    entry_num = position.get('entry_num', 1)
+    exit_tag  = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-exit ×{entry_num - 1})'
+    pnl_str   = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
+    _add_brown_log(
+        'info',
+        f'EXITED {position_type.upper()} {symbol} {exit_tag} [{exit_reason}] '
+        f'entry ${entry_price:.2f} → exit ${float(current_price):.2f} '
+        f'× {quantity} | P&L {pnl_str}'
+    )
     return True
 
 
@@ -3111,7 +3346,7 @@ def _brown_bot_check_exits(check_swing_specific=False):
                     except Exception:
                         pass
         except Exception as e:
-            logger.debug(f'Earnings calendar fetch failed: {e}')
+            app_logger.debug(f'Earnings calendar fetch failed: {e}')
 
     with _brown_bot_lock:
         positions_snapshot = dict(_brown_bot_active_positions)
@@ -3121,6 +3356,11 @@ def _brown_bot_check_exits(check_swing_specific=False):
             return
         symbol = position['symbol']
         position_type = position.get('position_type', 'day')
+
+        # Wait 15 s after entry before attempting any exit — prevents wash-trade
+        # rejection from Alpaca when the BUY order is still pending_new.
+        if time.time() - position.get('entry_time_epoch', 0) < 15:
+            continue
 
         current_price = _brown_get_current_price(symbol)
         if current_price is None:
@@ -3194,7 +3434,7 @@ def _brown_bot_exit_loop():
             _brown_bot_check_exits(check_swing_specific=(tick % 30 == 0))
             tick += 1
         except Exception as e:
-            logger.error(f'BrownBot exit loop error: {e}', exc_info=True)
+            app_logger.error(f'BrownBot exit loop error: {e}', exc_info=True)
             _add_brown_log('error', f'Exit loop error: {e}')
         time.sleep(2)
     _add_brown_log('info', 'BrownBot exit loop stopped')
@@ -3205,21 +3445,44 @@ def _brown_bot_exit_loop():
 @app.route('/api/brown-bot/status', methods=['GET'])
 def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
-    global _brown_bot_running, _brown_bot_stats, _brown_bot_active_positions
+    global _brown_bot_running, _brown_bot_active_positions
     das_ok = DAS_ENABLED and _das_direct is not None
-    # Check cloud broker connection
     broker = _get_broker()
     broker_info = broker.to_dict() if broker else None
     with _brown_bot_lock:
         active_count = len(_brown_bot_active_positions)
         positions_list = list(_brown_bot_active_positions.values())
+
+    # Pull today's entry/exit counts from DB so stats survive restarts
+    today = datetime.now().strftime('%Y-%m-%d')
+    stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
+    try:
+        with db_manager.get_connection() as _conn:
+            rows = _conn.execute(
+                '''SELECT position_type, side, COUNT(*) AS cnt
+                   FROM trades
+                   WHERE trade_date = ? AND trade_id LIKE 'BROWN_%'
+                   GROUP BY position_type, side''',
+                (today,)
+            ).fetchall()
+        for r in rows:
+            pt   = (r['position_type'] or 'day').lower()
+            side = (r['side'] or '').upper()
+            cnt  = r['cnt']
+            if side == 'B':
+                stats[f'{pt}_entered'] = cnt
+            elif side in ('S', 'SS'):
+                stats[f'{pt}_exited'] = cnt
+    except Exception as _e:
+        app_logger.warning(f'BrownBot stats DB query failed: {_e}')
+
     return jsonify({
         'success': True,
         'running': _brown_bot_running,
         'das_enabled': DAS_ENABLED,
         'das_connected': das_ok,
         'broker': broker_info,
-        'stats': _brown_bot_stats,
+        'stats': stats,
         'active_positions_count': active_count,
         'active_positions': positions_list,
     })
@@ -3339,6 +3602,27 @@ def get_brown_bot_risk_status():
             'max_concurrent_swing': int(config.get('max_concurrent_swing', 5)),
             'circuit_breaker_open': daily_pnl <= max_loss,
         }
+    # Per-ticker P&L breakdown for today
+    try:
+        from datetime import datetime as _dt2
+        _today = _dt2.now().strftime('%Y-%m-%d')
+        with db_manager.get_connection() as _conn:
+            _rows = _conn.execute(
+                '''SELECT symbol,
+                          ROUND(SUM(pnl), 2)   AS pnl,
+                          COUNT(*)              AS trades,
+                          SUM(quantity)         AS shares
+                   FROM trades
+                   WHERE trade_date = ?
+                     AND side IN ('S', 'SS')
+                   GROUP BY symbol
+                   ORDER BY SUM(pnl) DESC''',
+                (_today,)
+            ).fetchall()
+        snapshot['pnl_by_ticker'] = [dict(r) for r in _rows]
+    except Exception:
+        snapshot['pnl_by_ticker'] = []
+
     return jsonify({'success': True, 'risk': snapshot})
 
 
@@ -3474,9 +3758,12 @@ def get_brown_bot_candidates():
                 s['on_watchlist'] = True
 
         # Build watchlist entries (enrich with scanner data if available)
+        # Skip symbols already shown in the scanner section to avoid double-counting.
         scanner_map = {s['ticker']: s for s in scanner_hits}
         wl_entries = []
         for w in watchlist:
+            if w['symbol'] in scanner_symbols:
+                continue  # already visible in scanner section with on_watchlist badge
             base = scanner_map.get(w['symbol'], {
                 'ticker': w['symbol'], 'price': None, 'gap_percent': None,
                 'volume': None, 'company_name': w['symbol']
@@ -3491,8 +3778,30 @@ def get_brown_bot_candidates():
 
         return jsonify({'success': True, 'scanner': scanner_hits, 'watchlist': wl_entries})
     except Exception as e:
-        logger.error(f'Error fetching BrownBot candidates: {e}')
+        app_logger.error(f'Error fetching BrownBot candidates: {e}')
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/candidate-signals', methods=['GET'])
+@require_auth
+def get_brown_bot_candidate_signals():
+    """Run intraday trend checks for a comma-separated list of symbols."""
+    symbols_param = request.args.get('symbols', '')
+    symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+    if not symbols:
+        return jsonify({'success': False, 'error': 'symbols param required'}), 400
+
+    config = db_manager.get_brown_bot_config()
+    results = {}
+    for sym in symbols:
+        try:
+            quote = get_real_stock_data(sym)
+            price = float(quote['current_price']) if quote else 0.0
+            ok, checks, reason = _check_day_entry_signal(sym, price, price, config)
+            results[sym] = {'ok': ok, 'checks': checks, 'reason': reason, 'price': price}
+        except Exception as e:
+            results[sym] = {'ok': None, 'checks': [], 'reason': str(e), 'price': 0}
+    return jsonify({'success': True, 'signals': results})
 
 
 @app.route('/api/brown-bot/watchlist', methods=['GET'])
@@ -5512,37 +5821,213 @@ def _last_trading_date() -> str:
     return d.strftime('%Y-%m-%d')
 
 
-def _filter_candidates(all_movers, min_vol=300_000, min_chg=0.5, max_chg=22):
+def _fetch_volume_surge_candidates(api_key, existing_tickers, min_surge=1.5, min_vol=300_000, limit=20):
+    """
+    Pull the full Polygon market snapshot (one call, all US stocks) and return
+    stocks where today's volume >= min_surge × previous day's volume.
+    These are institutional accumulation/distribution setups not visible in
+    gainers/losers alone.
+    """
+    import requests as _req
+    try:
+        url = f'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?apiKey={api_key}'
+        r = _req.get(url, timeout=15)
+        r.raise_for_status()
+        tickers = r.json().get('tickers', [])
+    except Exception as e:
+        app_logger.debug(f'Full snapshot fetch failed: {e}')
+        return []
+
+    surgers = []
+    for t in tickers:
+        sym  = t.get('ticker', '')
+        if sym in existing_tickers:
+            continue
+        if not _is_valid_swing_ticker(sym):
+            continue
+
+        day      = t.get('day', {})
+        prev     = t.get('prevDay', {})
+        close    = day.get('c', 0)
+        vwap     = day.get('vw', 0)
+        hi       = day.get('h', close)
+        lo       = day.get('l', close)
+        price    = close or vwap or 0
+        vol      = day.get('v', 0)
+        prev_vol = prev.get('v', 0)
+        chg      = t.get('todaysChangePerc', 0)
+
+        if not (10 <= price <= 700):
+            continue
+        if vol < min_vol or prev_vol <= 0:
+            continue
+        if (price * vol) < 3_000_000:
+            continue
+        ratio = vol / prev_vol
+        if ratio < min_surge:
+            continue
+        if abs(chg) > 22:
+            continue
+
+        # ── Intraday trend quality filters ─────────────────────────────
+        # 1. Not a sell-off day: change must not be deeply negative
+        if chg < -3:
+            continue
+
+        # 2. Close position in range: close must be in upper 40% of day range.
+        #    Close near the low = distribution candle, volume was selling pressure.
+        range_size = hi - lo
+        close_pos  = (close - lo) / range_size if range_size > 0 else 0.5
+        if close_pos < 0.40:
+            continue
+
+        # 3. Close >= VWAP: price held above the session average (accumulation bias).
+        #    Allow 1.5% below VWAP to accommodate end-of-day mean reversion.
+        if vwap and close < vwap * 0.985:
+            continue
+
+        surgers.append({
+            'ticker':    sym,
+            'price':     round(price, 2),
+            'chg_pct':   round(chg, 2),
+            'volume_m':  round(vol / 1_000_000, 2),
+            'dollar_vol_m': round(price * vol / 1_000_000, 1),
+            'day_range': round((hi - lo) / price * 100, 1) if price else 0,
+            'close_pos': round(close_pos, 2),
+            'direction': 'vol-surge',
+            'vol_ratio': round(ratio, 1),
+        })
+
+    surgers.sort(key=lambda x: x['vol_ratio'], reverse=True)
+    return surgers[:limit]
+
+
+def _enrich_with_sma_trend(candidates, api_key, sma_period=10, max_workers=10):
+    """
+    Fetch the last ~15 daily bars for each candidate (parallel Polygon calls),
+    compute SMA-10, and drop stocks whose close is below SMA-10 by more than 3%.
+    These are "broken pattern" stocks — multi-day downtrend, not safe for swing longs.
+
+    Fail-open: if bars cannot be fetched for a ticker it stays in the list.
+    Annotates each candidate with 'sma10' and 'above_sma10' for Claude context.
+    """
+    if not api_key or not candidates:
+        return candidates
+
+    import requests as _req2
+    import datetime
+    from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+
+    today    = datetime.date.today()
+    from_dt  = (today - datetime.timedelta(days=sma_period * 3)).strftime('%Y-%m-%d')
+    to_dt    = today.strftime('%Y-%m-%d')
+
+    def _fetch(sym):
+        try:
+            url = (f'https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/day/'
+                   f'{from_dt}/{to_dt}?adjusted=true&sort=asc&limit=50&apiKey={api_key}')
+            r = _req2.get(url, timeout=8)
+            if r.status_code != 200:
+                return sym, None, None
+            results = r.json().get('results', [])
+            if len(results) < 3:
+                return sym, None, None
+            closes = [b['c'] for b in results]
+            sma = sum(closes[-sma_period:]) / min(sma_period, len(closes))
+            return sym, round(closes[-1], 2), round(sma, 2)
+        except Exception:
+            return sym, None, None
+
+    sym_info = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futs = {pool.submit(_fetch, c['ticker']): c['ticker'] for c in candidates}
+        for fut in _as_completed(futs):
+            sym, last_close, sma = fut.result()
+            if last_close is not None and sma is not None:
+                sym_info[sym] = (last_close, sma)
+
+    filtered = []
+    for c in candidates:
+        info = sym_info.get(c['ticker'])
+        if info:
+            last_close, sma = info
+            above = last_close >= sma * 0.97   # allow 3% below SMA (consolidation)
+            c['sma10']       = info[1]
+            c['above_sma10'] = above
+            if not above:
+                app_logger.debug(f'Swing trend filter: {c["ticker"]} close {last_close} < SMA10 {sma:.2f} — dropped')
+                continue  # broken pattern — below 10-day trend
+        filtered.append(c)
+    return filtered
+
+
+import re as _re
+# Pure alpha, 1-5 chars — rejects anything with digits, dots, slashes
+_ONLY_ALPHA_RE = _re.compile(r'^[A-Z]{1,5}$')
+# Preferred stock naming convention: 2+ char root then PR + optional series letter
+# Catches: USBPR, WFCPR, KBSPRA, JPMPRA — but not AAPL, SHOP, COMP, TRUP, etc.
+_PREFERRED_RE = _re.compile(r'^[A-Z]{2,}PR[A-Z]{0,2}$')
+
+
+def _is_valid_swing_ticker(sym: str) -> bool:
+    """Return False for preferred stocks and non-standard instrument tickers."""
+    if not _ONLY_ALPHA_RE.match(sym):
+        return False
+    if _PREFERRED_RE.match(sym):
+        return False
+    return True
+
+
+def _filter_candidates(all_movers, min_vol=300_000, min_chg=0.5, max_chg=22,
+                       min_price=10.0, min_dollar_vol_m=3.0):
     """Filter a Polygon snapshot tickers list for swing-eligible stocks."""
     candidates = []
     seen = set()
     for t in all_movers:
         sym   = t.get('ticker', '')
         day   = t.get('day', {})
-        price = day.get('c') or day.get('vw') or 0
+        close = day.get('c', 0)
+        vwap  = day.get('vw', 0)
+        hi    = day.get('h', close)
+        lo    = day.get('l', close)
+        price = close or vwap or 0
         vol   = day.get('v', 0)
         chg   = t.get('todaysChangePerc', 0)
-        hi    = day.get('h', price)
-        lo    = day.get('l', price)
 
         if sym in seen or not price:
             continue
-        if price < 8 or price > 700:
+        if not _is_valid_swing_ticker(sym):
+            continue
+        if price < min_price or price > 700:
             continue
         if vol < min_vol:
             continue
-        if len(sym) > 5 or '/' in sym or '.' in sym:
+        if (price * vol) < (min_dollar_vol_m * 1_000_000):
             continue
         if abs(chg) < min_chg or abs(chg) > max_chg:
             continue
 
-        day_range_pct = round((hi - lo) / price * 100, 1) if price else 0
+        range_size = hi - lo
+        close_pos  = (close - lo) / range_size if range_size > 0 else 0.5
+
+        # For gainers: require bullish close structure (not a rejection / sell-off candle).
+        # Losers are passed through as-is — bearish close on a down day is expected
+        # and Claude may grade them as mean-reversion or short candidates.
+        if chg > 0:
+            if close_pos < 0.35:
+                continue
+            if vwap and close < vwap * 0.985:
+                continue
+
+        day_range_pct = round(range_size / price * 100, 1) if price else 0
         candidates.append({
             'ticker':    sym,
             'price':     round(price, 2),
             'chg_pct':   round(chg, 2),
             'volume_m':  round(vol / 1_000_000, 2),
+            'dollar_vol_m': round(price * vol / 1_000_000, 1),
             'day_range': day_range_pct,
+            'close_pos': round(close_pos, 2),
             'direction': 'gainer' if chg > 0 else 'loser',
         })
         seen.add(sym)
@@ -5551,70 +6036,205 @@ def _filter_candidates(all_movers, min_vol=300_000, min_chg=0.5, max_chg=22):
     return candidates
 
 
+@app.route('/api/swing-daily-picks/latest')
+def swing_daily_picks_latest():
+    """
+    Return the most recently stored swing picks instantly from DB — no computation.
+    Used by the frontend on tab load to show the last known picks immediately.
+    Includes 'is_today' flag so the UI can prompt a refresh on a new trading day.
+    """
+    market_open  = _is_market_open()
+    session_date = _last_trading_date()
+
+    # Seed memory cache from DB if cold start
+    if session_date not in _daily_picks_cache:
+        db_row = db_manager.get_swing_picks(session_date)
+        if db_row:
+            _daily_picks_cache[session_date] = {
+                'success': True, 'date': session_date,
+                'picks': db_row['picks'], 'market_note': db_row['market_note'],
+                'candidates_scanned': db_row['candidates_scanned'],
+                'source_counts': db_row['source_counts'],
+                'sources_tickers': db_row['sources_tickers'],
+            }
+
+    if session_date in _daily_picks_cache:
+        payload = dict(_daily_picks_cache[session_date])
+        payload.update({'cached': True, 'is_today': True, 'market_open': market_open})
+        return jsonify(payload)
+
+    # Today not available — return latest from any previous session
+    db_row = db_manager.get_swing_picks()  # most recent
+    if not db_row:
+        return jsonify({'success': False, 'error': 'No picks stored yet'}), 404
+
+    return jsonify({
+        'success':            True,
+        'picks':              db_row['picks'],
+        'market_note':        db_row['market_note'],
+        'date':               db_row['date'],
+        'is_today':           False,
+        'cached':             True,
+        'market_open':        market_open,
+        'candidates_scanned': db_row['candidates_scanned'],
+        'source_counts':      db_row['source_counts'],
+        'sources_tickers':    db_row['sources_tickers'],
+    })
+
+
 @app.route('/api/swing-daily-picks')
 def swing_daily_picks():
     """
-    Daily swing trade hot picks across the whole market.
-    Fetches Polygon's top gainers + losers, filters for swing-eligible candidates,
-    sends the shortlist to Claude which returns 6-8 ranked picks with reasoning.
-    Cached per trading day. When market is closed, returns last session's picks
-    (or a curated fallback) with a clear 'market_closed' flag.
+    Compute (or return cached) swing picks for today's trading session.
+    Persists results to DB so they survive restarts and are served instantly
+    by /api/swing-daily-picks/latest on subsequent loads.
     """
     import requests as _req
 
     polygon_key = os.environ.get('POLYGON_API_KEY', '')
     market_open  = _is_market_open()
-    session_date = _last_trading_date()  # last weekday, even if today is weekend/after-hours
+    session_date = _last_trading_date()
 
-    # Return cached result for today's session if available
+    # 1. Memory cache hit (fastest)
     if session_date in _daily_picks_cache:
         payload = dict(_daily_picks_cache[session_date])
         payload['cached'] = True
         payload['market_open'] = market_open
         return jsonify(payload)
 
+    # 2. DB cache hit — survives server restarts
+    db_row = db_manager.get_swing_picks(session_date)
+    if db_row:
+        payload = {
+            'success': True, 'cached': True, 'is_today': True,
+            'market_open': market_open, 'date': session_date,
+            'picks': db_row['picks'], 'market_note': db_row['market_note'],
+            'candidates_scanned': db_row['candidates_scanned'],
+            'source_counts': db_row['source_counts'],
+            'sources_tickers': db_row['sources_tickers'],
+        }
+        _daily_picks_cache[session_date] = payload  # warm memory cache
+        return jsonify(payload)
+
     if not AI_AGENT_AVAILABLE:
         return jsonify({'success': False, 'error': 'AI not available'}), 503
 
     try:
-        # ── Step 1: fetch gainers + losers snapshots ───────────────────────
+        # ── Step 1: fetch gainers + losers + full-market snapshot in parallel ─
+        import concurrent.futures as _cf
+
         def _fetch_movers(direction):
-            url = (
-                f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}"
-                f"?apiKey={polygon_key}"
-            )
+            url = (f'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}'
+                   f'?apiKey={polygon_key}')
             r = _req.get(url, timeout=12)
             r.raise_for_status()
             return r.json().get('tickers', [])
 
-        gainers = _fetch_movers('gainers')
-        losers  = _fetch_movers('losers')
+        with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
+            _g_fut = _pool.submit(_fetch_movers, 'gainers')
+            _l_fut = _pool.submit(_fetch_movers, 'losers')
+            gainers = _g_fut.result()
+            losers  = _l_fut.result()
+
         all_movers = gainers + losers
 
-        # ── Step 2: filter — try strict first, fall back to looser thresholds ─
+        # ── Step 2: filter movers — strict first, relax if thin ───────────
         candidates = _filter_candidates(all_movers, min_vol=500_000, min_chg=1.0)
         if len(candidates) < 6:
-            # Market may be closed / pre-market — relax filters
             candidates = _filter_candidates(all_movers, min_vol=300_000, min_chg=0.3)
 
+        known_tickers = {c['ticker'] for c in candidates}
+
+        # ── Step 2b: gap-up stocks already in memory (free) ──────────────
+        for g in list(real_time_gap_ups):
+            sym = g.get('ticker', '')
+            if sym in known_tickers:
+                continue
+            if not _is_valid_swing_ticker(sym):
+                continue
+            price = g.get('price', 0)
+            vol   = g.get('volume', 0)
+            chg   = g.get('gap_percent', 0)
+            if not (10 <= price <= 700 and vol >= 300_000 and 1.0 <= chg <= 22):
+                continue
+            if (price * vol) < 3_000_000:
+                continue
+            candidates.append({
+                'ticker':    sym,
+                'price':     round(price, 2),
+                'chg_pct':   round(chg, 2),
+                'volume_m':  round(vol / 1_000_000, 2),
+                'dollar_vol_m': round(price * vol / 1_000_000, 1),
+                'day_range': 0,
+                'direction': 'gap-up',
+                'vol_ratio': None,
+            })
+            known_tickers.add(sym)
+
+        # ── Step 2c: full-market volume-surge scan (Polygon all-tickers) ──
+        surge = _fetch_volume_surge_candidates(polygon_key, known_tickers,
+                                               min_surge=1.5, min_vol=300_000, limit=20)
+        candidates.extend(surge)
+
+        # ── Step 2d: market-cap enrichment + filter ───────────────────────
+        # One Polygon reference batch call to annotate candidates with market cap
+        # and drop micro-caps (< $300M). Fail-open: if the call errors or a ticker
+        # has no market_cap data, it is kept.
+        if polygon_key and candidates:
+            try:
+                syms_param = '&'.join(f'ticker={c["ticker"]}' for c in candidates)
+                ref_url = (f'https://api.polygon.io/v3/reference/tickers?{syms_param}'
+                           f'&limit=250&apiKey={polygon_key}')
+                ref_r = _req.get(ref_url, timeout=10)
+                if ref_r.status_code == 200:
+                    cap_map = {}
+                    for item in ref_r.json().get('results', []):
+                        mc = item.get('market_cap')
+                        if mc:
+                            cap_map[item['ticker']] = round(mc / 1_000_000, 0)
+                    filtered_by_cap = []
+                    for c in candidates:
+                        mc_m = cap_map.get(c['ticker'])
+                        if mc_m is not None:
+                            if mc_m < 300:
+                                continue
+                            c['market_cap_m'] = mc_m
+                        filtered_by_cap.append(c)
+                    candidates = filtered_by_cap
+            except Exception:
+                pass  # fail-open
+
+        # ── Step 2e: multi-day trend filter (SMA-10) ─────────────────────
+        # Fetches ~15 daily bars per candidate in parallel and drops stocks
+        # whose close is more than 3% below their 10-day SMA — broken patterns.
+        candidates = _enrich_with_sma_trend(candidates, polygon_key)
+
         if not candidates:
-            # Nothing at all from Polygon — market is definitely closed / weekend
+            # Polygon returned nothing — likely a holiday or API issue.
+            # Still return success so the frontend can show a clear message.
             return jsonify({
-                'success':      True,
-                'market_open':  False,
-                'market_closed_msg': 'US markets are currently closed. Picks will refresh on the next trading day.',
-                'picks':        [],
-                'market_note':  '',
-                'date':         session_date,
-                'cached':       False,
+                'success':     True,
+                'market_open': market_open,
+                'picks':       [],
+                'market_note': 'No market data available — Polygon may be returning an empty snapshot. Try again after the next trading session opens.',
+                'date':        session_date,
+                'cached':      False,
             })
 
         # ── Step 3: send to Claude for ranking ────────────────────────────
-        rows = '\n'.join(
-            f"{c['ticker']:6s}  ${c['price']:>7.2f}  {'+' if c['chg_pct']>0 else ''}{c['chg_pct']:>6.2f}%"
-            f"  vol {c['volume_m']:.1f}M  range {c['day_range']}%  ({c['direction']})"
-            for c in candidates
-        )
+        def _row(c):
+            vol_tag  = (f'  surge {c["vol_ratio"]:.1f}×' if c.get('vol_ratio') else '')
+            cap_tag  = (f'  mktcap ${c["market_cap_m"]/1000:.1f}B' if c.get('market_cap_m') and c['market_cap_m'] >= 1000
+                        else f'  mktcap ${c["market_cap_m"]:.0f}M' if c.get('market_cap_m') else '')
+            sma_tag  = (f'  sma10 ${c["sma10"]:.2f}' if c.get('sma10') else '')
+            cpos_tag = (f'  cpos {c["close_pos"]:.0%}' if c.get('close_pos') is not None else '')
+            return (
+                f"{c['ticker']:6s}  ${c['price']:>7.2f}"
+                f"  {'+' if c['chg_pct'] >= 0 else ''}{c['chg_pct']:>6.2f}%"
+                f"  vol {c['volume_m']:.1f}M  range {c['day_range']}%"
+                f"  [{c['direction']}]{vol_tag}{cap_tag}{sma_tag}{cpos_tag}"
+            )
+        rows = '\n'.join(_row(c) for c in candidates)
 
         market_ctx = (
             "Note: this data is from the most recent completed trading session (market is currently closed)."
@@ -5624,10 +6244,15 @@ def swing_daily_picks():
         prompt = f"""You are an expert swing trader scanning for the best setups on {session_date}.
 {market_ctx}
 
-Below are market movers that passed the liquidity filter.
+Candidates are pre-filtered: all pass min $10 price, $3M+ daily dollar volume, $300M+ market cap, close above 10-day SMA, and bullish intraday price structure (close in upper range, close ≥ VWAP). Broken patterns and sell-off volume have already been removed.
+
+Column guide: cpos = close position in day range (100% = closed at high, 0% = closed at low). sma10 = 10-day SMA. surge = today vol ÷ yesterday vol.
+
+Sources: [gainer/loser] top daily movers · [gap-up] intraday gap-ups · [vol-surge] unusual accumulation volume.
+
 Pick the 6-8 BEST swing trading candidates for a 3-10 day hold.
-Prefer: strong volume confirmation, clear technical structure, reasonable day range.
-Avoid: pump-and-dump patterns, thin float, pure speculation.
+Prefer: strong volume confirmation on up moves, gap-ups with continuation potential, vol-surge with high close_pos (price held near high), stocks above SMA10 with room to run.
+Avoid: extended moves without consolidation, low-grade setups where the only edge is momentum without structure.
 
 CANDIDATES
 {rows}
@@ -5652,7 +6277,7 @@ Return ONLY a JSON object — no markdown, no commentary:
         client = _anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
         msg = client.messages.create(
             model='claude-haiku-4-5-20251001',
-            max_tokens=700,
+            max_tokens=2000,
             messages=[{'role': 'user', 'content': prompt}],
         )
         raw = msg.content[0].text.strip()
@@ -5664,16 +6289,43 @@ Return ONLY a JSON object — no markdown, no commentary:
 
         ai_result = json.loads(raw)
 
+        # Build per-source ticker lists and a lookup for tagging picks
+        ticker_source = {c['ticker']: c['direction'] for c in candidates}
+        sources_tickers = {
+            'movers':    [c['ticker'] for c in candidates if c['direction'] in ('gainer', 'loser')],
+            'gap_ups':   [c['ticker'] for c in candidates if c['direction'] == 'gap-up'],
+            'vol_surge': [c['ticker'] for c in candidates if c['direction'] == 'vol-surge'],
+        }
+        source_counts = {k: len(v) for k, v in sources_tickers.items()}
+
+        # Tag each Claude pick with its source
+        picks = ai_result.get('picks', [])
+        for p in picks:
+            p['source'] = ticker_source.get(p.get('ticker', ''), 'unknown')
+
         result = {
             'success':            True,
             'market_open':        market_open,
             'date':               session_date,
-            'picks':              ai_result.get('picks', []),
+            'picks':              picks,
             'market_note':        ai_result.get('market_note', ''),
             'candidates_scanned': len(candidates),
+            'source_counts':      source_counts,
+            'sources_tickers':    sources_tickers,
             'cached':             False,
         }
         _daily_picks_cache[session_date] = result
+
+        # Persist to DB so picks survive restarts and load instantly next time
+        db_manager.save_swing_picks(
+            date=session_date,
+            picks=picks,
+            market_note=ai_result.get('market_note', ''),
+            candidates_scanned=len(candidates),
+            source_counts=source_counts,
+            sources_tickers=sources_tickers,
+        )
+
         return jsonify(result)
 
     except json.JSONDecodeError as jde:

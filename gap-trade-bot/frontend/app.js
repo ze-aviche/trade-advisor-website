@@ -91,6 +91,7 @@ const app = createApp({
                     brownBotToggle: false,
                     brownBotConfig: false,
                     brownBotCandidates: false,
+                    brownBotSignals: false,
                     // Broker loading states
                     brokerSave: false,
                     brokerTest: false,
@@ -261,6 +262,7 @@ const app = createApp({
                 swingTechnicalsCached: false,
                 swingDailyPicks: null,
                 swingDailyPicksDate: null,
+                swingSourceExpanded: null,
                 
                 // Trade History
                 tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
@@ -362,6 +364,9 @@ const app = createApp({
                 day_trailing_stop_pct: 1.5,
                 day_eod_exit_time: '15:45',
                 day_breakeven_trigger_pct: 50.0,
+                day_time_gate_enabled: true,
+                day_time_gate_start: '09:35',
+                day_time_gate_end: '10:30',
                 swing_profit_target_pct: 15.0,
                 swing_stop_loss_pct: 7.0,
                 swing_max_hold_days: 20,
@@ -375,10 +380,17 @@ const app = createApp({
                 min_price: 5.0,
                 max_price: 500.0,
                 min_volume_m: 0.5,
+                max_float_m: 0.0,
+                float_operator: '<=',
+                day_check_vwap: false,
+                day_check_candle: false,
+                day_max_extension_pct: 0.0,
+                day_check_volume_surge: false,
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
             brownBotCandidates: { scanner: [], watchlist: [] },
+            brownBotSignals: {},
             brownBotWatchlistForm: { symbol: '', trade_type: 'day', note: '' },
             brownBotRiskStatus: {
                 daily_pnl: 0,
@@ -800,13 +812,10 @@ const app = createApp({
             // Load swing bot config on startup
             this.loadSwingBotConfig();
 
-            // Auto-refresh gap-ups every 2 minutes so new gappers appear without manual reload
+            // Auto-refresh gap-ups every 2 minutes — silent so the table doesn't flash
             this.gapUpRefreshInterval = setInterval(() => {
-                if (this.activeTab === 'gap-ups') {
-                    console.log('🔄 Auto-refreshing gap-ups...');
-                    this.loadGapUps();
-                }
-            }, 2 * 60 * 1000); // 2 minutes
+                if (this.activeTab === 'gap-ups') this.loadGapUps(true);
+            }, 2 * 60 * 1000);
 
             // Add page load event listener for automatic refresh
             window.addEventListener('load', () => {
@@ -2376,67 +2385,78 @@ const app = createApp({
                 }
             },
             
-            async loadGapUps() {
-                console.log('📈 Loading gap-ups...');
-                console.log('📈 Current gap-up config:', this.gapUpConfig);
-                this.updateLoadingProgress('gapUps', 'loading');
-                
-                const maxRetries = 3;
-                const retryDelay = 1000; // 1 second
-                
+            async loadGapUps(silent = false) {
+                if (!silent) {
+                    this.updateLoadingProgress('gapUps', 'loading');
+                }
+
+                const maxRetries = silent ? 1 : 3;
+                const retryDelay = 1000;
+
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
-                        console.log(`📈 Gap-ups loading attempt ${attempt}/${maxRetries}...`);
                         const response = await fetch('/api/gap-ups', {
-                            signal: AbortSignal.timeout(10000) // 10 second timeout
+                            signal: AbortSignal.timeout(10000)
                         });
-
-                        console.log('📡 Gap-ups API response status:', response.status);
-
                         const data = await response.json();
-                        console.log('📈 Gap-ups API response data:', data);
-                        console.log('📈 Gap-ups count:', data.count);
-                        console.log('📈 Gap-ups data length:', data.data ? data.data.length : 0);
 
-                    if (data.success) {
-                        const incoming = data.data || [];
+                        if (data.success) {
+                            const incoming = data.data || [];
 
-                        // Detect newly arrived tickers (skip on very first load when prevGapUpTickers is empty)
-                        if (this.prevGapUpTickers.length > 0) {
-                            const prevSet = new Set(this.prevGapUpTickers);
-                            const brandNew = incoming.map(s => s.ticker).filter(t => !prevSet.has(t));
-                            if (brandNew.length > 0) {
-                                this.newGapUpTickers = [...new Set([...this.newGapUpTickers, ...brandNew])];
-                                setTimeout(() => {
-                                    const removing = new Set(brandNew);
-                                    this.newGapUpTickers = this.newGapUpTickers.filter(t => !removing.has(t));
-                                }, 10000);
+                            // Detect newly arrived tickers
+                            if (this.prevGapUpTickers.length > 0) {
+                                const prevSet = new Set(this.prevGapUpTickers);
+                                const brandNew = incoming.map(s => s.ticker).filter(t => !prevSet.has(t));
+                                if (brandNew.length > 0) {
+                                    this.newGapUpTickers = [...new Set([...this.newGapUpTickers, ...brandNew])];
+                                    setTimeout(() => {
+                                        const removing = new Set(brandNew);
+                                        this.newGapUpTickers = this.newGapUpTickers.filter(t => !removing.has(t));
+                                    }, 10000);
+                                }
                             }
-                        }
 
-                        this.gapUps = incoming;
-                        this.prevGapUpTickers = incoming.map(s => s.ticker);
-                        this.dashboardStats.gapUps = this.gapUps.length;
-                            console.log('✅ Gap-ups loaded successfully:', this.gapUps.length, 'stocks');
-                            this.updateLoadingProgress('gapUps', 'success');
-                            return; // Success, exit retry loop
-                    } else {
-                            const errMsg = data.error || data.message || 'Failed to load gap-ups';
-                            console.error('❌ Gap-ups API returned error:', errMsg);
-                            throw new Error(errMsg);
-                    }
-                } catch (error) {
-                        console.error(`❌ Error loading gap-ups (attempt ${attempt}):`, error);
-                        if (attempt === maxRetries) {
-                            this.updateLoadingProgress('gapUps', 'error');
+                            if (silent) {
+                                // In-place merge — update existing rows and append new ones
+                                // without replacing the array (avoids full table re-render)
+                                const incomingMap = Object.fromEntries(incoming.map(s => [s.ticker, s]));
+                                const existingTickers = new Set(this.gapUps.map(s => s.ticker));
+
+                                // Update existing entries in-place
+                                for (let i = 0; i < this.gapUps.length; i++) {
+                                    const updated = incomingMap[this.gapUps[i].ticker];
+                                    if (updated) Object.assign(this.gapUps[i], updated);
+                                }
+                                // Append genuinely new tickers
+                                for (const s of incoming) {
+                                    if (!existingTickers.has(s.ticker)) this.gapUps.push(s);
+                                }
+                                // Remove tickers no longer in the feed
+                                const newSet = new Set(incoming.map(s => s.ticker));
+                                this.gapUps = this.gapUps.filter(s => newSet.has(s.ticker));
+                            } else {
+                                this.gapUps = incoming;
+                            }
+
+                            this.prevGapUpTickers = incoming.map(s => s.ticker);
+                            this.dashboardStats.gapUps = this.gapUps.length;
+                            if (!silent) this.updateLoadingProgress('gapUps', 'success');
+                            return;
                         } else {
-                            console.log(`⏳ Retrying gap-ups load in ${retryDelay}ms...`);
-                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                            throw new Error(data.error || data.message || 'Failed to load gap-ups');
+                        }
+                    } catch (error) {
+                        if (!silent) {
+                            if (attempt === maxRetries) {
+                                this.updateLoadingProgress('gapUps', 'error');
+                            } else {
+                                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                            }
                         }
                     }
                 }
-                
-                this.updateLoadingProgress('gapUps', 'error');
+
+                if (!silent) this.updateLoadingProgress('gapUps', 'error');
             },
             
             async loadStats() {
@@ -5076,8 +5096,23 @@ const app = createApp({
 
         async loadSwingDailyPicks(force = false) {
             const today = new Date().toISOString().slice(0, 10);
-            // Don't re-fetch if already loaded for today (unless forced)
             if (!force && this.swingDailyPicks && this.swingDailyPicksDate === today) return;
+
+            // Step 1: load latest stored picks instantly (previous session or today from DB)
+            if (!this.swingDailyPicks) {
+                try {
+                    const snap = await fetch('/api/swing-daily-picks/latest');
+                    const snapData = await snap.json();
+                    if (snapData.success && snapData.picks?.length) {
+                        this.swingDailyPicks = snapData;
+                        this.swingDailyPicksDate = snapData.date;
+                        // If this is already today's picks (from DB), we're done
+                        if (snapData.is_today && !force) return;
+                    }
+                } catch (_) { /* silent — fall through to full fetch */ }
+            }
+
+            // Step 2: compute today's fresh picks (may take a few seconds)
             this.loading.swingDailyPicks = true;
             try {
                 const res  = await fetch('/api/swing-daily-picks');
@@ -5989,7 +6024,7 @@ const app = createApp({
             try {
                 const response = await axios.get('/api/brown-bot/status');
                 if (response.data.success) {
-                    this.brownBotStatus = response.data.data;
+                    this.brownBotStatus = response.data;
                 }
             } catch (error) {
                 console.error('Error loading BrownBot status:', error);
@@ -5998,7 +6033,7 @@ const app = createApp({
 
         async loadBrownBotConfig() {
             try {
-                const response = await axios.get('/api/brown-bot/config');
+                const response = await axios.get('/api/brown-bot/config', { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotConfig = { ...this.brownBotConfig, ...response.data.config };
                 }
@@ -6011,7 +6046,7 @@ const app = createApp({
             try {
                 this.loading.brownBotToggle = true;
                 const action = this.brownBotStatus.running ? 'stop' : 'start';
-                const response = await axios.post(`/api/brown-bot/${action}`);
+                const response = await axios.post(`/api/brown-bot/${action}`, {}, { headers: this.authHeaders() });
                 if (response.data.success) {
                     await this.loadBrownBotStatus();
                     await this.fetchBrownBotLogs();
@@ -6026,7 +6061,7 @@ const app = createApp({
         async saveBrownBotConfig() {
             try {
                 this.loading.brownBotConfig = true;
-                const response = await axios.post('/api/brown-bot/config', this.brownBotConfig);
+                const response = await axios.post('/api/brown-bot/config', this.brownBotConfig, { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.showNotification('BrownBot configuration saved', 'success');
                 } else {
@@ -6042,7 +6077,7 @@ const app = createApp({
 
         async fetchBrownBotLogs() {
             try {
-                const response = await axios.get('/api/brown-bot/logs');
+                const response = await axios.get('/api/brown-bot/logs', { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotLogs = response.data.logs || [];
                 }
@@ -6054,17 +6089,40 @@ const app = createApp({
         async loadBrownBotCandidates() {
             try {
                 this.loading.brownBotCandidates = true;
-                const response = await axios.get('/api/brown-bot/candidates');
+                const response = await axios.get('/api/brown-bot/candidates', { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotCandidates = {
                         scanner: response.data.scanner || [],
                         watchlist: response.data.watchlist || [],
                     };
+                    // Auto-load signals whenever candidates refresh
+                    this.loadCandidateSignals();
                 }
             } catch (error) {
                 console.error('Error loading BrownBot candidates:', error);
             } finally {
                 this.loading.brownBotCandidates = false;
+            }
+        },
+
+        async loadCandidateSignals() {
+            const tickers = this.brownBotCandidates.scanner.map(s => s.ticker);
+            if (!tickers.length) return;
+            try {
+                this.loading.brownBotSignals = true;
+                // Reset so stale data doesn't linger for symbols no longer in list
+                this.brownBotSignals = Object.fromEntries(tickers.map(t => [t, { loading: true }]));
+                const response = await axios.get(
+                    `/api/brown-bot/candidate-signals?symbols=${tickers.join(',')}`,
+                    { headers: this.authHeaders() }
+                );
+                if (response.data.success) {
+                    this.brownBotSignals = response.data.signals || {};
+                }
+            } catch (error) {
+                console.error('Error loading candidate signals:', error);
+            } finally {
+                this.loading.brownBotSignals = false;
             }
         },
 
@@ -6076,7 +6134,7 @@ const app = createApp({
                     symbol,
                     trade_type: tradeType || this.brownBotWatchlistForm.trade_type,
                     note: this.brownBotWatchlistForm.note,
-                });
+                }, { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotWatchlistForm.symbol = '';
                     this.brownBotWatchlistForm.note = '';
@@ -6092,7 +6150,7 @@ const app = createApp({
 
         async removeFromWatchlist(symbol) {
             try {
-                const response = await axios.delete(`/api/brown-bot/watchlist/${symbol}`);
+                const response = await axios.delete(`/api/brown-bot/watchlist/${symbol}`, { headers: this.authHeaders() });
                 if (response.data.success) {
                     await this.loadBrownBotCandidates();
                 } else {
@@ -6106,7 +6164,7 @@ const app = createApp({
 
         async loadBrownBotRiskStatus() {
             try {
-                const response = await axios.get('/api/brown-bot/risk-status');
+                const response = await axios.get('/api/brown-bot/risk-status', { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotRiskStatus = response.data.risk;
                 }
@@ -6146,6 +6204,10 @@ const app = createApp({
         },
 
         // ── Broker connection methods ──────────────────────────────────
+
+        authHeaders() {
+            return { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` };
+        },
 
         async loadBrokerConfigs() {
             try {

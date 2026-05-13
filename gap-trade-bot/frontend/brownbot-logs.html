@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrownBot Monitor</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #111827; }
+  .log-row:nth-child(even) { background: rgba(255,255,255,0.02); }
+  #log-table tr { border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .pulse { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  #log-body { scroll-behavior: smooth; }
+</style>
+</head>
+<body class="text-gray-300 font-mono text-sm min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between px-5 py-3 bg-gray-900 border-b border-gray-700 sticky top-0 z-10">
+    <div class="flex items-center gap-3">
+      <i class="fas fa-brain text-amber-400 text-lg"></i>
+      <span class="text-white font-semibold text-base">BrownBot Monitor</span>
+      <!-- status badge -->
+      <span id="status-badge"
+            class="text-xs px-2 py-0.5 rounded-full border font-medium bg-gray-700 text-gray-400 border-gray-600">
+        CONNECTING…
+      </span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="log-count" class="text-xs text-gray-500">0 entries</span>
+      <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+        <input type="checkbox" id="auto-scroll" checked class="rounded border-gray-600 accent-amber-500">
+        Auto-scroll
+      </label>
+      <button onclick="clearLogs()"
+              class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+        <i class="fas fa-trash mr-1"></i>Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Log table -->
+  <div id="log-body" class="flex-1 overflow-y-auto">
+    <div id="empty-state" class="flex flex-col items-center justify-center h-64 text-gray-600">
+      <i class="fas fa-terminal text-3xl mb-3"></i>
+      <p>Waiting for log entries…</p>
+    </div>
+    <table id="log-table" class="w-full hidden">
+      <tbody id="log-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="px-5 py-2 bg-gray-900 border-t border-gray-700 flex items-center justify-between text-xs text-gray-600">
+    <span id="poll-status">Polling every 2 s</span>
+    <span id="last-update">—</span>
+  </div>
+
+<script>
+  const POLL_MS   = 2000;
+  const MAX_ROWS  = 500;   // keep latest N rows in DOM
+  let knownIds    = new Set();
+  let pollTimer   = null;
+  let running     = false;
+
+  function authHeaders() {
+    const token = localStorage.getItem('session_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  function levelClass(level) {
+    return {
+      error:   'text-red-400',
+      warning: 'text-yellow-400',
+      trade:   'text-amber-300 font-semibold',
+      info:    'text-gray-400',
+    }[level] || 'text-gray-400';
+  }
+
+  function rowBg(level) {
+    if (level === 'error')   return 'bg-red-900/10';
+    if (level === 'warning') return 'bg-yellow-900/10';
+    if (level === 'trade')   return 'bg-amber-900/15';
+    return '';
+  }
+
+  function formatTime(ts) {
+    try { return new Date(ts).toLocaleTimeString(); } catch { return ts; }
+  }
+
+  function setStatus(isRunning) {
+    const badge = document.getElementById('status-badge');
+    if (isRunning) {
+      badge.className = 'text-xs px-2 py-0.5 rounded-full border font-medium bg-green-500/20 text-green-300 border-green-500/40';
+      badge.innerHTML = '<i class="fas fa-circle text-green-400 text-[8px] mr-1 pulse"></i>RUNNING';
+    } else {
+      badge.className = 'text-xs px-2 py-0.5 rounded-full border font-medium bg-gray-700 text-gray-400 border-gray-600';
+      badge.innerHTML = 'STOPPED';
+    }
+  }
+
+  function appendLogs(logs) {
+    const tbody  = document.getElementById('log-tbody');
+    const table  = document.getElementById('log-table');
+    const empty  = document.getElementById('empty-state');
+    let   added  = 0;
+
+    // logs arrive newest-first from the API — reverse to append in order
+    const ordered = [...logs].reverse();
+
+    for (const log of ordered) {
+      const id = log.id ?? `${log.timestamp}-${log.message}`;
+      if (knownIds.has(id)) continue;
+      knownIds.add(id);
+      added++;
+
+      const tr = document.createElement('tr');
+      tr.className = `log-row ${rowBg(log.level)}`;
+      tr.innerHTML = `
+        <td class="px-4 py-1.5 text-gray-500 whitespace-nowrap w-32">${formatTime(log.timestamp)}</td>
+        <td class="px-2 py-1.5 w-16 uppercase ${levelClass(log.level)}">${log.level}</td>
+        <td class="px-2 py-1.5 text-gray-300 break-all">${escHtml(log.message)}</td>`;
+      tbody.appendChild(tr);
+    }
+
+    // trim oldest rows beyond MAX_ROWS
+    while (tbody.rows.length > MAX_ROWS) tbody.deleteRow(0);
+
+    if (tbody.rows.length > 0) {
+      table.classList.remove('hidden');
+      empty.classList.add('hidden');
+    }
+
+    document.getElementById('log-count').textContent =
+      `${tbody.rows.length} entr${tbody.rows.length === 1 ? 'y' : 'ies'}`;
+
+    if (added > 0 && document.getElementById('auto-scroll').checked) {
+      document.getElementById('log-body').scrollTop = 99999;
+    }
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function poll() {
+    try {
+      const [statusRes, logsRes] = await Promise.all([
+        fetch('/api/brown-bot/status'),
+        fetch('/api/brown-bot/logs', { headers: authHeaders() }),
+      ]);
+
+      if (statusRes.ok) {
+        const s = await statusRes.json();
+        running = s.running ?? false;
+        setStatus(running);
+      }
+
+      if (logsRes.ok) {
+        const l = await logsRes.json();
+        if (l.success && l.logs) appendLogs(l.logs);
+      }
+
+      document.getElementById('last-update').textContent =
+        'Updated ' + new Date().toLocaleTimeString();
+      document.getElementById('poll-status').textContent =
+        running ? 'Live — polling every 2 s' : 'Bot stopped — showing history';
+
+    } catch (e) {
+      document.getElementById('poll-status').textContent = 'Connection error — retrying…';
+    }
+
+    pollTimer = setTimeout(poll, running ? POLL_MS : 5000);
+  }
+
+  function clearLogs() {
+    knownIds.clear();
+    document.getElementById('log-tbody').innerHTML = '';
+    document.getElementById('log-table').classList.add('hidden');
+    document.getElementById('empty-state').classList.remove('hidden');
+    document.getElementById('log-count').textContent = '0 entries';
+  }
+
+  // start
+  setStatus(false);
+  poll();
+</script>
+</body>
+</html>

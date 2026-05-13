@@ -118,7 +118,7 @@ class AuthManager:
         
         # Extend session
         new_expires_at = datetime.now() + timedelta(seconds=self.session_timeout)
-        db_manager.create_session(session_token, session_data['username'], new_expires_at)
+        db_manager.update_session_expiry(session_token, new_expires_at)
         
         return True, session_data
     

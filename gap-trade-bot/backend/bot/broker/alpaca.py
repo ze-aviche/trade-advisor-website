@@ -224,15 +224,28 @@ class AlpacaBroker(BrokerBase):
     def get_quote(self, symbol: str) -> Quote:
         self._require_client()
         try:
-            from alpaca.data.requests import StockLatestQuoteRequest
-            req  = StockLatestQuoteRequest(symbol_or_symbols=symbol.upper())
-            data = self._data_client.get_stock_latest_quote(req)
-            q    = data[symbol.upper()]
+            from alpaca.data.requests import StockLatestQuoteRequest, StockLatestTradeRequest
+            sym = symbol.upper()
+
+            quote_req  = StockLatestQuoteRequest(symbol_or_symbols=sym)
+            quote_data = self._data_client.get_stock_latest_quote(quote_req)
+            q          = quote_data[sym]
+
+            # Use the actual last trade price, not ask_price, so exit condition
+            # checks reflect real executions rather than the (higher) ask.
+            try:
+                trade_req  = StockLatestTradeRequest(symbol_or_symbols=sym)
+                trade_data = self._data_client.get_stock_latest_trade(trade_req)
+                t          = trade_data[sym]
+                last_price = float(t.price) if t and t.price else float(q.bid_price or 0)
+            except Exception:
+                last_price = float(q.bid_price or q.ask_price or 0)
+
             return Quote(
-                symbol = symbol.upper(),
+                symbol = sym,
                 bid    = float(q.bid_price or 0),
                 ask    = float(q.ask_price or 0),
-                last   = float(q.ask_price or q.bid_price or 0),
+                last   = last_price,
                 volume = 0,
             )
         except Exception as e:
