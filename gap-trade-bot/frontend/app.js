@@ -411,16 +411,15 @@ const app = createApp({
             // Broker connection settings
             supportedBrokers: [],
             brokerConfigs: [],
-            brokerForm: {
-                broker_name: '',
-                api_key: '',
-                api_secret: '',
-                paper_trading: true,
-                extra_config: {},
+            brokerCardExpanded: null,
+            brokerCardForms: {
+                alpaca:     { api_key: '', api_secret: '', paper_trading: true },
+                tastytrade: { username: '', password: '', paper_trading: false },
+                tradier:    { api_key: '', paper_trading: true },
+                das:        { host: '127.0.0.1', port: 9800 },
             },
-            brokerTestResult: null,
-            brokerEditingKeys: false,
-            brokerAccountInfo: null,
+            brokerCardAccountInfo: {},
+            brokerCardLoading: {},
 
                             // Continuous tracking interval
                 trackingInterval: null,
@@ -789,9 +788,6 @@ const app = createApp({
                 if (sr === 'dev_master') return 'bg-purple-700 text-white';
                 const classes = { basic: 'bg-gray-600 text-gray-200', beginner: 'bg-green-700 text-white', advanced: 'bg-blue-700 text-white', yogi: 'bg-yellow-600 text-white' };
                 return classes[this.user.subscription_tier] || classes.basic;
-            },
-            currentBrokerConfig() {
-                return this.brokerConfigs.find(c => c.broker_name === this.brokerForm.broker_name) || null;
             },
             swingBotCandidates() {
                 const picks = this.swingDailyPicks?.picks || [];
@@ -6295,148 +6291,82 @@ const app = createApp({
 
         async loadBrokerConfigs() {
             try {
-                const supportedRes = await axios.get('/api/broker/supported');
-                if (supportedRes.data.success) this.supportedBrokers = supportedRes.data.brokers;
-            } catch (e) {
-                console.error('loadBrokerConfigs/supported error', e);
-            }
-            try {
                 const configsRes = await axios.get('/api/broker/configs', { headers: this.authHeaders() });
                 if (configsRes.data.success) {
                     this.brokerConfigs = configsRes.data.configs;
-                    // Auto-select active broker and load account info on tab open
                     const active = this.brokerConfigs.find(c => c.is_active);
-                    if (active && !this.brokerForm.broker_name) {
-                        this.brokerForm.broker_name = active.broker_name;
-                        this.brokerForm.paper_trading = !!active.paper_trading;
-                        this.brokerEditingKeys = false;
-                        this.loadBrokerAccountInfo();
-                    }
+                    if (active) this.testBrokerCard(active.broker_name);
                 }
             } catch (e) {
-                console.error('loadBrokerConfigs/configs error', e);
+                console.error('loadBrokerConfigs error', e);
             }
         },
 
-        async loadBrokerAccountInfo() {
-            const name = this.brokerForm.broker_name ||
-                (this.brokerConfigs.find(c => c.is_active) || {}).broker_name;
-            if (!name) return;
-            this.loading.brokerAccount = true;
-            this.brokerAccountInfo = null;
+        brokerCfg(name) {
+            return this.brokerConfigs.find(c => c.broker_name === name) || null;
+        },
+
+        toggleBrokerCard(name) {
+            if (this.brokerCardExpanded === name) { this.brokerCardExpanded = null; return; }
+            const cfg = this.brokerCfg(name);
+            if (cfg) {
+                const ec = cfg.extra_config || {};
+                if (name === 'alpaca')     { this.brokerCardForms.alpaca.paper_trading = !!cfg.paper_trading; }
+                if (name === 'tastytrade') { this.brokerCardForms.tastytrade.paper_trading = !!cfg.paper_trading; this.brokerCardForms.tastytrade.username = ''; this.brokerCardForms.tastytrade.password = ''; }
+                if (name === 'tradier')    { this.brokerCardForms.tradier.paper_trading = !!cfg.paper_trading; }
+                if (name === 'das')        { this.brokerCardForms.das.host = ec.host || '127.0.0.1'; this.brokerCardForms.das.port = ec.port || 9800; }
+                this.brokerCardForms[name].api_key = '';
+                if (this.brokerCardForms[name].api_secret !== undefined) this.brokerCardForms[name].api_secret = '';
+            }
+            this.brokerCardExpanded = name;
+        },
+
+        async saveBrokerCard(name) {
+            this.brokerCardLoading = { ...this.brokerCardLoading, [name]: true };
+            try {
+                const f = this.brokerCardForms[name];
+                let payload = {};
+                if (name === 'alpaca')     payload = { api_key: f.api_key, api_secret: f.api_secret, paper_trading: f.paper_trading ? 1 : 0 };
+                if (name === 'tastytrade') payload = { paper_trading: f.paper_trading ? 1 : 0, extra_config: { username: f.username, password: f.password } };
+                if (name === 'tradier')    payload = { api_key: f.api_key, paper_trading: f.paper_trading ? 1 : 0 };
+                if (name === 'das')        payload = { extra_config: { host: f.host, port: parseInt(f.port) || 9800 } };
+                const res = await axios.post(`/api/broker/config/${name}`, payload, { headers: this.authHeaders() });
+                if (res.data.success) {
+                    this.brokerCardExpanded = null;
+                    await this.loadBrokerConfigs();
+                } else { this.showError?.(res.data.error || 'Save failed'); }
+            } catch (e) { this.showError?.(e.response?.data?.error || 'Save failed'); }
+            finally { this.brokerCardLoading = { ...this.brokerCardLoading, [name]: false }; }
+        },
+
+        async testBrokerCard(name) {
+            this.brokerCardLoading = { ...this.brokerCardLoading, [name]: true };
+            this.brokerCardAccountInfo = { ...this.brokerCardAccountInfo, [name]: null };
             try {
                 const res = await axios.post(`/api/broker/test/${name}`, {}, { headers: this.authHeaders() });
-                this.brokerAccountInfo = res.data;
+                this.brokerCardAccountInfo = { ...this.brokerCardAccountInfo, [name]: res.data };
             } catch (e) {
-                this.brokerAccountInfo = { connected: false, error: e.response?.data?.error || 'Failed to reach broker' };
-            } finally {
-                this.loading.brokerAccount = false;
-            }
-        },
-
-        onBrokerSelect() {
-            this.brokerTestResult = null;
-            this.brokerAccountInfo = null;
-            this.brokerForm.api_key = '';
-            this.brokerForm.api_secret = '';
-
-            const saved = this.brokerConfigs.find(c => c.broker_name === this.brokerForm.broker_name);
-            if (saved) {
-                // Load saved settings for this broker
-                this.brokerForm.paper_trading = !!saved.paper_trading;
-                this.brokerForm.extra_config  = saved.extra_config || {};
-                this.brokerEditingKeys = false;
-                this.loadBrokerAccountInfo();
-            } else {
-                // Not yet configured — open edit mode immediately
-                this.brokerForm.paper_trading = true;
-                this.brokerForm.extra_config  = this.brokerForm.broker_name === 'das'
-                    ? { host: '127.0.0.1', port: 9800 } : {};
-                this.brokerEditingKeys = true;
-            }
-        },
-
-        async saveBrokerConfig() {
-            if (!this.brokerForm.broker_name) return;
-            this.loading.brokerSave = true;
-            try {
-                const payload = {
-                    api_key:       this.brokerForm.api_key,
-                    api_secret:    this.brokerForm.api_secret,
-                    paper_trading: this.brokerForm.paper_trading ? 1 : 0,
-                    extra_config:  this.brokerForm.extra_config || {},
-                };
-                // For Tastytrade, credentials live in extra_config
-                if (this.brokerForm.broker_name === 'tastytrade') {
-                    payload.extra_config = {
-                        username: this.brokerForm.extra_config.username || '',
-                        password: this.brokerForm.extra_config.password || '',
-                    };
-                }
-                const res = await axios.post(
-                    `/api/broker/config/${this.brokerForm.broker_name}`,
-                    payload,
-                    { headers: this.authHeaders() }
-                );
-                if (res.data.success) {
-                    this.showSuccess?.('Broker config saved');
-                    this.brokerEditingKeys = false;
-                    this.brokerForm.api_key = '';
-                    this.brokerForm.api_secret = '';
-                    await this.loadBrokerConfigs();
-                    this.loadBrokerAccountInfo();
-                } else {
-                    this.showError?.(res.data.error || 'Save failed');
-                }
-            } catch (e) {
-                this.showError?.(e.response?.data?.error || 'Save failed');
-            } finally {
-                this.loading.brokerSave = false;
-            }
-        },
-
-        async testBrokerConnection() {
-            if (!this.brokerForm.broker_name) return;
-            this.loading.brokerTest = true;
-            this.brokerTestResult = null;
-            try {
-                const res = await axios.post(
-                    `/api/broker/test/${this.brokerForm.broker_name}`,
-                    {},
-                    { headers: this.authHeaders() }
-                );
-                this.brokerTestResult = res.data;
-            } catch (e) {
-                this.brokerTestResult = {
-                    connected: false,
-                    error: e.response?.data?.error || 'Connection test failed',
-                };
-            } finally {
-                this.loading.brokerTest = false;
-            }
+                this.brokerCardAccountInfo = { ...this.brokerCardAccountInfo, [name]: { connected: false, error: e.response?.data?.error || 'Failed' } };
+            } finally { this.brokerCardLoading = { ...this.brokerCardLoading, [name]: false }; }
         },
 
         async deleteBrokerConfig(brokerName) {
             if (!brokerName || !confirm(`Remove ${brokerName} connection?`)) return;
             try {
-                await axios.delete(`/api/broker/config/${brokerName}`,
-                                   { headers: this.authHeaders() });
-                this.brokerForm.broker_name = '';
-                this.brokerTestResult = null;
+                await axios.delete(`/api/broker/config/${brokerName}`, { headers: this.authHeaders() });
+                if (this.brokerCardExpanded === brokerName) this.brokerCardExpanded = null;
+                const ai = { ...this.brokerCardAccountInfo }; delete ai[brokerName];
+                this.brokerCardAccountInfo = ai;
                 await this.loadBrokerConfigs();
-            } catch (e) {
-                this.showError?.(e.response?.data?.error || 'Delete failed');
-            }
+            } catch (e) { this.showError?.(e.response?.data?.error || 'Delete failed'); }
         },
 
         async activateBroker(brokerName) {
             try {
-                await axios.put(`/api/broker/activate/${brokerName}`, {},
-                                { headers: this.authHeaders() });
+                await axios.put(`/api/broker/activate/${brokerName}`, {}, { headers: this.authHeaders() });
                 await this.loadBrokerConfigs();
-            } catch (e) {
-                this.showError?.(e.response?.data?.error || 'Activate failed');
-            }
+                await this.testBrokerCard(brokerName);
+            } catch (e) { this.showError?.(e.response?.data?.error || 'Activate failed'); }
         },
 
         }

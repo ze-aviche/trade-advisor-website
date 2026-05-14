@@ -4493,212 +4493,288 @@
                 </div>
 
                 <!-- ── Broker Connection ── -->
-                <div v-if="accountSection === 'broker'" class="space-y-6">
-                    <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                        <h3 class="text-lg font-semibold text-white mb-1"><i class="fas fa-plug text-green-400 mr-2"></i>Broker Connection</h3>
-                        <p class="text-gray-400 text-sm mb-6">Connect your brokerage account so the bots can place trades on your behalf. Your API keys are stored securely and never exposed in the UI.</p>
-
-                        <!-- Broker selector -->
-                        <div class="mb-5">
-                            <div class="flex items-center justify-between mb-1">
-                                <label class="block text-sm text-gray-400">Select Broker</label>
-                                <span v-if="brokerConfigs.length" class="text-xs text-gray-500">
-                                    <i class="fas fa-info-circle mr-1"></i>Switch broker or add a new one below
-                                </span>
-                            </div>
-                            <select v-model="brokerForm.broker_name" @change="onBrokerSelect"
-                                    class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none">
-                                <option value="">-- Choose a broker --</option>
-                                <option v-for="b in supportedBrokers" :key="b.name" :value="b.name">
-                                    {{ b.label }}{{ brokerConfigs.find(c => c.broker_name === b.name) ? ' ✓' : '' }}
-                                </option>
-                            </select>
-                        </div>
-
-                        <!-- Broker selected: credentials + account info -->
-                        <div v-if="brokerForm.broker_name" class="space-y-4">
-
-                            <!-- Credentials card -->
-                            <div class="bg-gray-700/40 rounded-xl border border-gray-700 overflow-hidden">
-                                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700/60">
-                                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest">API Credentials</span>
-                                    <button v-if="!brokerEditingKeys" @click="brokerEditingKeys = true"
-                                            class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5">
-                                        <i class="fas fa-pen"></i> Edit Credentials
-                                    </button>
-                                    <button v-else @click="brokerEditingKeys = false; brokerForm.api_key = ''; brokerForm.api_secret = ''"
-                                            class="text-xs text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1.5">
-                                        <i class="fas fa-times"></i> Cancel
-                                    </button>
-                                </div>
-
-                                <!-- Read-only masked view -->
-                                <template v-if="!brokerEditingKeys">
-                                    <div class="p-4 space-y-3">
-                                        <template v-if="brokerForm.broker_name === 'alpaca'">
-                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                <div>
-                                                    <div class="text-xs text-gray-500 mb-1.5">API Key ID</div>
-                                                    <div class="bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-500 select-none">
-                                                        {{ currentBrokerConfig?.api_key_set ? '••••  ••••  ••••  ••••' : 'Not configured' }}
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div class="text-xs text-gray-500 mb-1.5">Secret Key</div>
-                                                    <div class="bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-500 select-none">
-                                                        {{ currentBrokerConfig?.api_secret_set ? '••••  ••••  ••••  ••••' : 'Not configured' }}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="flex items-center gap-2 pt-1">
-                                                <span class="text-xs text-gray-500">Environment:</span>
-                                                <span :class="brokerForm.paper_trading ? 'bg-yellow-700/60 text-yellow-300' : 'bg-red-900/60 text-red-300'"
-                                                      class="text-xs px-2 py-0.5 rounded font-semibold">
-                                                    {{ brokerForm.paper_trading ? 'Paper (sandbox)' : 'Live (real money)' }}
-                                                </span>
-                                            </div>
-                                        </template>
-                                    </div>
-                                    <!-- Remove button in read mode -->
-                                    <div class="px-4 pb-3 flex justify-end border-t border-gray-700/40 pt-3">
-                                        <button @click="deleteBrokerConfig(brokerForm.broker_name)"
-                                                class="text-xs text-red-400 hover:text-red-300 transition-colors flex items-center gap-1.5">
-                                            <i class="fas fa-trash"></i> Remove Connection
-                                        </button>
-                                    </div>
-                                </template>
-
-                                <!-- Edit mode -->
-                                <template v-else>
-                                    <div class="p-4 space-y-3">
-                                        <template v-if="brokerForm.broker_name === 'alpaca'">
-                                            <div>
-                                                <label class="block text-xs text-gray-400 mb-1.5">API Key ID</label>
-                                                <input v-model="brokerForm.api_key" type="text" placeholder="PKXXXXXXXXXXXXXXXXXX"
-                                                       class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs text-gray-400 mb-1.5">Secret Key</label>
-                                                <input v-model="brokerForm.api_secret" type="password" placeholder="Leave blank to keep existing"
-                                                       class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
-                                            </div>
-                                            <div class="flex flex-wrap items-center gap-4 pt-1">
-                                                <span class="text-xs text-gray-400">Environment:</span>
-                                                <label class="flex items-center gap-2 cursor-pointer">
-                                                    <input type="radio" v-model="brokerForm.paper_trading" :value="true" class="accent-yellow-500" />
-                                                    <span class="text-sm text-yellow-400">Paper (sandbox)</span>
-                                                </label>
-                                                <label class="flex items-center gap-2 cursor-pointer">
-                                                    <input type="radio" v-model="brokerForm.paper_trading" :value="false" class="accent-red-500" />
-                                                    <span class="text-sm text-red-400">Live (real money)</span>
-                                                </label>
-                                            </div>
-                                        </template>
-                                        <div class="flex gap-3 pt-1 border-t border-gray-700/40">
-                                            <button @click="saveBrokerConfig" :disabled="loading.brokerSave"
-                                                    class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
-                                                <i class="fas fa-save mr-1.5"></i>{{ loading.brokerSave ? 'Saving…' : 'Save' }}
-                                            </button>
-                                            <button @click="brokerEditingKeys = false; brokerForm.api_key = ''; brokerForm.api_secret = ''"
-                                                    class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm transition-colors">
-                                                Cancel
-                                            </button>
-                                            <button @click="deleteBrokerConfig(brokerForm.broker_name)"
-                                                    class="bg-red-900/50 hover:bg-red-800 text-red-300 px-4 py-2 rounded-lg text-sm transition-colors ml-auto">
-                                                <i class="fas fa-trash mr-1"></i>Remove
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <!-- Account Details card -->
-                            <div class="bg-gray-700/40 rounded-xl border border-gray-700 overflow-hidden">
-                                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700/60">
-                                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                        <i class="fas fa-wallet text-green-400"></i> Account Details
-                                    </span>
-                                    <button @click="loadBrokerAccountInfo" :disabled="loading.brokerAccount"
-                                            class="text-xs text-gray-400 hover:text-green-400 transition-colors flex items-center gap-1.5">
-                                        <i :class="loading.brokerAccount ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i> Refresh
-                                    </button>
-                                </div>
-                                <!-- Not loaded -->
-                                <div v-if="!brokerAccountInfo && !loading.brokerAccount" class="px-4 py-5 text-center">
-                                    <button @click="loadBrokerAccountInfo"
-                                            class="text-sm text-blue-400 hover:text-blue-300 transition-colors">
-                                        <i class="fas fa-satellite-dish mr-1.5"></i>Load account info
-                                    </button>
-                                </div>
-                                <!-- Loading -->
-                                <div v-else-if="loading.brokerAccount" class="px-4 py-5 text-center text-gray-500 text-xs">
-                                    <i class="fas fa-spinner fa-spin mr-1.5"></i>Connecting to broker…
-                                </div>
-                                <!-- Error -->
-                                <div v-else-if="brokerAccountInfo && !brokerAccountInfo.connected"
-                                     class="px-4 py-4 flex items-center gap-2 text-red-400 text-sm">
-                                    <i class="fas fa-circle-xmark"></i>
-                                    {{ brokerAccountInfo.error || 'Connection failed' }}
-                                </div>
-                                <!-- Account data -->
-                                <div v-else-if="brokerAccountInfo?.connected"
-                                     class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700/60">
-                                    <div class="px-4 py-4">
-                                        <div class="text-xs text-gray-500 mb-1">Account ID</div>
-                                        <div class="text-sm font-mono text-white font-semibold truncate">{{ brokerAccountInfo.account_id || '—' }}</div>
-                                    </div>
-                                    <div class="px-4 py-4">
-                                        <div class="text-xs text-gray-500 mb-1">Equity</div>
-                                        <div class="text-sm font-mono font-semibold text-white">
-                                            ${{ (brokerAccountInfo.equity || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
-                                        </div>
-                                    </div>
-                                    <div class="px-4 py-4">
-                                        <div class="text-xs text-gray-500 mb-1">Buying Power</div>
-                                        <div class="text-sm font-mono font-semibold"
-                                             :class="(brokerAccountInfo.buying_power || 0) >= 1000 ? 'text-green-400' : 'text-amber-400'">
-                                            ${{ (brokerAccountInfo.buying_power || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
-                                        </div>
-                                    </div>
-                                    <div class="px-4 py-4">
-                                        <div class="text-xs text-gray-500 mb-1">Environment</div>
-                                        <span :class="brokerAccountInfo.paper ? 'bg-yellow-700/60 text-yellow-300' : 'bg-red-900/60 text-red-300'"
-                                              class="text-xs px-2 py-0.5 rounded font-semibold">
-                                            {{ brokerAccountInfo.paper ? 'Paper' : 'Live' }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
+                <div v-if="accountSection === 'broker'" class="space-y-5">
+                    <div>
+                        <h3 class="text-lg font-semibold text-white mb-1"><i class="fas fa-plug text-green-400 mr-2"></i>Broker Connections</h3>
+                        <p class="text-gray-400 text-sm">Configure one or more brokers. Only the <span class="text-green-400 font-medium">active</span> broker is used for trading. Credentials are stored securely and never shown in full.</p>
                     </div>
 
-                    <!-- Saved broker connections table -->
-                    <div v-if="brokerConfigs.length" class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                        <h4 class="text-sm font-semibold text-gray-300 mb-3"><i class="fas fa-list mr-1.5"></i>Saved Connections</h4>
-                        <div class="space-y-2">
-                            <div v-for="cfg in brokerConfigs" :key="cfg.broker_name"
-                                 class="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-2.5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                        <!-- ── Alpaca card ── -->
+                        <div class="bg-gray-800 rounded-xl border overflow-hidden transition-colors"
+                             :class="brokerCfg('alpaca')?.is_active ? 'border-green-500/50' : 'border-gray-700'">
+                            <div class="flex items-center justify-between px-5 py-4">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-white text-sm font-medium capitalize">{{ cfg.broker_name }}</span>
-                                    <span class="text-xs px-2 py-0.5 rounded" :class="cfg.paper_trading ? 'bg-yellow-800/60 text-yellow-300' : 'bg-red-900/60 text-red-300'">
-                                        {{ cfg.paper_trading ? 'paper' : 'live' }}
-                                    </span>
-                                    <span class="text-gray-500 text-xs">key {{ cfg.api_key_set ? '✓' : '✗' }} &nbsp; secret {{ cfg.api_secret_set ? '✓' : '✗' }}</span>
+                                    <i class="fas fa-chart-line text-yellow-400 text-xl w-6 text-center"></i>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-white font-semibold text-sm">Alpaca Markets</span>
+                                            <span v-if="brokerCfg('alpaca')?.is_active" class="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full font-semibold">ACTIVE</span>
+                                        </div>
+                                        <div v-if="brokerCfg('alpaca')" class="flex items-center gap-2 mt-0.5">
+                                            <span :class="brokerCfg('alpaca').paper_trading ? 'text-yellow-400' : 'text-red-400'" class="text-xs">{{ brokerCfg('alpaca').paper_trading ? 'Paper' : 'Live' }}</span>
+                                            <span class="text-gray-600 text-xs">·</span>
+                                            <span class="text-gray-500 text-xs">key {{ brokerCfg('alpaca').api_key_set ? '✓' : '✗' }}</span>
+                                        </div>
+                                        <div v-else class="text-xs text-gray-500 mt-0.5">Not configured</div>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-3">
-                                    <button v-if="!cfg.is_active" @click="activateBroker(cfg.broker_name)"
-                                            class="text-green-400 hover:text-green-300 text-xs transition-colors font-medium">
-                                        Set Active
+                                <div class="flex items-center gap-2">
+                                    <button v-if="brokerCfg('alpaca') && !brokerCfg('alpaca').is_active" @click="activateBroker('alpaca')"
+                                            class="text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-600/40 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                        Activate
                                     </button>
-                                    <span v-else class="text-green-400 text-xs font-semibold">Active</span>
-                                    <button @click="brokerForm.broker_name = cfg.broker_name; onBrokerSelect()"
-                                            class="text-blue-400 hover:text-blue-300 text-xs transition-colors">
-                                        Edit
+                                    <button v-if="brokerCfg('alpaca')?.is_active" @click="testBrokerCard('alpaca')" :disabled="brokerCardLoading['alpaca']"
+                                            class="text-gray-400 hover:text-green-400 transition-colors disabled:opacity-50 text-sm px-2">
+                                        <i :class="brokerCardLoading['alpaca'] ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                                    </button>
+                                    <button @click="toggleBrokerCard('alpaca')"
+                                            class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-blue-500/10">
+                                        <i :class="brokerCardExpanded === 'alpaca' ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+                                        {{ brokerCardExpanded === 'alpaca' ? 'Close' : (brokerCfg('alpaca') ? 'Edit' : 'Configure') }}
                                     </button>
                                 </div>
                             </div>
+                            <div v-if="brokerCardExpanded === 'alpaca'" class="border-t border-gray-700 p-5 space-y-4 bg-gray-900/30">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1.5">API Key ID</label>
+                                        <input v-model="brokerCardForms.alpaca.api_key" type="text"
+                                               :placeholder="brokerCfg('alpaca')?.api_key_set ? '•••• (keep existing)' : 'PKXXXXXXXXXXXXXXXXXX'"
+                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1.5">Secret Key</label>
+                                        <input v-model="brokerCardForms.alpaca.api_secret" type="password" placeholder="Leave blank to keep"
+                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-4">
+                                    <span class="text-xs text-gray-400">Environment:</span>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="brokerCardForms.alpaca.paper_trading" :value="true" class="accent-yellow-500" /><span class="text-sm text-yellow-400">Paper</span></label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="brokerCardForms.alpaca.paper_trading" :value="false" class="accent-red-500" /><span class="text-sm text-red-400">Live</span></label>
+                                </div>
+                                <div class="flex gap-3 pt-2 border-t border-gray-700/40">
+                                    <button @click="saveBrokerCard('alpaca')" :disabled="brokerCardLoading['alpaca']" class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        <i class="fas fa-save mr-1.5"></i>{{ brokerCardLoading['alpaca'] ? 'Saving…' : 'Save' }}
+                                    </button>
+                                    <button @click="brokerCardExpanded = null" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm transition-colors">Cancel</button>
+                                    <button v-if="brokerCfg('alpaca')" @click="deleteBrokerConfig('alpaca')" class="ml-auto text-red-400 hover:text-red-300 px-3 py-2 text-sm transition-colors"><i class="fas fa-trash mr-1"></i>Remove</button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCfg('alpaca')?.is_active && brokerCardAccountInfo['alpaca']" class="border-t border-gray-700/60">
+                                <div v-if="!brokerCardAccountInfo['alpaca'].connected" class="px-5 py-3 text-red-400 text-sm flex items-center gap-2"><i class="fas fa-circle-xmark"></i>{{ brokerCardAccountInfo['alpaca'].error || 'Connection failed' }}</div>
+                                <div v-else class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700/60">
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Account</div><div class="text-xs font-mono text-white truncate">{{ brokerCardAccountInfo['alpaca'].account_id || '—' }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Equity</div><div class="text-xs font-mono text-white">${{ (brokerCardAccountInfo['alpaca'].equity||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Buying Power</div><div class="text-xs font-mono" :class="(brokerCardAccountInfo['alpaca'].buying_power||0)>=1000?'text-green-400':'text-amber-400'">${{ (brokerCardAccountInfo['alpaca'].buying_power||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Mode</div><span :class="brokerCardAccountInfo['alpaca'].paper?'bg-yellow-700/60 text-yellow-300':'bg-red-900/60 text-red-300'" class="text-xs px-2 py-0.5 rounded font-semibold">{{ brokerCardAccountInfo['alpaca'].paper ? 'Paper' : 'Live' }}</span></div>
+                                </div>
+                            </div>
                         </div>
+
+                        <!-- ── Tastytrade card ── -->
+                        <div class="bg-gray-800 rounded-xl border overflow-hidden transition-colors"
+                             :class="brokerCfg('tastytrade')?.is_active ? 'border-green-500/50' : 'border-gray-700'">
+                            <div class="flex items-center justify-between px-5 py-4">
+                                <div class="flex items-center gap-3">
+                                    <i class="fas fa-pepper-hot text-orange-400 text-xl w-6 text-center"></i>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-white font-semibold text-sm">Tastytrade</span>
+                                            <span v-if="brokerCfg('tastytrade')?.is_active" class="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full font-semibold">ACTIVE</span>
+                                        </div>
+                                        <div v-if="brokerCfg('tastytrade')" class="flex items-center gap-2 mt-0.5">
+                                            <span :class="brokerCfg('tastytrade').paper_trading ? 'text-yellow-400' : 'text-red-400'" class="text-xs">{{ brokerCfg('tastytrade').paper_trading ? 'Paper' : 'Live' }}</span>
+                                            <span class="text-gray-600 text-xs">·</span>
+                                            <span class="text-gray-500 text-xs">credentials {{ (brokerCfg('tastytrade').extra_config?.username) ? '✓' : '✗' }}</span>
+                                        </div>
+                                        <div v-else class="text-xs text-gray-500 mt-0.5">Not configured</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button v-if="brokerCfg('tastytrade') && !brokerCfg('tastytrade').is_active" @click="activateBroker('tastytrade')"
+                                            class="text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-600/40 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                        Activate
+                                    </button>
+                                    <button v-if="brokerCfg('tastytrade')?.is_active" @click="testBrokerCard('tastytrade')" :disabled="brokerCardLoading['tastytrade']"
+                                            class="text-gray-400 hover:text-green-400 transition-colors disabled:opacity-50 text-sm px-2">
+                                        <i :class="brokerCardLoading['tastytrade'] ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                                    </button>
+                                    <button @click="toggleBrokerCard('tastytrade')"
+                                            class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-blue-500/10">
+                                        <i :class="brokerCardExpanded === 'tastytrade' ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+                                        {{ brokerCardExpanded === 'tastytrade' ? 'Close' : (brokerCfg('tastytrade') ? 'Edit' : 'Configure') }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCardExpanded === 'tastytrade'" class="border-t border-gray-700 p-5 space-y-4 bg-gray-900/30">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1.5">Username</label>
+                                        <input v-model="brokerCardForms.tastytrade.username" type="text"
+                                               :placeholder="brokerCfg('tastytrade')?.extra_config?.username ? '•••• (keep existing)' : 'your@email.com'"
+                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1.5">Password</label>
+                                        <input v-model="brokerCardForms.tastytrade.password" type="password" placeholder="Leave blank to keep"
+                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none" />
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-4">
+                                    <span class="text-xs text-gray-400">Environment:</span>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="brokerCardForms.tastytrade.paper_trading" :value="true" class="accent-yellow-500" /><span class="text-sm text-yellow-400">Paper</span></label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="brokerCardForms.tastytrade.paper_trading" :value="false" class="accent-red-500" /><span class="text-sm text-red-400">Live</span></label>
+                                </div>
+                                <div class="flex gap-3 pt-2 border-t border-gray-700/40">
+                                    <button @click="saveBrokerCard('tastytrade')" :disabled="brokerCardLoading['tastytrade']" class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        <i class="fas fa-save mr-1.5"></i>{{ brokerCardLoading['tastytrade'] ? 'Saving…' : 'Save' }}
+                                    </button>
+                                    <button @click="brokerCardExpanded = null" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm transition-colors">Cancel</button>
+                                    <button v-if="brokerCfg('tastytrade')" @click="deleteBrokerConfig('tastytrade')" class="ml-auto text-red-400 hover:text-red-300 px-3 py-2 text-sm transition-colors"><i class="fas fa-trash mr-1"></i>Remove</button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCfg('tastytrade')?.is_active && brokerCardAccountInfo['tastytrade']" class="border-t border-gray-700/60">
+                                <div v-if="!brokerCardAccountInfo['tastytrade'].connected" class="px-5 py-3 text-red-400 text-sm flex items-center gap-2"><i class="fas fa-circle-xmark"></i>{{ brokerCardAccountInfo['tastytrade'].error || 'Connection failed' }}</div>
+                                <div v-else class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700/60">
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Account</div><div class="text-xs font-mono text-white truncate">{{ brokerCardAccountInfo['tastytrade'].account_id || '—' }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Equity</div><div class="text-xs font-mono text-white">${{ (brokerCardAccountInfo['tastytrade'].equity||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Buying Power</div><div class="text-xs font-mono" :class="(brokerCardAccountInfo['tastytrade'].buying_power||0)>=1000?'text-green-400':'text-amber-400'">${{ (brokerCardAccountInfo['tastytrade'].buying_power||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Mode</div><span :class="brokerCardAccountInfo['tastytrade'].paper?'bg-yellow-700/60 text-yellow-300':'bg-red-900/60 text-red-300'" class="text-xs px-2 py-0.5 rounded font-semibold">{{ brokerCardAccountInfo['tastytrade'].paper ? 'Paper' : 'Live' }}</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Tradier card ── -->
+                        <div class="bg-gray-800 rounded-xl border overflow-hidden transition-colors"
+                             :class="brokerCfg('tradier')?.is_active ? 'border-green-500/50' : 'border-gray-700'">
+                            <div class="flex items-center justify-between px-5 py-4">
+                                <div class="flex items-center gap-3">
+                                    <i class="fas fa-exchange-alt text-blue-400 text-xl w-6 text-center"></i>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-white font-semibold text-sm">Tradier</span>
+                                            <span v-if="brokerCfg('tradier')?.is_active" class="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full font-semibold">ACTIVE</span>
+                                        </div>
+                                        <div v-if="brokerCfg('tradier')" class="flex items-center gap-2 mt-0.5">
+                                            <span :class="brokerCfg('tradier').paper_trading ? 'text-yellow-400' : 'text-red-400'" class="text-xs">{{ brokerCfg('tradier').paper_trading ? 'Paper' : 'Live' }}</span>
+                                            <span class="text-gray-600 text-xs">·</span>
+                                            <span class="text-gray-500 text-xs">key {{ brokerCfg('tradier').api_key_set ? '✓' : '✗' }}</span>
+                                        </div>
+                                        <div v-else class="text-xs text-gray-500 mt-0.5">Not configured</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button v-if="brokerCfg('tradier') && !brokerCfg('tradier').is_active" @click="activateBroker('tradier')"
+                                            class="text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-600/40 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                        Activate
+                                    </button>
+                                    <button v-if="brokerCfg('tradier')?.is_active" @click="testBrokerCard('tradier')" :disabled="brokerCardLoading['tradier']"
+                                            class="text-gray-400 hover:text-green-400 transition-colors disabled:opacity-50 text-sm px-2">
+                                        <i :class="brokerCardLoading['tradier'] ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                                    </button>
+                                    <button @click="toggleBrokerCard('tradier')"
+                                            class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-blue-500/10">
+                                        <i :class="brokerCardExpanded === 'tradier' ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+                                        {{ brokerCardExpanded === 'tradier' ? 'Close' : (brokerCfg('tradier') ? 'Edit' : 'Configure') }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCardExpanded === 'tradier'" class="border-t border-gray-700 p-5 space-y-4 bg-gray-900/30">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1.5">API Token</label>
+                                    <input v-model="brokerCardForms.tradier.api_key" type="text"
+                                           :placeholder="brokerCfg('tradier')?.api_key_set ? '•••• (keep existing)' : 'Bearer token from Tradier dashboard'"
+                                           class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                </div>
+                                <div class="flex flex-wrap items-center gap-4">
+                                    <span class="text-xs text-gray-400">Environment:</span>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="brokerCardForms.tradier.paper_trading" :value="true" class="accent-yellow-500" /><span class="text-sm text-yellow-400">Sandbox</span></label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="brokerCardForms.tradier.paper_trading" :value="false" class="accent-red-500" /><span class="text-sm text-red-400">Live</span></label>
+                                </div>
+                                <div class="flex gap-3 pt-2 border-t border-gray-700/40">
+                                    <button @click="saveBrokerCard('tradier')" :disabled="brokerCardLoading['tradier']" class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        <i class="fas fa-save mr-1.5"></i>{{ brokerCardLoading['tradier'] ? 'Saving…' : 'Save' }}
+                                    </button>
+                                    <button @click="brokerCardExpanded = null" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm transition-colors">Cancel</button>
+                                    <button v-if="brokerCfg('tradier')" @click="deleteBrokerConfig('tradier')" class="ml-auto text-red-400 hover:text-red-300 px-3 py-2 text-sm transition-colors"><i class="fas fa-trash mr-1"></i>Remove</button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCfg('tradier')?.is_active && brokerCardAccountInfo['tradier']" class="border-t border-gray-700/60">
+                                <div v-if="!brokerCardAccountInfo['tradier'].connected" class="px-5 py-3 text-red-400 text-sm flex items-center gap-2"><i class="fas fa-circle-xmark"></i>{{ brokerCardAccountInfo['tradier'].error || 'Connection failed' }}</div>
+                                <div v-else class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700/60">
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Account</div><div class="text-xs font-mono text-white truncate">{{ brokerCardAccountInfo['tradier'].account_id || '—' }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Equity</div><div class="text-xs font-mono text-white">${{ (brokerCardAccountInfo['tradier'].equity||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Buying Power</div><div class="text-xs font-mono" :class="(brokerCardAccountInfo['tradier'].buying_power||0)>=1000?'text-green-400':'text-amber-400'">${{ (brokerCardAccountInfo['tradier'].buying_power||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) }}</div></div>
+                                    <div class="px-4 py-3"><div class="text-xs text-gray-500 mb-1">Mode</div><span :class="brokerCardAccountInfo['tradier'].paper?'bg-yellow-700/60 text-yellow-300':'bg-red-900/60 text-red-300'" class="text-xs px-2 py-0.5 rounded font-semibold">{{ brokerCardAccountInfo['tradier'].paper ? 'Sandbox' : 'Live' }}</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── DAS Trader Pro card ── -->
+                        <div class="bg-gray-800 rounded-xl border overflow-hidden transition-colors"
+                             :class="brokerCfg('das')?.is_active ? 'border-green-500/50' : 'border-gray-700'">
+                            <div class="flex items-center justify-between px-5 py-4">
+                                <div class="flex items-center gap-3">
+                                    <i class="fas fa-network-wired text-purple-400 text-xl w-6 text-center"></i>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-white font-semibold text-sm">DAS Trader Pro</span>
+                                            <span v-if="brokerCfg('das')?.is_active" class="text-xs bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full font-semibold">ACTIVE</span>
+                                            <span class="text-xs bg-purple-900/40 text-purple-300 border border-purple-700/40 px-2 py-0.5 rounded-full">Local TCP</span>
+                                        </div>
+                                        <div v-if="brokerCfg('das')" class="flex items-center gap-2 mt-0.5">
+                                            <span class="text-gray-400 text-xs font-mono">{{ brokerCfg('das').extra_config?.host || '127.0.0.1' }}:{{ brokerCfg('das').extra_config?.port || 9800 }}</span>
+                                        </div>
+                                        <div v-else class="text-xs text-gray-500 mt-0.5">Not configured</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button v-if="brokerCfg('das') && !brokerCfg('das').is_active" @click="activateBroker('das')"
+                                            class="text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-600/40 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                        Activate
+                                    </button>
+                                    <button v-if="brokerCfg('das')?.is_active" @click="testBrokerCard('das')" :disabled="brokerCardLoading['das']"
+                                            class="text-gray-400 hover:text-green-400 transition-colors disabled:opacity-50 text-sm px-2">
+                                        <i :class="brokerCardLoading['das'] ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                                    </button>
+                                    <button @click="toggleBrokerCard('das')"
+                                            class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-blue-500/10">
+                                        <i :class="brokerCardExpanded === 'das' ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+                                        {{ brokerCardExpanded === 'das' ? 'Close' : (brokerCfg('das') ? 'Edit' : 'Configure') }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCardExpanded === 'das'" class="border-t border-gray-700 p-5 space-y-4 bg-gray-900/30">
+                                <p class="text-xs text-gray-400">DAS Trader Pro must be running on this machine with the API server enabled on the configured port.</p>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1.5">Host</label>
+                                        <input v-model="brokerCardForms.das.host" type="text" placeholder="127.0.0.1"
+                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1.5">Port</label>
+                                        <input v-model.number="brokerCardForms.das.port" type="number" placeholder="9800"
+                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                    </div>
+                                </div>
+                                <div class="flex gap-3 pt-2 border-t border-gray-700/40">
+                                    <button @click="saveBrokerCard('das')" :disabled="brokerCardLoading['das']" class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        <i class="fas fa-save mr-1.5"></i>{{ brokerCardLoading['das'] ? 'Saving…' : 'Save' }}
+                                    </button>
+                                    <button @click="brokerCardExpanded = null" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm transition-colors">Cancel</button>
+                                    <button v-if="brokerCfg('das')" @click="deleteBrokerConfig('das')" class="ml-auto text-red-400 hover:text-red-300 px-3 py-2 text-sm transition-colors"><i class="fas fa-trash mr-1"></i>Remove</button>
+                                </div>
+                            </div>
+                            <div v-if="brokerCfg('das')?.is_active && brokerCardAccountInfo['das']" class="border-t border-gray-700/60">
+                                <div v-if="!brokerCardAccountInfo['das'].connected" class="px-5 py-3 text-red-400 text-sm flex items-center gap-2"><i class="fas fa-circle-xmark"></i>{{ brokerCardAccountInfo['das'].error || 'Connection failed — is DAS running?' }}</div>
+                                <div v-else class="px-5 py-3 text-green-400 text-sm flex items-center gap-2"><i class="fas fa-circle-check"></i>Connected to DAS at {{ brokerCfg('das').extra_config?.host }}:{{ brokerCfg('das').extra_config?.port }}</div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
