@@ -3007,6 +3007,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
 
     # Persist entry to DB so stats survive server restarts
     try:
+        _active_broker_name = db_manager.get_active_broker_name() or 'unknown'
         db_manager.add_trade({
             'trade_id':      f'BROWN_ENTRY_{symbol}_{int(time.time())}',
             'symbol':        symbol,
@@ -3022,6 +3023,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
             'trade_date':    datetime.now().strftime('%Y-%m-%d'),
             'position_type': position_type,
             'days_held':     None,
+            'broker_source': _active_broker_name,
         })
     except Exception as _e:
         _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
@@ -3279,7 +3281,7 @@ def _brown_close_position(position_id, position, exit_reason):
 
     # Write the closing trade to DB
     try:
-        import uuid as _uuid
+        _active_broker_name = db_manager.get_active_broker_name() or 'unknown'
         trade_data = {
             'trade_id': f'BROWN_EXIT_{symbol}_{int(time.time())}',
             'symbol': symbol,
@@ -3295,6 +3297,7 @@ def _brown_close_position(position_id, position, exit_reason):
             'trade_date': datetime.now().strftime('%Y-%m-%d'),
             'position_type': position_type,
             'days_held': days_held,
+            'broker_source': _active_broker_name,
         }
         db_manager.add_trade(trade_data)
     except Exception as e:
@@ -3685,7 +3688,8 @@ def list_broker_configs():
     """Return all saved broker configs for the current user (no secrets in response)."""
     user_id = getattr(request.user, 'id', 1)
     configs = db_manager.get_broker_configs(user_id)
-    return jsonify({'success': True, 'configs': configs})
+    active_broker = db_manager.get_active_broker_name(user_id)
+    return jsonify({'success': True, 'configs': configs, 'active_broker': active_broker})
 
 
 @app.route('/api/broker/config/<broker_name>', methods=['POST'])
@@ -3712,6 +3716,18 @@ def delete_broker_config(broker_name):
     ok, msg = db_manager.delete_broker_config(broker_name, user_id)
     if ok:
         return jsonify({'success': True, 'message': msg})
+    return jsonify({'success': False, 'error': msg}), 400
+
+
+@app.route('/api/broker/activate/<broker_name>', methods=['PUT'])
+@require_auth
+def activate_broker(broker_name):
+    """Set broker_name as the sole active broker — deactivates all others."""
+    user_id = getattr(request.user, 'id', 1)
+    ok, msg = db_manager.set_active_broker(broker_name, user_id)
+    if ok:
+        _invalidate_broker_cache(user_id)
+        return jsonify({'success': True, 'message': msg, 'active_broker': broker_name})
     return jsonify({'success': False, 'error': msg}), 400
 
 
@@ -4329,17 +4345,19 @@ def get_trades():
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         limit = int(request.args.get('limit', 100))
-        
+        broker_source = request.args.get('broker_source')
+
         # Validate limit
         if limit > 1000:
             limit = 1000
-        
+
         # Get trades from database
         trades = db_manager.get_trades(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
-            limit=limit
+            limit=limit,
+            broker_source=broker_source,
         )
         
         # Get summary statistics
