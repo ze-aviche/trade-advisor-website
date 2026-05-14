@@ -17,6 +17,8 @@ Two daemon threads are started together on `POST /api/brown-bot/start` and stopp
 
 The running flag `_brown_bot_running` is the only shutdown signal — both loops poll it and exit cleanly.
 
+On `start_brown_bot()` the bot also restores any positions that were persisted to `brown_positions` (DB) before the last server restart, so active positions survive process restarts without manual reconciliation.
+
 ---
 
 ## Entry Pipeline
@@ -34,6 +36,10 @@ Config filters
       │
       ▼
 Time gate check  (09:35–10:30 ET by default, toggleable in config)
+      │
+      ▼
+Skip if symbol in _brown_attempted_symbols
+(locks out any symbol that was attempted this session — fills AND rejections)
       │
       ▼
 _check_day_entry_signal(symbol)
@@ -55,9 +61,13 @@ RiskManager.can_enter(symbol, 'day')
       │
       ▼
 _brown_enter_position(symbol, 'day')
+· Pre-flight buying power check  →  skips (no order sent) if account BP < price × qty
+· Marks symbol in _brown_attempted_symbols BEFORE the order
 · Places market BUY via broker.place_order()
 · Stores position in _brown_bot_active_positions
+· Persists position to brown_positions table (DB)
 · Writes BROWN_ENTRY_* record to trades table
+· Increments _brown_entry_counts[symbol] only on a confirmed fill
 ```
 
 ---
@@ -141,7 +151,7 @@ Filter: grade in (A, B)  AND  bias == Bullish
       │
       ▼
 Skip if: symbol already in open position
-         symbol already entered this session  (_brown_entry_counts guard)
+         symbol in _brown_attempted_symbols  (fills + rejected/skipped — no retry)
       │
       ▼
 RiskManager.can_enter(symbol, 'swing')
@@ -153,11 +163,24 @@ _brown_get_current_price(symbol)   →  live broker quote
       │
       ▼
 _brown_enter_position(symbol, 'swing')
+· Pre-flight buying power check  →  skips if BP insufficient
 · Places market BUY
 · Sets profit_target and stop_loss from live price + config pct
 · Stores in _brown_bot_active_positions
+· Persists position to brown_positions table (DB)
 · Writes BROWN_ENTRY_* record to trades table
 ```
+
+#### Swing Candidates UI
+
+The Swing Trade Candidates panel in the UI shows all Grade A/B Bullish picks with a status badge derived from runtime state:
+
+| Status | Meaning |
+|--------|---------|
+| **Active** | Position currently open in `_brown_bot_active_positions` |
+| **Entered Today** | Fill confirmed (`_brown_entry_counts` has the symbol) |
+| **Skipped** | Attempted but rejected/BP-insufficient (`_brown_attempted_symbols` has it, `_brown_entry_counts` does not) — will not be retried this session |
+| **Eligible** | No attempt yet; bot may enter on the next scan |
 
 ---
 
@@ -199,6 +222,7 @@ _brown_close_position(position_id, exit_reason)
                                     (prevents accidental short if already flat)
 · broker.close_position(symbol) →  market SELL via broker abstraction layer
 · Polls broker.get_order() up to 3× for actual fill price (filled_avg_price)
+· Deletes position from brown_positions table (DB)
 · Writes BROWN_EXIT_* record to trades table
 · Removes from _brown_bot_active_positions
 ```
@@ -223,8 +247,10 @@ Instantiated from `brown_bot_config` when the bot starts. Re-reads today's reali
 
 | Data | Storage | Notes |
 |------|---------|-------|
-| Active positions | `_brown_bot_active_positions` (memory dict) | Lost on restart — positions must be manually reconciled |
-| Entry counts | `_brown_entry_counts` (memory dict) | Resets on restart; prevents re-entering same symbol in a session |
+| Active positions | `_brown_bot_active_positions` (memory dict) | Seeded from `brown_positions` DB on `start_brown_bot()` |
+| Active positions (backup) | `brown_positions` table (SQLite) | Written on entry, deleted on exit — survives server restarts |
+| Entry counts | `_brown_entry_counts` (memory dict) | Filled-only entries; resets on start; restored from DB on restart |
+| Attempted symbols | `_brown_attempted_symbols` (memory set) | All attempts this session (fills + rejections); resets on start; restored on restart |
 | Trade history | `trades` table (SQLite) | `trade_id` prefixed `BROWN_ENTRY_*` / `BROWN_EXIT_*` |
 | Daily stats | Queried live from `trades` table | Never in-memory; always accurate after restart |
 | Swing picks | `swing_daily_picks` table (SQLite) | Keyed by trading date; updated at 8 PM ET daily |
@@ -235,11 +261,31 @@ BrownBot positions are **never** written to the `positions` table (owned by the 
 
 ---
 
+## Session Management
+
+BrownBot runs as a server-side daemon — it continues executing regardless of whether the user has a browser open or their session is active. The UI is a control panel only.
+
+### Session keepalive (frontend)
+
+When the bot is **running**, the frontend automatically pings `POST /api/session/ping` every 4 minutes to extend the 24-hour session window. This fires even if the user has navigated away from the BrownBot tab. The keepalive starts on `toggleBrownBot()` (start) and stops on `toggleBrownBot()` (stop).
+
+`POST /api/session/ping` is an authenticated endpoint that extends the session and returns the new `expires_at` timestamp.
+
+### Session expiry warning
+
+When the session has fewer than 30 minutes remaining, an amber dismissible banner appears at the top of the page with a "Stay logged in" button. Clicking it calls the ping endpoint to reset the timer. The banner also notes that BrownBot will keep running even if the session lapses.
+
+### Global bot status chip
+
+A green animated "BrownBot LIVE" chip is displayed in the top nav bar whenever the bot is running, regardless of which tab is active. Clicking it navigates to the BrownBot tab.
+
+---
+
 ## Config Reference
 
 All settings live in `brown_bot_config` (DB) and are editable in the Configuration panel.
 
-### Day Trade
+### Day Trade Config
 | Field | Default | Description |
 |-------|---------|-------------|
 | `day_profit_target_pct` | 5.0 | Exit when unrealized gain reaches this % |
@@ -252,7 +298,7 @@ All settings live in `brown_bot_config` (DB) and are editable in the Configurati
 | `day_time_gate_end` | 10:30 | Entry window close (ET) |
 | `day_breakeven_trigger_pct` | 50.0 | Move stop to entry when this % of target reached |
 
-### Day Entry Filters
+### Day Trade Entry Filters
 | Field | Default | Description |
 |-------|---------|-------------|
 | `day_check_vwap` | false | Require close ≥ session VWAP |
@@ -260,7 +306,17 @@ All settings live in `brown_bot_config` (DB) and are editable in the Configurati
 | `day_check_volume_surge` | false | Require entry bar ≥ 1.5× avg volume |
 | `day_max_extension_pct` | 0 | Max % above gap price allowed (0 = off) |
 
-### Swing Trade
+### Day Trade Scanner Filters
+| Field | Default | Description |
+|-------|---------|-------------|
+| `min_gap_pct` | 10.0 | Minimum gap % for scanner candidates |
+| `min_price` | 5.0 | Minimum price filter |
+| `max_price` | 500.0 | Maximum price filter |
+| `min_volume_m` | 0.5 | Minimum volume in millions |
+| `max_float_m` | 0 | Float filter in millions (0 = off) |
+| `float_operator` | ≤ | Direction of float filter |
+
+### Swing Trade Config
 | Field | Default | Description |
 |-------|---------|-------------|
 | `swing_profit_target_pct` | 15.0 | Exit when unrealized gain reaches this % |
@@ -269,18 +325,12 @@ All settings live in `brown_bot_config` (DB) and are editable in the Configurati
 | `swing_earnings_protection_enabled` | true | Exit before upcoming earnings |
 | `swing_breakeven_trigger_pct` | 50.0 | Move stop to entry when this % of target reached |
 
-### Risk & Scanner
+### Portfolio Risk
 | Field | Default | Description |
 |-------|---------|-------------|
 | `max_daily_loss` | −500.0 | Circuit breaker — halt entries below this P&L ($) |
 | `max_concurrent_day` | 3 | Max simultaneous open day positions |
 | `max_concurrent_swing` | 5 | Max simultaneous open swing positions |
-| `min_gap_pct` | 10.0 | Minimum gap % for scanner candidates |
-| `min_price` | 5.0 | Minimum price filter |
-| `max_price` | 500.0 | Maximum price filter |
-| `min_volume_m` | 0.5 | Minimum volume in millions |
-| `max_float_m` | 0 | Float filter in millions (0 = off) |
-| `float_operator` | ≤ | Direction of float filter |
 
 ---
 
@@ -289,20 +339,24 @@ All settings live in `brown_bot_config` (DB) and are editable in the Configurati
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/brown-bot/status` | — | Running state, stats, active positions |
-| POST | `/api/brown-bot/start` | ✓ | Instantiate RiskManager, launch threads |
+| POST | `/api/brown-bot/start` | ✓ | Instantiate RiskManager, restore positions, launch threads |
 | POST | `/api/brown-bot/stop` | ✓ | Clear flag, join threads |
 | GET/POST | `/api/brown-bot/config` | ✓ | Read / write config |
 | GET | `/api/brown-bot/logs` | ✓ | Last 100 activity log entries |
 | GET | `/api/brown-bot/risk-status` | ✓ | Live risk snapshot |
 | GET | `/api/brown-bot/candidates` | ✓ | Filtered gap-ups (scanner candidates) |
 | GET | `/api/brown-bot/candidate-signals` | ✓ | Intraday signal check results per symbol |
+| POST | `/api/session/ping` | ✓ | Extend session + return new `expires_at` (used by keepalive) |
 
 ---
 
 ## Key Constraints
 
-- **No manual input** — BrownBot is fully autonomous. Day candidates come from the gap-up scanner; swing candidates come from the daily AI hot picks. The manual watchlist has been removed.
+- **No manual input** — BrownBot is fully autonomous. Day candidates come from the gap-up scanner; swing candidates come from the daily AI hot picks.
 - **Long only** — all entries are market BUY. `broker.close_position()` is used for exits to prevent accidental short selling.
 - **Single process** — runs inside the same Flask/eventlet process as the rest of the app. Both loops are daemon threads; they share `_brown_bot_active_positions` via `_brown_bot_lock`.
-- **No position table writes** — BrownBot positions live in memory and `trades` only. Never write to the `positions` table.
+- **No position table writes** — BrownBot positions live in memory, `brown_positions`, and `trades` only. Never write to the `positions` table.
+- **Retry guard** — `_brown_attempted_symbols` (a set) is marked before every order attempt. The scan loop skips any symbol already in this set, so a rejected or BP-failed order is never retried in the same session.
+- **Buying power pre-flight** — `_brown_enter_position()` checks `broker.get_account().buying_power` before placing the order. If insufficient, the symbol is logged, marked as attempted (skipped), and no order is sent. Fails open if the account API call errors.
 - **Swing picks are session-scoped** — `_brown_entry_counts` prevents re-entering the same swing pick multiple times in a day, even if the position closes and re-qualifies.
+- **Bot/session decoupling** — BrownBot runs independently of the user's login session. The session keepalive is a convenience, not a dependency; if the session lapses the bot continues running.
