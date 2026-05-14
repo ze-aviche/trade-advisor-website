@@ -202,7 +202,6 @@ class DatabaseManager:
                 ('annual_income_range', 'TEXT DEFAULT NULL'),
                 ('trial_expires_at', 'TIMESTAMP DEFAULT NULL'),
                 ('trial_reminder_sent', 'INTEGER DEFAULT 0'),
-                ('das_enabled', 'INTEGER DEFAULT 0'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -232,10 +231,9 @@ class DatabaseManager:
                 ('daily_positions', 'position_type',      "TEXT DEFAULT 'day'"),
                 ('daily_positions', 'swing_stop_loss',    'REAL DEFAULT NULL'),
                 ('daily_positions', 'swing_target',       'REAL DEFAULT NULL'),
-                # trades: track which style produced the trade + which broker executed it
+                # trades: track which style produced the trade
                 ('trades',          'position_type',      "TEXT DEFAULT 'day'"),
                 ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
-                ('trades',          'broker_source',      'TEXT DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
@@ -488,7 +486,7 @@ class DatabaseManager:
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
                            preferences, stripe_customer_id, stripe_subscription_id,
                            first_name, last_name, address, profession, annual_income_range,
-                           trial_expires_at, das_enabled
+                           trial_expires_at
                     FROM users WHERE id = ?
                 ''', (user_id,))
                 row = cursor.fetchone()
@@ -511,7 +509,7 @@ class DatabaseManager:
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
                            preferences, stripe_customer_id, stripe_subscription_id,
                            first_name, last_name, address, profession, annual_income_range,
-                           trial_expires_at, das_enabled
+                           trial_expires_at
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
@@ -642,8 +640,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, username, email, system_role, subscription_tier,
-                           subscription_status, is_active, created_at, last_login,
-                           das_enabled
+                           subscription_status, is_active, created_at, last_login
                     FROM users ORDER BY created_at ASC
                 ''')
                 return [dict(row) for row in cursor.fetchall()]
@@ -824,19 +821,6 @@ class DatabaseManager:
         except Exception as e:
             return False, str(e)
 
-    def update_user_das_access(self, user_id: int, enabled: bool) -> tuple:
-        """Enable or disable DAS Trading tab access for a user."""
-        try:
-            with self.get_connection() as conn:
-                conn.execute(
-                    'UPDATE users SET das_enabled = ? WHERE id = ?',
-                    (1 if enabled else 0, user_id)
-                )
-                conn.commit()
-                return True, 'DAS access updated'
-        except Exception as e:
-            return False, str(e)
-
     def add_trade(self, trade_data):
         """Add a new trade to the database"""
         try:
@@ -846,8 +830,8 @@ class DatabaseManager:
                     INSERT INTO trades (
                         trade_id, symbol, side, quantity, price, route,
                         trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
-                        position_type, days_held, broker_source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_type, days_held
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -863,7 +847,6 @@ class DatabaseManager:
                     trade_data['trade_date'],
                     trade_data.get('position_type', 'day'),
                     trade_data.get('days_held'),
-                    trade_data.get('broker_source'),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -1091,37 +1074,33 @@ class DatabaseManager:
                 'total_cost_basis': 0.0
             }
     
-    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100, broker_source=None):
+    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100):
         """Get trades with optional filtering"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-
+                
                 query = '''
-                    SELECT id, trade_id, symbol, side, quantity, price, route,
-                           trade_time, order_id, liquidity, ecn_fee, pnl,
-                           trade_date, created_at, position_type, days_held, broker_source
+                    SELECT id, trade_id, symbol, side, quantity, price, route, 
+                           trade_time, order_id, liquidity, ecn_fee, pnl, 
+                           trade_date, created_at
                     FROM trades
                     WHERE 1=1
                 '''
                 params = []
-
+                
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-
+                
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
-
+                
                 if end_date:
                     query += ' AND trade_date <= ?'
                     params.append(end_date)
-
-                if broker_source:
-                    query += ' AND broker_source = ?'
-                    params.append(broker_source)
-
+                
                 query += ' ORDER BY trade_date DESC, trade_time DESC LIMIT ?'
                 params.append(limit)
                 
@@ -2664,41 +2643,6 @@ class DatabaseManager:
                 return True, 'Broker config deleted'
         except Exception as e:
             return False, str(e)
-
-    def set_active_broker(self, broker_name: str, user_id: int = 1) -> tuple:
-        """Set broker_name as the sole active broker for user_id (deactivates all others)."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    'UPDATE broker_configs SET is_active=0 WHERE user_id=?',
-                    (user_id,)
-                )
-                cursor.execute(
-                    'UPDATE broker_configs SET is_active=1, updated_at=CURRENT_TIMESTAMP '
-                    'WHERE user_id=? AND broker_name=?',
-                    (user_id, broker_name)
-                )
-                conn.commit()
-                if cursor.rowcount == 0:
-                    return False, f'No config found for {broker_name}'
-                return True, f'{broker_name} set as active broker'
-        except Exception as e:
-            return False, str(e)
-
-    def get_active_broker_name(self, user_id: int = 1) -> str | None:
-        """Return the broker_name of the currently active broker, or None."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    'SELECT broker_name FROM broker_configs WHERE user_id=? AND is_active=1 LIMIT 1',
-                    (user_id,)
-                )
-                row = cursor.fetchone()
-                return row['broker_name'] if row else None
-        except Exception:
-            return None
 
     # ------------------------------------------------------------------
     # BrownBot active position persistence

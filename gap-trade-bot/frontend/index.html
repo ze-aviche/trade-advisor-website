@@ -153,10 +153,15 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-wave-square text-xs"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
-                <button @click="handleTabClick('das-trading')"
-                    :class="activeTab === 'das-trading' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('das-trading') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                <button @click="handleTabClick('entry-bot')"
+                    :class="activeTab === 'entry-bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('entry-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-desktop text-xs"></i>DAS Trading<i v-if="!canAccessTab('das-trading')" class="fas fa-lock text-xs ml-0.5"></i>
+                    <i class="fas fa-play text-xs"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('bot')"
+                    :class="activeTab === 'bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-robot text-xs"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('brown-bot')"
                     :class="activeTab === 'brown-bot' ? 'bg-amber-600 border-amber-600 text-white shadow-md shadow-amber-600/20' : canAccessTab('brown-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-amber-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
@@ -167,6 +172,11 @@
                     :class="activeTab === 'trades' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('trades') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-exchange-alt text-xs"></i>Trades<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
+                <button @click="handleTabClick('positions')"
+                    :class="activeTab === 'positions' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('positions') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-chart-line text-xs"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('stats')"
                     :class="activeTab === 'stats' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('stats') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
@@ -204,7 +214,7 @@
             <div class="flex md:hidden items-center justify-between py-1">
                 <span class="text-blue-400 text-sm font-medium">
                     <i class="fas fa-layer-group mr-2 text-gray-400"></i>
-                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','das-trading':'DAS Trading','trades':'Trade History','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account','brown-bot':'BrownBot'}[activeTab] || 'Menu' }}
+                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account'}[activeTab] || 'Menu' }}
                 </span>
                 <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-gray-400 hover:text-white p-1 rounded">
                     <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'" class="text-lg"></i>
@@ -216,9 +226,11 @@
                 <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
                 <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
-                <button @click="handleTabClick('das-trading')" :class="activeTab === 'das-trading' ? 'bg-blue-600 text-white' : canAccessTab('das-trading') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-desktop mr-2 w-4"></i>DAS Trading<i v-if="!canAccessTab('das-trading')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : canAccessTab('entry-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : canAccessTab('bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : canAccessTab('stats') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : canAccessTab('backtest') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : canAccessTab('ai-chat') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-comments mr-2 w-4"></i>AI Chat<i v-if="!canAccessTab('ai-chat')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -287,7 +299,7 @@
                             <i class="fas fa-lock text-yellow-400 text-xl"></i>
                         </div>
                         <div>
-                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">{{ lockedTabInfo.isDasLocked ? 'Admin Restricted' : lockedTabInfo.isGuest ? 'Sign In Required' : 'Locked Feature' }}</div>
+                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">{{ lockedTabInfo.isGuest ? 'Sign In Required' : 'Locked Feature' }}</div>
                             <h2 class="text-2xl font-bold text-white leading-tight">{{ lockedTabInfo.label }}</h2>
                             <p class="text-gray-400 text-sm mt-0.5">{{ lockedTabInfo.tagline }}</p>
                         </div>
@@ -306,21 +318,8 @@
                             </div>
                         </div>
 
-                        <!-- Plan + CTA: DAS-locked / guest / subscription -->
-                        <div v-if="lockedTabInfo.isDasLocked" class="flex items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
-                            <div class="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-desktop text-blue-400 text-lg"></i>
-                            </div>
-                            <div class="flex-1">
-                                <div class="text-white font-semibold text-sm">DAS connectivity is disabled for your account</div>
-                                <div class="text-gray-400 text-xs mt-0.5">Contact your admin to enable DAS Trader Pro integration.</div>
-                            </div>
-                            <button @click="onTabChange('contact')"
-                                class="flex-shrink-0 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
-                                Contact Admin →
-                            </button>
-                        </div>
-                        <div v-else-if="lockedTabInfo.isGuest" class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
+                        <!-- Plan + CTA: guest vs logged-in -->
+                        <div v-if="lockedTabInfo.isGuest" class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
                             <div class="flex-1 text-center sm:text-left">
                                 <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Free to access</div>
                                 <div class="text-white font-bold text-lg leading-tight">Create an account</div>
@@ -380,7 +379,7 @@
                                 <li><strong>Configure Gap Percentage:</strong> Set the minimum gap percentage (default: 25%) to filter stocks</li>
                                 <li><strong>View Gap-Up Stocks:</strong> The system automatically scans and displays stocks meeting your criteria</li>
                                 <li><strong>Monitor Real-Time:</strong> The list updates automatically every 5 minutes during market hours</li>
-                                <li><strong>Take Action:</strong> Use the AI Chat for analysis, or let the Autonomous Trading Bot pick up qualifying gap-ups automatically</li>
+                                <li><strong>Take Action:</strong> Use the "Add to Entry Bot" feature to track promising stocks</li>
                             </ol>
                         </div>
                         <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-600/30">
@@ -411,47 +410,47 @@
                         </div>
                     </div>
 
-                    <!-- DAS Trading -->
+                    <!-- Entry Bot -->
                     <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-yellow-500">
                         <div class="flex items-center mb-4">
-                            <i class="fas fa-desktop text-2xl text-yellow-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">DAS Trading Tab</h4>
+                            <i class="fas fa-play text-2xl text-yellow-400 mr-4"></i>
+                            <h4 class="text-xl font-bold text-white">Entry Bot Tab</h4>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Direct-access brokerage connectivity via DAS Trader Pro — manual entry configuration, automated exit management, and position monitoring in one place. This tab is enabled per-user by an administrator.</p>
+                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Configure automated entry strategies and monitor stocks for entry opportunities.</p>
                         <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">Three Sub-Tabs:</h5>
+                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
                             <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Entry Bot:</strong> Define a symbol, volume requirements, and entry time window — the bot monitors and enters when all conditions are met</li>
-                                <li><strong>Exit Bot:</strong> Manage open positions with automated profit targets, stop-losses, and optional trailing stops; enable auto-exit monitoring</li>
-                                <li><strong>Positions:</strong> Track the full lifecycle of positions — open and closed — with unrealized P&L, entry/exit prices, and export options</li>
+                                <li><strong>Set Entry Parameters:</strong> Define symbol, volume requirements, and entry time</li>
+                                <li><strong>Submit Strategy:</strong> Click "Submit" to start tracking the stock</li>
+                                <li><strong>Monitor Progress:</strong> Watch the tracking status for real-time updates</li>
+                                <li><strong>Automatic Entry:</strong> The bot will enter positions when all conditions are met</li>
                             </ol>
                         </div>
                         <div class="bg-yellow-900/20 rounded-lg p-4 border border-yellow-600/30">
-                            <h5 class="text-lg font-bold text-yellow-300 mb-2">⚠️ Admin-Gated:</h5>
-                            <p class="text-yellow-200 text-sm">DAS Trading requires DAS Trader Pro running on your machine and must be enabled for your account by an administrator. Contact admin if you need access.</p>
+                            <h5 class="text-lg font-bold text-yellow-300 mb-2">⚠️ Important:</h5>
+                            <p class="text-yellow-200 text-sm">Always verify your parameters before submitting, as entries cannot be cancelled once conditions are met.</p>
                         </div>
                     </div>
 
-                    <!-- Autonomous Trading Bot -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-emerald-500">
+                    <!-- Exit Bot -->
+                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-purple-500">
                         <div class="flex items-center mb-4">
-                            <i class="fas fa-robot text-2xl text-emerald-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Autonomous Trading Bot</h4>
+                            <i class="fas fa-robot text-2xl text-purple-400 mr-4"></i>
+                            <h4 class="text-xl font-bold text-white">Exit Bot Tab</h4>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> A fully autonomous, AI-powered trading bot that finds its own candidates, gates every entry through a portfolio risk manager, and exits positions without any manual intervention. Available on the Yogi plan.</p>
+                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Manage active positions and configure automated exit strategies with profit targets and stop losses.</p>
                         <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How It Works:</h5>
+                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
                             <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Configure Once:</strong> Set scanner filters (gap %, price range, volume), day-trade targets, swing targets, and portfolio risk limits from the Configuration panel</li>
-                                <li><strong>Start the Bot:</strong> Click Start — it launches a scanner loop (every 30 s) and an exit loop (every 2 s) running entirely server-side</li>
-                                <li><strong>Day Trades:</strong> Automatically detects gap-up candidates, applies VWAP/volume/candle entry filters, and executes market buys within your configured time window (default 9:35–10:30 ET)</li>
-                                <li><strong>Swing Trades:</strong> Reads daily AI-ranked swing picks (Grade A/B Bullish), enters positions, and holds for multi-day targets with earnings protection</li>
-                                <li><strong>Exits Itself:</strong> Hits profit target, stop-loss, breakeven stop, or EOD flatten — all handled automatically with no browser required</li>
+                                <li><strong>View Active Positions:</strong> See all currently held positions</li>
+                                <li><strong>Set Exit Parameters:</strong> Configure profit targets and stop losses</li>
+                                <li><strong>Enable Auto-Exit:</strong> Turn on automated exit monitoring</li>
+                                <li><strong>Monitor Performance:</strong> Track P&L and exit conditions in real-time</li>
                             </ol>
                         </div>
-                        <div class="bg-emerald-900/20 rounded-lg p-4 border border-emerald-600/30">
-                            <h5 class="text-lg font-bold text-emerald-300 mb-2">🤖 Fully Hands-Free:</h5>
-                            <p class="text-emerald-200 text-sm">Once started, the bot runs 24/7 on the server — no open browser needed. The Candidates and Active Positions panels update live so you can monitor at a glance. A green "LIVE" chip appears in the top nav whenever the bot is running.</p>
+                        <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-600/30">
+                            <h5 class="text-lg font-bold text-purple-300 mb-2">💡 Pro Tip:</h5>
+                            <p class="text-purple-200 text-sm">Use trailing stop losses to protect profits while allowing for upside potential.</p>
                         </div>
                     </div>
 
@@ -474,6 +473,28 @@
                         <div class="bg-orange-900/20 rounded-lg p-4 border border-orange-600/30">
                             <h5 class="text-lg font-bold text-orange-300 mb-2">📊 Analytics:</h5>
                             <p class="text-orange-200 text-sm">Use trade history to calculate your win rate, average profit/loss, and identify your most profitable trading patterns.</p>
+                        </div>
+                    </div>
+
+                    <!-- Positions History -->
+                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-pink-500">
+                        <div class="flex items-center mb-4">
+                            <i class="fas fa-chart-line text-2xl text-pink-400 mr-4"></i>
+                            <h4 class="text-xl font-bold text-white">Positions History Tab</h4>
+                        </div>
+                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Track the lifecycle of positions from entry to exit, including unrealized and realized P&L.</p>
+                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
+                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
+                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
+                                <li><strong>View All Positions:</strong> See both open and closed positions</li>
+                                <li><strong>Filter by Status:</strong> Separate active positions from closed ones</li>
+                                <li><strong>Track Performance:</strong> Monitor unrealized P&L for open positions</li>
+                                <li><strong>Export Data:</strong> Download position data for portfolio analysis</li>
+                            </ol>
+                        </div>
+                        <div class="bg-pink-900/20 rounded-lg p-4 border border-pink-600/30">
+                            <h5 class="text-lg font-bold text-pink-300 mb-2">📈 Portfolio View:</h5>
+                            <p class="text-pink-200 text-sm">Use this tab to track your overall trading success and identify areas for improvement.</p>
                         </div>
                     </div>
 
@@ -1853,42 +1874,8 @@
             </div>
             <!-- end Swing tab -->
 
-            <!-- DAS Trading Tab — broker warning when DAS is not the active broker -->
-            <div v-if="activeTab === 'das-trading' && canAccessTab('das-trading') && activeBroker && activeBroker !== 'das'"
-                 class="flex items-center gap-3 bg-amber-900/20 border border-amber-700/40 rounded-xl px-5 py-3.5 mb-4 text-sm">
-                <i class="fas fa-triangle-exclamation text-amber-400 flex-shrink-0"></i>
-                <span class="text-amber-200">
-                    Active broker is <strong class="text-white">{{ activeBroker }}</strong>. Manual entry and exit bots below require
-                    <strong class="text-white">DAS Trader Pro</strong> as the active broker.
-                </span>
-                <button @click="onTabChange('account'); accountSection = 'broker'"
-                        class="ml-auto text-xs text-amber-300 hover:text-white border border-amber-700/40 hover:border-amber-500 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0">
-                    Switch Broker
-                </button>
-            </div>
-
-            <!-- DAS Trading Tab — sub-tab navigation pill (shared across all sub-sections) -->
-            <div v-if="activeTab === 'das-trading' && canAccessTab('das-trading')"
-                 class="flex items-center gap-2 bg-gray-800 rounded-xl border border-gray-700 p-1 mb-4 w-fit">
-                <button @click="onDasSubTabChange('entry-bot')"
-                    :class="dasSubTab === 'entry-bot' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'"
-                    class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all">
-                    <i class="fas fa-play text-xs"></i> Entry Bot
-                </button>
-                <button @click="onDasSubTabChange('bot')"
-                    :class="dasSubTab === 'bot' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'"
-                    class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all">
-                    <i class="fas fa-robot text-xs"></i> Exit Bot
-                </button>
-                <button @click="onDasSubTabChange('positions')"
-                    :class="dasSubTab === 'positions' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'"
-                    class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all">
-                    <i class="fas fa-chart-line text-xs"></i> Positions
-                </button>
-            </div>
-
-            <!-- DAS Trading — Entry Bot sub-tab -->
-            <div v-if="activeTab === 'das-trading' && dasSubTab === 'entry-bot' && canAccessTab('das-trading')" class="space-y-6">
+            <!-- Entry Bot Tab -->
+            <div v-if="activeTab === 'entry-bot' && canAccessTab('entry-bot')" class="space-y-6">
                 <!-- Entry Bot Status Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -3034,7 +3021,7 @@
                                     </div>
                                     <div>
                                         <label class="block text-sm text-gray-400 mb-2">Time Period</label>
-                                        <select v-model="tradeHistoryPeriod" @change="loadTradeHistory"
+                                        <select v-model="tradeHistoryPeriod" @change="loadTradeHistory" 
                                                 class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                             <option value="1">1 Day</option>
                                             <option value="7">1 Week</option>
@@ -3043,14 +3030,6 @@
                                             <option value="180">6 Months</option>
                                             <option value="365">1 Year</option>
                                             <option value="0">All Time</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm text-gray-400 mb-2">Source</label>
-                                        <select v-model="tradeSourceFilter" @change="loadTradeHistory"
-                                                class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                            <option value="">All Sources</option>
-                                            <option v-for="b in supportedBrokers" :key="b.name" :value="b.name">{{ b.label }}</option>
                                         </select>
                                     </div>
                                 </div>
@@ -3122,8 +3101,8 @@
                 </div>
             </div>
 
-            <!-- DAS Trading — Positions sub-tab -->
-            <div v-if="activeTab === 'das-trading' && dasSubTab === 'positions' && canAccessTab('das-trading')" class="space-y-6">
+            <!-- Positions History Tab -->
+            <div v-if="activeTab === 'positions' && canAccessTab('positions')" class="space-y-6">
                 <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
@@ -3300,8 +3279,8 @@
                 </div>
             </div>
 
-            <!-- DAS Trading — Exit Bot sub-tab -->
-            <div v-if="activeTab === 'das-trading' && dasSubTab === 'bot' && canAccessTab('das-trading')" class="space-y-6">
+            <!-- Bot Tab -->
+            <div v-if="activeTab === 'bot' && canAccessTab('bot')" class="space-y-6">
                 <!-- Bot Status Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -4514,173 +4493,198 @@
                 </div>
 
                 <!-- ── Broker Connection ── -->
-                <div v-if="accountSection === 'broker'" class="space-y-5">
-                    <!-- Header -->
-                    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                        <div class="flex items-center justify-between mb-1.5">
-                            <h3 class="text-lg font-semibold text-white"><i class="fas fa-plug text-green-400 mr-2"></i>Broker Connections</h3>
-                            <span v-if="activeBroker" class="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/30 border border-green-700/40 px-2.5 py-1 rounded-full font-semibold">
-                                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-                                {{ activeBroker }} active
-                            </span>
+                <div v-if="accountSection === 'broker'" class="space-y-6">
+                    <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                        <h3 class="text-lg font-semibold text-white mb-1"><i class="fas fa-plug text-green-400 mr-2"></i>Broker Connection</h3>
+                        <p class="text-gray-400 text-sm mb-6">Connect your brokerage account so the bots can place trades on your behalf. Your API keys are stored securely and never exposed in the UI.</p>
+
+                        <!-- Broker selector -->
+                        <div class="mb-5">
+                            <label class="block text-sm text-gray-400 mb-1">Select Broker</label>
+                            <select v-model="brokerForm.broker_name" @change="onBrokerSelect"
+                                    class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none">
+                                <option value="">-- Choose a broker --</option>
+                                <option v-for="b in supportedBrokers" :key="b.name" :value="b.name">{{ b.label }}</option>
+                            </select>
                         </div>
-                        <p class="text-gray-400 text-sm">The <strong class="text-white">active</strong> broker is used by the Autonomous Trading Bot for all order execution. API keys are stored securely and never shown in the UI.</p>
+
+                        <!-- Broker selected: credentials + account info -->
+                        <div v-if="brokerForm.broker_name" class="space-y-4">
+
+                            <!-- Credentials card -->
+                            <div class="bg-gray-700/40 rounded-xl border border-gray-700 overflow-hidden">
+                                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700/60">
+                                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest">API Credentials</span>
+                                    <button v-if="!brokerEditingKeys" @click="brokerEditingKeys = true"
+                                            class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5">
+                                        <i class="fas fa-pen"></i> Edit Credentials
+                                    </button>
+                                    <button v-else @click="brokerEditingKeys = false; brokerForm.api_key = ''; brokerForm.api_secret = ''"
+                                            class="text-xs text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1.5">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                </div>
+
+                                <!-- Read-only masked view -->
+                                <template v-if="!brokerEditingKeys">
+                                    <div class="p-4 space-y-3">
+                                        <template v-if="brokerForm.broker_name === 'alpaca'">
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <div class="text-xs text-gray-500 mb-1.5">API Key ID</div>
+                                                    <div class="bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-500 select-none">
+                                                        {{ currentBrokerConfig?.api_key_set ? '••••  ••••  ••••  ••••' : 'Not configured' }}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-xs text-gray-500 mb-1.5">Secret Key</div>
+                                                    <div class="bg-gray-800/70 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono text-gray-500 select-none">
+                                                        {{ currentBrokerConfig?.api_secret_set ? '••••  ••••  ••••  ••••' : 'Not configured' }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-2 pt-1">
+                                                <span class="text-xs text-gray-500">Environment:</span>
+                                                <span :class="brokerForm.paper_trading ? 'bg-yellow-700/60 text-yellow-300' : 'bg-red-900/60 text-red-300'"
+                                                      class="text-xs px-2 py-0.5 rounded font-semibold">
+                                                    {{ brokerForm.paper_trading ? 'Paper (sandbox)' : 'Live (real money)' }}
+                                                </span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <!-- Remove button in read mode -->
+                                    <div class="px-4 pb-3 flex justify-end border-t border-gray-700/40 pt-3">
+                                        <button @click="deleteBrokerConfig(brokerForm.broker_name)"
+                                                class="text-xs text-red-400 hover:text-red-300 transition-colors flex items-center gap-1.5">
+                                            <i class="fas fa-trash"></i> Remove Connection
+                                        </button>
+                                    </div>
+                                </template>
+
+                                <!-- Edit mode -->
+                                <template v-else>
+                                    <div class="p-4 space-y-3">
+                                        <template v-if="brokerForm.broker_name === 'alpaca'">
+                                            <div>
+                                                <label class="block text-xs text-gray-400 mb-1.5">API Key ID</label>
+                                                <input v-model="brokerForm.api_key" type="text" placeholder="PKXXXXXXXXXXXXXXXXXX"
+                                                       class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-400 mb-1.5">Secret Key</label>
+                                                <input v-model="brokerForm.api_secret" type="password" placeholder="Leave blank to keep existing"
+                                                       class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-4 pt-1">
+                                                <span class="text-xs text-gray-400">Environment:</span>
+                                                <label class="flex items-center gap-2 cursor-pointer">
+                                                    <input type="radio" v-model="brokerForm.paper_trading" :value="true" class="accent-yellow-500" />
+                                                    <span class="text-sm text-yellow-400">Paper (sandbox)</span>
+                                                </label>
+                                                <label class="flex items-center gap-2 cursor-pointer">
+                                                    <input type="radio" v-model="brokerForm.paper_trading" :value="false" class="accent-red-500" />
+                                                    <span class="text-sm text-red-400">Live (real money)</span>
+                                                </label>
+                                            </div>
+                                        </template>
+                                        <div class="flex gap-3 pt-1 border-t border-gray-700/40">
+                                            <button @click="saveBrokerConfig" :disabled="loading.brokerSave"
+                                                    class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                                                <i class="fas fa-save mr-1.5"></i>{{ loading.brokerSave ? 'Saving…' : 'Save' }}
+                                            </button>
+                                            <button @click="brokerEditingKeys = false; brokerForm.api_key = ''; brokerForm.api_secret = ''"
+                                                    class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm transition-colors">
+                                                Cancel
+                                            </button>
+                                            <button @click="deleteBrokerConfig(brokerForm.broker_name)"
+                                                    class="bg-red-900/50 hover:bg-red-800 text-red-300 px-4 py-2 rounded-lg text-sm transition-colors ml-auto">
+                                                <i class="fas fa-trash mr-1"></i>Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Account Details card -->
+                            <div class="bg-gray-700/40 rounded-xl border border-gray-700 overflow-hidden">
+                                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700/60">
+                                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                        <i class="fas fa-wallet text-green-400"></i> Account Details
+                                    </span>
+                                    <button @click="loadBrokerAccountInfo" :disabled="loading.brokerAccount"
+                                            class="text-xs text-gray-400 hover:text-green-400 transition-colors flex items-center gap-1.5">
+                                        <i :class="loading.brokerAccount ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i> Refresh
+                                    </button>
+                                </div>
+                                <!-- Not loaded -->
+                                <div v-if="!brokerAccountInfo && !loading.brokerAccount" class="px-4 py-5 text-center">
+                                    <button @click="loadBrokerAccountInfo"
+                                            class="text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                                        <i class="fas fa-satellite-dish mr-1.5"></i>Load account info
+                                    </button>
+                                </div>
+                                <!-- Loading -->
+                                <div v-else-if="loading.brokerAccount" class="px-4 py-5 text-center text-gray-500 text-xs">
+                                    <i class="fas fa-spinner fa-spin mr-1.5"></i>Connecting to broker…
+                                </div>
+                                <!-- Error -->
+                                <div v-else-if="brokerAccountInfo && !brokerAccountInfo.connected"
+                                     class="px-4 py-4 flex items-center gap-2 text-red-400 text-sm">
+                                    <i class="fas fa-circle-xmark"></i>
+                                    {{ brokerAccountInfo.error || 'Connection failed' }}
+                                </div>
+                                <!-- Account data -->
+                                <div v-else-if="brokerAccountInfo?.connected"
+                                     class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700/60">
+                                    <div class="px-4 py-4">
+                                        <div class="text-xs text-gray-500 mb-1">Account ID</div>
+                                        <div class="text-sm font-mono text-white font-semibold truncate">{{ brokerAccountInfo.account_id || '—' }}</div>
+                                    </div>
+                                    <div class="px-4 py-4">
+                                        <div class="text-xs text-gray-500 mb-1">Equity</div>
+                                        <div class="text-sm font-mono font-semibold text-white">
+                                            ${{ (brokerAccountInfo.equity || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
+                                        </div>
+                                    </div>
+                                    <div class="px-4 py-4">
+                                        <div class="text-xs text-gray-500 mb-1">Buying Power</div>
+                                        <div class="text-sm font-mono font-semibold"
+                                             :class="(brokerAccountInfo.buying_power || 0) >= 1000 ? 'text-green-400' : 'text-amber-400'">
+                                            ${{ (brokerAccountInfo.buying_power || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) }}
+                                        </div>
+                                    </div>
+                                    <div class="px-4 py-4">
+                                        <div class="text-xs text-gray-500 mb-1">Environment</div>
+                                        <span :class="brokerAccountInfo.paper ? 'bg-yellow-700/60 text-yellow-300' : 'bg-red-900/60 text-red-300'"
+                                              class="text-xs px-2 py-0.5 rounded font-semibold">
+                                            {{ brokerAccountInfo.paper ? 'Paper' : 'Live' }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
 
-                    <!-- One card per supported broker -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div v-for="b in supportedBrokers" :key="b.name"
-                             class="bg-gray-800 rounded-xl border transition-colors overflow-hidden"
-                             :class="activeBroker === b.name ? 'border-green-600/50' : 'border-gray-700'">
-
-                            <!-- Card header -->
-                            <div class="flex items-center justify-between px-5 py-4"
-                                 :class="brokerEditingName === b.name ? 'border-b border-gray-700/60' : ''">
+                    <!-- Saved broker connections table -->
+                    <div v-if="brokerConfigs.length" class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                        <h4 class="text-sm font-semibold text-gray-300 mb-3"><i class="fas fa-list mr-1.5"></i>Saved Connections</h4>
+                        <div class="space-y-2">
+                            <div v-for="cfg in brokerConfigs" :key="cfg.broker_name"
+                                 class="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-2.5">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                                         :class="activeBroker === b.name ? 'bg-green-500/15' : 'bg-gray-700/60'">
-                                        <i class="fas fa-building-columns" :class="activeBroker === b.name ? 'text-green-400' : 'text-gray-400'"></i>
-                                    </div>
-                                    <div>
-                                        <div class="flex items-center gap-2 flex-wrap">
-                                            <span class="text-white font-semibold text-sm">{{ b.label }}</span>
-                                            <span v-if="activeBroker === b.name" class="text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-400 border border-green-700/40 font-semibold">● Active</span>
-                                        </div>
-                                        <div class="flex items-center gap-2 mt-0.5">
-                                            <span class="text-xs" :class="getBrokerConfig(b.name) ? 'text-blue-400' : 'text-gray-500'">
-                                                {{ getBrokerConfig(b.name) ? 'Configured' : 'Not configured' }}
-                                            </span>
-                                            <span v-if="getBrokerConfig(b.name)" class="text-xs px-1.5 py-0.5 rounded"
-                                                  :class="getBrokerConfig(b.name)?.paper_trading ? 'bg-yellow-800/40 text-yellow-400' : 'bg-red-900/40 text-red-400'">
-                                                {{ getBrokerConfig(b.name)?.paper_trading ? 'Paper' : 'Live' }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-2 flex-shrink-0">
-                                    <!-- Set Active button -->
-                                    <button v-if="getBrokerConfig(b.name) && activeBroker !== b.name"
-                                            @click="setActiveBroker(b.name)" :disabled="loading.brokerActivate === b.name"
-                                            class="text-xs bg-green-700/30 hover:bg-green-600/50 border border-green-700/40 text-green-300 px-3 py-1.5 rounded-lg transition-colors font-medium flex items-center gap-1.5 disabled:opacity-50">
-                                        <i :class="loading.brokerActivate === b.name ? 'fas fa-spinner fa-spin' : 'fas fa-check-circle'"></i>
-                                        Set Active
-                                    </button>
-                                    <!-- Edit toggle -->
-                                    <button @click="toggleBrokerEdit(b.name)"
-                                            class="text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-                                            :class="brokerEditingName === b.name ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'">
-                                        <i :class="brokerEditingName === b.name ? 'fas fa-times' : 'fas fa-pen'"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Credentials edit form (expandable) -->
-                            <div v-if="brokerEditingName === b.name" class="p-4 space-y-3 border-b border-gray-700/60 bg-gray-700/20">
-                                <template v-if="b.name === 'alpaca'">
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">API Key ID</label>
-                                        <input v-model="brokerForm.api_key" type="text" placeholder="PKXXXXXXXXXXXXXXXXXX"
-                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Secret Key</label>
-                                        <input v-model="brokerForm.api_secret" type="password" placeholder="Leave blank to keep existing"
-                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
-                                    </div>
-                                </template>
-                                <template v-else-if="b.name === 'tastytrade'">
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Username</label>
-                                        <input v-model="brokerForm.extra_config.username" type="text" placeholder="Tastytrade username"
-                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs text-gray-400 mb-1">Password</label>
-                                        <input v-model="brokerForm.extra_config.password" type="password" placeholder="Leave blank to keep existing"
-                                               class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none" />
-                                    </div>
-                                </template>
-                                <template v-else-if="b.name === 'das'">
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label class="block text-xs text-gray-400 mb-1">Host</label>
-                                            <input v-model="brokerForm.extra_config.host" type="text" placeholder="127.0.0.1"
-                                                   class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs text-gray-400 mb-1">Port</label>
-                                            <input v-model.number="brokerForm.extra_config.port" type="number" placeholder="9800"
-                                                   class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm focus:border-green-500 focus:outline-none font-mono" />
-                                        </div>
-                                    </div>
-                                </template>
-                                <div class="flex flex-wrap items-center gap-4 pt-1">
-                                    <span class="text-xs text-gray-400">Environment:</span>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" v-model="brokerForm.paper_trading" :value="true" class="accent-yellow-500" />
-                                        <span class="text-sm text-yellow-400">Paper</span>
-                                    </label>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" v-model="brokerForm.paper_trading" :value="false" class="accent-red-500" />
-                                        <span class="text-sm text-red-400">Live</span>
-                                    </label>
-                                </div>
-                                <div class="flex gap-2 pt-1">
-                                    <button @click="saveBrokerConfig(b.name)" :disabled="loading.brokerSave"
-                                            class="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-xs font-medium transition-colors">
-                                        <i class="fas fa-save mr-1"></i>{{ loading.brokerSave ? 'Saving…' : 'Save' }}
-                                    </button>
-                                    <button @click="testBrokerConnection(b.name)" :disabled="loading.brokerTest === b.name"
-                                            class="bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-700/40 px-4 py-2 rounded-lg text-xs font-medium transition-colors">
-                                        <i :class="loading.brokerTest === b.name ? 'fas fa-spinner fa-spin' : 'fas fa-satellite-dish'" class="mr-1"></i>Test
-                                    </button>
-                                    <button v-if="getBrokerConfig(b.name)" @click="deleteBrokerConfig(b.name)"
-                                            class="bg-red-900/30 hover:bg-red-800/50 text-red-400 border border-red-800/30 px-3 py-2 rounded-lg text-xs transition-colors ml-auto">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                                <!-- Test result -->
-                                <div v-if="brokerTestResults[b.name]" class="rounded-lg px-3 py-2 text-xs"
-                                     :class="brokerTestResults[b.name].connected ? 'bg-green-900/30 text-green-300 border border-green-700/40' : 'bg-red-900/30 text-red-300 border border-red-700/40'">
-                                    <span v-if="brokerTestResults[b.name].connected">
-                                        ✓ Connected · {{ brokerTestResults[b.name].account_id }} ·
-                                        BP ${{ (brokerTestResults[b.name].buying_power || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}
-                                        · {{ brokerTestResults[b.name].paper ? 'Paper' : 'Live' }}
+                                    <span class="w-2 h-2 rounded-full" :class="cfg.is_active ? 'bg-green-400' : 'bg-gray-500'"></span>
+                                    <span class="text-white text-sm font-medium capitalize">{{ cfg.broker_name }}</span>
+                                    <span class="text-xs px-2 py-0.5 rounded" :class="cfg.paper_trading ? 'bg-yellow-800/60 text-yellow-300' : 'bg-red-900/60 text-red-300'">
+                                        {{ cfg.paper_trading ? 'paper' : 'live' }}
                                     </span>
-                                    <span v-else>✗ {{ brokerTestResults[b.name].error }}</span>
+                                    <span class="text-gray-500 text-xs">key {{ cfg.api_key_set ? '✓' : '✗' }} &nbsp; secret {{ cfg.api_secret_set ? '✓' : '✗' }}</span>
                                 </div>
-                            </div>
-
-                            <!-- Active broker live account summary -->
-                            <div v-if="activeBroker === b.name" class="px-5 py-3 bg-green-900/10 border-t border-green-700/20">
-                                <div v-if="loading.brokerAccount" class="text-xs text-gray-500 flex items-center gap-1.5">
-                                    <i class="fas fa-spinner fa-spin"></i> Loading account…
-                                </div>
-                                <div v-else-if="brokerAccountInfo?.connected" class="grid grid-cols-3 gap-4">
-                                    <div>
-                                        <div class="text-xs text-gray-500 mb-0.5">Account</div>
-                                        <div class="text-sm font-mono text-white truncate">{{ brokerAccountInfo.account_id }}</div>
-                                    </div>
-                                    <div>
-                                        <div class="text-xs text-gray-500 mb-0.5">Equity</div>
-                                        <div class="text-sm font-semibold text-white">${{ (brokerAccountInfo.equity || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}</div>
-                                    </div>
-                                    <div>
-                                        <div class="text-xs text-gray-500 mb-0.5">Buying Power</div>
-                                        <div class="text-sm font-semibold" :class="(brokerAccountInfo.buying_power || 0) >= 1000 ? 'text-green-400' : 'text-amber-400'">
-                                            ${{ (brokerAccountInfo.buying_power || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) }}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-else-if="brokerAccountInfo && !brokerAccountInfo.connected" class="text-xs text-red-400 flex items-center gap-2">
-                                    <i class="fas fa-circle-xmark"></i> {{ brokerAccountInfo.error || 'Connection failed' }}
-                                    <button @click="loadBrokerAccountInfo" class="text-gray-400 hover:text-white underline">Retry</button>
-                                </div>
-                                <button v-else @click="loadBrokerAccountInfo" class="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1.5">
-                                    <i class="fas fa-satellite-dish"></i> Load account info
+                                <button @click="brokerForm.broker_name = cfg.broker_name; onBrokerSelect()"
+                                        class="text-blue-400 hover:text-blue-300 text-xs transition-colors">
+                                    Edit
                                 </button>
                             </div>
-
                         </div>
                     </div>
                 </div>
@@ -4989,7 +4993,6 @@
                                     <th class="py-3 px-3 text-gray-400 font-medium">System Role</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Subscription</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Status</th>
-                                    <th class="py-3 px-3 text-gray-400 font-medium">DAS</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Last Login</th>
                                     <th v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3 text-gray-400 font-medium">Actions</th>
                                 </tr>
@@ -5035,16 +5038,6 @@
                                     </td>
                                     <td class="py-3 px-3">
                                         <span :class="u.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" class="text-xs px-2 py-0.5 rounded-full">{{ u.is_active ? 'Active' : 'Inactive' }}</span>
-                                    </td>
-                                    <td class="py-3 px-3">
-                                        <button v-if="isSuperAdmin || isBotAdmin"
-                                                @click="adminToggleDasAccess(u.id, !!u.das_enabled)"
-                                                :class="u.das_enabled ? 'bg-blue-700 hover:bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'"
-                                                class="text-xs px-2 py-1 rounded transition-colors font-medium"
-                                                :title="u.das_enabled ? 'Click to disable DAS access' : 'Click to enable DAS access'">
-                                            <i :class="u.das_enabled ? 'fas fa-desktop' : 'fas fa-desktop opacity-40'" class="mr-1"></i>{{ u.das_enabled ? 'ON' : 'OFF' }}
-                                        </button>
-                                        <span v-else :class="u.das_enabled ? 'text-blue-400' : 'text-gray-600'" class="text-xs">{{ u.das_enabled ? 'ON' : 'OFF' }}</span>
                                     </td>
                                     <td class="py-3 px-3 text-gray-400 text-xs">{{ u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never' }}</td>
                                     <td v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3">
