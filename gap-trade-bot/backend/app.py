@@ -3704,6 +3704,18 @@ def save_broker_config(broker_name):
     return jsonify({'success': False, 'error': msg}), 400
 
 
+@app.route('/api/broker/activate/<broker_name>', methods=['PUT'])
+@require_auth
+def activate_broker(broker_name):
+    """Switch the active broker without touching credentials."""
+    user_id = getattr(request.user, 'id', 1)
+    ok, msg = db_manager.activate_broker(broker_name, user_id)
+    if ok:
+        _invalidate_broker_cache(user_id)
+        return jsonify({'success': True, 'message': msg})
+    return jsonify({'success': False, 'error': msg}), 400
+
+
 @app.route('/api/broker/config/<broker_name>', methods=['DELETE'])
 @require_auth
 def delete_broker_config(broker_name):

@@ -2607,6 +2607,13 @@ class DatabaseManager:
                 paper_trading = int(config.get('paper_trading', 1))
                 is_active     = int(config.get('is_active', 1))
 
+                # Saving a broker config always makes it the sole active broker
+                if is_active:
+                    cursor.execute(
+                        'UPDATE broker_configs SET is_active=0 WHERE user_id=? AND broker_name!=?',
+                        (user_id, broker_name)
+                    )
+
                 if existing:
                     cursor.execute(
                         '''UPDATE broker_configs
@@ -2641,6 +2648,31 @@ class DatabaseManager:
                 )
                 conn.commit()
                 return True, 'Broker config deleted'
+        except Exception as e:
+            return False, str(e)
+
+    def activate_broker(self, broker_name: str, user_id: int = 1) -> tuple:
+        """Set broker_name as the only active broker for user_id (no credential change)."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT id FROM broker_configs WHERE user_id=? AND broker_name=?',
+                    (user_id, broker_name)
+                )
+                if not cursor.fetchone():
+                    return False, f'No saved config for {broker_name}'
+                cursor.execute(
+                    'UPDATE broker_configs SET is_active=0 WHERE user_id=?',
+                    (user_id,)
+                )
+                cursor.execute(
+                    'UPDATE broker_configs SET is_active=1, updated_at=CURRENT_TIMESTAMP '
+                    'WHERE user_id=? AND broker_name=?',
+                    (user_id, broker_name)
+                )
+                conn.commit()
+                return True, f'{broker_name} is now the active broker'
         except Exception as e:
             return False, str(e)
 

@@ -4673,17 +4673,23 @@
                             <div v-for="cfg in brokerConfigs" :key="cfg.broker_name"
                                  class="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-2.5">
                                 <div class="flex items-center gap-3">
-                                    <span class="w-2 h-2 rounded-full" :class="cfg.is_active ? 'bg-green-400' : 'bg-gray-500'"></span>
                                     <span class="text-white text-sm font-medium capitalize">{{ cfg.broker_name }}</span>
                                     <span class="text-xs px-2 py-0.5 rounded" :class="cfg.paper_trading ? 'bg-yellow-800/60 text-yellow-300' : 'bg-red-900/60 text-red-300'">
                                         {{ cfg.paper_trading ? 'paper' : 'live' }}
                                     </span>
                                     <span class="text-gray-500 text-xs">key {{ cfg.api_key_set ? '✓' : '✗' }} &nbsp; secret {{ cfg.api_secret_set ? '✓' : '✗' }}</span>
                                 </div>
-                                <button @click="brokerForm.broker_name = cfg.broker_name; onBrokerSelect()"
-                                        class="text-blue-400 hover:text-blue-300 text-xs transition-colors">
-                                    Edit
-                                </button>
+                                <div class="flex items-center gap-3">
+                                    <button v-if="!cfg.is_active" @click="activateBroker(cfg.broker_name)"
+                                            class="text-green-400 hover:text-green-300 text-xs transition-colors font-medium">
+                                        Set Active
+                                    </button>
+                                    <span v-else class="text-green-400 text-xs font-semibold">Active</span>
+                                    <button @click="brokerForm.broker_name = cfg.broker_name; onBrokerSelect()"
+                                            class="text-blue-400 hover:text-blue-300 text-xs transition-colors">
+                                        Edit
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -6424,6 +6424,16 @@ const app = createApp({
             }
         },
 
+        async activateBroker(brokerName) {
+            try {
+                await axios.put(`/api/broker/activate/${brokerName}`, {},
+                                { headers: this.authHeaders() });
+                await this.loadBrokerConfigs();
+            } catch (e) {
+                this.showError?.(e.response?.data?.error || 'Activate failed');
+            }
+        },
+
         }
     });
     
