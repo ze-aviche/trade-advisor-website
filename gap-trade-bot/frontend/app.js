@@ -59,22 +59,12 @@ const app = createApp({
                     bot: false,
                     dashboard: false,
                     syncTrades: false,
-                    scheduledSync: false,
                     unsubscribe: false,
-                    importDAS: false,
                     panicExit: false,
                     saveGapUpConfig: false,
-                    dasConnection: false,
-                    dasReconnect: false,
                     botToggle: false,
                     positions: false,
                     syncPositions: false,
-                    // Entry Bot loading states
-                    submitEntry: false,
-                    refreshTracking: false,
-                    refreshPositions: false,
-                    refreshLogs: false,
-                    toggleEntryBot: false,
                     dailyPnl: false,
                     cumulativePnl: false,
                     pieCharts: false,
@@ -292,17 +282,6 @@ const app = createApp({
                 dashboardTradeToDate: '',
                 
             // Import DAS Data Modal
-            showImportModal: false,
-            dasTradesData: '',
-            
-            // Scheduled Sync Status
-            scheduledSyncStatus: {
-                is_running: false,
-                is_market_hours: false,
-                current_time_et: '',
-                next_scheduled_run: null,
-                thread_alive: false
-            },
             
             // Entry Bot Data
             entryBotStatus: {
@@ -393,7 +372,6 @@ const app = createApp({
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
-            dasSubTab: 'entry-bot',
             sessionExpiresAt: null,
             sessionWarningDismissed: false,
             keepaliveInterval: null,
@@ -579,14 +557,16 @@ const app = createApp({
                             { icon: 'fa-robot',         text: 'Claude AI entry zone, stop, and target recommendation' },
                         ],
                     },
-                    'das-trading': {
-                        label: 'DAS Trading', icon: 'fa-desktop', color: 'blue', isDasLocked: true,
-                        tagline: 'DAS Trader Pro integration for manual entry & exit automation.',
+                    positions: {
+                        minTier: 'advanced',
+                        icon: 'fas fa-chart-line',
+                        color: 'pink',
+                        title: 'Positions History',
+                        description: 'Track open and closed positions with P&L across all brokers.',
                         features: [
-                            { icon: 'fa-play',          text: 'Entry Bot — rule-based automated trade entries via DAS' },
-                            { icon: 'fa-robot',         text: 'Exit Bot — automated stop-loss, profit target & trailing stop exits' },
-                            { icon: 'fa-chart-line',    text: 'Positions — real-time DAS position sync and history' },
-                            { icon: 'fa-plug',          text: 'Direct TCP connectivity to DAS Trader Pro desktop' },
+                            { icon: 'fas fa-chart-line', text: 'Live position tracking' },
+                            { icon: 'fas fa-history', text: 'Full position lifecycle history' },
+                            { icon: 'fas fa-download', text: 'Export to CSV / Excel' },
                         ],
                     },
                     trades: {
@@ -596,7 +576,7 @@ const app = createApp({
                             { icon: 'fa-list-alt',      text: 'Complete record of all executed trades' },
                             { icon: 'fa-sort-amount-down', text: 'Sort and filter by ticker, date, P&L, or side' },
                             { icon: 'fa-file-excel',    text: 'One-click export to CSV or Excel' },
-                            { icon: 'fa-sync-alt',      text: 'Auto-sync trades directly from DAS Trader' },
+                            { icon: 'fa-plug',          text: 'Filter by broker source — Alpaca, Tastytrade, DAS' },
                         ],
                     },
                     stats: {
@@ -945,58 +925,14 @@ const app = createApp({
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadTradeHistory();
                 } else if (tabName === 'positions') {
-                    console.log('📈 Positions History tab selected - loading positions history...');
-                    console.log('🔍 This is the positions tab handler - starting execution...');
-                    
-                    try {
-                        // Stop continuous tracking when leaving entry bot tab
-                        this.stopContinuousTracking();
-                        
-                        // Load position sync status first
-                        console.log('🔄 Loading position sync status...');
-                        await this.loadPositionSyncStatus();
-                        console.log('✅ Position sync status loaded');
-                        
-                        this.loadPositionsHistory();
-                        console.log('✅ Positions history loaded');
-                        
-                        // Start auto-updates for position history
-                        console.log('🚀 Starting position history auto-updates for positions tab...');
-                        console.log('🔍 About to call startPositionHistoryUpdates...');
-                        
-                        // Check if function exists before calling
-                        if (typeof this.startPositionHistoryUpdates === 'function') {
-                            console.log('✅ Function exists, calling startPositionHistoryUpdates...');
-                            try {
-                                this.startPositionHistoryUpdates();
-                                console.log('✅ startPositionHistoryUpdates() called successfully');
-                            } catch (error) {
-                                console.error('❌ Error in startPositionHistoryUpdates:', error);
-                                console.error('❌ Error stack:', error.stack);
-                            }
-                        } else {
-                            console.error('❌ startPositionHistoryUpdates is not a function!');
-                            console.error('❌ Type:', typeof this.startPositionHistoryUpdates);
-                            console.error('❌ Value:', this.startPositionHistoryUpdates);
-                        }
-                        
-                        // Stop bot real-time updates when on positions tab to avoid conflicts
-                        console.log('🛑 Stopping bot real-time updates to avoid conflicts...');
-                        this.stopRealTimeUpdates();
-                        
-                    } catch (error) {
-                        console.error('❌ Error in positions tab initialization:', error);
-                        console.error('❌ Error stack:', error.stack);
-                    }
+                    this.loadPositionsHistory();
+                    this.startPositionHistoryUpdates();
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
                     this.loadGapUpSnapshotDates();
-                } else if (tabName === 'das-trading') {
-                    console.log('🖥️ DAS Trading tab selected');
-                    this.onDasSubTabChange(this.dasSubTab);
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates();
@@ -1049,13 +985,11 @@ const app = createApp({
                 if (!this.user) return false;
                 if (this.isStaff) return true;
                 if (tab === 'admin') return false;
-                // DAS Trading is admin-gated regardless of subscription tier
-                if (tab === 'das-trading') return !!this.user.das_enabled;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats', 'positions'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats', 'positions', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -3414,9 +3348,6 @@ const app = createApp({
                 try {
                     this.loading.trades = true;
                 
-                // Load scheduled sync status when trade history tab is accessed
-                await this.loadScheduledSyncStatus();
-                    
                     // Build query parameters
                     const params = new URLSearchParams();
                 
@@ -4068,233 +3999,6 @@ const app = createApp({
             } catch (error) {
                 console.error('❌ Error setting up charts:', error);
                 // Continue without charts if they fail to load
-            }
-        },
-        
-        // DAS Integration Methods
-        async syncTradesFromDAS() {
-            try {
-                console.log('🔄 Syncing trades from DAS Trader...');
-                this.loading.syncTrades = true;
-                
-                const response = await axios.post('/api/trades/sync-das');
-                
-                if (response.data.success) {
-                    const data = response.data.data;
-                    const message = `✅ Synced ${data.added_count} trades from DAS Trader`;
-                    this.showNotification(message, 'success');
-                    console.log('✅ DAS sync completed successfully:', data);
-                    
-                    // Reload trade history after sync
-                    await this.loadTradeHistory();
-                } else {
-                    this.showNotification(`❌ Failed to sync from DAS: ${response.data.error}`, 'error');
-                    console.error('❌ DAS sync failed:', response.data.error);
-                }
-                } catch (error) {
-                console.error('❌ Error syncing from DAS:', error);
-                this.showNotification('❌ Error syncing from DAS Trader', 'error');
-            } finally {
-                this.loading.syncTrades = false;
-            }
-        },
-        
-        async syncPositionsFromDAS() {
-            try {
-                console.log('🔄 Syncing positions from DAS Trader...');
-                this.loading.syncPositions = true;
-                
-                const response = await axios.post('/api/positions/sync-das');
-                
-                if (response.data.success) {
-                    const data = response.data.data;
-                    const message = `✅ Synced ${data.synced_count} positions from DAS Trader`;
-                    this.showNotification(message, 'success');
-                    console.log('✅ DAS positions sync completed successfully:', data);
-                    
-                    // Reload positions history
-                    await this.loadPositionsHistory();
-                } else {
-                    this.showNotification(`❌ Failed to sync positions from DAS: ${response.data.error}`, 'error');
-                    console.error('❌ DAS positions sync failed:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error syncing positions from DAS:', error);
-                this.showNotification('❌ Error syncing positions from DAS Trader', 'error');
-            } finally {
-                this.loading.syncPositions = false;
-            }
-        },
-        
-        async importDASData() {
-            try {
-                if (!this.dasTradesData.trim()) {
-                    this.showNotification('Please enter DAS trades data', 'warning');
-                    return;
-                }
-                
-                console.log('🔄 Importing DAS trades data...');
-                this.loading.importDAS = true;
-                
-                const response = await axios.post('/api/trades/import-das', {
-                    das_trades_text: this.dasTradesData
-                });
-                
-                if (response.data.success) {
-                    const data = response.data.data;
-                    const message = `✅ Successfully imported ${data.added_count} trades from DAS data`;
-                    this.showNotification(message, 'success');
-                    console.log('✅ DAS data import completed:', data);
-                    
-                    // Close modal and reload trade history
-                    this.showImportModal = false;
-                    this.dasTradesData = '';
-                    await this.loadTradeHistory();
-                    
-                    // Show errors if any
-                    if (data.errors && data.errors.length > 0) {
-                        console.warn('⚠️ Some trades failed to import:', data.errors);
-                    }
-                } else {
-                    this.showNotification(`❌ Failed to import DAS data: ${response.data.error}`, 'error');
-                    console.error('❌ DAS data import failed:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error importing DAS data:', error);
-                this.showNotification('❌ Error importing DAS data', 'error');
-            } finally {
-                this.loading.importDAS = false;
-            }
-        },
-        
-        // Position Sync Status Methods
-        async loadPositionSyncStatus() {
-            try {
-                console.log('🔄 Loading position sync status...');
-                console.log('🔍 Making request to /api/positions/sync-status...');
-                const response = await axios.get('/api/positions/sync-status');
-                console.log('🔍 Response received:', response.status, response.data);
-                
-                if (response.data.success) {
-                    this.scheduledSyncStatus = response.data.data;
-                    console.log('✅ Position sync status loaded:', this.scheduledSyncStatus);
-                    console.log('✅ scheduledSyncStatus.is_running:', this.scheduledSyncStatus.is_running);
-                } else {
-                    console.error('❌ Failed to load position sync status:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error loading position sync status:', error);
-                console.error('❌ Error details:', error.response?.data || error.message);
-                // Fallback to show running status since we know it's running in app.py
-                this.scheduledSyncStatus = {
-                    is_running: true,
-                    is_market_hours: true,
-                    current_time_et: new Date().toLocaleTimeString(),
-                    next_scheduled_run: null,
-                    thread_alive: true,
-                    sync_type: 'automatic',
-                    update_interval: '10 seconds'
-                };
-            }
-        },
-
-        // Scheduled Sync Methods (for trade sync)
-        async loadScheduledSyncStatus() {
-            try {
-                console.log('🔄 Loading scheduled sync status...');
-                const response = await axios.get('/api/scheduled-sync/status');
-                
-                if (response.data.success) {
-                    // Only update trade sync status, keep position sync status separate
-                    const tradeSyncStatus = response.data.data;
-                    console.log('✅ Scheduled sync status loaded:', tradeSyncStatus);
-                } else {
-                    console.error('❌ Failed to load scheduled sync status:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error loading scheduled sync status:', error);
-            }
-        },
-        
-        async startScheduledSync() {
-            try {
-                console.log('🔄 Starting scheduled sync service...');
-                this.loading.scheduledSync = true;
-                
-                const response = await axios.post('/api/scheduled-sync/start');
-                
-                if (response.data.success) {
-                    this.showNotification('✅ Scheduled sync service started', 'success');
-                    console.log('✅ Scheduled sync started successfully');
-                    
-                    // Reload status
-                    await this.loadScheduledSyncStatus();
-                } else {
-                    this.showNotification(`❌ Failed to start scheduled sync: ${response.data.error}`, 'error');
-                    console.error('❌ Failed to start scheduled sync:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error starting scheduled sync:', error);
-                this.showNotification('❌ Error starting scheduled sync', 'error');
-            } finally {
-                this.loading.scheduledSync = false;
-            }
-        },
-        
-        async stopScheduledSync() {
-            try {
-                console.log('🛑 Stopping scheduled sync service...');
-                this.loading.scheduledSync = true;
-                
-                const response = await axios.post('/api/scheduled-sync/stop');
-                
-                if (response.data.success) {
-                    this.showNotification('🛑 Scheduled sync service stopped', 'success');
-                    console.log('✅ Scheduled sync stopped successfully');
-                    
-                    // Reload status
-                    await this.loadScheduledSyncStatus();
-                } else {
-                    this.showNotification(`❌ Failed to stop scheduled sync: ${response.data.error}`, 'error');
-                    console.error('❌ Failed to stop scheduled sync:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error stopping scheduled sync:', error);
-                this.showNotification('❌ Error stopping scheduled sync', 'error');
-            } finally {
-                this.loading.scheduledSync = false;
-            }
-        },
-        
-        async triggerManualSync() {
-            try {
-                console.log('🔄 Triggering manual sync...');
-                this.loading.scheduledSync = true;
-                
-                const response = await axios.post('/api/scheduled-sync/manual');
-                
-                if (response.data.success) {
-                    const data = response.data.data;
-                    const message = `✅ Manual sync completed: ${data.synced_count} trades synced`;
-                    this.showNotification(message, 'success');
-                    console.log('✅ Manual sync completed successfully:', data);
-                    
-                    // Reload trade history and status
-                    await Promise.all([
-                        this.loadTradeHistory(),
-                        this.loadScheduledSyncStatus()
-                    ]);
-                } else {
-                    const errorMsg = response.data.error || response.data.message || 'Unknown error';
-                    this.showNotification(`❌ Manual sync failed: ${errorMsg}`, 'error');
-                    console.error('❌ Manual sync failed:', errorMsg);
-                }
-            } catch (error) {
-                console.error('❌ Error triggering manual sync:', error);
-                const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Network error';
-                this.showNotification(`❌ Manual sync failed: ${errorMsg}`, 'error');
-            } finally {
-                this.loading.scheduledSync = false;
             }
         },
         
@@ -5233,7 +4937,6 @@ const app = createApp({
             const settings = {
                 botStatus: this.botStatus,
                 botConfig: this.botConfig,
-                scheduledSync: this.scheduledSyncStatus
             };
             console.log('📋 Current Settings:', settings);
             this.showNotification('Current settings logged to console', 'info');
@@ -5527,47 +5230,6 @@ const app = createApp({
                 this.showNotification('❌ Error during panic exit: ' + error.message, 'error');
             } finally {
                 this.loading.panicExit = false;
-            }
-        },
-        
-        // DAS Connection Management
-        async checkDasConnection() {
-            try {
-                this.loading.dasConnection = true;
-                const response = await axios.get('/api/bot/das-connection');
-                
-                if (response.data.success) {
-                    this.botStatus.das_connected = response.data.data.das_connected;
-                    this.showNotification(response.data.data.message, response.data.data.das_connected ? 'success' : 'warning');
-                } else {
-                    this.showNotification('Failed to check DAS connection', 'error');
-                }
-            } catch (error) {
-                console.error('Error checking DAS connection:', error);
-                this.showNotification('Error checking DAS connection', 'error');
-            } finally {
-                this.loading.dasConnection = false;
-            }
-        },
-        
-        async reconnectDas() {
-            try {
-                this.loading.dasReconnect = true;
-                const response = await axios.post('/api/bot/das-connection');
-                
-                if (response.data.success) {
-                    this.botStatus.das_connected = true;
-                    this.showNotification('Successfully reconnected to DAS', 'success');
-                    // Refresh bot status to get updated information
-                    await this.loadBotStatus();
-                } else {
-                    this.showNotification(response.data.error || 'Failed to reconnect to DAS', 'error');
-                }
-            } catch (error) {
-                console.error('Error reconnecting to DAS:', error);
-                this.showNotification('Error reconnecting to DAS', 'error');
-            } finally {
-                this.loading.dasReconnect = false;
             }
         },
         
@@ -6272,28 +5934,6 @@ const app = createApp({
             }
         },
 
-        onDasSubTabChange(subTab) {
-            this.dasSubTab = subTab;
-            this.stopPositionHistoryUpdates();
-            if (subTab === 'entry-bot') {
-                this.stopRealTimeUpdates();
-                this.loadEntryBotStatus();
-                this.updateTrackingStatus();
-                this.fetchEntryBotPositions();
-                this.updateDebugLogs();
-                this.startContinuousTracking();
-            } else if (subTab === 'bot') {
-                this.stopContinuousTracking();
-                this.stopRealTimeUpdates();
-                this.loadBotStatusWithRealTime();
-            } else if (subTab === 'positions') {
-                this.stopContinuousTracking();
-                this.stopRealTimeUpdates();
-                this.loadPositionSyncStatus();
-                this.loadPositionsHistory();
-                this.startPositionHistoryUpdates();
-            }
-        },
 
         async pingSessionOnce() {
             try {
