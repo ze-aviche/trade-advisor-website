@@ -3198,13 +3198,13 @@ def _brown_bot_scanner_loop():
 
 
 def _brown_get_current_price(symbol):
-    """Fetch current price for an open BrownBot position via broker or DAS Level 1."""
+    """Fetch current price for an open BrownBot position via the active broker."""
+    if not _brown_broker:
+        return None
     try:
-        data = get_real_stock_data(symbol)
-        if data and data.get('current_price'):
-            return float(data['current_price'])
+        return _brown_broker.get_current_price(symbol)
     except Exception as e:
-        app_logger.debug(f'BrownBot price fetch failed for {symbol}: {e}')
+        app_logger.debug(f'BrownBot broker price fetch failed for {symbol}: {e}')
     return None
 
 
