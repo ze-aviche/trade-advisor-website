@@ -153,15 +153,10 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-wave-square text-xs"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
-                <button @click="handleTabClick('entry-bot')"
-                    :class="activeTab === 'entry-bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('entry-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                <button @click="handleTabClick('das-trading')"
+                    :class="activeTab === 'das-trading' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('das-trading') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-play text-xs"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-0.5"></i>
-                </button>
-                <button @click="handleTabClick('bot')"
-                    :class="activeTab === 'bot' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
-                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-robot text-xs"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-0.5"></i>
+                    <i class="fas fa-desktop text-xs"></i>DAS Trading<i v-if="!canAccessTab('das-trading')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('brown-bot')"
                     :class="activeTab === 'brown-bot' ? 'bg-amber-600 border-amber-600 text-white shadow-md shadow-amber-600/20' : canAccessTab('brown-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-amber-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
@@ -172,11 +167,6 @@
                     :class="activeTab === 'trades' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('trades') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-exchange-alt text-xs"></i>Trades<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-0.5"></i>
-                </button>
-                <button @click="handleTabClick('positions')"
-                    :class="activeTab === 'positions' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('positions') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
-                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-chart-line text-xs"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('stats')"
                     :class="activeTab === 'stats' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('stats') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
@@ -214,7 +204,7 @@
             <div class="flex md:hidden items-center justify-between py-1">
                 <span class="text-blue-400 text-sm font-medium">
                     <i class="fas fa-layer-group mr-2 text-gray-400"></i>
-                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','entry-bot':'Entry Bot','bot':'Exit Bot','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account'}[activeTab] || 'Menu' }}
+                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','das-trading':'DAS Trading','trades':'Trade History','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account','brown-bot':'BrownBot'}[activeTab] || 'Menu' }}
                 </span>
                 <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-gray-400 hover:text-white p-1 rounded">
                     <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'" class="text-lg"></i>
@@ -226,11 +216,9 @@
                 <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
                 <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
-                <button @click="handleTabClick('entry-bot')" :class="activeTab === 'entry-bot' ? 'bg-blue-600 text-white' : canAccessTab('entry-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-play mr-2 w-4"></i>Entry Bot<i v-if="!canAccessTab('entry-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
-                <button @click="handleTabClick('bot')" :class="activeTab === 'bot' ? 'bg-blue-600 text-white' : canAccessTab('bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-robot mr-2 w-4"></i>Exit Bot<i v-if="!canAccessTab('bot')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('das-trading')" :class="activeTab === 'das-trading' ? 'bg-blue-600 text-white' : canAccessTab('das-trading') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-desktop mr-2 w-4"></i>DAS Trading<i v-if="!canAccessTab('das-trading')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
-                <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : canAccessTab('stats') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : canAccessTab('backtest') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('ai-chat')" :class="activeTab === 'ai-chat' ? 'bg-blue-600 text-white' : canAccessTab('ai-chat') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-comments mr-2 w-4"></i>AI Chat<i v-if="!canAccessTab('ai-chat')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -1874,8 +1862,28 @@
             </div>
             <!-- end Swing tab -->
 
-            <!-- Entry Bot Tab -->
-            <div v-if="activeTab === 'entry-bot' && canAccessTab('entry-bot')" class="space-y-6">
+            <!-- DAS Trading Tab — sub-tab navigation pill (shared across all sub-sections) -->
+            <div v-if="activeTab === 'das-trading' && canAccessTab('das-trading')"
+                 class="flex items-center gap-2 bg-gray-800 rounded-xl border border-gray-700 p-1 mb-4 w-fit">
+                <button @click="onDasSubTabChange('entry-bot')"
+                    :class="dasSubTab === 'entry-bot' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'"
+                    class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all">
+                    <i class="fas fa-play text-xs"></i> Entry Bot
+                </button>
+                <button @click="onDasSubTabChange('bot')"
+                    :class="dasSubTab === 'bot' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'"
+                    class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all">
+                    <i class="fas fa-robot text-xs"></i> Exit Bot
+                </button>
+                <button @click="onDasSubTabChange('positions')"
+                    :class="dasSubTab === 'positions' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-white'"
+                    class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all">
+                    <i class="fas fa-chart-line text-xs"></i> Positions
+                </button>
+            </div>
+
+            <!-- DAS Trading — Entry Bot sub-tab -->
+            <div v-if="activeTab === 'das-trading' && dasSubTab === 'entry-bot' && canAccessTab('das-trading')" class="space-y-6">
                 <!-- Entry Bot Status Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">
@@ -3101,8 +3109,8 @@
                 </div>
             </div>
 
-            <!-- Positions History Tab -->
-            <div v-if="activeTab === 'positions' && canAccessTab('positions')" class="space-y-6">
+            <!-- DAS Trading — Positions sub-tab -->
+            <div v-if="activeTab === 'das-trading' && dasSubTab === 'positions' && canAccessTab('das-trading')" class="space-y-6">
                 <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
@@ -3279,8 +3287,8 @@
                 </div>
             </div>
 
-            <!-- Bot Tab -->
-            <div v-if="activeTab === 'bot' && canAccessTab('bot')" class="space-y-6">
+            <!-- DAS Trading — Exit Bot sub-tab -->
+            <div v-if="activeTab === 'das-trading' && dasSubTab === 'bot' && canAccessTab('das-trading')" class="space-y-6">
                 <!-- Bot Status Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-4">

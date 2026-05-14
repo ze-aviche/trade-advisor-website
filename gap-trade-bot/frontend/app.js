@@ -392,6 +392,7 @@ const app = createApp({
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
+            dasSubTab: 'entry-bot',
             sessionExpiresAt: null,
             sessionWarningDismissed: false,
             keepaliveInterval: null,
@@ -1008,15 +1009,9 @@ const app = createApp({
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
                     this.loadGapUpSnapshotDates();
-                } else if (tabName === 'entry-bot') {
-                    console.log('🤖 Entry Bot tab selected - loading entry bot status...');
-                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.loadEntryBotStatus();
-                    this.updateTrackingStatus();
-                    this.fetchEntryBotPositions();
-                    this.updateDebugLogs();
-                    // Start continuous tracking every 1 second
-                    this.startContinuousTracking();
+                } else if (tabName === 'das-trading') {
+                    console.log('🖥️ DAS Trading tab selected');
+                    this.onDasSubTabChange(this.dasSubTab);
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates();
@@ -1072,8 +1067,8 @@ const app = createApp({
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'das-trading', 'trades', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'das-trading', 'trades', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -6265,6 +6260,29 @@ const app = createApp({
             if (this.keepaliveInterval) {
                 clearInterval(this.keepaliveInterval);
                 this.keepaliveInterval = null;
+            }
+        },
+
+        onDasSubTabChange(subTab) {
+            this.dasSubTab = subTab;
+            this.stopPositionHistoryUpdates();
+            if (subTab === 'entry-bot') {
+                this.stopRealTimeUpdates();
+                this.loadEntryBotStatus();
+                this.updateTrackingStatus();
+                this.fetchEntryBotPositions();
+                this.updateDebugLogs();
+                this.startContinuousTracking();
+            } else if (subTab === 'bot') {
+                this.stopContinuousTracking();
+                this.stopRealTimeUpdates();
+                this.loadBotStatusWithRealTime();
+            } else if (subTab === 'positions') {
+                this.stopContinuousTracking();
+                this.stopRealTimeUpdates();
+                this.loadPositionSyncStatus();
+                this.loadPositionsHistory();
+                this.startPositionHistoryUpdates();
             }
         },
 
