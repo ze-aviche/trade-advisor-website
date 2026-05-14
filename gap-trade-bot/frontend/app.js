@@ -95,6 +95,7 @@ const app = createApp({
                     // Broker loading states
                     brokerSave: false,
                     brokerTest: false,
+                    brokerAccount: false,
                 },
                 
                 // Charts
@@ -355,6 +356,8 @@ const app = createApp({
                 das_enabled: false,
                 active_positions: [],
                 active_positions_count: 0,
+                entry_counts: {},
+                skipped_symbols: [],
                 stats: { day_entered: 0, swing_entered: 0, day_exited: 0, swing_exited: 0 }
             },
             brownBotConfig: {
@@ -413,6 +416,8 @@ const app = createApp({
                 extra_config: {},
             },
             brokerTestResult: null,
+            brokerEditingKeys: false,
+            brokerAccountInfo: null,
 
                             // Continuous tracking interval
                 trackingInterval: null,
@@ -772,6 +777,32 @@ const app = createApp({
                 if (sr === 'dev_master') return 'bg-purple-700 text-white';
                 const classes = { basic: 'bg-gray-600 text-gray-200', beginner: 'bg-green-700 text-white', advanced: 'bg-blue-700 text-white', yogi: 'bg-yellow-600 text-white' };
                 return classes[this.user.subscription_tier] || classes.basic;
+            },
+            currentBrokerConfig() {
+                return this.brokerConfigs.find(c => c.broker_name === this.brokerForm.broker_name) || null;
+            },
+            swingBotCandidates() {
+                const picks = this.swingDailyPicks?.picks || [];
+                const activeSymbols = new Set(
+                    (this.brownBotStatus.active_positions || [])
+                        .filter(p => p.position_type === 'swing')
+                        .map(p => p.symbol)
+                );
+                const enteredSymbols = new Set(
+                    Object.keys(this.brownBotStatus.entry_counts || {})
+                );
+                const skippedSymbols = new Set(
+                    this.brownBotStatus.skipped_symbols || []
+                );
+                return picks
+                    .filter(p => ['A', 'B'].includes(p.grade) && p.bias?.toLowerCase() === 'bullish')
+                    .map(p => {
+                        let status = 'eligible';
+                        if (activeSymbols.has(p.ticker)) status = 'active';
+                        else if (enteredSymbols.has(p.ticker)) status = 'entered';
+                        else if (skippedSymbols.has(p.ticker)) status = 'skipped';
+                        return { ...p, status };
+                    });
             }
         },
 
@@ -6218,14 +6249,42 @@ const app = createApp({
             }
             try {
                 const configsRes = await axios.get('/api/broker/configs', { headers: this.authHeaders() });
-                if (configsRes.data.success) this.brokerConfigs = configsRes.data.configs;
+                if (configsRes.data.success) {
+                    this.brokerConfigs = configsRes.data.configs;
+                    // Auto-select active broker and load account info on tab open
+                    const active = this.brokerConfigs.find(c => c.is_active);
+                    if (active && !this.brokerForm.broker_name) {
+                        this.brokerForm.broker_name = active.broker_name;
+                        this.brokerForm.paper_trading = !!active.paper_trading;
+                        this.brokerEditingKeys = false;
+                        this.loadBrokerAccountInfo();
+                    }
+                }
             } catch (e) {
                 console.error('loadBrokerConfigs/configs error', e);
             }
         },
 
+        async loadBrokerAccountInfo() {
+            const name = this.brokerForm.broker_name ||
+                (this.brokerConfigs.find(c => c.is_active) || {}).broker_name;
+            if (!name) return;
+            this.loading.brokerAccount = true;
+            this.brokerAccountInfo = null;
+            try {
+                const res = await axios.post(`/api/broker/test/${name}`, {}, { headers: this.authHeaders() });
+                this.brokerAccountInfo = res.data;
+            } catch (e) {
+                this.brokerAccountInfo = { connected: false, error: e.response?.data?.error || 'Failed to reach broker' };
+            } finally {
+                this.loading.brokerAccount = false;
+            }
+        },
+
         onBrokerSelect() {
             this.brokerTestResult = null;
+            this.brokerEditingKeys = false;
+            this.brokerAccountInfo = null;
             // Reset form fields but keep broker_name
             this.brokerForm.api_key = '';
             this.brokerForm.api_secret = '';
@@ -6235,6 +6294,8 @@ const app = createApp({
             if (this.brokerForm.broker_name === 'das') {
                 this.brokerForm.extra_config = { host: '127.0.0.1', port: 9800 };
             }
+            // Load account info for the newly selected broker
+            this.loadBrokerAccountInfo();
         },
 
         async saveBrokerConfig() {
@@ -6261,7 +6322,11 @@ const app = createApp({
                 );
                 if (res.data.success) {
                     this.showSuccess?.('Broker config saved');
+                    this.brokerEditingKeys = false;
+                    this.brokerForm.api_key = '';
+                    this.brokerForm.api_secret = '';
                     await this.loadBrokerConfigs();
+                    this.loadBrokerAccountInfo();
                 } else {
                     this.showError?.(res.data.error || 'Save failed');
                 }
