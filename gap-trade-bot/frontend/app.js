@@ -69,12 +69,6 @@ const app = createApp({
                     botToggle: false,
                     positions: false,
                     syncPositions: false,
-                    // Entry Bot loading states
-                    submitEntry: false,
-                    refreshTracking: false,
-                    refreshPositions: false,
-                    refreshLogs: false,
-                    toggleEntryBot: false,
                     dailyPnl: false,
                     cumulativePnl: false,
                     pieCharts: false,
@@ -303,31 +297,6 @@ const app = createApp({
                 thread_alive: false
             },
             
-            // Entry Bot Data
-            entryBotStatus: {
-                internal_running_state: false,
-                positions_entered: 0,
-                entry_success_rate: 0,
-                active_positions_count: 0
-            },
-            
-            // Entry Form Data
-            entryForm: {
-                symbol: '',
-                totalVolume: '',
-                dollarVolume: '',
-                entryTime: '',
-                // New DAS order parameters
-                orderSide: 'B', // B for Buy, S for Sell
-                route: 'SMAT', // Default route
-                quantity: 100, // Default quantity
-                orderType: 'MKT', // MKT for Market, LIMIT for Limit orders
-                limitPrice: '', // Only used for LIMIT orders
-                // Trade style
-                positionType: 'day', // 'day' | 'swing'
-                swingEntryReason: '',
-                maxHoldDays: null,
-            },
             swingBotConfig: {
                 profit_target_pct: 15.0,
                 stop_loss_pct: 7.0,
@@ -570,26 +539,6 @@ const app = createApp({
                             { icon: 'fa-layer-group',   text: 'SMA 20/50/200 and EMA 9/21 crossover analysis' },
                             { icon: 'fa-newspaper',     text: 'Latest news headlines + AI summary' },
                             { icon: 'fa-robot',         text: 'Claude AI entry zone, stop, and target recommendation' },
-                        ],
-                    },
-                    'entry-bot': {
-                        label: 'Entry Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play', color: 'green',
-                        tagline: 'Automate your entries with precision.',
-                        features: [
-                            { icon: 'fa-bolt',          text: 'Rule-based automated trade entry execution' },
-                            { icon: 'fa-sliders-h',     text: 'Configure volume, price, and timing criteria' },
-                            { icon: 'fa-bell',          text: 'Real-time alerts when entry conditions are met' },
-                            { icon: 'fa-plug',          text: 'Direct integration with DAS Trader Pro' },
-                        ],
-                    },
-                    bot: {
-                        label: 'Exit Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot', color: 'green',
-                        tagline: 'Never second-guess your exits again.',
-                        features: [
-                            { icon: 'fa-shield-alt',    text: 'Automated stop-loss and profit-target exits' },
-                            { icon: 'fa-chart-line',    text: 'Trailing stop support to lock in gains' },
-                            { icon: 'fa-clock',         text: 'Time-based exit rules for end-of-day closes' },
-                            { icon: 'fa-exclamation-triangle', text: 'Panic-exit button to close all positions instantly' },
                         ],
                     },
                     trades: {
@@ -944,24 +893,15 @@ const app = createApp({
                             this.updatePositionsChart();
                         }, 100);
                     });
-                } else if (tabName === 'bot') {
-                    console.log('🤖 Bot tab selected - loading bot status with real-time updates...');
-                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
-                    this.loadBotStatusWithRealTime();
                 } else if (tabName === 'trades') {
                     console.log('📊 Trade History tab selected - loading trade history...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadTradeHistory();
                 } else if (tabName === 'positions') {
                     console.log('📈 Positions History tab selected - loading positions history...');
                     console.log('🔍 This is the positions tab handler - starting execution...');
                     
                     try {
-                        // Stop continuous tracking when leaving entry bot tab
-                        this.stopContinuousTracking();
-                        
                         // Load position sync status first
                         console.log('🔄 Loading position sync status...');
                         await this.loadPositionSyncStatus();
@@ -1001,42 +941,29 @@ const app = createApp({
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
                     this.loadGapUpSnapshotDates();
-                } else if (tabName === 'entry-bot') {
-                    console.log('🤖 Entry Bot tab selected - loading entry bot status...');
-                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.loadEntryBotStatus();
-                    this.updateTrackingStatus();
-                    this.fetchEntryBotPositions();
-                    this.updateDebugLogs();
-                    // Start continuous tracking every 1 second
-                    this.startContinuousTracking();
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates();
-                    this.stopContinuousTracking();
+
                 } else if (tabName === 'swing') {
                     console.log('📊 Swing Trading tab selected - loading daily picks...');
                     this.stopPositionHistoryUpdates();
-                    this.stopContinuousTracking();
+
                     this.loadSwingDailyPicks();
                 } else if (tabName === 'stats') {
                     console.log('📊 Stats tab selected - loading statistics...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadStats();
                     this.loadDailyPnlData();
                 } else if (tabName === 'backtest') {
                     console.log('🧪 Backtest tab selected - loading backtest data...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadBacktestData();
                 } else if (tabName === 'ai-chat') {
                     console.log('🤖 AI Chat tab selected - ready for chat...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     // AI chat tab is ready for user interaction
                 } else if (tabName === 'admin') {
                     if (this.isStaff) {
@@ -1049,7 +976,7 @@ const app = createApp({
                 } else if (tabName === 'brown-bot') {
                     console.log('🤖 BrownBot tab selected - loading status...');
                     this.stopPositionHistoryUpdates();
-                    this.stopContinuousTracking();
+
                     this.loadBrownBotStatus();
                     this.loadBrownBotConfig();
                     this.fetchBrownBotLogs();
@@ -1068,8 +995,8 @@ const app = createApp({
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'positions', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -5754,86 +5681,6 @@ const app = createApp({
             }, 50);
         },
         
-        // Entry Bot Methods
-        async toggleEntryBot() {
-            try {
-                this.loading.toggleEntryBot = true;
-                const action = this.entryBotStatus.internal_running_state ? 'stop' : 'start';
-                
-                const response = await axios.post(`/api/entry-bot/${action}`);
-                
-                if (response.data.success) {
-                    this.entryBotStatus.internal_running_state = !this.entryBotStatus.internal_running_state;
-                    this.addDebugLog('info', `Entry bot ${action}ed successfully`);
-                } else {
-                    this.addDebugLog('error', `Failed to ${action} entry bot: ${response.data.message}`);
-                }
-            } catch (error) {
-                console.error('Error toggling entry bot:', error);
-                this.addDebugLog('error', `Error toggling entry bot: ${error.message}`);
-            } finally {
-                this.loading.toggleEntryBot = false;
-            }
-        },
-        
-        async submitEntryParameters() {
-            try {
-                this.loading.submitEntry = true;
-
-                const entryData = {
-                    symbol: this.entryForm.symbol.toUpperCase(),
-                    order_side: this.entryForm.orderSide,
-                    route: this.entryForm.route,
-                    quantity: parseInt(this.entryForm.quantity),
-                    order_type: this.entryForm.orderType,
-                    limit_price: this.entryForm.limitPrice ? parseFloat(this.entryForm.limitPrice) : null,
-                    position_type: this.entryForm.positionType,
-                };
-
-                if (this.entryForm.positionType === 'day') {
-                    entryData.total_volume = parseInt(this.entryForm.totalVolume);
-                    entryData.dollar_volume = parseInt(this.entryForm.dollarVolume);
-                    entryData.entry_time = this.entryForm.entryTime;
-                } else {
-                    entryData.swing_entry_reason = this.entryForm.swingEntryReason || '';
-                    if (this.entryForm.maxHoldDays) {
-                        entryData.max_hold_days = parseInt(this.entryForm.maxHoldDays);
-                    }
-                }
-
-                const response = await axios.post('/api/entry-bot/submit-parameters', entryData);
-
-                if (response.data.success) {
-                    this.addDebugLog('info', `${this.entryForm.positionType === 'swing' ? 'Swing' : 'Day'} entry parameters submitted for ${entryData.symbol}`);
-                    this.updateTrackingStatus();
-
-                    // Clear form (preserve positionType so user can quickly submit another)
-                    const keepType = this.entryForm.positionType;
-                    this.entryForm = {
-                        symbol: '',
-                        totalVolume: '',
-                        dollarVolume: '',
-                        entryTime: '',
-                        orderSide: 'B',
-                        route: 'SMAT',
-                        quantity: 100,
-                        orderType: 'MKT',
-                        limitPrice: '',
-                        positionType: keepType,
-                        swingEntryReason: '',
-                        maxHoldDays: null,
-                    };
-                } else {
-                    this.addDebugLog('error', `Failed to submit entry parameters: ${response.data.message}`);
-                }
-            } catch (error) {
-                console.error('Error submitting entry parameters:', error);
-                this.addDebugLog('error', `Error submitting entry parameters: ${error.message}`);
-            } finally {
-                this.loading.submitEntry = false;
-            }
-        },
-
         async updateSwingBotConfig() {
             try {
                 const response = await axios.post('/api/swing-bot/update-config', this.swingBotConfig);
@@ -5856,96 +5703,6 @@ const app = createApp({
                 }
             } catch (error) {
                 console.error('Error loading swing config:', error);
-            }
-        },
-        
-        async refreshTrackingStatus() {
-            try {
-                this.loading.refreshTracking = true;
-                
-                const response = await axios.get('/api/entry-bot/tracking-status');
-                
-                if (response.data.success) {
-                    this.trackingSymbols = response.data.tracking_symbols || [];
-                    this.addDebugLog('info', `Tracking status refreshed: ${this.trackingSymbols.length} symbols`);
-                } else {
-                    this.addDebugLog('error', `Failed to refresh tracking status: ${response.data.message}`);
-                }
-            } catch (error) {
-                console.error('Error refreshing tracking status:', error);
-                this.addDebugLog('error', `Error refreshing tracking status: ${error.message}`);
-            } finally {
-                this.loading.refreshTracking = false;
-            }
-        },
-
-        async refreshActivePositions() {
-            try {
-                this.loading.refreshPositions = true;
-                await this.loadBotStatus();
-                const count = (this.botStatus.active_positions || []).length;
-                this.addDebugLog('info', `Active positions refreshed - ${count} positions active`);
-            } catch (error) {
-                console.error('Error refreshing active positions:', error);
-                this.addDebugLog('error', `Error refreshing active positions: ${error.message}`);
-            } finally {
-                this.loading.refreshPositions = false;
-            }
-        },
-        
-        async stopTrackingSymbol(symbol) {
-            try {
-                const response = await axios.post('/api/entry-bot/stop-tracking', { symbol });
-                
-                if (response.data.success) {
-                    this.addDebugLog('info', `Stopped tracking ${symbol}`);
-                    this.updateTrackingStatus();
-                } else {
-                    this.addDebugLog('error', `Failed to stop tracking ${symbol}: ${response.data.message}`);
-                }
-            } catch (error) {
-                console.error('Error stopping tracking:', error);
-                this.addDebugLog('error', `Error stopping tracking ${symbol}: ${error.message}`);
-            }
-        },
-        
-        async refreshDebugLogs() {
-            try {
-                this.loading.refreshLogs = true;
-                
-                const response = await axios.get('/api/entry-bot/debug-logs');
-                
-                if (response.data.success) {
-                    this.debugLogs = response.data.logs || [];
-                } else {
-                    this.addDebugLog('error', `Failed to refresh debug logs: ${response.data.message}`);
-                }
-            } catch (error) {
-                console.error('Error refreshing debug logs:', error);
-                this.addDebugLog('error', `Error refreshing debug logs: ${error.message}`);
-            } finally {
-                this.loading.refreshLogs = false;
-            }
-        },
-        
-        clearDebugLogs() {
-            this.debugLogs = [];
-            this.addDebugLog('info', 'Debug logs cleared');
-        },
-        
-        addDebugLog(level, message) {
-            const log = {
-                id: Date.now(),
-                timestamp: new Date().toISOString(),
-                level: level,
-                message: message
-            };
-            
-            this.debugLogs.unshift(log);
-            
-            // Keep only last 100 logs
-            if (this.debugLogs.length > 100) {
-                this.debugLogs = this.debugLogs.slice(0, 100);
             }
         },
         
@@ -5988,78 +5745,6 @@ const app = createApp({
             return date.toLocaleString();
         },
         
-        async loadEntryBotStatus() {
-            try {
-                const response = await axios.get('/api/entry-bot/status');
-                
-                if (response.data.success) {
-                    this.entryBotStatus = response.data.data;
-                    this.addDebugLog('info', 'Entry bot status loaded successfully');
-                } else {
-                    this.addDebugLog('error', `Failed to load entry bot status: ${response.data.error}`);
-                }
-            } catch (error) {
-                console.error('Error loading entry bot status:', error);
-                this.addDebugLog('error', `Error loading entry bot status: ${error.message}`);
-            }
-        },
-        
-        startContinuousTracking() {
-            // Stop any existing tracking interval
-            this.stopContinuousTracking();
-            
-            // Start new tracking interval every 1 second
-            this.trackingInterval = setInterval(() => {
-                // Update tracking status without loading states (smooth updates)
-                this.updateTrackingStatus();
-                // Update active positions without loading states (smooth updates)
-                this.fetchEntryBotPositions();
-                // Update debug logs without loading states (smooth updates)
-                this.updateDebugLogs();
-            }, 1000);
-            
-            this.addDebugLog('info', 'Continuous tracking started (every 1 second)');
-        },
-        
-        stopContinuousTracking() {
-            if (this.trackingInterval) {
-                clearInterval(this.trackingInterval);
-                this.trackingInterval = null;
-                this.addDebugLog('info', 'Continuous tracking stopped');
-            }
-        },
-        
-        // Smooth update methods without loading states
-        async updateTrackingStatus() {
-            try {
-                const response = await axios.get('/api/entry-bot/tracking-status');
-                
-                if (response.data.success) {
-                    this.trackingSymbols = response.data.tracking_symbols || [];
-                }
-            } catch (error) {
-                console.error('Error updating tracking status:', error);
-            }
-        },
-        
-        async fetchEntryBotPositions() {
-            // Active positions are the same as the exit bot's — read from DAS via botStatus.
-            // Just refresh bot status so botStatus.active_positions stays current.
-            await this.loadBotStatus();
-        },
-        
-        async updateDebugLogs() {
-            try {
-                const response = await axios.get('/api/entry-bot/debug-logs');
-
-                if (response.data.success) {
-                    this.debugLogs = response.data.logs || [];
-                }
-            } catch (error) {
-                console.error('Error updating debug logs:', error);
-            }
-        },
-
         // ── BrownBot methods ───────────────────────────────────────────────
         async loadBrownBotStatus() {
             try {
