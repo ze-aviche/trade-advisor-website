@@ -380,7 +380,7 @@
                                 <li><strong>Configure Gap Percentage:</strong> Set the minimum gap percentage (default: 25%) to filter stocks</li>
                                 <li><strong>View Gap-Up Stocks:</strong> The system automatically scans and displays stocks meeting your criteria</li>
                                 <li><strong>Monitor Real-Time:</strong> The list updates automatically every 5 minutes during market hours</li>
-                                <li><strong>Take Action:</strong> Use the "Add to Entry Bot" feature to track promising stocks</li>
+                                <li><strong>Take Action:</strong> Use the AI Chat for analysis, or let the Autonomous Trading Bot pick up qualifying gap-ups automatically</li>
                             </ol>
                         </div>
                         <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-600/30">
@@ -411,47 +411,47 @@
                         </div>
                     </div>
 
-                    <!-- Entry Bot -->
+                    <!-- DAS Trading -->
                     <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-yellow-500">
                         <div class="flex items-center mb-4">
-                            <i class="fas fa-play text-2xl text-yellow-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Entry Bot Tab</h4>
+                            <i class="fas fa-desktop text-2xl text-yellow-400 mr-4"></i>
+                            <h4 class="text-xl font-bold text-white">DAS Trading Tab</h4>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Configure automated entry strategies and monitor stocks for entry opportunities.</p>
+                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Direct-access brokerage connectivity via DAS Trader Pro — manual entry configuration, automated exit management, and position monitoring in one place. This tab is enabled per-user by an administrator.</p>
                         <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
+                            <h5 class="text-lg font-bold text-white mb-2">Three Sub-Tabs:</h5>
                             <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Set Entry Parameters:</strong> Define symbol, volume requirements, and entry time</li>
-                                <li><strong>Submit Strategy:</strong> Click "Submit" to start tracking the stock</li>
-                                <li><strong>Monitor Progress:</strong> Watch the tracking status for real-time updates</li>
-                                <li><strong>Automatic Entry:</strong> The bot will enter positions when all conditions are met</li>
+                                <li><strong>Entry Bot:</strong> Define a symbol, volume requirements, and entry time window — the bot monitors and enters when all conditions are met</li>
+                                <li><strong>Exit Bot:</strong> Manage open positions with automated profit targets, stop-losses, and optional trailing stops; enable auto-exit monitoring</li>
+                                <li><strong>Positions:</strong> Track the full lifecycle of positions — open and closed — with unrealized P&L, entry/exit prices, and export options</li>
                             </ol>
                         </div>
                         <div class="bg-yellow-900/20 rounded-lg p-4 border border-yellow-600/30">
-                            <h5 class="text-lg font-bold text-yellow-300 mb-2">⚠️ Important:</h5>
-                            <p class="text-yellow-200 text-sm">Always verify your parameters before submitting, as entries cannot be cancelled once conditions are met.</p>
+                            <h5 class="text-lg font-bold text-yellow-300 mb-2">⚠️ Admin-Gated:</h5>
+                            <p class="text-yellow-200 text-sm">DAS Trading requires DAS Trader Pro running on your machine and must be enabled for your account by an administrator. Contact admin if you need access.</p>
                         </div>
                     </div>
 
-                    <!-- Exit Bot -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-purple-500">
+                    <!-- Autonomous Trading Bot -->
+                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-emerald-500">
                         <div class="flex items-center mb-4">
-                            <i class="fas fa-robot text-2xl text-purple-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Exit Bot Tab</h4>
+                            <i class="fas fa-robot text-2xl text-emerald-400 mr-4"></i>
+                            <h4 class="text-xl font-bold text-white">Autonomous Trading Bot</h4>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Manage active positions and configure automated exit strategies with profit targets and stop losses.</p>
+                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> A fully autonomous, AI-powered trading bot that finds its own candidates, gates every entry through a portfolio risk manager, and exits positions without any manual intervention. Available on the Yogi plan.</p>
                         <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
+                            <h5 class="text-lg font-bold text-white mb-2">How It Works:</h5>
                             <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>View Active Positions:</strong> See all currently held positions</li>
-                                <li><strong>Set Exit Parameters:</strong> Configure profit targets and stop losses</li>
-                                <li><strong>Enable Auto-Exit:</strong> Turn on automated exit monitoring</li>
-                                <li><strong>Monitor Performance:</strong> Track P&L and exit conditions in real-time</li>
+                                <li><strong>Configure Once:</strong> Set scanner filters (gap %, price range, volume), day-trade targets, swing targets, and portfolio risk limits from the Configuration panel</li>
+                                <li><strong>Start the Bot:</strong> Click Start — it launches a scanner loop (every 30 s) and an exit loop (every 2 s) running entirely server-side</li>
+                                <li><strong>Day Trades:</strong> Automatically detects gap-up candidates, applies VWAP/volume/candle entry filters, and executes market buys within your configured time window (default 9:35–10:30 ET)</li>
+                                <li><strong>Swing Trades:</strong> Reads daily AI-ranked swing picks (Grade A/B Bullish), enters positions, and holds for multi-day targets with earnings protection</li>
+                                <li><strong>Exits Itself:</strong> Hits profit target, stop-loss, breakeven stop, or EOD flatten — all handled automatically with no browser required</li>
                             </ol>
                         </div>
-                        <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-600/30">
-                            <h5 class="text-lg font-bold text-purple-300 mb-2">💡 Pro Tip:</h5>
-                            <p class="text-purple-200 text-sm">Use trailing stop losses to protect profits while allowing for upside potential.</p>
+                        <div class="bg-emerald-900/20 rounded-lg p-4 border border-emerald-600/30">
+                            <h5 class="text-lg font-bold text-emerald-300 mb-2">🤖 Fully Hands-Free:</h5>
+                            <p class="text-emerald-200 text-sm">Once started, the bot runs 24/7 on the server — no open browser needed. The Candidates and Active Positions panels update live so you can monitor at a glance. A green "LIVE" chip appears in the top nav whenever the bot is running.</p>
                         </div>
                     </div>
 
@@ -474,28 +474,6 @@
                         <div class="bg-orange-900/20 rounded-lg p-4 border border-orange-600/30">
                             <h5 class="text-lg font-bold text-orange-300 mb-2">📊 Analytics:</h5>
                             <p class="text-orange-200 text-sm">Use trade history to calculate your win rate, average profit/loss, and identify your most profitable trading patterns.</p>
-                        </div>
-                    </div>
-
-                    <!-- Positions History -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-pink-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-chart-line text-2xl text-pink-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Positions History Tab</h4>
-                        </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Track the lifecycle of positions from entry to exit, including unrealized and realized P&L.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>View All Positions:</strong> See both open and closed positions</li>
-                                <li><strong>Filter by Status:</strong> Separate active positions from closed ones</li>
-                                <li><strong>Track Performance:</strong> Monitor unrealized P&L for open positions</li>
-                                <li><strong>Export Data:</strong> Download position data for portfolio analysis</li>
-                            </ol>
-                        </div>
-                        <div class="bg-pink-900/20 rounded-lg p-4 border border-pink-600/30">
-                            <h5 class="text-lg font-bold text-pink-300 mb-2">📈 Portfolio View:</h5>
-                            <p class="text-pink-200 text-sm">Use this tab to track your overall trading success and identify areas for improvement.</p>
                         </div>
                     </div>
 
