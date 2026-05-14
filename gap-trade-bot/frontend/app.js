@@ -6336,19 +6336,24 @@ const app = createApp({
 
         onBrokerSelect() {
             this.brokerTestResult = null;
-            this.brokerEditingKeys = false;
             this.brokerAccountInfo = null;
-            // Reset form fields but keep broker_name
             this.brokerForm.api_key = '';
             this.brokerForm.api_secret = '';
-            this.brokerForm.paper_trading = true;
-            this.brokerForm.extra_config = {};
-            // Pre-fill extra_config defaults for DAS
-            if (this.brokerForm.broker_name === 'das') {
-                this.brokerForm.extra_config = { host: '127.0.0.1', port: 9800 };
+
+            const saved = this.brokerConfigs.find(c => c.broker_name === this.brokerForm.broker_name);
+            if (saved) {
+                // Load saved settings for this broker
+                this.brokerForm.paper_trading = !!saved.paper_trading;
+                this.brokerForm.extra_config  = saved.extra_config || {};
+                this.brokerEditingKeys = false;
+                this.loadBrokerAccountInfo();
+            } else {
+                // Not yet configured — open edit mode immediately
+                this.brokerForm.paper_trading = true;
+                this.brokerForm.extra_config  = this.brokerForm.broker_name === 'das'
+                    ? { host: '127.0.0.1', port: 9800 } : {};
+                this.brokerEditingKeys = true;
             }
-            // Load account info for the newly selected broker
-            this.loadBrokerAccountInfo();
         },
 
         async saveBrokerConfig() {
