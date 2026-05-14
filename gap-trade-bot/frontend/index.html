@@ -2510,7 +2510,7 @@
                             <i class="fas fa-search-dollar text-amber-400"></i>
                             Candidates
                             <span class="bg-amber-600/20 text-amber-300 border border-amber-600/40 text-xs px-2 py-0.5 rounded-full">
-                                {{ (brownBotCandidates.scanner.length + brownBotCandidates.watchlist.length) }}
+                                {{ brownBotCandidates.scanner.length }}
                             </span>
                         </div>
                         <div class="flex items-center gap-2">
@@ -2549,16 +2549,12 @@
                                             <th class="px-4 py-2 text-right">Price</th>
                                             <th class="px-4 py-2 text-right">Vol (M)</th>
                                             <th class="px-4 py-2 text-left text-cyan-500">Signal</th>
-                                            <th class="px-4 py-2 text-center">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr v-for="s in brownBotCandidates.scanner" :key="s.ticker"
                                             class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
-                                            <td class="px-4 py-2 font-mono font-bold text-white">
-                                                {{ s.ticker }}
-                                                <span v-if="s.on_watchlist" class="ml-1 text-amber-400 text-xs" title="On watchlist">★</span>
-                                            </td>
+                                            <td class="px-4 py-2 font-mono font-bold text-white">{{ s.ticker }}</td>
                                             <td class="px-4 py-2 text-right text-green-400 font-semibold">+{{ s.gap_percent?.toFixed(1) }}%</td>
                                             <td class="px-4 py-2 text-right text-gray-300">${{ s.price?.toFixed(2) }}</td>
                                             <td class="px-4 py-2 text-right text-gray-400">{{ ((s.volume || 0) / 1e6).toFixed(2) }}</td>
@@ -2584,80 +2580,6 @@
                                                 <template v-else>
                                                     <span class="text-xs text-gray-600">—</span>
                                                 </template>
-                                            </td>
-                                            <td class="px-4 py-2 text-center">
-                                                <button v-if="!s.on_watchlist"
-                                                        @click="addToWatchlist(s.ticker, 'day')"
-                                                        class="text-amber-400 hover:text-amber-300 transition-colors" title="Add to watchlist">
-                                                    <i class="fas fa-plus-circle"></i>
-                                                </button>
-                                                <span v-else class="text-gray-600 text-xs">added</span>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Watchlist -->
-                        <div>
-                            <div class="px-4 py-2 bg-gray-700/40 text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                                <i class="fas fa-star text-amber-400"></i> Watchlist
-                                <span class="text-gray-500">({{ brownBotCandidates.watchlist.length }})</span>
-                            </div>
-
-                            <!-- Manual add form -->
-                            <div class="px-4 py-2 border-b border-gray-700/60 flex items-center gap-2">
-                                <input v-model="brownBotWatchlistForm.symbol" type="text" placeholder="TICKER"
-                                       class="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white uppercase font-mono focus:outline-none focus:border-amber-500"
-                                       @keyup.enter="addToWatchlist(brownBotWatchlistForm.symbol, brownBotWatchlistForm.trade_type)">
-                                <select v-model="brownBotWatchlistForm.trade_type"
-                                        class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500">
-                                    <option value="day">Day</option>
-                                    <option value="swing">Swing</option>
-                                    <option value="auto">Auto</option>
-                                </select>
-                                <button @click="addToWatchlist(brownBotWatchlistForm.symbol, brownBotWatchlistForm.trade_type)"
-                                        class="bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded text-xs transition-colors">
-                                    <i class="fas fa-plus"></i> Add
-                                </button>
-                            </div>
-
-                            <div v-if="!brownBotCandidates.watchlist.length" class="px-4 py-5 text-center text-gray-500 text-xs">
-                                Watchlist is empty
-                            </div>
-                            <div v-else class="overflow-x-auto">
-                                <table class="w-full text-xs">
-                                    <thead>
-                                        <tr class="text-gray-500 border-b border-gray-700">
-                                            <th class="px-4 py-2 text-left">Symbol</th>
-                                            <th class="px-4 py-2 text-center">Type</th>
-                                            <th class="px-4 py-2 text-right">Gap %</th>
-                                            <th class="px-4 py-2 text-right">Price</th>
-                                            <th class="px-4 py-2 text-center">Remove</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="w in brownBotCandidates.watchlist" :key="w.ticker"
-                                            class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
-                                            <td class="px-4 py-2 font-mono font-bold text-white">{{ w.ticker }}</td>
-                                            <td class="px-4 py-2 text-center">
-                                                <span :class="w.trade_type === 'swing' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : w.trade_type === 'auto' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'"
-                                                      class="text-xs px-1.5 py-0.5 rounded border">
-                                                    {{ w.trade_type }}
-                                                </span>
-                                            </td>
-                                            <td class="px-4 py-2 text-right" :class="w.gap_percent ? 'text-green-400' : 'text-gray-600'">
-                                                {{ w.gap_percent ? '+' + w.gap_percent.toFixed(1) + '%' : '—' }}
-                                            </td>
-                                            <td class="px-4 py-2 text-right text-gray-300">
-                                                {{ w.price ? '$' + w.price.toFixed(2) : '—' }}
-                                            </td>
-                                            <td class="px-4 py-2 text-center">
-                                                <button @click="removeFromWatchlist(w.ticker)"
-                                                        class="text-red-400 hover:text-red-300 transition-colors" title="Remove">
-                                                    <i class="fas fa-times-circle"></i>
-                                                </button>
                                             </td>
                                         </tr>
                                     </tbody>

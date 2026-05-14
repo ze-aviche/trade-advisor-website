@@ -2903,69 +2903,6 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     return all_pass, checks, ' | '.join(parts)
 
 
-def _check_swing_signal(symbol, config):
-    """
-    Two-stage swing entry filter.
-    Stage 1 (cheap): SMA20 price rule + volume surge.
-    Stage 2 (expensive): Claude AI tiebreaker for borderline candidates.
-    Returns (enter: bool, reason: str, score: float).
-    """
-    if not AI_AGENT_AVAILABLE or not _ai_agent:
-        return False, 'AI agent not available', 0.0
-    try:
-        tech = _ai_agent._get_technical_analysis(symbol)
-    except Exception as e:
-        return False, f'Technical analysis failed: {e}', 0.0
-    if 'error' in tech:
-        return False, f'Tech data error: {tech["error"]}', 0.0
-
-    sma10 = tech.get('sma10', 0)
-    sma20 = tech.get('sma20', 0)
-    latest_close = tech.get('latest_close', 0)
-    recent_bars = tech.get('recent_bars', [])
-
-    if not (sma20 and latest_close):
-        return False, 'Insufficient price data', 0.0
-
-    above_sma20 = latest_close > sma20
-    if not above_sma20:
-        return False, f'Price ${latest_close:.2f} below SMA20 ${sma20:.2f}', 0.0
-
-    # Volume surge: latest bar vs average of preceding bars
-    vols = [b.get('v', 0) for b in recent_bars if b.get('v')]
-    avg_vol = sum(vols[:-1]) / max(len(vols) - 1, 1) if len(vols) > 1 else 0
-    latest_vol = vols[-1] if vols else 0
-    vol_surge = avg_vol > 0 and latest_vol > avg_vol * 1.5
-
-    score = 0.6 + (0.15 if vol_surge else 0.0)
-    reason_parts = [f'close ${latest_close:.2f} > SMA20 ${sma20:.2f}']
-    if vol_surge:
-        reason_parts.append(f'vol surge ({latest_vol:,} vs avg {avg_vol:,.0f})')
-
-    # Stage 2: Claude AI tiebreaker for borderline candidates
-    if score < 0.8:
-        try:
-            prompt = (
-                f"BrownBot swing check for {symbol}. "
-                f"Close ${latest_close:.2f}, SMA10 ${sma10:.2f}, SMA20 ${sma20:.2f}. "
-                f"{'Volume surge detected. ' if vol_surge else ''}"
-                f"Should I enter a swing trade on {symbol}? Reply BUY or HOLD with one sentence reason."
-            )
-            ai_result = _ai_agent.process_message(prompt, user_id='brown_bot_swing')
-            if ai_result.get('success'):
-                reply = ai_result['response'].upper()
-                snippet = ai_result['response'][:80]
-                if 'BUY' in reply:
-                    score = 0.85
-                    reason_parts.append(f'AI: BUY — {snippet}')
-                else:
-                    score = 0.45
-                    reason_parts.append(f'AI: HOLD — {snippet}')
-        except Exception as e:
-            _add_brown_log('warning', f'AI tiebreaker failed for {symbol}: {e}')
-
-    return score >= 0.7, ', '.join(reason_parts), score
-
 
 def _brown_enter_position(symbol, position_type, config, approx_price):
     """Place a BUY order for BrownBot and record the position in memory."""
@@ -3128,50 +3065,6 @@ def _brown_bot_scan_and_enter():
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
         _brown_enter_position(symbol, 'day', config, s.get('price', 0))
         # Refresh active state after entry
-        with _brown_bot_lock:
-            active_symbols.add(symbol)
-            active_copy = dict(_brown_bot_active_positions)
-
-    # ── Process manual watchlist candidates ──
-    try:
-        watchlist = db_manager.get_brown_watchlist()
-    except Exception as e:
-        _add_brown_log('warning', f'Watchlist fetch failed: {e}')
-        watchlist = []
-
-    for w in watchlist:
-        if not _brown_bot_running:
-            return
-        symbol = w['symbol']
-        if symbol in active_symbols:
-            continue
-
-        trade_type = w.get('trade_type', 'day')
-        # 'auto': use day if gap-up scanned, else skip (swing requires explicit selection)
-        if trade_type == 'auto':
-            trade_type = 'day' if symbol in scanner_hits else None
-        if not trade_type:
-            continue
-
-        if trade_type == 'day':
-            if not day_window_open:
-                continue
-        elif trade_type == 'swing':
-            enter, reason, score = _check_swing_signal(symbol, config)
-            if not enter:
-                _add_brown_log('info', f'SKIP {symbol} swing: {reason} (score={score:.2f})')
-                continue
-            _add_brown_log('info', f'Swing signal OK for {symbol}: {reason} (score={score:.2f})')
-
-        if _brown_risk_manager:
-            allowed, reason = _brown_risk_manager.can_enter(symbol, trade_type, active_copy)
-            if not allowed:
-                _add_brown_log('warning', f'SKIP {symbol} ({trade_type}): {reason}')
-                continue
-
-        approx_price = scanner_hits.get(symbol, {}).get('price', 0)
-        _add_brown_log('info', f'Entering {trade_type.upper()} {symbol} from watchlist')
-        _brown_enter_position(symbol, trade_type, config, approx_price)
         with _brown_bot_lock:
             active_symbols.add(symbol)
             active_copy = dict(_brown_bot_active_positions)
