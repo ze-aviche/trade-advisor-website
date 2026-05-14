@@ -225,7 +225,8 @@ _brown_bot_logs = []
 _brown_bot_log_id = 0
 _brown_bot_stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
 _brown_bot_active_positions = {}  # position_id -> position dict
-_brown_entry_counts: dict = {}    # symbol -> total entries this session
+_brown_entry_counts: dict = {}    # symbol -> successful entries this session (fills only)
+_brown_attempted_symbols: set = set()  # all symbols attempted this session (prevents retry)
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_exit_thread = None
@@ -2906,8 +2907,32 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
 
 def _brown_enter_position(symbol, position_type, config, approx_price):
     """Place a BUY order for BrownBot and record the position in memory."""
-    global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts
+    global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts, _brown_attempted_symbols
+
+    # Mark as attempted BEFORE the order — any outcome (fill, rejection, or BP skip)
+    # locks the symbol for this session so the scanner won't retry it.
+    _brown_attempted_symbols.add(symbol)
+
     quantity = 100
+    price = float(approx_price or 0)
+
+    # Pre-flight buying power check — avoids sending a doomed order to the broker.
+    if price > 0:
+        try:
+            _broker = _get_broker()
+            if _broker:
+                acct = _broker.get_account()
+                required = price * quantity
+                if acct.buying_power < required:
+                    _add_brown_log('warning',
+                        f'SKIP {symbol}: insufficient buying power '
+                        f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) — '
+                        f'will not retry this session')
+                    return
+        except Exception as _bp_err:
+            app_logger.debug(f'BrownBot buying power pre-check failed for {symbol}: {_bp_err}')
+            # Fail-open: let the broker reject it if needed
+
     success, order_id, result = place_order(symbol, 'B', quantity, 'MKT')
     if not success:
         _add_brown_log('error', f'Order rejected for {symbol}: {result}')
@@ -2920,7 +2945,6 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
         tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
         stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
 
-    price = float(approx_price or 0)
     profit_target = round(price * (1 + tgt_pct / 100), 2) if price else None
     stop_loss = round(price * (1 - stp_pct / 100), 2) if price else None
     position_id = f"BROWN_{symbol}_{int(time.time())}"
@@ -2963,6 +2987,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     except Exception as _e:
         _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
 
+    # Count only actual fills — not rejected/skipped attempts
     _brown_entry_counts[symbol] = _brown_entry_counts.get(symbol, 0) + 1
     entry_num = _brown_entry_counts[symbol]
     times_str = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-entry ×{entry_num - 1})'
@@ -3095,8 +3120,8 @@ def _brown_bot_scan_and_enter():
             continue
         if symbol in active_symbols:
             continue
-        # Already entered (or attempted) this session — don't re-enter same pick
-        if _brown_entry_counts.get(symbol, 0) > 0:
+        # Already attempted this session (fill or rejection) — don't retry
+        if symbol in _brown_attempted_symbols:
             continue
 
         if _brown_risk_manager:
@@ -3395,6 +3420,9 @@ def get_brown_bot_status():
     with _brown_bot_lock:
         active_count = len(_brown_bot_active_positions)
         positions_list = list(_brown_bot_active_positions.values())
+        entry_counts = dict(_brown_entry_counts)
+        # Symbols attempted but not filled (rejected or insufficient BP)
+        skipped_symbols = list(_brown_attempted_symbols - set(_brown_entry_counts.keys()))
 
     # Pull today's entry/exit counts from DB so stats survive restarts
     today = datetime.now().strftime('%Y-%m-%d')
@@ -3428,6 +3456,8 @@ def get_brown_bot_status():
         'stats': stats,
         'active_positions_count': active_count,
         'active_positions': positions_list,
+        'entry_counts': entry_counts,
+        'skipped_symbols': skipped_symbols,
     })
 
 
@@ -3435,7 +3465,7 @@ def get_brown_bot_status():
 @require_auth
 def start_brown_bot():
     """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_entry_counts, _brown_attempted_symbols
     if _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is already running'})
     # Instantiate risk manager from saved config
@@ -3448,6 +3478,8 @@ def start_brown_bot():
                                    f'swing limit {config.get("max_concurrent_swing", 5)}')
         except Exception as e:
             _add_brown_log('warning', f'RiskManager init failed: {e}')
+    _brown_entry_counts.clear()
+    _brown_attempted_symbols.clear()
     _brown_bot_running = True
     _brown_bot_thread = threading.Thread(
         target=_brown_bot_scanner_loop, daemon=True, name='BrownBotScanner'
