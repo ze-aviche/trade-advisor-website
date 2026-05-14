@@ -11,13 +11,24 @@ from .base import BrokerBase
 
 
 # Registry: broker_name → (display_label, required_config_keys)
-# Add additional brokers here when ready to expose them in the UI.
 _BROKER_REGISTRY: dict[str, dict] = {
     'alpaca': {
         'label':    'Alpaca Markets',
         'required': ['api_key', 'api_secret'],
         'optional': {'paper': True},
         'docs_url': 'https://alpaca.markets/docs/trading/',
+    },
+    'tastytrade': {
+        'label':    'Tastytrade',
+        'required': ['username', 'password'],
+        'optional': {'paper': False},
+        'docs_url': 'https://developer.tastytrade.com/',
+    },
+    'das': {
+        'label':    'DAS Trader Pro',
+        'required': [],
+        'optional': {'host': '127.0.0.1', 'port': 9800},
+        'docs_url': 'https://dastrader.com/',
     },
 }
 
@@ -54,7 +65,8 @@ def create_broker(broker_name: str, config: dict[str, Any]) -> BrokerBase:
 
     meta = _BROKER_REGISTRY[broker_name]
     for key in meta['required']:
-        if not config.get(key):
+        # Check both top-level config and extra_config (some brokers use extra_config)
+        if not config.get(key) and not config.get('extra_config', {}).get(key):
             raise ValueError(f"Broker '{broker_name}' requires config key '{key}'")
 
     # Merge defaults then override with supplied config

@@ -3050,9 +3050,7 @@
                                         <select v-model="tradeSourceFilter" @change="loadTradeHistory"
                                                 class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                             <option value="">All Sources</option>
-                                            <option value="alpaca">Alpaca</option>
-                                            <option value="tastytrade">Tastytrade</option>
-                                            <option value="das">DAS</option>
+                                            <option v-for="b in supportedBrokers" :key="b.name" :value="b.name">{{ b.label }}</option>
                                         </select>
                                     </div>
                                 </div>
