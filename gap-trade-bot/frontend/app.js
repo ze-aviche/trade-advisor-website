@@ -392,6 +392,9 @@ const app = createApp({
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
+            sessionExpiresAt: null,
+            sessionWarningDismissed: false,
+            keepaliveInterval: null,
             brownBotCandidates: { scanner: [], watchlist: [] },
             brownBotSignals: {},
             brownBotWatchlistForm: { symbol: '', trade_type: 'day', note: '' },
@@ -538,6 +541,15 @@ const app = createApp({
             },
             showTrialBanner() {
                 return this.trialActive && !this.trialBannerDismissed && !this.isGuest;
+            },
+            sessionMinutesRemaining() {
+                if (!this.sessionExpiresAt || this.isGuest) return null;
+                const diff = new Date(this.sessionExpiresAt) - new Date();
+                return Math.floor(diff / 60000);
+            },
+            showSessionWarning() {
+                const mins = this.sessionMinutesRemaining;
+                return mins !== null && mins <= 30 && mins > 0 && !this.sessionWarningDismissed;
             },
             lockedTabInfo() {
                 const map = {
@@ -906,8 +918,10 @@ const app = createApp({
                     return;
                 }
 
-                // Validate session with backend
-                this.validateSession();
+                // Validate session with backend and seed expiry time
+                this.validateSession().then(ok => {
+                    if (ok) this.pingSessionOnce();
+                });
             },
             
             // Handle tab changes
@@ -6081,6 +6095,12 @@ const app = createApp({
                 if (response.data.success) {
                     await this.loadBrownBotStatus();
                     await this.fetchBrownBotLogs();
+                    if (this.brownBotStatus.running) {
+                        this.startSessionKeepalive();
+                        await this.pingSessionOnce();
+                    } else {
+                        this.stopSessionKeepalive();
+                    }
                 }
             } catch (error) {
                 console.error('Error toggling BrownBot:', error);
@@ -6222,6 +6242,39 @@ const app = createApp({
                 clearInterval(this.brownBotPollingInterval);
                 this.brownBotPollingInterval = null;
             }
+        },
+
+        startSessionKeepalive() {
+            this.stopSessionKeepalive();
+            // Ping every 4 minutes — well inside the 24-hour session window,
+            // but frequent enough to keep the session alive while the bot runs.
+            this.keepaliveInterval = setInterval(async () => {
+                try {
+                    const r = await axios.post('/api/session/ping', {}, { headers: this.authHeaders() });
+                    if (r.data.ok && r.data.expires_at) {
+                        this.sessionExpiresAt = r.data.expires_at;
+                        this.sessionWarningDismissed = false;
+                    }
+                } catch (e) {
+                    console.warn('Session keepalive failed:', e);
+                }
+            }, 4 * 60 * 1000);
+        },
+
+        stopSessionKeepalive() {
+            if (this.keepaliveInterval) {
+                clearInterval(this.keepaliveInterval);
+                this.keepaliveInterval = null;
+            }
+        },
+
+        async pingSessionOnce() {
+            try {
+                const r = await axios.post('/api/session/ping', {}, { headers: this.authHeaders() });
+                if (r.data.ok && r.data.expires_at) {
+                    this.sessionExpiresAt = r.data.expires_at;
+                }
+            } catch (e) { /* ignore */ }
         },
 
         brownBotDaysHeld(entryTimeStr) {

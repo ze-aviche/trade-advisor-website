@@ -1228,6 +1228,22 @@ def get_auth_profile():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/session/ping', methods=['POST'])
+@require_auth
+def session_ping():
+    """Extend the session and return the new expiry time (used by keepalive)."""
+    try:
+        # validate_session already extended the expiry inside require_auth.
+        # Re-query the updated expiry so the client knows exactly when it lapses.
+        token = (request.headers.get('Authorization', '').replace('Bearer ', '')
+                 or request.cookies.get('session_token', ''))
+        session = db_manager.get_session(token)
+        expires_at = str(session['expires_at']) if session else None
+        return jsonify({'ok': True, 'expires_at': expires_at})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # Admin endpoints
 @app.route('/api/admin/users', methods=['GET'])
 @require_role('super_admin', 'dev_master', 'bot_admin')
@@ -2966,6 +2982,12 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     with _brown_bot_lock:
         _brown_bot_active_positions[position_id] = position
 
+    # Persist position to DB so it survives a server restart
+    try:
+        db_manager.save_brown_position(position_id, position)
+    except Exception as _e:
+        _add_brown_log('warning', f'DB position save failed for {symbol}: {_e}')
+
     # Persist entry to DB so stats survive server restarts
     try:
         db_manager.add_trade({
@@ -3261,6 +3283,11 @@ def _brown_close_position(position_id, position, exit_reason):
     except Exception as e:
         _add_brown_log('warning', f'DB trade write failed for {symbol}: {e}')
 
+    try:
+        db_manager.delete_brown_position(position_id)
+    except Exception as _e:
+        _add_brown_log('warning', f'DB position delete failed for {symbol}: {_e}')
+
     with _brown_bot_lock:
         _brown_bot_active_positions.pop(position_id, None)
 
@@ -3480,6 +3507,26 @@ def start_brown_bot():
             _add_brown_log('warning', f'RiskManager init failed: {e}')
     _brown_entry_counts.clear()
     _brown_attempted_symbols.clear()
+
+    # Restore any positions that were open before the server restarted
+    try:
+        saved = db_manager.get_brown_positions()
+        if saved:
+            with _brown_bot_lock:
+                for pos in saved:
+                    pid = pos.get('position_id')
+                    if pid:
+                        pos.setdefault('unrealized_pnl', 0.0)
+                        _brown_bot_active_positions[pid] = pos
+                        # Mark symbol as already-attempted so scanner won't re-enter
+                        sym = pos.get('symbol', '')
+                        if sym:
+                            _brown_attempted_symbols.add(sym)
+                            _brown_entry_counts[sym] = _brown_entry_counts.get(sym, 0) + 1
+            _add_brown_log('info', f'Restored {len(saved)} position(s) from DB after restart')
+    except Exception as _e:
+        _add_brown_log('warning', f'Position restore from DB failed: {_e}')
+
     _brown_bot_running = True
     _brown_bot_thread = threading.Thread(
         target=_brown_bot_scanner_loop, daemon=True, name='BrownBotScanner'

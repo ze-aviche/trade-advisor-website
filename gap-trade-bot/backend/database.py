@@ -359,6 +359,25 @@ class DatabaseManager:
                 )
             ''')
 
+            # brown_positions: active BrownBot positions persisted across server restarts
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_positions (
+                    position_id TEXT PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    position_type TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    profit_target REAL,
+                    profit_target_pct REAL,
+                    stop_loss REAL,
+                    stop_loss_pct REAL,
+                    entry_time TEXT NOT NULL,
+                    entry_time_epoch REAL,
+                    data_json TEXT DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             conn.commit()
 
     def _get_user_count(self):
@@ -2624,6 +2643,70 @@ class DatabaseManager:
                 return True, 'Broker config deleted'
         except Exception as e:
             return False, str(e)
+
+    # ------------------------------------------------------------------
+    # BrownBot active position persistence
+    # ------------------------------------------------------------------
+
+    def save_brown_position(self, position_id: str, position: dict) -> bool:
+        """Upsert a BrownBot active position so it survives server restarts."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''INSERT OR REPLACE INTO brown_positions
+                       (position_id, symbol, position_type, entry_price, quantity,
+                        profit_target, profit_target_pct, stop_loss, stop_loss_pct,
+                        entry_time, entry_time_epoch, data_json)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (position_id,
+                     position.get('symbol'),
+                     position.get('position_type', 'day'),
+                     float(position.get('entry_price', 0)),
+                     int(position.get('quantity', 0)),
+                     position.get('profit_target'),
+                     position.get('profit_target_pct'),
+                     position.get('stop_loss'),
+                     position.get('stop_loss_pct'),
+                     position.get('entry_time'),
+                     position.get('entry_time_epoch'),
+                     json.dumps({k: v for k, v in position.items() if k != 'unrealized_pnl'}))
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error saving brown_position: {e}')
+            return False
+
+    def delete_brown_position(self, position_id: str) -> bool:
+        """Remove a BrownBot position record after it has been closed."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute('DELETE FROM brown_positions WHERE position_id = ?', (position_id,))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error deleting brown_position: {e}')
+            return False
+
+    def get_brown_positions(self) -> list:
+        """Return all persisted BrownBot positions, ordered by entry time."""
+        try:
+            with self.get_connection() as conn:
+                rows = conn.execute(
+                    'SELECT data_json FROM brown_positions ORDER BY entry_time_epoch ASC'
+                ).fetchall()
+                positions = []
+                for row in rows:
+                    try:
+                        pos = json.loads(row['data_json'] or '{}')
+                        if pos:
+                            positions.append(pos)
+                    except Exception:
+                        pass
+                return positions
+        except Exception as e:
+            print(f'Database error fetching brown_positions: {e}')
+            return []
 
 
 # Global database manager instance
