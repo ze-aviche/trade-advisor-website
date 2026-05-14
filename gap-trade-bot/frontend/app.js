@@ -94,7 +94,8 @@ const app = createApp({
                     brownBotSignals: false,
                     // Broker loading states
                     brokerSave: false,
-                    brokerTest: false,
+                    brokerTest: null,      // broker name being tested, or null
+                    brokerActivate: null,  // broker name being activated, or null
                     brokerAccount: false,
                 },
                 
@@ -392,6 +393,7 @@ const app = createApp({
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
+            dasSubTab: 'entry-bot',
             sessionExpiresAt: null,
             sessionWarningDismissed: false,
             keepaliveInterval: null,
@@ -411,6 +413,9 @@ const app = createApp({
             // Broker connection settings
             supportedBrokers: [],
             brokerConfigs: [],
+            activeBroker: null,           // broker_name of currently active broker
+            brokerEditingName: null,      // which broker card is open for editing
+            brokerTestResults: {},        // keyed by broker_name
             brokerForm: {
                 broker_name: '',
                 api_key: '',
@@ -418,9 +423,10 @@ const app = createApp({
                 paper_trading: true,
                 extra_config: {},
             },
-            brokerTestResult: null,
-            brokerEditingKeys: false,
             brokerAccountInfo: null,
+
+            // Trade source filter
+            tradeSourceFilter: '',
 
                             // Continuous tracking interval
                 trackingInterval: null,
@@ -573,24 +579,14 @@ const app = createApp({
                             { icon: 'fa-robot',         text: 'Claude AI entry zone, stop, and target recommendation' },
                         ],
                     },
-                    'entry-bot': {
-                        label: 'Entry Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play', color: 'green',
-                        tagline: 'Automate your entries with precision.',
+                    'das-trading': {
+                        label: 'DAS Trading', icon: 'fa-desktop', color: 'blue', isDasLocked: true,
+                        tagline: 'DAS Trader Pro integration for manual entry & exit automation.',
                         features: [
-                            { icon: 'fa-bolt',          text: 'Rule-based automated trade entry execution' },
-                            { icon: 'fa-sliders-h',     text: 'Configure volume, price, and timing criteria' },
-                            { icon: 'fa-bell',          text: 'Real-time alerts when entry conditions are met' },
-                            { icon: 'fa-plug',          text: 'Direct integration with DAS Trader Pro' },
-                        ],
-                    },
-                    bot: {
-                        label: 'Exit Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot', color: 'green',
-                        tagline: 'Never second-guess your exits again.',
-                        features: [
-                            { icon: 'fa-shield-alt',    text: 'Automated stop-loss and profit-target exits' },
-                            { icon: 'fa-chart-line',    text: 'Trailing stop support to lock in gains' },
-                            { icon: 'fa-clock',         text: 'Time-based exit rules for end-of-day closes' },
-                            { icon: 'fa-exclamation-triangle', text: 'Panic-exit button to close all positions instantly' },
+                            { icon: 'fa-play',          text: 'Entry Bot — rule-based automated trade entries via DAS' },
+                            { icon: 'fa-robot',         text: 'Exit Bot — automated stop-loss, profit target & trailing stop exits' },
+                            { icon: 'fa-chart-line',    text: 'Positions — real-time DAS position sync and history' },
+                            { icon: 'fa-plug',          text: 'Direct TCP connectivity to DAS Trader Pro desktop' },
                         ],
                     },
                     trades: {
@@ -601,16 +597,6 @@ const app = createApp({
                             { icon: 'fa-sort-amount-down', text: 'Sort and filter by ticker, date, P&L, or side' },
                             { icon: 'fa-file-excel',    text: 'One-click export to CSV or Excel' },
                             { icon: 'fa-sync-alt',      text: 'Auto-sync trades directly from DAS Trader' },
-                        ],
-                    },
-                    positions: {
-                        label: 'Positions', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-line', color: 'purple',
-                        tagline: 'Live visibility into every open position.',
-                        features: [
-                            { icon: 'fa-eye',           text: 'Real-time unrealized P&L for open positions' },
-                            { icon: 'fa-history',       text: 'Full position lifecycle from entry to exit' },
-                            { icon: 'fa-layer-group',   text: 'Track multiple simultaneous positions' },
-                            { icon: 'fa-tachometer-alt', text: 'Live price feed via WebSocket integration' },
                         ],
                     },
                     stats: {
@@ -1008,15 +994,9 @@ const app = createApp({
                     this.stopContinuousTracking(); // Stop continuous tracking when leaving entry bot tab
                     this.loadGapUps();
                     this.loadGapUpSnapshotDates();
-                } else if (tabName === 'entry-bot') {
-                    console.log('🤖 Entry Bot tab selected - loading entry bot status...');
-                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
-                    this.loadEntryBotStatus();
-                    this.updateTrackingStatus();
-                    this.fetchEntryBotPositions();
-                    this.updateDebugLogs();
-                    // Start continuous tracking every 1 second
-                    this.startContinuousTracking();
+                } else if (tabName === 'das-trading') {
+                    console.log('🖥️ DAS Trading tab selected');
+                    this.onDasSubTabChange(this.dasSubTab);
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates();
@@ -1069,11 +1049,13 @@ const app = createApp({
                 if (!this.user) return false;
                 if (this.isStaff) return true;
                 if (tab === 'admin') return false;
+                // DAS Trading is admin-gated regardless of subscription tier
+                if (tab === 'das-trading') return !!this.user.das_enabled;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'entry-bot', 'bot', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -1404,6 +1386,25 @@ const app = createApp({
                         this.showNotification(`User "${username}" deleted.`, 'success');
                     } else {
                         alert(data.error || 'Failed to delete user');
+                    }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminToggleDasAccess(userId, currentlyEnabled) {
+                const enable = !currentlyEnabled;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/das-access`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: enable })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        const u = this.adminUsers.find(u => u.id === userId);
+                        if (u) u.das_enabled = enable ? 1 : 0;
+                        this.showNotification(`DAS access ${enable ? 'enabled' : 'disabled'} for user.`, 'success');
+                    } else {
+                        alert(data.error || 'Failed to update DAS access');
                     }
                 } catch (e) { console.error(e); }
             },
@@ -3437,7 +3438,10 @@ const app = createApp({
                     if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim()) {
                     params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
                     }
-                    
+                    if (this.tradeSourceFilter) {
+                        params.append('broker_source', this.tradeSourceFilter);
+                    }
+
                     const response = await fetch(`/api/trades?${params.toString()}`);
                     const data = await response.json();
                     
@@ -6268,6 +6272,29 @@ const app = createApp({
             }
         },
 
+        onDasSubTabChange(subTab) {
+            this.dasSubTab = subTab;
+            this.stopPositionHistoryUpdates();
+            if (subTab === 'entry-bot') {
+                this.stopRealTimeUpdates();
+                this.loadEntryBotStatus();
+                this.updateTrackingStatus();
+                this.fetchEntryBotPositions();
+                this.updateDebugLogs();
+                this.startContinuousTracking();
+            } else if (subTab === 'bot') {
+                this.stopContinuousTracking();
+                this.stopRealTimeUpdates();
+                this.loadBotStatusWithRealTime();
+            } else if (subTab === 'positions') {
+                this.stopContinuousTracking();
+                this.stopRealTimeUpdates();
+                this.loadPositionSyncStatus();
+                this.loadPositionsHistory();
+                this.startPositionHistoryUpdates();
+            }
+        },
+
         async pingSessionOnce() {
             try {
                 const r = await axios.post('/api/session/ping', {}, { headers: this.authHeaders() });
@@ -6304,23 +6331,59 @@ const app = createApp({
                 const configsRes = await axios.get('/api/broker/configs', { headers: this.authHeaders() });
                 if (configsRes.data.success) {
                     this.brokerConfigs = configsRes.data.configs;
-                    // Auto-select active broker and load account info on tab open
-                    const active = this.brokerConfigs.find(c => c.is_active);
-                    if (active && !this.brokerForm.broker_name) {
-                        this.brokerForm.broker_name = active.broker_name;
-                        this.brokerForm.paper_trading = !!active.paper_trading;
-                        this.brokerEditingKeys = false;
-                        this.loadBrokerAccountInfo();
-                    }
+                    this.activeBroker = configsRes.data.active_broker || null;
+                    if (this.activeBroker) this.loadBrokerAccountInfo();
                 }
             } catch (e) {
                 console.error('loadBrokerConfigs/configs error', e);
             }
         },
 
+        getBrokerConfig(brokerName) {
+            return this.brokerConfigs.find(c => c.broker_name === brokerName) || null;
+        },
+
+        toggleBrokerEdit(brokerName) {
+            if (this.brokerEditingName === brokerName) {
+                this.brokerEditingName = null;
+                this.brokerForm.api_key = '';
+                this.brokerForm.api_secret = '';
+                this.brokerForm.extra_config = {};
+            } else {
+                this.brokerEditingName = brokerName;
+                this.brokerForm.broker_name = brokerName;
+                this.brokerForm.api_key = '';
+                this.brokerForm.api_secret = '';
+                const cfg = this.getBrokerConfig(brokerName);
+                this.brokerForm.paper_trading = cfg ? !!cfg.paper_trading : true;
+                // Pre-fill DAS defaults
+                if (brokerName === 'das') this.brokerForm.extra_config = { host: '127.0.0.1', port: 9800 };
+                else if (brokerName === 'tastytrade') this.brokerForm.extra_config = { username: '', password: '' };
+                else this.brokerForm.extra_config = {};
+                this.brokerTestResults[brokerName] = null;
+            }
+        },
+
+        async setActiveBroker(brokerName) {
+            this.loading.brokerActivate = brokerName;
+            try {
+                const res = await axios.put(`/api/broker/activate/${brokerName}`, {}, { headers: this.authHeaders() });
+                if (res.data.success) {
+                    this.activeBroker = brokerName;
+                    this.brokerAccountInfo = null;
+                    await this.loadBrokerConfigs();
+                } else {
+                    this.showError?.(res.data.error || 'Failed to set active broker');
+                }
+            } catch (e) {
+                this.showError?.(e.response?.data?.error || 'Failed to set active broker');
+            } finally {
+                this.loading.brokerActivate = null;
+            }
+        },
+
         async loadBrokerAccountInfo() {
-            const name = this.brokerForm.broker_name ||
-                (this.brokerConfigs.find(c => c.is_active) || {}).broker_name;
+            const name = this.activeBroker;
             if (!name) return;
             this.loading.brokerAccount = true;
             this.brokerAccountInfo = null;
@@ -6334,25 +6397,10 @@ const app = createApp({
             }
         },
 
-        onBrokerSelect() {
-            this.brokerTestResult = null;
-            this.brokerEditingKeys = false;
-            this.brokerAccountInfo = null;
-            // Reset form fields but keep broker_name
-            this.brokerForm.api_key = '';
-            this.brokerForm.api_secret = '';
-            this.brokerForm.paper_trading = true;
-            this.brokerForm.extra_config = {};
-            // Pre-fill extra_config defaults for DAS
-            if (this.brokerForm.broker_name === 'das') {
-                this.brokerForm.extra_config = { host: '127.0.0.1', port: 9800 };
-            }
-            // Load account info for the newly selected broker
-            this.loadBrokerAccountInfo();
-        },
-
-        async saveBrokerConfig() {
-            if (!this.brokerForm.broker_name) return;
+        async saveBrokerConfig(brokerName) {
+            const name = brokerName || this.brokerForm.broker_name;
+            if (!name) return;
+            this.brokerForm.broker_name = name;
             this.loading.brokerSave = true;
             try {
                 const payload = {
@@ -6361,25 +6409,19 @@ const app = createApp({
                     paper_trading: this.brokerForm.paper_trading ? 1 : 0,
                     extra_config:  this.brokerForm.extra_config || {},
                 };
-                // For Tastytrade, credentials live in extra_config
-                if (this.brokerForm.broker_name === 'tastytrade') {
+                if (name === 'tastytrade') {
                     payload.extra_config = {
                         username: this.brokerForm.extra_config.username || '',
                         password: this.brokerForm.extra_config.password || '',
                     };
                 }
-                const res = await axios.post(
-                    `/api/broker/config/${this.brokerForm.broker_name}`,
-                    payload,
-                    { headers: this.authHeaders() }
-                );
+                const res = await axios.post(`/api/broker/config/${name}`, payload, { headers: this.authHeaders() });
                 if (res.data.success) {
                     this.showSuccess?.('Broker config saved');
-                    this.brokerEditingKeys = false;
+                    this.brokerEditingName = null;
                     this.brokerForm.api_key = '';
                     this.brokerForm.api_secret = '';
                     await this.loadBrokerConfigs();
-                    this.loadBrokerAccountInfo();
                 } else {
                     this.showError?.(res.data.error || 'Save failed');
                 }
@@ -6390,34 +6432,30 @@ const app = createApp({
             }
         },
 
-        async testBrokerConnection() {
-            if (!this.brokerForm.broker_name) return;
-            this.loading.brokerTest = true;
-            this.brokerTestResult = null;
+        async testBrokerConnection(brokerName) {
+            const name = brokerName || this.brokerForm.broker_name;
+            if (!name) return;
+            this.loading.brokerTest = name;
+            this.$set ? this.$set(this.brokerTestResults, name, null) : (this.brokerTestResults[name] = null);
             try {
-                const res = await axios.post(
-                    `/api/broker/test/${this.brokerForm.broker_name}`,
-                    {},
-                    { headers: this.authHeaders() }
-                );
-                this.brokerTestResult = res.data;
+                const res = await axios.post(`/api/broker/test/${name}`, {}, { headers: this.authHeaders() });
+                this.brokerTestResults = { ...this.brokerTestResults, [name]: res.data };
             } catch (e) {
-                this.brokerTestResult = {
+                this.brokerTestResults = { ...this.brokerTestResults, [name]: {
                     connected: false,
                     error: e.response?.data?.error || 'Connection test failed',
-                };
+                }};
             } finally {
-                this.loading.brokerTest = false;
+                this.loading.brokerTest = null;
             }
         },
 
         async deleteBrokerConfig(brokerName) {
             if (!brokerName || !confirm(`Remove ${brokerName} connection?`)) return;
             try {
-                await axios.delete(`/api/broker/config/${brokerName}`,
-                                   { headers: this.authHeaders() });
-                this.brokerForm.broker_name = '';
-                this.brokerTestResult = null;
+                await axios.delete(`/api/broker/config/${brokerName}`, { headers: this.authHeaders() });
+                this.brokerEditingName = null;
+                if (this.activeBroker === brokerName) this.activeBroker = null;
                 await this.loadBrokerConfigs();
             } catch (e) {
                 this.showError?.(e.response?.data?.error || 'Delete failed');
