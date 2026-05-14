@@ -574,24 +574,14 @@ const app = createApp({
                             { icon: 'fa-robot',         text: 'Claude AI entry zone, stop, and target recommendation' },
                         ],
                     },
-                    'entry-bot': {
-                        label: 'Entry Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-play', color: 'green',
-                        tagline: 'Automate your entries with precision.',
+                    'das-trading': {
+                        label: 'DAS Trading', icon: 'fa-desktop', color: 'blue', isDasLocked: true,
+                        tagline: 'DAS Trader Pro integration for manual entry & exit automation.',
                         features: [
-                            { icon: 'fa-bolt',          text: 'Rule-based automated trade entry execution' },
-                            { icon: 'fa-sliders-h',     text: 'Configure volume, price, and timing criteria' },
-                            { icon: 'fa-bell',          text: 'Real-time alerts when entry conditions are met' },
-                            { icon: 'fa-plug',          text: 'Direct integration with DAS Trader Pro' },
-                        ],
-                    },
-                    bot: {
-                        label: 'Exit Bot', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-robot', color: 'green',
-                        tagline: 'Never second-guess your exits again.',
-                        features: [
-                            { icon: 'fa-shield-alt',    text: 'Automated stop-loss and profit-target exits' },
-                            { icon: 'fa-chart-line',    text: 'Trailing stop support to lock in gains' },
-                            { icon: 'fa-clock',         text: 'Time-based exit rules for end-of-day closes' },
-                            { icon: 'fa-exclamation-triangle', text: 'Panic-exit button to close all positions instantly' },
+                            { icon: 'fa-play',          text: 'Entry Bot — rule-based automated trade entries via DAS' },
+                            { icon: 'fa-robot',         text: 'Exit Bot — automated stop-loss, profit target & trailing stop exits' },
+                            { icon: 'fa-chart-line',    text: 'Positions — real-time DAS position sync and history' },
+                            { icon: 'fa-plug',          text: 'Direct TCP connectivity to DAS Trader Pro desktop' },
                         ],
                     },
                     trades: {
@@ -602,16 +592,6 @@ const app = createApp({
                             { icon: 'fa-sort-amount-down', text: 'Sort and filter by ticker, date, P&L, or side' },
                             { icon: 'fa-file-excel',    text: 'One-click export to CSV or Excel' },
                             { icon: 'fa-sync-alt',      text: 'Auto-sync trades directly from DAS Trader' },
-                        ],
-                    },
-                    positions: {
-                        label: 'Positions', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-chart-line', color: 'purple',
-                        tagline: 'Live visibility into every open position.',
-                        features: [
-                            { icon: 'fa-eye',           text: 'Real-time unrealized P&L for open positions' },
-                            { icon: 'fa-history',       text: 'Full position lifecycle from entry to exit' },
-                            { icon: 'fa-layer-group',   text: 'Track multiple simultaneous positions' },
-                            { icon: 'fa-tachometer-alt', text: 'Live price feed via WebSocket integration' },
                         ],
                     },
                     stats: {
@@ -1064,11 +1044,13 @@ const app = createApp({
                 if (!this.user) return false;
                 if (this.isStaff) return true;
                 if (tab === 'admin') return false;
+                // DAS Trading is admin-gated regardless of subscription tier
+                if (tab === 'das-trading') return !!this.user.das_enabled;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'das-trading', 'trades', 'stats'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'das-trading', 'trades', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -1399,6 +1381,25 @@ const app = createApp({
                         this.showNotification(`User "${username}" deleted.`, 'success');
                     } else {
                         alert(data.error || 'Failed to delete user');
+                    }
+                } catch (e) { console.error(e); }
+            },
+
+            async adminToggleDasAccess(userId, currentlyEnabled) {
+                const enable = !currentlyEnabled;
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/das-access`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: enable })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        const u = this.adminUsers.find(u => u.id === userId);
+                        if (u) u.das_enabled = enable ? 1 : 0;
+                        this.showNotification(`DAS access ${enable ? 'enabled' : 'disabled'} for user.`, 'success');
+                    } else {
+                        alert(data.error || 'Failed to update DAS access');
                     }
                 } catch (e) { console.error(e); }
             },

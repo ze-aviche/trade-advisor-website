@@ -202,6 +202,7 @@ class DatabaseManager:
                 ('annual_income_range', 'TEXT DEFAULT NULL'),
                 ('trial_expires_at', 'TIMESTAMP DEFAULT NULL'),
                 ('trial_reminder_sent', 'INTEGER DEFAULT 0'),
+                ('das_enabled', 'INTEGER DEFAULT 0'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
@@ -640,7 +641,8 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, username, email, system_role, subscription_tier,
-                           subscription_status, is_active, created_at, last_login
+                           subscription_status, is_active, created_at, last_login,
+                           das_enabled
                     FROM users ORDER BY created_at ASC
                 ''')
                 return [dict(row) for row in cursor.fetchall()]
@@ -818,6 +820,19 @@ class DatabaseManager:
                 cursor.execute('UPDATE users SET is_active = ? WHERE id = ?', (1 if is_active else 0, user_id))
                 conn.commit()
                 return True, "Status updated"
+        except Exception as e:
+            return False, str(e)
+
+    def update_user_das_access(self, user_id: int, enabled: bool) -> tuple:
+        """Enable or disable DAS Trading tab access for a user."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    'UPDATE users SET das_enabled = ? WHERE id = ?',
+                    (1 if enabled else 0, user_id)
+                )
+                conn.commit()
+                return True, 'DAS access updated'
         except Exception as e:
             return False, str(e)
 

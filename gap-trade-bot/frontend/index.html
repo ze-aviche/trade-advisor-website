@@ -287,7 +287,7 @@
                             <i class="fas fa-lock text-yellow-400 text-xl"></i>
                         </div>
                         <div>
-                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">{{ lockedTabInfo.isGuest ? 'Sign In Required' : 'Locked Feature' }}</div>
+                            <div class="text-xs text-blue-400 font-semibold uppercase tracking-widest mb-1">{{ lockedTabInfo.isDasLocked ? 'Admin Restricted' : lockedTabInfo.isGuest ? 'Sign In Required' : 'Locked Feature' }}</div>
                             <h2 class="text-2xl font-bold text-white leading-tight">{{ lockedTabInfo.label }}</h2>
                             <p class="text-gray-400 text-sm mt-0.5">{{ lockedTabInfo.tagline }}</p>
                         </div>
@@ -306,8 +306,21 @@
                             </div>
                         </div>
 
-                        <!-- Plan + CTA: guest vs logged-in -->
-                        <div v-if="lockedTabInfo.isGuest" class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
+                        <!-- Plan + CTA: DAS-locked / guest / subscription -->
+                        <div v-if="lockedTabInfo.isDasLocked" class="flex items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
+                            <div class="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-desktop text-blue-400 text-lg"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="text-white font-semibold text-sm">DAS connectivity is disabled for your account</div>
+                                <div class="text-gray-400 text-xs mt-0.5">Contact your admin to enable DAS Trader Pro integration.</div>
+                            </div>
+                            <button @click="onTabChange('contact')"
+                                class="flex-shrink-0 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                                Contact Admin →
+                            </button>
+                        </div>
+                        <div v-else-if="lockedTabInfo.isGuest" class="flex flex-col sm:flex-row items-center gap-4 bg-gray-700/40 border border-gray-700 rounded-2xl px-6 py-5">
                             <div class="flex-1 text-center sm:text-left">
                                 <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">Free to access</div>
                                 <div class="text-white font-bold text-lg leading-tight">Create an account</div>
@@ -5001,6 +5014,7 @@
                                     <th class="py-3 px-3 text-gray-400 font-medium">System Role</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Subscription</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Status</th>
+                                    <th class="py-3 px-3 text-gray-400 font-medium">DAS</th>
                                     <th class="py-3 px-3 text-gray-400 font-medium">Last Login</th>
                                     <th v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3 text-gray-400 font-medium">Actions</th>
                                 </tr>
@@ -5046,6 +5060,16 @@
                                     </td>
                                     <td class="py-3 px-3">
                                         <span :class="u.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" class="text-xs px-2 py-0.5 rounded-full">{{ u.is_active ? 'Active' : 'Inactive' }}</span>
+                                    </td>
+                                    <td class="py-3 px-3">
+                                        <button v-if="isSuperAdmin || isBotAdmin"
+                                                @click="adminToggleDasAccess(u.id, !!u.das_enabled)"
+                                                :class="u.das_enabled ? 'bg-blue-700 hover:bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'"
+                                                class="text-xs px-2 py-1 rounded transition-colors font-medium"
+                                                :title="u.das_enabled ? 'Click to disable DAS access' : 'Click to enable DAS access'">
+                                            <i :class="u.das_enabled ? 'fas fa-desktop' : 'fas fa-desktop opacity-40'" class="mr-1"></i>{{ u.das_enabled ? 'ON' : 'OFF' }}
+                                        </button>
+                                        <span v-else :class="u.das_enabled ? 'text-blue-400' : 'text-gray-600'" class="text-xs">{{ u.das_enabled ? 'ON' : 'OFF' }}</span>
                                     </td>
                                     <td class="py-3 px-3 text-gray-400 text-xs">{{ u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never' }}</td>
                                     <td v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3">

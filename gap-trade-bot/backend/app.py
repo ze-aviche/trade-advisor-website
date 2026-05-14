@@ -1221,6 +1221,7 @@ def get_auth_profile():
             'trial_active': trial_active,
             'trial_days_left': trial_days_left,
             'trial_expires_at': str(trial_expires_raw) if trial_expires_raw else None,
+            'das_enabled': bool(user.get('das_enabled', 0)),
         }
         return jsonify({'success': True, 'data': safe_user})
     except Exception as e:
@@ -1340,6 +1341,22 @@ def admin_update_active(user_id):
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
         app_logger.error(f"Error updating active status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>/das-access', methods=['PUT'])
+@require_role('super_admin', 'bot_admin')
+def admin_update_das_access(user_id):
+    """Enable or disable DAS Trading tab for a user — super_admin and bot_admin"""
+    try:
+        data = request.get_json()
+        enabled = bool(data.get('enabled', False))
+        success, message = db_manager.update_user_das_access(user_id, enabled)
+        if success:
+            return jsonify({'success': True, 'message': message, 'das_enabled': enabled})
+        return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        app_logger.error(f"Error updating DAS access for user {user_id}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
