@@ -229,6 +229,7 @@ _brown_entry_counts: dict = {}    # symbol -> successful entries this session (f
 _brown_attempted_symbols: set = set()  # all symbols attempted this session (prevents retry)
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
+_brown_broker = None        # BrokerBase instance held for the bot's lifetime
 _brown_exit_thread = None
 
 
@@ -2932,26 +2933,37 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     quantity = 100
     price = float(approx_price or 0)
 
+    if not _brown_broker:
+        _add_brown_log('error', f'SKIP {symbol}: no broker available')
+        return
+
     # Pre-flight buying power check — avoids sending a doomed order to the broker.
     if price > 0:
         try:
-            _broker = _get_broker()
-            if _broker:
-                acct = _broker.get_account()
-                required = price * quantity
-                if acct.buying_power < required:
-                    _add_brown_log('warning',
-                        f'SKIP {symbol}: insufficient buying power '
-                        f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) — '
-                        f'will not retry this session')
-                    return
+            acct = _brown_broker.get_account()
+            required = price * quantity
+            if acct.buying_power < required:
+                _add_brown_log('warning',
+                    f'SKIP {symbol}: insufficient buying power '
+                    f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) — '
+                    f'will not retry this session')
+                return
         except Exception as _bp_err:
             app_logger.debug(f'BrownBot buying power pre-check failed for {symbol}: {_bp_err}')
             # Fail-open: let the broker reject it if needed
 
-    success, order_id, result = place_order(symbol, 'B', quantity, 'MKT')
-    if not success:
-        _add_brown_log('error', f'Order rejected for {symbol}: {result}')
+    try:
+        from bot.broker.base import OrderSide, OrderType as OType
+        order = _brown_broker.place_order(
+            symbol     = symbol,
+            side       = OrderSide.BUY,
+            qty        = float(quantity),
+            order_type = OType.MARKET,
+        )
+        order_id = order.order_id
+        app_logger.info(f'[BrownBot:{_brown_broker.name}] BUY {quantity} {symbol} → order_id={order_id} status={order.status}')
+    except Exception as _order_err:
+        _add_brown_log('error', f'Order rejected for {symbol}: {_order_err}')
         return
 
     if position_type == 'day':
@@ -3205,48 +3217,45 @@ def _brown_close_position(position_id, position, exit_reason):
     entry_price = float(position.get('entry_price', 0))
     position_type = position.get('position_type', 'day')
 
-    broker = _get_broker()
+    if not _brown_broker:
+        _add_brown_log('error', f'No broker available to close {symbol}')
+        return False
+
     order_id = None
 
-    if broker:
-        # Verify the broker actually holds this position before selling.
-        # If it doesn't exist (e.g. BUY never filled), abort cleanly.
-        try:
-            bp = broker.get_position(symbol)
-        except Exception:
-            bp = None
-        if not bp:
-            _add_brown_log('warning',
-                f'No open position for {symbol} in broker — removing from tracking (no sell placed)')
-            with _brown_bot_lock:
-                _brown_bot_active_positions.pop(position_id, None)
-            return False
+    # Verify the broker actually holds this position before selling.
+    # If it doesn't exist (e.g. BUY never filled), abort cleanly.
+    try:
+        bp = _brown_broker.get_position(symbol)
+    except Exception:
+        bp = None
+    if not bp:
+        _add_brown_log('warning',
+            f'No open position for {symbol} in broker — removing from tracking (no sell placed)')
+        with _brown_bot_lock:
+            _brown_bot_active_positions.pop(position_id, None)
+        return False
 
-        # Use broker's close_position so we can never accidentally short.
-        try:
-            order = broker.close_position(symbol)
-            order_id = order.order_id
-        except Exception as e:
-            _add_brown_log('error', f'SELL order failed for {symbol}: {e}')
-            return False
+    # Use broker's close_position so we can never accidentally short.
+    try:
+        order = _brown_broker.close_position(symbol)
+        order_id = order.order_id
+        app_logger.info(f'[BrownBot:{_brown_broker.name}] SELL {symbol} → order_id={order_id}')
+    except Exception as e:
+        _add_brown_log('error', f'SELL order failed for {symbol}: {e}')
+        return False
 
-        # Poll for actual fill price — Alpaca market orders fill within ~1-2 s.
-        for _ in range(3):
-            time.sleep(1)
-            try:
-                filled = broker.get_order(str(order_id))
-                if filled.filled_avg_price:
-                    current_price = float(filled.filled_avg_price)
-                    quantity = int(filled.filled_qty or quantity)
-                    break
-            except Exception:
+    # Poll for actual fill price — most brokers fill market orders within 1-3 s.
+    for _ in range(3):
+        time.sleep(1)
+        try:
+            filled = _brown_broker.get_order(str(order_id))
+            if filled.filled_avg_price:
+                current_price = float(filled.filled_avg_price)
+                quantity = int(filled.filled_qty or quantity)
                 break
-    else:
-        # DAS fallback
-        success, order_id, result = place_order(symbol, 'S', quantity, 'MKT')
-        if not success:
-            _add_brown_log('error', f'SELL order failed for {symbol}: {result}')
-            return False
+        except Exception:
+            break
 
     realized_pnl = round((float(current_price) - entry_price) * quantity, 2) if entry_price else 0.0
 
@@ -3442,7 +3451,7 @@ def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
     global _brown_bot_running, _brown_bot_active_positions
     das_ok = DAS_ENABLED and _das_direct is not None
-    broker = _get_broker()
+    broker = _brown_broker or _get_broker()
     broker_info = broker.to_dict() if broker else None
     with _brown_bot_lock:
         active_count = len(_brown_bot_active_positions)
@@ -3492,9 +3501,16 @@ def get_brown_bot_status():
 @require_auth
 def start_brown_bot():
     """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_entry_counts, _brown_attempted_symbols
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols
     if _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is already running'})
+
+    # Require a configured broker — BrownBot is broker-agnostic, not DAS-only
+    _brown_broker = _get_broker()
+    if not _brown_broker:
+        return jsonify({'success': False, 'error': 'No broker configured. Set up a broker in Account Settings before starting BrownBot.'})
+    _add_brown_log('info', f'Broker ready: {_brown_broker.name}')
+
     # Instantiate risk manager from saved config
     if RISK_MANAGER_AVAILABLE:
         try:
@@ -3544,7 +3560,7 @@ def start_brown_bot():
 @require_auth
 def stop_brown_bot():
     """Stop BrownBot — clears the running flag and joins both threads."""
-    global _brown_bot_running, _brown_bot_thread, _brown_exit_thread
+    global _brown_bot_running, _brown_bot_thread, _brown_exit_thread, _brown_broker
     if not _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is not running'})
     _brown_bot_running = False
@@ -3554,6 +3570,7 @@ def stop_brown_bot():
         _brown_exit_thread.join(timeout=10)
     _brown_bot_thread = None
     _brown_exit_thread = None
+    _brown_broker = None
     _add_brown_log('info', 'BrownBot stopped')
     return jsonify({'success': True, 'message': 'BrownBot stopped'})
 
