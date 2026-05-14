@@ -487,7 +487,7 @@ class DatabaseManager:
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
                            preferences, stripe_customer_id, stripe_subscription_id,
                            first_name, last_name, address, profession, annual_income_range,
-                           trial_expires_at
+                           trial_expires_at, das_enabled
                     FROM users WHERE id = ?
                 ''', (user_id,))
                 row = cursor.fetchone()
@@ -510,7 +510,7 @@ class DatabaseManager:
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
                            preferences, stripe_customer_id, stripe_subscription_id,
                            first_name, last_name, address, profession, annual_income_range,
-                           trial_expires_at
+                           trial_expires_at, das_enabled
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
