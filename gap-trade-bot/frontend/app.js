@@ -906,45 +906,14 @@ const app = createApp({
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
                     this.loadTradeHistory();
                 } else if (tabName === 'positions') {
-                    console.log('📈 Positions History tab selected - loading positions history...');
-                    console.log('🔍 This is the positions tab handler - starting execution...');
-                    
                     try {
-                        // Load position sync status first
-                        console.log('🔄 Loading position sync status...');
                         await this.loadPositionSyncStatus();
-                        console.log('✅ Position sync status loaded');
-                        
-                        this.loadPositionsHistory();
-                        console.log('✅ Positions history loaded');
-                        
-                        // Start auto-updates for position history
-                        console.log('🚀 Starting position history auto-updates for positions tab...');
-                        console.log('🔍 About to call startPositionHistoryUpdates...');
-                        
-                        // Check if function exists before calling
-                        if (typeof this.startPositionHistoryUpdates === 'function') {
-                            console.log('✅ Function exists, calling startPositionHistoryUpdates...');
-                            try {
-                                this.startPositionHistoryUpdates();
-                                console.log('✅ startPositionHistoryUpdates() called successfully');
-                            } catch (error) {
-                                console.error('❌ Error in startPositionHistoryUpdates:', error);
-                                console.error('❌ Error stack:', error.stack);
-                            }
-                        } else {
-                            console.error('❌ startPositionHistoryUpdates is not a function!');
-                            console.error('❌ Type:', typeof this.startPositionHistoryUpdates);
-                            console.error('❌ Value:', this.startPositionHistoryUpdates);
-                        }
-                        
-                        // Stop bot real-time updates when on positions tab to avoid conflicts
-                        console.log('🛑 Stopping bot real-time updates to avoid conflicts...');
+                        // If data is already cached, refresh silently in the background
+                        this.loadPositionsHistory(this.positions.length > 0);
+                        this.startPositionHistoryUpdates();
                         this.stopRealTimeUpdates();
-                        
                     } catch (error) {
-                        console.error('❌ Error in positions tab initialization:', error);
-                        console.error('❌ Error stack:', error.stack);
+                        console.error('Error in positions tab initialization:', error);
                     }
                 } else if (tabName === 'gap-ups') {
                     console.log('📈 Gap-Ups tab selected - loading gap-up stocks...');
@@ -1412,6 +1381,8 @@ const app = createApp({
                     if (response.ok) {
                         const userData = await response.json();
                         this.user = userData.data;
+                        // Silently pre-fetch positions so the tab opens instantly
+                        if (this.positions.length === 0) this.loadPositionsHistory(true);
                         // Pre-fill contact form with user info
                         this.contactForm.name = [this.user.first_name, this.user.last_name].filter(Boolean).join(' ') || this.user.username;
                         this.contactForm.email = this.user.email || '';
@@ -1959,30 +1930,11 @@ const app = createApp({
                 
                 this.positionHistoryUpdates.interval = setInterval(async () => {
                     console.log('🔄 Position history auto-update triggered, activeTab:', this.activeTab);
-                    // Only update if we're on the positions tab
                     if (this.activeTab === 'positions') {
-                        console.log('📈 Active tab is positions, loading position history...');
-                        await this.loadPositionsHistory();
+                        await this.loadPositionsHistory(true); // always silent on auto-refresh
                         this.positionHistoryUpdates.lastUpdate = new Date();
-                        console.log('🔄 Position history auto-update completed:', this.positionHistoryUpdates.lastUpdate);
-                    } else {
-                        console.log('⏸️ Not on positions tab, skipping update');
                     }
                 }, this.positionHistoryUpdates.updateInterval);
-                
-                console.log('✅ Position history auto-updates started with interval ID:', this.positionHistoryUpdates.interval);
-                
-                // Add test function to global scope for debugging
-                window.testPositionUpdates = () => {
-                    console.log('🧪 Testing position updates manually...');
-                    console.log('Active tab:', this.activeTab);
-                    console.log('Position updates enabled:', this.positionHistoryUpdates.enabled);
-                    console.log('Position updates interval:', this.positionHistoryUpdates.interval);
-                    console.log('Position updates last update:', this.positionHistoryUpdates.lastUpdate);
-                    
-                    // Force a manual update
-                    this.loadPositionsHistory();
-                };
             },
             
             stopPositionHistoryUpdates() {
@@ -3392,10 +3344,10 @@ const app = createApp({
             }
         },
         
-        async loadPositionsHistory() {
+        async loadPositionsHistory(silent = false) {
             try {
-                this.loading.positions = true;
-                
+                if (!silent) this.loading.positions = true;
+
                 const params = new URLSearchParams();
                 params.append('limit', '1000');
                 if (this.positionsHistoryStartDate) params.append('start_date', this.positionsHistoryStartDate);
@@ -3407,17 +3359,14 @@ const app = createApp({
 
                 const response = await fetch(`/api/positions/daily?${params.toString()}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     this.positions = data.data.positions || [];
-                    console.log(`📈 Loaded ${this.positions.length} positions from database`);
-                } else {
-                    console.error('Failed to load positions history:', data.error);
+                } else if (!silent) {
                     this.showNotification('Failed to load positions history: ' + data.error, 'error');
                 }
             } catch (error) {
-                console.error('Error loading positions history:', error);
-                this.showNotification('Error loading positions history: ' + error.message, 'error');
+                if (!silent) this.showNotification('Error loading positions history: ' + error.message, 'error');
             } finally {
                 this.loading.positions = false;
             }
