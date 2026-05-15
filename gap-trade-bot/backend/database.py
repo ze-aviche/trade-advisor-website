@@ -2227,6 +2227,11 @@ class DatabaseManager:
                 row = cursor.fetchone()
                 if row:
                     cfg = dict(row)
+                    # Fall back to defaults for any NULL or empty-string values so
+                    # float() conversions downstream never receive '' or None.
+                    for k, v in defaults.items():
+                        if cfg.get(k) is None or cfg.get(k) == '':
+                            cfg[k] = v
                     cfg['day_trailing_stop_enabled'] = bool(cfg.get('day_trailing_stop_enabled', 0))
                     cfg['swing_earnings_protection_enabled'] = bool(cfg.get('swing_earnings_protection_enabled', 1))
                     cfg['day_time_gate_enabled'] = bool(cfg.get('day_time_gate_enabled', 1))
