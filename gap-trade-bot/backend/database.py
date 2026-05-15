@@ -834,57 +834,15 @@ class DatabaseManager:
             return False, f"Database error adding trade: {str(e)}"
     
     def get_position_summary(self, symbol=None, type_filter=None):
-        """Get position summary statistics"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                query = '''
-                    SELECT 
-                        COUNT(*) as total_positions,
-                        SUM(CASE WHEN quantity != 0 THEN 1 ELSE 0 END) as active_positions,
-                        SUM(quantity) as total_quantity,
-                        SUM(realized) as total_realized,
-                        SUM(unrealized) as total_unrealized,
-                        SUM(quantity * avg_cost) as total_cost_basis
-                    FROM positions
-                    WHERE 1=1
-                '''
-                params = []
-                
-                if symbol:
-                    query += ' AND symbol = ?'
-                    params.append(symbol.upper())
-                
-                if type_filter is not None:
-                    query += ' AND type = ?'
-                    params.append(type_filter)
-                
-                cursor.execute(query, params)
-                row = cursor.fetchone()
-                
-                if row:
-                    return dict(row)
-                else:
-                    return {
-                        'total_positions': 0,
-                        'active_positions': 0,
-                        'total_quantity': 0,
-                        'total_realized': 0.0,
-                        'total_unrealized': 0.0,
-                        'total_cost_basis': 0.0
-                    }
-                
-        except Exception as e:
-            print(f"Error getting position summary: {e}")
-            return {
-                'total_positions': 0,
-                'active_positions': 0,
-                'total_quantity': 0,
-                'total_realized': 0.0,
-                'total_unrealized': 0.0,
-                'total_cost_basis': 0.0
-            }
+        """Get position summary statistics (positions table dropped; returns empty defaults)."""
+        return {
+            'total_positions': 0,
+            'active_positions': 0,
+            'total_quantity': 0,
+            'total_realized': 0.0,
+            'total_unrealized': 0.0,
+            'total_cost_basis': 0.0,
+        }
     
     def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100):
         """Get trades with optional filtering"""
@@ -1317,139 +1275,102 @@ class DatabaseManager:
             return []
 
     def get_positions_pnl_history(self, symbol=None, start_date=None, end_date=None, limit=100):
-        """Get positions PnL history for charting (similar to trades but using realized field)"""
+        """Get closed-trade PnL history for charting, sourced from the trades table."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
-                           realized, create_time, date, unrealized, last_updated, created_at
-                    FROM positions
-                    WHERE realized != 0
+                    SELECT id, symbol, side, quantity,
+                           price     AS avg_cost,
+                           price     AS init_price,
+                           quantity  AS init_quantity,
+                           pnl       AS realized,
+                           trade_time AS create_time,
+                           trade_date AS date,
+                           0.0       AS unrealized,
+                           updated_at AS last_updated,
+                           created_at
+                    FROM trades
+                    WHERE pnl != 0
                 '''
                 params = []
-                
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
                 if start_date:
-                    query += ' AND date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += ' ORDER BY date DESC, last_updated DESC LIMIT ?'
+                query += ' ORDER BY trade_date DESC, updated_at DESC LIMIT ?'
                 params.append(limit)
-                
+
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
-                
+
                 positions = []
                 for row in rows:
                     position = dict(row)
-                    # Convert datetime objects to strings for JSON serialization
-                    if position['created_at']:
-                        if hasattr(position['created_at'], 'isoformat'):
-                            position['created_at'] = position['created_at'].isoformat()
-                        elif isinstance(position['created_at'], str):
-                            pass
-                        else:
-                            position['created_at'] = str(position['created_at'])
-                    
-                    if position['last_updated']:
-                        if hasattr(position['last_updated'], 'isoformat'):
-                            position['last_updated'] = position['last_updated'].isoformat()
-                        elif isinstance(position['last_updated'], str):
-                            pass
-                        else:
-                            position['last_updated'] = str(position['last_updated'])
-                    
+                    for field in ('created_at', 'last_updated'):
+                        v = position.get(field)
+                        if v and hasattr(v, 'isoformat'):
+                            position[field] = v.isoformat()
+                        elif v and not isinstance(v, str):
+                            position[field] = str(v)
                     positions.append(position)
-                
                 return positions
         except Exception as e:
-            print(f"Database error getting positions PnL history: {e}")
+            _db_logger.error(f"Database error getting positions PnL history: {e}")
             return []
 
     def get_positions_pnl_summary(self, symbol=None, start_date=None, end_date=None):
-        """Get positions PnL summary statistics"""
+        """Get closed-trade PnL summary statistics, sourced from the trades table."""
+        _empty = {
+            'total_positions': 0, 'profitable_positions': 0, 'losing_positions': 0,
+            'total_pnl': 0, 'total_profits': 0, 'total_losses': 0, 'win_rate': 0,
+        }
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
+                    SELECT
                         COUNT(*) as total_positions,
-                        COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
-                        COALESCE(SUM(CASE WHEN realized < 0 THEN 1 ELSE 0 END), 0) as losing_positions,
-                        COALESCE(SUM(realized), 0) as total_pnl,
-                        COALESCE(SUM(CASE WHEN realized > 0 THEN realized ELSE 0 END), 0) as total_profits,
-                        COALESCE(SUM(CASE WHEN realized < 0 THEN realized ELSE 0 END), 0) as total_losses
-                    FROM positions
-                    WHERE realized != 0
+                        COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
+                        COALESCE(SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END), 0) as losing_positions,
+                        COALESCE(SUM(pnl), 0) as total_pnl,
+                        COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) as total_profits,
+                        COALESCE(SUM(CASE WHEN pnl < 0 THEN pnl ELSE 0 END), 0) as total_losses
+                    FROM trades
+                    WHERE pnl != 0
                 '''
                 params = []
-                
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
                 if start_date:
-                    query += ' AND date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
+
                 cursor.execute(query, params)
                 row = cursor.fetchone()
-                
-                if row:
-                    summary = dict(row)
-                    
-                    # Calculate win rate
-                    total_positions = summary['total_positions'] or 0
-                    profitable_positions = summary['profitable_positions'] or 0
-                    win_rate = (profitable_positions / total_positions * 100) if total_positions > 0 else 0
-                    
-                    summary['win_rate'] = round(win_rate, 2)
-                    
-                    # Ensure all values are numbers, not None
-                    summary['total_positions'] = summary['total_positions'] or 0
-                    summary['profitable_positions'] = summary['profitable_positions'] or 0
-                    summary['losing_positions'] = summary['losing_positions'] or 0
-                    summary['total_pnl'] = summary['total_pnl'] or 0
-                    summary['total_profits'] = summary['total_profits'] or 0
-                    summary['total_losses'] = summary['total_losses'] or 0
-                    
-                    return summary
-                else:
-                    return {
-                        'total_positions': 0,
-                        'profitable_positions': 0,
-                        'losing_positions': 0,
-                        'total_pnl': 0,
-                        'total_profits': 0,
-                        'total_losses': 0,
-                        'win_rate': 0
-                    }
-                
+                if not row:
+                    return _empty
+                summary = dict(row)
+                total = summary['total_positions'] or 0
+                summary['win_rate'] = round(
+                    (summary['profitable_positions'] / total * 100) if total else 0, 2
+                )
+                for k in ('total_positions', 'profitable_positions', 'losing_positions',
+                          'total_pnl', 'total_profits', 'total_losses'):
+                    summary[k] = summary[k] or 0
+                return summary
         except Exception as e:
-            print(f"Database error getting positions PnL summary: {e}")
-            return {
-                'total_positions': 0,
-                'profitable_positions': 0,
-                'losing_positions': 0,
-                'total_pnl': 0,
-                'total_profits': 0,
-                'total_losses': 0,
-                'win_rate': 0
-            }
+            _db_logger.error(f"Database error getting positions PnL summary: {e}")
+            return _empty
 
     def get_total_positions_count(self, symbol=None, start_date=None, end_date=None):
         """Count closed positions (exit trades) from the trades table."""
