@@ -2251,11 +2251,15 @@
                     <!-- Swing Trade Candidates -->
                     <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
                         <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
-                            <div class="text-white font-semibold flex items-center gap-2">
+                            <div class="text-white font-semibold flex items-center gap-2 flex-wrap">
                                 <i class="fas fa-moon text-blue-400"></i>
                                 Swing Trade Candidates
                                 <span class="bg-blue-600/20 text-blue-300 border border-blue-600/40 text-xs px-2 py-0.5 rounded-full">
                                     {{ swingBotCandidates.length }}
+                                </span>
+                                <span v-if="swingDailyPicks && swingDailyPicks.is_today === false"
+                                      class="text-xs font-normal text-amber-400 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded">
+                                    {{ swingDailyPicks.date }} · prev session
                                 </span>
                             </div>
                             <button @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
@@ -2266,10 +2270,7 @@
                         </div>
                         <!-- No picks state -->
                         <div v-if="!swingDailyPicks" class="px-4 py-8 text-center text-gray-500 text-xs">
-                            No swing picks loaded — open the Swing tab to generate today's picks
-                        </div>
-                        <div v-else-if="!swingBotCandidates.length" class="px-4 py-8 text-center text-gray-500 text-xs">
-                            No Grade A/B Bullish picks available for today's session
+                            No swing picks loaded — open the Swing tab to load picks
                         </div>
                         <div v-else class="overflow-x-auto">
                             <table class="w-full text-xs">
@@ -2306,6 +2307,11 @@
                                                   title="Order was attempted but rejected (e.g. insufficient buying power). Will not retry this session.">
                                                 Skipped
                                             </span>
+                                            <span v-else-if="p.status === 'review'"
+                                                  class="bg-gray-700/60 text-gray-400 border border-gray-600/50 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                                                  title="Below Grade A/B Bullish threshold — shown for reference only; BrownBot will not enter">
+                                                Review
+                                            </span>
                                             <span v-else
                                                   class="bg-blue-900/40 text-blue-300 border border-blue-700/40 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
                                                 Eligible
@@ -2321,6 +2327,7 @@
                             <span class="text-[10px] text-gray-500"><span class="text-blue-400 font-semibold">Eligible</span> — qualified, waiting for next scan</span>
                             <span class="text-[10px] text-gray-500"><span class="text-amber-400 font-semibold">Skipped</span> — order attempted but rejected (e.g. insufficient buying power), will not retry</span>
                             <span class="text-[10px] text-gray-500"><span class="text-gray-400 font-semibold">Entered Today</span> — filled this session, will not re-enter</span>
+                            <span class="text-[10px] text-gray-500"><span class="text-gray-500 font-semibold">Review</span> — below Grade A/B Bullish threshold; for reference only</span>
                         </div>
                     </div>
                     </div><!-- /collapsible config body -->

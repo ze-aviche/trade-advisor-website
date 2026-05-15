@@ -794,15 +794,20 @@ const app = createApp({
                 const skippedSymbols = new Set(
                     this.brownBotStatus.skipped_symbols || []
                 );
-                return picks
+                const tag = p => {
+                    let status = 'eligible';
+                    if (activeSymbols.has(p.ticker)) status = 'active';
+                    else if (enteredSymbols.has(p.ticker)) status = 'entered';
+                    else if (skippedSymbols.has(p.ticker)) status = 'skipped';
+                    return { ...p, status };
+                };
+                const eligible = picks
                     .filter(p => ['A', 'B'].includes(p.grade) && p.bias?.toLowerCase() === 'bullish')
-                    .map(p => {
-                        let status = 'eligible';
-                        if (activeSymbols.has(p.ticker)) status = 'active';
-                        else if (enteredSymbols.has(p.ticker)) status = 'entered';
-                        else if (skippedSymbols.has(p.ticker)) status = 'skipped';
-                        return { ...p, status };
-                    });
+                    .map(tag);
+                if (eligible.length) return eligible;
+                // No A/B Bullish picks — show all available picks for review
+                // (informational only; BrownBot only enters Grade A/B Bullish in its own Python logic)
+                return picks.map(p => ({ ...p, status: 'review' }));
             },
 
             // ── BrownBot P&L summary ──────────────────────────────────────
@@ -5133,6 +5138,13 @@ const app = createApp({
                     const snapData = await snap.json();
                     if (snapData.success && snapData.picks?.length) {
                         this.swingDailyPicks = snapData;
+                        // If market is closed, show last session data and stop — no point
+                        // triggering a compute.  Mark date as today so tab switches don't
+                        // cause repeated retries while the market stays closed.
+                        if (!snapData.market_open && !force) {
+                            this.swingDailyPicksDate = today;
+                            return;
+                        }
                         this.swingDailyPicksDate = snapData.date;
                         // If this is already today's picks (from DB), we're done
                         if (snapData.is_today && !force) return;
@@ -5140,7 +5152,7 @@ const app = createApp({
                 } catch (_) { /* silent — fall through to full fetch */ }
             }
 
-            // Step 2: compute today's fresh picks (may take a few seconds)
+            // Step 2: compute today's fresh picks (only reached when market is open)
             this.loading.swingDailyPicks = true;
             try {
                 const res  = await fetch('/api/swing-daily-picks');

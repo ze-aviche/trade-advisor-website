@@ -6340,6 +6340,21 @@ def swing_daily_picks():
         _daily_picks_cache[session_date] = payload
         return jsonify(payload)
 
+    # 3. Market is closed — return most recent row from any date rather than computing.
+    #    Don't store in memory cache so the 8 PM EOD scheduler still runs for today.
+    if not market_open:
+        db_row = db_manager.get_swing_picks()  # most recent (any date)
+        if db_row:
+            app_logger.info(f'swing-daily-picks: market closed, serving last row date={db_row["date"]}')
+            return jsonify({
+                'success': True, 'cached': True, 'is_today': False,
+                'market_open': False, 'date': db_row['date'],
+                'picks': db_row['picks'], 'market_note': db_row['market_note'],
+                'candidates_scanned': db_row['candidates_scanned'],
+                'source_counts': db_row['source_counts'],
+                'sources_tickers': db_row['sources_tickers'],
+            })
+
     if not AI_AGENT_AVAILABLE:
         return jsonify({'success': False, 'error': 'AI not available'}), 503
 
