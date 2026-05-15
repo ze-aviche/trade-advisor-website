@@ -3113,7 +3113,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
             'liquidity':     None,
             'ecn_fee':       0.0,
             'pnl':           0.0,
-            'trade_date':    datetime.now().strftime('%Y-%m-%d'),
+            'trade_date':    _last_trading_date(),
             'position_type': position_type,
             'days_held':     None,
             'source':        'brownbot',
@@ -3429,7 +3429,7 @@ def _brown_close_position(position_id, position, exit_reason):
             'liquidity': None,
             'ecn_fee': 0.0,
             'pnl': realized_pnl,
-            'trade_date': datetime.now().strftime('%Y-%m-%d'),
+            'trade_date': _last_trading_date(),
             'position_type': position_type,
             'days_held': days_held,
             'source': 'brownbot',
@@ -3616,8 +3616,10 @@ def get_brown_bot_status():
         # Symbols attempted but not filled (rejected or insufficient BP)
         skipped_symbols = list(_brown_attempted_symbols - set(_brown_entry_counts.keys()))
 
-    # Pull today's entry/exit counts from DB so stats survive restarts
-    today = datetime.now().strftime('%Y-%m-%d')
+    # Pull today's entry/exit counts from DB so stats survive restarts.
+    # Use last_trading_date (ET) so trades entered during US market hours
+    # are always bucketed to the same date regardless of server UTC offset.
+    today = _last_trading_date()
     stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
     try:
         with db_manager.get_connection() as _conn:
@@ -3680,22 +3682,40 @@ def start_brown_bot():
     _brown_entry_counts.clear()
     _brown_attempted_symbols.clear()
 
-    # Restore any positions that were open before the server restarted
+    # Restore any positions that were open before the server restarted.
+    # Day positions are only valid for today (ET); stale ones are deleted so they
+    # never show up again and never trigger accidental broker sells.
+    # Swing positions are kept regardless of age.
     try:
+        import pytz as _pytz_r
+        today_et = datetime.now(_pytz_r.timezone('US/Eastern')).strftime('%Y-%m-%d')
         saved = db_manager.get_brown_positions()
-        if saved:
-            with _brown_bot_lock:
-                for pos in saved:
-                    pid = pos.get('position_id')
-                    if pid:
-                        pos.setdefault('unrealized_pnl', 0.0)
-                        _brown_bot_active_positions[pid] = pos
-                        # Mark symbol as already-attempted so scanner won't re-enter
-                        sym = pos.get('symbol', '')
-                        if sym:
-                            _brown_attempted_symbols.add(sym)
-                            _brown_entry_counts[sym] = _brown_entry_counts.get(sym, 0) + 1
-            _add_brown_log('info', f'Restored {len(saved)} position(s) from DB after restart')
+        restored, purged = 0, 0
+        with _brown_bot_lock:
+            for pos in (saved or []):
+                pid = pos.get('position_id')
+                if not pid:
+                    continue
+                pos_type = (pos.get('position_type') or 'day').lower()
+                entry_time = pos.get('entry_time', '')
+                if pos_type == 'day':
+                    # Only restore day positions entered today (ET); purge stale ones
+                    entry_date = entry_time[:10] if entry_time else ''
+                    if entry_date != today_et:
+                        db_manager.delete_brown_position(pid)
+                        purged += 1
+                        continue
+                pos.setdefault('unrealized_pnl', 0.0)
+                _brown_bot_active_positions[pid] = pos
+                sym = pos.get('symbol', '')
+                if sym:
+                    _brown_attempted_symbols.add(sym)
+                    _brown_entry_counts[sym] = _brown_entry_counts.get(sym, 0) + 1
+                restored += 1
+        if purged:
+            _add_brown_log('info', f'Purged {purged} stale day position(s) from previous session(s)')
+        if restored:
+            _add_brown_log('info', f'Restored {restored} position(s) from DB after restart')
     except Exception as _e:
         _add_brown_log('warning', f'Position restore from DB failed: {_e}')
 
