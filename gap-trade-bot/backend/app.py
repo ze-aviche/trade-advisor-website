@@ -318,11 +318,12 @@ def start_position_sync_scheduler():
 def add_entry_bot_log(level, message):
     """Add a log entry to the Entry Bot logs"""
     global entry_bot_logs, _entry_bot_log_id
+    import pytz as _tz
+    _et_now = datetime.now(_tz.timezone('US/Eastern'))
     _entry_bot_log_id += 1
-    timestamp = datetime.now().isoformat()
     log_entry = {
         'id': _entry_bot_log_id,
-        'timestamp': timestamp,
+        'timestamp': _et_now.strftime('%Y-%m-%dT%H:%M:%S ET'),
         'level': level,
         'message': message
     }
@@ -344,10 +345,12 @@ def add_entry_bot_log(level, message):
 def _add_brown_log(level: str, message: str):
     """Add a log entry to the BrownBot activity log."""
     global _brown_bot_logs, _brown_bot_log_id
+    import pytz as _tz
+    _et_now = datetime.now(_tz.timezone('US/Eastern'))
     _brown_bot_log_id += 1
     _brown_bot_logs.append({
         'id': _brown_bot_log_id,
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': _et_now.strftime('%Y-%m-%dT%H:%M:%S ET'),
         'level': level,
         'message': message,
     })
@@ -1468,13 +1471,16 @@ def forgot_password():
         if not email:
             return jsonify({'success': False, 'error': 'Email is required'}), 400
         user = db_manager.get_user_by_email(email)
-        # Always return success to prevent email enumeration
-        generic_ok = jsonify({'success': True, 'message': 'If that email is registered, a reset link has been sent.'})
-        if not user or not user.get('is_active', 1):
-            return generic_ok
+        if not user:
+            return jsonify({'success': False, 'error': 'No account found with that email address'}), 404
+        if not user.get('is_active', 1):
+            return jsonify({'success': False, 'error': 'This account has been deactivated'}), 403
         token = _secrets.token_urlsafe(32)
         expires_at = _dt.now() + _td(hours=1)
-        db_manager.set_reset_token(user['id'], token, expires_at)
+        ok = db_manager.set_reset_token(user['id'], token, expires_at)
+        if not ok:
+            app_logger.error("Failed to store reset token for user %s", user['id'])
+            return jsonify({'success': False, 'error': 'Could not generate reset token. Please try again.'}), 500
         app_logger.info("Password reset token generated for user %s", user['id'])
 
         # Build the reset URL
@@ -1510,7 +1516,7 @@ def forgot_password():
         else:
             app_logger.warning("Reset email not sent: GMAIL credentials not configured. Token: %s", token)
 
-        return generic_ok
+        return jsonify({'success': True, 'message': 'A reset link has been sent to your email address.'})
     except Exception as e:
         app_logger.error(f"Error generating reset token: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1546,7 +1552,10 @@ def reset_password():
             except Exception:
                 pass
         password_hash = _am.hash_password(new_password)
-        db_manager.update_user_password(user['id'], password_hash)
+        ok, err = db_manager.update_user_password(user['id'], password_hash)
+        if not ok:
+            app_logger.error("Failed to update password for user %s: %s", user['id'], err)
+            return jsonify({'success': False, 'error': 'Failed to update password. Please try again.'}), 500
         db_manager.clear_reset_token(user['id'])
         return jsonify({'success': True, 'message': 'Password reset successfully. You can now log in.'})
     except Exception as e:

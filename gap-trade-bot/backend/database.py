@@ -663,7 +663,7 @@ class DatabaseManager:
                 row = cursor.fetchone()
                 return dict(row) if row else None
         except Exception as e:
-            print(f"Database error getting user by email: {e}")
+            _db_logger.error(f"Database error getting user by email: {e}", exc_info=True)
             return None
 
     def set_reset_token(self, user_id, token, expires_at):
@@ -678,7 +678,7 @@ class DatabaseManager:
                 conn.commit()
                 return True
         except Exception as e:
-            print(f"Error setting reset token: {e}")
+            _db_logger.error(f"Error setting reset token for user {user_id}: {e}", exc_info=True)
             return False
 
     def get_user_by_reset_token(self, token):
@@ -693,7 +693,7 @@ class DatabaseManager:
                 row = cursor.fetchone()
                 return dict(row) if row else None
         except Exception as e:
-            print(f"Error looking up reset token: {e}")
+            _db_logger.error(f"Error looking up reset token: {e}", exc_info=True)
             return None
 
     def clear_reset_token(self, user_id):
@@ -707,7 +707,7 @@ class DatabaseManager:
                 )
                 conn.commit()
         except Exception as e:
-            print(f"Error clearing reset token: {e}")
+            _db_logger.error(f"Error clearing reset token for user {user_id}: {e}", exc_info=True)
 
     def update_user_system_role(self, user_id, system_role):
         """Set or clear a user's system role"""
