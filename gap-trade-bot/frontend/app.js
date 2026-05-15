@@ -260,8 +260,11 @@ const app = createApp({
                 swingSourceExpanded: null,
                 
                 // Trade History
-                tradeHistoryPeriod: '365', // Default to 1 year to include more historical trades
-                tradeHistoryTicker: '', // Ticker search filter
+                tradeHistoryTicker: '',
+                tradeHistoryStartDate: '',
+                tradeHistoryEndDate: '',
+                tradeHistoryStyle: '',
+                tradeHistoryStatus: '',
                 
                 // Positions History
                 positions: [],
@@ -678,7 +681,12 @@ const app = createApp({
 
             sortedTrades() {
                 const { key, dir } = this.tradesSort;
-                return [...this.trades].sort((a, b) => {
+                let list = this.trades;
+                if (this.tradeHistoryStyle)
+                    list = list.filter(t => t.position_type === this.tradeHistoryStyle);
+                if (this.tradeHistoryStatus)
+                    list = list.filter(t => t.direction === this.tradeHistoryStatus);
+                return [...list].sort((a, b) => {
                     let va = a[key], vb = b[key];
                     if (va == null) return 1;
                     if (vb == null) return -1;
@@ -3341,25 +3349,11 @@ const app = createApp({
                     
                     // Build query parameters
                     const params = new URLSearchParams();
-                
-                // Convert period to date range
-                const days = parseInt(this.tradeHistoryPeriod);
-                const endDate = new Date().toISOString().split('T')[0];
-                
-                // Handle "All Time" option (value 0)
-                if (days === 0) {
-                    // Don't apply date filters for "All Time"
-                    params.append('limit', '1000');
-                } else {
-                    const startDate = new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
-                    params.append('start_date', startDate);
-                    params.append('end_date', endDate);
-                    params.append('limit', '1000');
-                }
-                    
-                    if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim()) {
+                params.append('limit', '1000');
+                if (this.tradeHistoryStartDate) params.append('start_date', this.tradeHistoryStartDate);
+                if (this.tradeHistoryEndDate)   params.append('end_date',   this.tradeHistoryEndDate);
+                if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim())
                     params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
-                    }
                     
                     const response = await fetch(`/api/trades?${params.toString()}`);
                     const data = await response.json();
@@ -5162,18 +5156,17 @@ const app = createApp({
         
         // Helper method to clear trade history for a specific ticker
         clearTradeHistoryTicker() {
-            if (!this.tradeHistoryTicker.trim()) {
-                this.showNotification('Please enter a ticker symbol', 'warning');
-                return;
-            }
-            
-            // Filter out trades for the specified ticker
-            this.tradeHistory = this.tradeHistory.filter(trade => 
-                trade.symbol !== this.tradeHistoryTicker.toUpperCase()
-            );
-            
-            this.showNotification(`Cleared trade history for ${this.tradeHistoryTicker.toUpperCase()}`, 'success');
             this.tradeHistoryTicker = '';
+            this.loadTradeHistory();
+        },
+
+        clearTradeFilters() {
+            this.tradeHistoryTicker    = '';
+            this.tradeHistoryStartDate = '';
+            this.tradeHistoryEndDate   = '';
+            this.tradeHistoryStyle     = '';
+            this.tradeHistoryStatus    = '';
+            this.loadTradeHistory();
         },
         
         // Helper method to clear positions history for a specific ticker

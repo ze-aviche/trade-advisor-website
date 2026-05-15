@@ -2466,40 +2466,64 @@
 
                     <!-- Controls Section -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <!-- Left Column: Search -->
-                        <div class="space-y-4">
-                            <!-- Search and Filter -->
-                            <div class="bg-gray-700 rounded-lg p-4">
-                                <h4 class="text-sm font-medium text-white mb-3">Search & Filter</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-sm text-gray-400 mb-2">Ticker Symbol</label>
-                                        <div class="flex items-center space-x-2">
-                                            <input v-model="tradeHistoryTicker" 
-                                                   @keyup.enter="loadTradeHistory"
-                                                   @input="onTradeHistoryTickerChange"
-                                                   placeholder="e.g., AAPL"
-                                                   class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                            <button @click="clearTradeHistoryTicker" 
-                                                    v-if="tradeHistoryTicker"
-                                                    class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        </div>
+                        <!-- Left Column: Search & Filter -->
+                        <div class="bg-gray-700 rounded-lg p-4 space-y-4">
+                            <h4 class="text-sm font-medium text-white">Search & Filter</h4>
+                            <!-- Row 1: Ticker + Date Range -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Ticker</label>
+                                    <div class="flex items-center space-x-1">
+                                        <input v-model="tradeHistoryTicker"
+                                               @keyup.enter="loadTradeHistory"
+                                               @input="onTradeHistoryTickerChange"
+                                               placeholder="e.g., AAPL"
+                                               class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        <button @click="clearTradeHistoryTicker"
+                                                v-if="tradeHistoryTicker"
+                                                class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
+                                            <i class="fas fa-times"></i>
+                                        </button>
                                     </div>
-                                    <div>
-                                        <label class="block text-sm text-gray-400 mb-2">Time Period</label>
-                                        <select v-model="tradeHistoryPeriod" @change="loadTradeHistory" 
-                                                class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                            <option value="1">1 Day</option>
-                                            <option value="7">1 Week</option>
-                                            <option value="30">1 Month</option>
-                                            <option value="90">3 Months</option>
-                                            <option value="180">6 Months</option>
-                                            <option value="365">1 Year</option>
-                                            <option value="0">All Time</option>
-                                        </select>
-                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Start Date</label>
+                                    <input v-model="tradeHistoryStartDate" type="date"
+                                           @change="loadTradeHistory"
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">End Date</label>
+                                    <input v-model="tradeHistoryEndDate" type="date"
+                                           @change="loadTradeHistory"
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                </div>
+                            </div>
+                            <!-- Row 2: Style + Status + Clear -->
+                            <div class="grid grid-cols-3 gap-3 items-end">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Style</label>
+                                    <select v-model="tradeHistoryStyle"
+                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        <option value="">All Styles</option>
+                                        <option value="day">Day</option>
+                                        <option value="swing">Swing</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Status</label>
+                                    <select v-model="tradeHistoryStatus"
+                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        <option value="">All</option>
+                                        <option value="buy">Buy</option>
+                                        <option value="sell">Sell</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <button @click="clearTradeFilters"
+                                            class="w-full bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded-md text-sm font-medium text-gray-300">
+                                        <i class="fas fa-times mr-1"></i>Clear
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -2508,11 +2532,11 @@
                         <div class="bg-gray-700 rounded-lg p-4">
                             <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
                             <div class="grid grid-cols-2 gap-3">
-                                <button @click="downloadTradeHistoryCSV" 
+                                <button @click="downloadTradeHistoryCSV"
                                         class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
                                     <i class="fas fa-download mr-2"></i>Export CSV
                                 </button>
-                                <button @click="downloadTradeHistoryExcel" 
+                                <button @click="downloadTradeHistoryExcel"
                                         class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
                                     <i class="fas fa-download mr-2"></i>Export Excel
                                 </button>
