@@ -545,7 +545,7 @@ const app = createApp({
                         ],
                     },
                     trades: {
-                        label: 'Trade History', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-exchange-alt', color: 'purple',
+                        label: 'Orders', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-exchange-alt', color: 'purple',
                         tagline: 'Every trade logged, analyzed, and actionable.',
                         features: [
                             { icon: 'fa-list-alt',      text: 'Complete record of all executed trades' },
