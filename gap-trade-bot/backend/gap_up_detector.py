@@ -32,7 +32,7 @@ _SESSION_MAP = {
     'pre_market':  'premarket',
     'open':        'intraday',
     'after_hours': 'afterhours',
-    'closed':      'intraday',   # outside hours → bucket into intraday as fallback
+    'closed':      'premarket',  # overnight (midnight–4 AM) → next day's pre-market
 }
 
 def _load_session_tracker():

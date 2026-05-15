@@ -5633,6 +5633,11 @@ def update_real_time_gap_ups():
                 market_status = check_market_timing()
                 interval      = INTERVALS.get(market_status, 300)
 
+                # Skip entire closed window (8 PM–4 AM ET) — no market activity
+                if market_status == 'closed':
+                    time.sleep(interval)
+                    continue
+
                 latest_gap_ups = get_gap_up_stocks_for_frontend()
                 real_time_gap_ups = latest_gap_ups
                 broadcast_gap_ups()
