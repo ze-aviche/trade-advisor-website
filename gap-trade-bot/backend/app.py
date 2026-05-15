@@ -3093,6 +3093,30 @@ def _brown_bot_scan_and_enter():
         and _float_ok(s)
     }
 
+    # Log per-stock filter results so we can see exactly why each raw candidate passed or failed
+    _add_brown_log('info',
+        f'Scanner: {len(raw_gaps)} raw gaps → {len(scanner_hits)} passed filters '
+        f'(gap≥{min_gap}%, price ${min_price:.0f}–${max_price:.0f}, vol≥{min_vol_m}M'
+        + (f', float{float_op}{float_val}M' if float_val > 0 else '') + ')'
+    )
+    for _s in raw_gaps:
+        _t = _s.get('ticker', '?')
+        if _t in scanner_hits:
+            continue
+        _reasons = []
+        if _s.get('gap_percent', 0) < min_gap:
+            _reasons.append(f'gap {_s.get("gap_percent", 0):.1f}% < {min_gap}%')
+        _p = _s.get('price', 0)
+        if not (min_price <= _p <= max_price):
+            _reasons.append(f'price ${_p:.2f} outside ${min_price}–${max_price}')
+        _vm = _s.get('volume', 0) / 1_000_000
+        if _vm < min_vol_m:
+            _reasons.append(f'vol {_vm:.2f}M < {min_vol_m}M')
+        if not _float_ok(_s):
+            _fm = _s.get('float_shares', 0) / 1_000_000
+            _reasons.append(f'float {_fm:.1f}M failed {float_op}{float_val}M')
+        app_logger.debug(f'BrownBot FILTER-OUT {_t}: {", ".join(_reasons) or "unknown"}')
+
     # Snapshot active state under lock
     with _brown_bot_lock:
         active_symbols = {p['symbol'] for p in _brown_bot_active_positions.values()}
@@ -3100,6 +3124,8 @@ def _brown_bot_scan_and_enter():
 
     # Day time gate (configurable, default 09:35–10:30 ET)
     _gate_enabled = bool(config.get('day_time_gate_enabled', True))
+    day_window_open = True
+    _gate_str = 'disabled'
     if _gate_enabled:
         try:
             _gs = config.get('day_time_gate_start', '09:35').split(':')
@@ -3107,18 +3133,24 @@ def _brown_bot_scan_and_enter():
             day_open  = now_et.replace(hour=int(_gs[0]), minute=int(_gs[1]), second=0, microsecond=0)
             day_close = now_et.replace(hour=int(_ge[0]), minute=int(_ge[1]), second=0, microsecond=0)
             day_window_open = day_open <= now_et <= day_close
+            _gate_str = f'{_gs[0]}:{_gs[1]}–{_ge[0]}:{_ge[1]} ET'
         except Exception:
             day_window_open = True  # parse error → don't block entries
-    else:
-        day_window_open = True  # gate disabled → always allow
+            _gate_str = 'parse error → open'
+    _add_brown_log('info',
+        f'Day time gate: {"OPEN" if day_window_open else "CLOSED"} '
+        f'(now {now_et.strftime("%H:%M")} ET, window {_gate_str})'
+    )
 
     # ── Process auto-scanned gap-up candidates (day trade) ──
     for symbol, s in scanner_hits.items():
         if not _brown_bot_running:
             return
         if symbol in active_symbols:
+            _add_brown_log('info', f'SKIP {symbol}: already in active positions')
             continue
         if not day_window_open:
+            _add_brown_log('info', f'SKIP {symbol}: outside day time gate ({now_et.strftime("%H:%M")} ET, window {_gate_str})')
             continue
         # Intraday trend signal check
         sig_ok, sig_checks, sig_reason = _check_day_entry_signal(
@@ -3132,7 +3164,7 @@ def _brown_bot_scan_and_enter():
         if _brown_risk_manager:
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
             if not allowed:
-                _add_brown_log('warning', f'SKIP {symbol} (day): {reason}')
+                _add_brown_log('warning', f'SKIP {symbol} [RISK] {reason}')
                 continue
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
         _brown_enter_position(symbol, 'day', config, s.get('price', 0))
