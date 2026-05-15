@@ -803,7 +803,41 @@ const app = createApp({
                         else if (skippedSymbols.has(p.ticker)) status = 'skipped';
                         return { ...p, status };
                     });
-            }
+            },
+
+            // ── BrownBot P&L summary ──────────────────────────────────────
+            bbUnrealizedByTicker() {
+                const map = {};
+                for (const pos of (this.brownBotStatus.active_positions || [])) {
+                    map[pos.symbol] = (map[pos.symbol] || 0) + (pos.unrealized_pnl || 0);
+                }
+                return map;
+            },
+            bbTotalUnrealized() {
+                return (this.brownBotStatus.active_positions || [])
+                    .reduce((sum, p) => sum + (p.unrealized_pnl || 0), 0);
+            },
+            bbTotalRealized() {
+                return this.brownBotRiskStatus.daily_pnl || 0;
+            },
+            bbTotalPnl() {
+                return this.bbTotalRealized + this.bbTotalUnrealized;
+            },
+            bbPnlByTickerMerged() {
+                // Merge realized (from DB) and unrealized (from active positions) per ticker
+                const map = {};
+                for (const t of (this.brownBotRiskStatus.pnl_by_ticker || [])) {
+                    map[t.symbol] = { symbol: t.symbol, realized: t.pnl || 0, unrealized: 0, trades: t.trades || 0, shares: t.shares || 0 };
+                }
+                for (const [sym, unr] of Object.entries(this.bbUnrealizedByTicker)) {
+                    if (map[sym]) {
+                        map[sym].unrealized = unr;
+                    } else {
+                        map[sym] = { symbol: sym, realized: 0, unrealized: unr, trades: 0, shares: 0 };
+                    }
+                }
+                return Object.values(map).sort((a, b) => (b.realized + b.unrealized) - (a.realized + a.unrealized));
+            },
         },
 
         mounted() {
