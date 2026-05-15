@@ -1871,16 +1871,28 @@
 
                 <!-- Config Panel -->
                 <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700 cursor-pointer select-none"
+                         @click="brownBotConfigCollapsed = !brownBotConfigCollapsed">
                         <div class="flex items-center gap-2 text-white font-semibold">
                             <i class="fas fa-sliders-h text-amber-400"></i> Configuration
+                            <span v-if="brownBotConfigCollapsed" class="text-xs text-gray-500 font-normal">(collapsed)</span>
                         </div>
-                        <button @click="saveBrownBotConfig" :disabled="loading.brownBotConfig"
-                                class="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-all">
-                            <i v-if="loading.brownBotConfig" class="fas fa-spinner fa-spin mr-1"></i>
-                            <i v-else class="fas fa-save mr-1"></i>Save
-                        </button>
+                        <div class="flex items-center gap-2" @click.stop>
+                            <button @click="saveBrownBotConfig" :disabled="loading.brownBotConfig || brownBotConfigCollapsed"
+                                    v-show="!brownBotConfigCollapsed"
+                                    class="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-all">
+                                <i v-if="loading.brownBotConfig" class="fas fa-spinner fa-spin mr-1"></i>
+                                <i v-else class="fas fa-save mr-1"></i>Save
+                            </button>
+                            <button class="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700 transition-all"
+                                    :title="brownBotConfigCollapsed ? 'Expand configuration' : 'Collapse configuration'">
+                                <i class="fas fa-chevron-down text-sm transition-transform duration-200"
+                                   :style="brownBotConfigCollapsed ? 'transform:rotate(180deg)' : ''"></i>
+                            </button>
+                        </div>
                     </div>
+                    <!-- Collapsible config body -->
+                    <div v-show="!brownBotConfigCollapsed">
                     <!-- Row 1: Day Trade | Day Entry Filters | Day Scanner Filters -->
                     <div class="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
 
@@ -2308,6 +2320,7 @@
                             <span class="text-[10px] text-gray-500"><span class="text-gray-400 font-semibold">Entered Today</span> — filled this session, will not re-enter</span>
                         </div>
                     </div>
+                    </div><!-- /collapsible config body -->
 
                 </div>
 

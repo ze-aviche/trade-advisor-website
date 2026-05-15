@@ -381,6 +381,7 @@ const app = createApp({
                 max_concurrent_swing: 5,
                 circuit_breaker_open: false,
             },
+            brownBotConfigCollapsed: false,
 
             // Broker connection settings
             supportedBrokers: [],
