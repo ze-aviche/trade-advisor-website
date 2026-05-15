@@ -806,6 +806,16 @@ const app = createApp({
 
         mounted() {
             console.log('🎯 Vue.js app mounted successfully');
+
+            // Paint cached gap-ups immediately — before any async work — so the
+            // tab is never blank on login or refresh.
+            const _earlyCache = this._getGapUpsCache();
+            if (_earlyCache && _earlyCache.length > 0) {
+                this.gapUps = _earlyCache;
+                this.prevGapUpTickers = _earlyCache.map(s => s.ticker);
+                this.dashboardStats.gapUps = _earlyCache.length;
+            }
+
             // Dismiss the loading screen now that Vue has rendered real content
             const loader = document.getElementById('app-loader');
             if (loader) {
@@ -912,7 +922,11 @@ const app = createApp({
 
                 // Validate session with backend and seed expiry time
                 this.validateSession().then(ok => {
-                    if (ok) this.pingSessionOnce();
+                    if (ok) {
+                        this.pingSessionOnce();
+                        this.loadGapUps();          // load gap-ups as soon as auth confirms
+                        this.loadGapUpSnapshotDates();
+                    }
                 });
             },
             
@@ -4316,47 +4330,40 @@ const app = createApp({
         async forceRefreshDashboard() {
             console.log('🔄 Force refreshing dashboard data...');
             this.loading.dashboard = true;
-            this.loading.gapUps = true;
-            
+
             try {
-                // Clear existing data
                 this.dashboardStats = {
-                    totalPositions: 0,
-                    winRate: 0,
-                    totalPnl: 0,
-                    activePositions: 0,
-                    gapUps: 0
+                    totalPositions: 0, winRate: 0, totalPnl: 0,
+                    activePositions: 0, gapUps: this.gapUps.length
                 };
                 this.dashboardPositions = [];
                 this.dashboardAnalytics = {
-                    totalPositions: 0,
-                    overallWinRate: 0,
-                    totalPnl: 0,
-                    avgPositionPnl: 0,
+                    totalPositions: 0, overallWinRate: 0, totalPnl: 0, avgPositionPnl: 0,
                     longPositions: { count: 0, winRate: 0, pnl: 0 },
                     shortPositions: { count: 0, winRate: 0, pnl: 0 },
                     topPerformers: { bestTicker: '', bestPnl: 0 }
                 };
-                this.gapUps = [];
+                // Note: gapUps and trades are NOT cleared here.
+                // loadGapUps() manages its own data and handles the silent merge path.
                 this.trades = [];
-                
-                // Reload all data
-                await this.loadDashboardData();
-                await this.loadBotStatus();
-                
-                // Update charts
+
+                await Promise.all([
+                    this.loadDashboardData(),
+                    this.loadBotStatus(),
+                    this.loadGapUps(),   // gap-ups refresh with proper spinner + cache handling
+                ]);
+
                 this.$nextTick(() => {
                     this.updatePnlChart();
                     this.updatePositionsChart();
                 });
-                
+
                 this.showNotification('Dashboard refreshed successfully', 'success');
             } catch (error) {
                 console.error('❌ Error force refreshing dashboard:', error);
                 this.showNotification('Failed to refresh dashboard: ' + error.message, 'error');
             } finally {
                 this.loading.dashboard = false;
-                this.loading.gapUps = false;
             }
         },
         
