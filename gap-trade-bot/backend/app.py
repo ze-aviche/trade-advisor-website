@@ -3082,6 +3082,11 @@ def _brown_bot_scan_and_enter():
 
     config = db_manager.get_brown_bot_config()
 
+    # Rebuild RiskManager from fresh config each iteration so UI config changes
+    # (slot caps, loss limit) take effect immediately without restarting the bot.
+    if RISK_MANAGER_AVAILABLE:
+        _brown_risk_manager = RiskManager(config)
+
     # Use the live in-memory data kept current by the gap-up monitor loop.
     # Falls back to today's DB snapshot when the monitor hasn't populated yet.
     # Never drives a new Polygon API call from inside the BrownBot loop.
