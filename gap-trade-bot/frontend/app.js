@@ -3365,19 +3365,21 @@ const app = createApp({
                     const data = await response.json();
                     
                     if (data.success) {
-                    // Transform the data to match the expected format from database
+                    const sideLabel = { B: 'buy', S: 'sell', SS: 'short' };
                     this.trades = (data.data.trades || []).map(trade => ({
-                        id: trade.id,
-                        ticker: trade.symbol,
-                        direction: trade.side === 'B' ? 'long' : (trade.side === 'S' ? 'short' : 'short'),
-                        quantity: trade.quantity,
-                        price: trade.price,
-                        status: 'filled',
-                        pnl: trade.pnl || 0,
-                        submitted_at: trade.trade_date + ' ' + trade.trade_time,
-                        route: trade.route,
-                        order_id: trade.order_id,
-                        ecn_fee: trade.ecn_fee
+                        id:            trade.id,
+                        ticker:        trade.symbol,
+                        direction:     sideLabel[trade.side] || trade.side,
+                        quantity:      trade.quantity,
+                        price:         trade.price,
+                        status:        'filled',
+                        pnl:           trade.pnl || 0,
+                        submitted_at:  trade.trade_date + ' ' + (trade.trade_time || ''),
+                        route:         trade.route,
+                        order_id:      trade.order_id,
+                        ecn_fee:       trade.ecn_fee,
+                        position_type: trade.position_type || 'day',
+                        source:        trade.source || 'brownbot',
                     }));
                     
                     console.log(`📊 Loaded ${this.trades.length} trades from database${this.tradeHistoryTicker ? ` for ${this.tradeHistoryTicker}` : ''}`);

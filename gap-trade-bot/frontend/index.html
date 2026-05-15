@@ -1817,6 +1817,939 @@
 
             </div>
             <!-- end Swing tab -->
+
+            <div v-if="activeTab === 'brown-bot' && canAccessTab('brown-bot')" class="space-y-6">
+
+                <!-- Status Bar -->
+                <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="relative">
+                                <div :class="brownBotStatus?.running ? 'bg-green-400' : 'bg-gray-500'"
+                                     class="w-3 h-3 rounded-full transition-colors"
+                                     :style="brownBotStatus?.running ? 'box-shadow: 0 0 8px #4ade80' : ''"></div>
+                            </div>
+                            <div>
+                                <div class="text-white font-semibold flex items-center gap-2">
+                                    <i class="fas fa-brain text-amber-400"></i>
+                                    BrownBot
+                                    <span :class="brownBotStatus?.running ? 'bg-green-500/20 text-green-300 border-green-500/40' : 'bg-gray-700 text-gray-400 border-gray-600'"
+                                          class="text-xs px-2 py-0.5 rounded-full border font-medium">
+                                        {{ brownBotStatus?.running ? 'RUNNING' : 'STOPPED' }}
+                                    </span>
+                                </div>
+                                <div class="text-xs text-gray-400 mt-0.5">Autonomous day &amp; swing trading · Yogi tier</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <!-- Stats chips -->
+                            <div class="hidden sm:flex items-center gap-2 text-xs text-gray-400">
+                                <span class="bg-gray-700 px-2 py-1 rounded">
+                                    <i class="fas fa-sun text-yellow-400 mr-1"></i>Day: {{ brownBotStatus.stats?.day_entered || 0 }} in / {{ brownBotStatus.stats?.day_exited || 0 }} out
+                                </span>
+                                <span class="bg-gray-700 px-2 py-1 rounded">
+                                    <i class="fas fa-moon text-blue-400 mr-1"></i>Swing: {{ brownBotStatus.stats?.swing_entered || 0 }} in / {{ brownBotStatus.stats?.swing_exited || 0 }} out
+                                </span>
+                            </div>
+                            <button @click="toggleBrownBot" :disabled="loading.brownBotToggle"
+                                    :class="brownBotStatus?.running ? 'bg-green-600 hover:bg-green-700 ring-2 ring-green-400/40' : 'bg-amber-600 hover:bg-amber-700'"
+                                    class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50">
+                                <i v-if="loading.brownBotToggle" class="fas fa-spinner fa-spin"></i>
+                                <i v-else :class="brownBotStatus?.running ? 'fas fa-stop' : 'fas fa-play'"></i>
+                                {{ loading.brownBotToggle ? '...' : brownBotStatus?.running ? 'Stop Bot' : 'Start Bot' }}
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Config Panel -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="flex items-center gap-2 text-white font-semibold">
+                            <i class="fas fa-sliders-h text-amber-400"></i> Configuration
+                        </div>
+                        <button @click="saveBrownBotConfig" :disabled="loading.brownBotConfig"
+                                class="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-all">
+                            <i v-if="loading.brownBotConfig" class="fas fa-spinner fa-spin mr-1"></i>
+                            <i v-else class="fas fa-save mr-1"></i>Save
+                        </button>
+                    </div>
+                    <!-- Row 1: Day Trade | Day Entry Filters | Day Scanner Filters -->
+                    <div class="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+
+                        <!-- Day Trade -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-yellow-400"></div>
+                                <span class="text-xs font-bold text-yellow-400 uppercase tracking-widest">Day Trade Config</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">exits &amp; timing</span>
+                            </div>
+                            <!-- Targets -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Profit Target %</label>
+                                    <input v-model.number="brownBotConfig.day_profit_target_pct" type="number" step="0.5" min="1" max="50"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Stop Loss %</label>
+                                    <input v-model.number="brownBotConfig.day_stop_loss_pct" type="number" step="0.5" min="0.5" max="20"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Breakeven Trigger
+                                    <span class="text-gray-600 ml-1">— % of target reached → move stop to entry</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.day_breakeven_trigger_pct" type="number" step="5" min="0" max="100"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">EOD Exit Time (ET)</label>
+                                <input v-model="brownBotConfig.day_eod_exit_time" type="time"
+                                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                            </div>
+                            <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.day_trailing_stop_enabled" type="checkbox" id="bb-day-trail" class="rounded border-gray-600 accent-yellow-400">
+                                <span class="text-xs text-gray-300">Trailing Stop</span>
+                                <input v-if="brownBotConfig.day_trailing_stop_enabled" v-model.number="brownBotConfig.day_trailing_stop_pct"
+                                       type="number" step="0.5" min="0.5" max="10" placeholder="%"
+                                       class="w-16 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500 ml-auto">
+                            </label>
+                            <!-- Time Gate -->
+                            <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-2">
+                                <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_time_gate_enabled" type="checkbox" id="bb-day-gate" class="rounded border-gray-600 accent-yellow-400">
+                                    <span class="text-xs text-gray-300">Entry Time Gate (ET)</span>
+                                </label>
+                                <div v-if="brownBotConfig.day_time_gate_enabled" class="grid grid-cols-2 gap-2 mt-1">
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">From</label>
+                                        <input v-model="brownBotConfig.day_time_gate_start" type="time"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">To</label>
+                                        <input v-model="brownBotConfig.day_time_gate_end" type="time"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Position limit -->
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Position Limit</span>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Open Positions</label>
+                                    <input v-model.number="brownBotConfig.max_concurrent_day" type="number" min="1" max="10"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Day Entry Filters -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-cyan-400"></div>
+                                <span class="text-xs font-bold text-cyan-400 uppercase tracking-widest">Day Trade Entry Filters</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">intraday trend</span>
+                            </div>
+                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Each enabled filter must pass before an entry is placed. Shown as signal badges in the Candidates table.</p>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.day_check_vwap" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">VWAP — price above session average</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires close ≥ VWAP computed from 09:30 ET</p>
+                                </div>
+                            </label>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.day_check_candle" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">CANDLE — last 1-min bar is bullish</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires close &gt; open on the most recent bar</p>
+                                </div>
+                            </label>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.day_check_volume_surge" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">VOL — entry bar volume surge</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires entry bar ≥ 1.5× the 10-bar average</p>
+                                </div>
+                            </label>
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <label class="block text-xs text-gray-400 mb-0.5">
+                                    EXT — max extension from gap price
+                                </label>
+                                <p class="text-[10px] text-gray-600 mb-2">Rejects entries where price has run too far above the pre-market gap. Set to 0 to disable.</p>
+                                <div class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.day_max_extension_pct" type="number" step="1" min="0" max="50"
+                                           placeholder="0 = off"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Day Scanner Filters -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-amber-500"></div>
+                                <span class="text-xs font-bold text-amber-500 uppercase tracking-widest">Day Trade Scanner Filters</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">candidate thresholds</span>
+                            </div>
+                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Applied to the gap-up universe before any signal check. Stocks that don't meet these thresholds never appear as day trade candidates.</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Min Gap %</label>
+                                    <input v-model.number="brownBotConfig.min_gap_pct" type="number" step="1" min="1"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Min Volume (M)</label>
+                                    <input v-model.number="brownBotConfig.min_volume_m" type="number" step="0.1" min="0.1"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Min Price ($)</label>
+                                    <input v-model.number="brownBotConfig.min_price" type="number" step="1" min="1"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Price ($)</label>
+                                    <input v-model.number="brownBotConfig.max_price" type="number" step="50" min="10"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Float Filter (M shares)
+                                    <span class="text-gray-600 ml-1">— 0 = off</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <select v-model="brownBotConfig.float_operator"
+                                            class="bg-gray-800 border border-gray-600 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-amber-500 w-16">
+                                        <option value="<=">≤</option>
+                                        <option value=">=">≥</option>
+                                    </select>
+                                    <input v-model.number="brownBotConfig.max_float_m" type="number" step="5" min="0"
+                                           placeholder="0 = off"
+                                           class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Row 2: Swing Trade | Portfolio Risk -->
+                    <div class="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                        <!-- Swing Trade -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-blue-400"></div>
+                                <span class="text-xs font-bold text-blue-400 uppercase tracking-widest">Swing Trade Config</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">exits &amp; holds</span>
+                            </div>
+                            <!-- Targets -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Profit Target %</label>
+                                    <input v-model.number="brownBotConfig.swing_profit_target_pct" type="number" step="1" min="5" max="100"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Stop Loss %</label>
+                                    <input v-model.number="brownBotConfig.swing_stop_loss_pct" type="number" step="1" min="2" max="30"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Breakeven Trigger
+                                    <span class="text-gray-600 ml-1">— % of target reached → move stop to entry</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.swing_breakeven_trigger_pct" type="number" step="5" min="0" max="100"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Max Hold Days</label>
+                                <input v-model.number="brownBotConfig.swing_max_hold_days" type="number" step="1" min="1" max="90"
+                                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                            </div>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.swing_earnings_protection_enabled" type="checkbox" id="bb-earn" class="rounded border-gray-600 accent-blue-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">Earnings Protection</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Auto-exit before confirmed upcoming earnings date</p>
+                                </div>
+                            </label>
+                            <!-- Position limit -->
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Position Limit</span>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Open Positions</label>
+                                    <input v-model.number="brownBotConfig.max_concurrent_swing" type="number" min="1" max="20"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Portfolio Risk -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-red-400"></div>
+                                <span class="text-xs font-bold text-red-400 uppercase tracking-widest">Portfolio Risk</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">circuit breaker</span>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-0.5">Max Daily Loss ($)</label>
+                                <p class="text-[10px] text-gray-600 mb-2">Halts all new entries (day and swing) for the rest of the session once today's realized P&amp;L reaches this threshold. Enter as a negative number.</p>
+                                <input v-model.number="brownBotConfig.max_daily_loss" type="number" step="50" max="-1"
+                                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Candidates Panels -->
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+                    <!-- Day Trade Candidates -->
+                    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                            <div class="text-white font-semibold flex items-center gap-2">
+                                <i class="fas fa-bolt text-yellow-400"></i>
+                                Day Trade Candidates
+                                <span class="bg-yellow-600/20 text-yellow-300 border border-yellow-600/40 text-xs px-2 py-0.5 rounded-full">
+                                    {{ brownBotCandidates.scanner.length }}
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button @click="loadCandidateSignals" :disabled="loading.brownBotSignals || !brownBotCandidates.scanner.length"
+                                        class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-40 flex items-center gap-1"
+                                        title="Re-check intraday signals">
+                                    <i :class="loading.brownBotSignals ? 'fas fa-spinner fa-spin' : 'fas fa-chart-line'"></i>
+                                    Signals
+                                </button>
+                                <button @click="loadBrownBotCandidates" :disabled="loading.brownBotCandidates"
+                                        class="text-xs text-gray-400 hover:text-yellow-400 transition-colors disabled:opacity-50 flex items-center gap-1">
+                                    <i :class="loading.brownBotCandidates ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div v-if="!brownBotCandidates.scanner.length" class="px-4 py-8 text-center text-gray-500 text-xs">
+                            No gap-ups pass current scanner filters
+                        </div>
+                        <div v-else class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="text-gray-500 border-b border-gray-700">
+                                        <th class="px-4 py-2 text-left">Symbol</th>
+                                        <th class="px-4 py-2 text-right">Gap %</th>
+                                        <th class="px-4 py-2 text-right">Price</th>
+                                        <th class="px-4 py-2 text-right">Vol (M)</th>
+                                        <th class="px-4 py-2 text-left text-cyan-500">Signal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="s in brownBotCandidates.scanner" :key="s.ticker"
+                                        class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                                        <td class="px-4 py-2 font-mono font-bold text-white">{{ s.ticker }}</td>
+                                        <td class="px-4 py-2 text-right text-green-400 font-semibold">+{{ s.gap_percent?.toFixed(1) }}%</td>
+                                        <td class="px-4 py-2 text-right text-gray-300">${{ s.price?.toFixed(2) }}</td>
+                                        <td class="px-4 py-2 text-right text-gray-400">{{ ((s.volume || 0) / 1e6).toFixed(2) }}</td>
+                                        <td class="px-4 py-2">
+                                            <template v-if="brownBotSignals[s.ticker]?.loading">
+                                                <i class="fas fa-spinner fa-spin text-gray-500 text-xs"></i>
+                                            </template>
+                                            <template v-else-if="brownBotSignals[s.ticker]?.checks?.length">
+                                                <div class="flex flex-wrap gap-1">
+                                                    <span v-for="c in brownBotSignals[s.ticker].checks" :key="c.name"
+                                                          :class="c.passed ? 'bg-green-900/40 text-green-300 border-green-700/50' : 'bg-red-900/40 text-red-300 border-red-700/50'"
+                                                          class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default"
+                                                          :title="(c.name === 'vwap' ? 'VWAP — close ≥ session average price' : c.name === 'candle' ? 'CANDLE — last 1-min bar closed green (bullish)' : c.name === 'extension' ? 'EXT — price not overextended above gap price' : 'VOL — entry bar volume ≥ 1.5× 10-bar average') + (c.detail ? '\n' + c.detail : '')">
+                                                        {{ c.passed ? '✓' : '✗' }}{{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : 'VOL' }}
+                                                    </span>
+                                                </div>
+                                            </template>
+                                            <template v-else-if="brownBotSignals[s.ticker]">
+                                                <span class="text-xs text-gray-600">—</span>
+                                            </template>
+                                            <template v-else>
+                                                <span class="text-xs text-gray-600">—</span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Signal legend -->
+                        <div v-if="brownBotCandidates.scanner.length" class="px-4 py-2 border-t border-gray-700/40 flex flex-wrap gap-x-5 gap-y-1">
+                            <span class="text-[10px] text-gray-500"><span class="font-mono font-semibold text-cyan-400">VWAP</span> — close ≥ session avg price</span>
+                            <span class="text-[10px] text-gray-500"><span class="font-mono font-semibold text-green-400">CANDLE</span> — last 1-min bar is green</span>
+                            <span class="text-[10px] text-gray-500"><span class="font-mono font-semibold text-amber-400">EXT</span> — not overextended from gap price</span>
+                            <span class="text-[10px] text-gray-500"><span class="font-mono font-semibold text-purple-400">VOL</span> — entry bar ≥ 1.5× avg volume</span>
+                        </div>
+                    </div>
+
+                    <!-- Swing Trade Candidates -->
+                    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                            <div class="text-white font-semibold flex items-center gap-2">
+                                <i class="fas fa-moon text-blue-400"></i>
+                                Swing Trade Candidates
+                                <span class="bg-blue-600/20 text-blue-300 border border-blue-600/40 text-xs px-2 py-0.5 rounded-full">
+                                    {{ swingBotCandidates.length }}
+                                </span>
+                            </div>
+                            <button @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
+                                    class="text-xs text-gray-400 hover:text-blue-400 transition-colors disabled:opacity-50 flex items-center gap-1">
+                                <i :class="loading.swingDailyPicks ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                                Refresh
+                            </button>
+                        </div>
+                        <!-- No picks state -->
+                        <div v-if="!swingDailyPicks" class="px-4 py-8 text-center text-gray-500 text-xs">
+                            No swing picks loaded — open the Swing tab to generate today's picks
+                        </div>
+                        <div v-else-if="!swingBotCandidates.length" class="px-4 py-8 text-center text-gray-500 text-xs">
+                            No Grade A/B Bullish picks available for today's session
+                        </div>
+                        <div v-else class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="text-gray-500 border-b border-gray-700">
+                                        <th class="px-4 py-2 text-left">Symbol</th>
+                                        <th class="px-4 py-2 text-center">Grade</th>
+                                        <th class="px-4 py-2 text-left">Entry Zone</th>
+                                        <th class="px-4 py-2 text-left">Reason</th>
+                                        <th class="px-4 py-2 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="p in swingBotCandidates" :key="p.ticker"
+                                        class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                                        <td class="px-4 py-2 font-mono font-bold text-white">{{ p.ticker }}</td>
+                                        <td class="px-4 py-2 text-center">
+                                            <span :class="p.grade === 'A' ? 'bg-green-900/50 text-green-300 border-green-700/50' : 'bg-blue-900/50 text-blue-300 border-blue-700/50'"
+                                                  class="border rounded px-1.5 py-0.5 font-bold">{{ p.grade }}</span>
+                                        </td>
+                                        <td class="px-4 py-2 text-gray-300">{{ p.entry_zone || '—' }}</td>
+                                        <td class="px-4 py-2 text-gray-400 max-w-[180px] truncate" :title="p.reason">{{ p.reason || '—' }}</td>
+                                        <td class="px-4 py-2 text-center">
+                                            <span v-if="p.status === 'active'"
+                                                  class="bg-green-900/50 text-green-300 border border-green-700/50 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                                                Active
+                                            </span>
+                                            <span v-else-if="p.status === 'entered'"
+                                                  class="bg-gray-700/60 text-gray-400 border border-gray-600/50 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                                                Entered Today
+                                            </span>
+                                            <span v-else-if="p.status === 'skipped'"
+                                                  class="bg-amber-900/40 text-amber-400 border border-amber-700/40 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                                                  title="Order was attempted but rejected (e.g. insufficient buying power). Will not retry this session.">
+                                                Skipped
+                                            </span>
+                                            <span v-else
+                                                  class="bg-blue-900/40 text-blue-300 border border-blue-700/40 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                                                Eligible
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Status legend -->
+                        <div v-if="swingBotCandidates.length" class="px-4 py-2 border-t border-gray-700/40 flex flex-wrap gap-x-5 gap-y-1">
+                            <span class="text-[10px] text-gray-500"><span class="text-green-400 font-semibold">Active</span> — open position currently held</span>
+                            <span class="text-[10px] text-gray-500"><span class="text-blue-400 font-semibold">Eligible</span> — qualified, waiting for next scan</span>
+                            <span class="text-[10px] text-gray-500"><span class="text-amber-400 font-semibold">Skipped</span> — order attempted but rejected (e.g. insufficient buying power), will not retry</span>
+                            <span class="text-[10px] text-gray-500"><span class="text-gray-400 font-semibold">Entered Today</span> — filled this session, will not re-enter</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Risk Status Panel -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-shield-alt text-amber-400"></i>
+                            Risk Status
+                        </div>
+                        <button @click="loadBrownBotRiskStatus" class="text-xs text-gray-400 hover:text-amber-400 transition-colors flex items-center gap-1">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-700">
+                        <!-- Daily P&L -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Daily P&L</div>
+                            <div class="text-xl font-bold font-mono"
+                                 :class="(brownBotRiskStatus.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ (brownBotRiskStatus.daily_pnl || 0) >= 0 ? '+' : '' }}${{ (brownBotRiskStatus.daily_pnl || 0).toFixed(0) }}
+                            </div>
+                            <div class="text-xs text-gray-600 mt-1">limit {{ brownBotRiskStatus.max_daily_loss }}</div>
+                        </div>
+                        <!-- Open Day -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Day Positions</div>
+                            <div class="text-xl font-bold font-mono text-yellow-300">
+                                {{ brownBotRiskStatus.open_day || 0 }}
+                                <span class="text-sm text-gray-500">/ {{ brownBotRiskStatus.max_concurrent_day || 3 }}</span>
+                            </div>
+                        </div>
+                        <!-- Open Swing -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Swing Positions</div>
+                            <div class="text-xl font-bold font-mono text-blue-300">
+                                {{ brownBotRiskStatus.open_swing || 0 }}
+                                <span class="text-sm text-gray-500">/ {{ brownBotRiskStatus.max_concurrent_swing || 5 }}</span>
+                            </div>
+                        </div>
+                        <!-- Circuit Breaker -->
+                        <div class="px-5 py-4 text-center">
+                            <div class="text-xs text-gray-400 mb-1">Circuit Breaker</div>
+                            <div :class="brownBotRiskStatus.circuit_breaker_open ? 'text-red-400' : 'text-green-400'"
+                                 class="text-xl font-bold flex items-center justify-center gap-1">
+                                <i :class="brownBotRiskStatus.circuit_breaker_open ? 'fas fa-ban' : 'fas fa-check-circle'"></i>
+                                {{ brownBotRiskStatus.circuit_breaker_open ? 'OPEN' : 'OK' }}
+                            </div>
+                            <div v-if="brownBotRiskStatus.circuit_breaker_open" class="text-xs text-red-400 mt-1">Trading halted</div>
+                        </div>
+                    </div>
+
+                    <!-- P&L by Ticker -->
+                    <div v-if="brownBotRiskStatus.pnl_by_ticker?.length" class="border-t border-gray-700 px-5 py-3">
+                        <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Today's P&L by Ticker</div>
+                        <div class="flex flex-wrap gap-2">
+                            <div v-for="t in brownBotRiskStatus.pnl_by_ticker" :key="t.symbol"
+                                 :class="t.pnl >= 0 ? 'bg-green-900/30 border-green-700/40 text-green-300' : 'bg-red-900/30 border-red-700/40 text-red-300'"
+                                 class="flex items-center gap-2 border rounded-lg px-3 py-1.5 text-xs font-mono">
+                                <span class="font-bold text-white">{{ t.symbol }}</span>
+                                <span>{{ t.pnl >= 0 ? '+' : '' }}${{ t.pnl.toFixed(2) }}</span>
+                                <span class="text-gray-500">{{ t.trades }}t · {{ t.shares }}sh</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Positions -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-chart-line text-amber-400"></i>
+                            Active Positions
+                            <span class="bg-amber-600/20 text-amber-300 border border-amber-600/40 text-xs px-2 py-0.5 rounded-full">
+                                {{ brownBotStatus.active_positions_count || 0 }}
+                            </span>
+                        </div>
+                        <button @click="loadBrownBotStatus" class="text-xs text-gray-400 hover:text-white transition-colors">
+                            <i class="fas fa-sync-alt mr-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div v-if="!brownBotStatus.active_positions?.length" class="px-5 py-8 text-center text-gray-500 text-sm">
+                        <i class="fas fa-inbox text-2xl mb-2 block"></i>
+                        No active BrownBot positions
+                    </div>
+                    <div v-else class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-750 border-b border-gray-700">
+                                <tr class="text-xs text-gray-400 uppercase tracking-wider">
+                                    <th class="px-4 py-3 text-left">Symbol</th>
+                                    <th class="px-4 py-3 text-left">Type</th>
+                                    <th class="px-4 py-3 text-right">Qty</th>
+                                    <th class="px-4 py-3 text-right">Entry</th>
+                                    <th class="px-4 py-3 text-right">Target</th>
+                                    <th class="px-4 py-3 text-right">Stop</th>
+                                    <th class="px-4 py-3 text-right">Unrealized P&L</th>
+                                    <th class="px-4 py-3 text-right hidden sm:table-cell">Held</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="pos in brownBotStatus.active_positions" :key="pos.position_id"
+                                    class="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+                                    <td class="px-4 py-3 font-mono font-bold text-white">{{ pos.symbol }}</td>
+                                    <td class="px-4 py-3">
+                                        <span :class="pos.position_type === 'swing' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'"
+                                              class="text-xs px-2 py-0.5 rounded-full border">
+                                            {{ pos.position_type === 'swing' ? 'Swing' : 'Day' }}
+                                        </span>
+                                        <span v-if="pos._at_breakeven" class="ml-1 text-xs text-amber-400" title="Stop at breakeven">BE</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-right font-mono text-gray-300">{{ pos.quantity ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-gray-200">${{ pos.entry_price?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-green-400">${{ pos.profit_target?.toFixed(2) ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-red-400">${{ pos.stop_loss?.toFixed(2) ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-mono"
+                                        :class="(pos.unrealized_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ (pos.unrealized_pnl || 0) >= 0 ? '+' : '' }}${{ (pos.unrealized_pnl || 0).toFixed(2) }}
+                                    </td>
+                                    <td class="px-4 py-3 text-right text-gray-500 text-xs hidden sm:table-cell">
+                                        {{ pos.entry_time ? brownBotDaysHeld(pos.entry_time) : '—' }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Activity Log -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-list-alt text-amber-400"></i>Activity Log
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <a href="/brownbot-logs.html" target="_blank"
+                               class="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors border border-amber-600/40 hover:border-amber-500/60 px-2.5 py-1 rounded-lg">
+                                <i class="fas fa-external-link-alt"></i>
+                                <span>{{ brownBotStatus?.running ? 'Live Monitor' : 'View Full Log' }}</span>
+                            </a>
+                            <button @click="brownBotLogs = []" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                                <i class="fas fa-trash mr-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="!brownBotLogs.length" class="px-5 py-6 text-center text-gray-500 text-sm">
+                        <i class="fas fa-terminal text-xl mb-2 block"></i>
+                        No activity yet. Start BrownBot to see logs.
+                    </div>
+                    <div v-else class="overflow-y-auto max-h-80">
+                        <table class="w-full text-xs">
+                            <tbody>
+                                <tr v-for="log in brownBotLogs" :key="log.id"
+                                    class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                                    <td class="px-4 py-2 text-gray-500 whitespace-nowrap font-mono w-40">
+                                        {{ new Date(log.timestamp).toLocaleTimeString() }}
+                                    </td>
+                                    <td class="px-2 py-2 w-16">
+                                        <span :class="{
+                                            'text-red-400': log.level === 'error',
+                                            'text-yellow-400': log.level === 'warning',
+                                            'text-amber-400': log.level === 'trade',
+                                            'text-gray-400': log.level === 'info'
+                                        }" class="font-semibold uppercase">{{ log.level }}</span>
+                                    </td>
+                                    <td class="px-2 py-2 text-gray-300">{{ log.message }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+            <!-- /BrownBot Tab -->
+
+            <!-- Trade History Tab -->
+            <div v-if="activeTab === 'trades' && canAccessTab('trades')" class="space-y-6">
+                <!-- Header Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-medium text-white">Trade History</h3>
+                        <button @click="loadTradeHistory" 
+                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+
+                    <!-- Controls Section -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- Left Column: Search -->
+                        <div class="space-y-4">
+                            <!-- Search and Filter -->
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h4 class="text-sm font-medium text-white mb-3">Search & Filter</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm text-gray-400 mb-2">Ticker Symbol</label>
+                                        <div class="flex items-center space-x-2">
+                                            <input v-model="tradeHistoryTicker" 
+                                                   @keyup.enter="loadTradeHistory"
+                                                   @input="onTradeHistoryTickerChange"
+                                                   placeholder="e.g., AAPL"
+                                                   class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                            <button @click="clearTradeHistoryTicker" 
+                                                    v-if="tradeHistoryTicker"
+                                                    class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm text-gray-400 mb-2">Time Period</label>
+                                        <select v-model="tradeHistoryPeriod" @change="loadTradeHistory" 
+                                                class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                            <option value="1">1 Day</option>
+                                            <option value="7">1 Week</option>
+                                            <option value="30">1 Month</option>
+                                            <option value="90">3 Months</option>
+                                            <option value="180">6 Months</option>
+                                            <option value="365">1 Year</option>
+                                            <option value="0">All Time</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Export Options -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button @click="downloadTradeHistoryCSV" 
+                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export CSV
+                                </button>
+                                <button @click="downloadTradeHistoryExcel" 
+                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export Excel
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Download trade history in your preferred format</p>
+                        </div>
+                    </div>
+                    
+                    <div v-if="loading.trades" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                        <p class="mt-2 text-gray-400">Loading trade history...</p>
+                    </div>
+                    
+                    <div v-else-if="trades.length === 0" class="text-center py-8">
+                        <i class="fas fa-inbox text-4xl text-gray-500 mb-4"></i>
+                        <p class="text-lg text-gray-400">No trades to display</p>
+                        <p class="text-sm text-gray-500 mt-2">Trade history will appear here once trades are executed</p>
+                    </div>
+                    
+                    <div v-else class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th @click="toggleTradesSort('ticker')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Ticker <i :class="tradesSort.key==='ticker' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="toggleTradesSort('direction')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Side <i :class="tradesSort.key==='direction' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Style</th>
+                                    <th @click="toggleTradesSort('quantity')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Quantity <i :class="tradesSort.key==='quantity' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="toggleTradesSort('price')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Price <i :class="tradesSort.key==='price' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="toggleTradesSort('status')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Status <i :class="tradesSort.key==='status' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="toggleTradesSort('pnl')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">P&L <i :class="tradesSort.key==='pnl' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="toggleTradesSort('submitted_at')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Date <i :class="tradesSort.key==='submitted_at' ? (tradesSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort-down text-blue-400'" class="ml-1"></i></th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-800 divide-y divide-gray-700">
+                                <tr v-for="trade in sortedTrades" :key="trade.id">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ trade.ticker }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span :class="trade.direction === 'buy' ? 'text-green-400' : trade.direction === 'sell' ? 'text-blue-400' : 'text-red-400'"
+                                              class="font-medium">
+                                            {{ trade.direction.toUpperCase() }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span :class="trade.position_type === 'swing' ? 'bg-purple-700 text-purple-200' : 'bg-blue-800 text-blue-200'"
+                                              class="px-2 py-0.5 rounded text-xs font-medium uppercase">
+                                            {{ trade.position_type }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ trade.quantity }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ trade.price }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                        <span :class="getStatusColor(trade.status)">{{ trade.status }}</span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm" :class="trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        ${{ trade.pnl ? trade.pnl.toFixed(2) : '0.00' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatDate(trade.submitted_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Positions History Tab -->
+            <div v-if="activeTab === 'positions' && canAccessTab('positions')" class="space-y-6">
+                <!-- Header Section -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-medium text-white">Positions History</h3>
+                        <button @click="loadPositionsHistory" 
+                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+
+                    <!-- Auto Sync Status Section -->
+                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-6">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-300">Position Sync:</span>
+                                    <span :class="scheduledSyncStatus.is_running ? 'text-green-400' : 'text-red-400'" class="text-sm font-medium">
+                                        {{ scheduledSyncStatus.is_running ? 'Running' : 'Stopped' }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-300">Bot Status:</span>
+                                    <span :class="botStatus.running ? 'text-green-400' : 'text-red-400'" class="text-sm font-medium">
+                                        {{ botStatus.running ? 'Running' : 'Stopped' }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-300">Update Interval:</span>
+                                    <span class="text-sm text-blue-400 font-medium">10 seconds</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button @click="syncPositionsFromDAS" 
+                                        :disabled="loading.syncPositions"
+                                        class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-sm font-medium">
+                                    <i :class="loading.syncPositions ? 'fas fa-spinner fa-spin' : 'fas fa-download'" class="mr-1"></i>
+                                    {{ loading.syncPositions ? 'Syncing...' : 'Sync from DAS' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Controls Section -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- Left Column: Search and Filter -->
+                        <div class="space-y-4">
+                            <!-- Search and Filter -->
+                            <div class="bg-gray-700 rounded-lg p-4">
+                                <h4 class="text-sm font-medium text-white mb-3">Search & Filter</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm text-gray-400 mb-2">Ticker Symbol</label>
+                                        <div class="flex items-center space-x-2">
+                                            <input v-model="positionsHistoryTicker" 
+                                                   @keyup.enter="loadPositionsHistory"
+                                                   @input="onPositionsHistoryTickerChange"
+                                                   placeholder="e.g., AAPL"
+                                                   class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                            <button @click="clearPositionsHistoryTicker" 
+                                                    v-if="positionsHistoryTicker"
+                                                    class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm text-gray-400 mb-2">Position Type</label>
+                                        <select v-model="positionsHistoryType" @change="loadPositionsHistory"
+                                                class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                            <option value="">All Types</option>
+                                            <option value="1">Long</option>
+                                            <option value="2">Short</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Date Range Filter -->
+                                <div class="mt-4 pt-4 border-t border-gray-600">
+                                    <h5 class="text-sm font-medium text-white mb-3">Date Range Filter</h5>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label class="block text-sm text-gray-400 mb-2">From Date</label>
+                                            <input v-model="positionsHistoryStartDate" 
+                                                   type="date"
+                                                   @change="loadPositionsHistory"
+                                                   class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm text-gray-400 mb-2">To Date</label>
+                                            <input v-model="positionsHistoryEndDate" 
+                                                   type="date"
+                                                   @change="loadPositionsHistory"
+                                                   class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        </div>
+                                        <div class="flex items-end">
+                                            <button @click="clearDateFilters" 
+                                                    class="w-full bg-gray-500 hover:bg-gray-600 px-4 py-2 rounded-md text-sm font-medium">
+                                                <i class="fas fa-times mr-2"></i>Clear Dates
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Export Options -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button @click="downloadPositionsHistoryCSV" 
+                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export CSV
+                                </button>
+                                <button @click="downloadPositionsHistoryExcel" 
+                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export Excel
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Download positions history in your preferred format</p>
+                        </div>
+                    </div>
+                    
+                    <div v-if="loading.positions" class="text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                        <p class="mt-2 text-gray-400">Loading positions history...</p>
+                    </div>
+                    
+                    <div v-else-if="positions.length === 0" class="text-center py-8">
+                        <i class="fas fa-chart-line text-4xl text-gray-500 mb-4"></i>
+                        <p class="text-lg text-gray-400">No positions to display</p>
+                        <p class="text-sm text-gray-500 mt-2">Positions history will appear here once positions are tracked</p>
+                    </div>
+                    
+                    <div v-else class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th @click="togglePositionsSort('symbol')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Symbol <i :class="positionsSort.key==='symbol' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Style</th>
+                                    <th @click="togglePositionsSort('quantity')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Qty <i :class="positionsSort.key==='quantity' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_cost')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Entry Price <i :class="positionsSort.key==='avg_cost' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('exit_price')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Exit Price <i :class="positionsSort.key==='exit_price' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('realized')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">P&L <i :class="positionsSort.key==='realized' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('create_time')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Entry Time <i :class="positionsSort.key==='create_time' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('date')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Date <i :class="positionsSort.key==='date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort-down text-blue-400'" class="ml-1"></i></th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-800 divide-y divide-gray-700">
+                                <tr v-for="position in sortedPositions" :key="position.id">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="px-2 py-0.5 rounded text-xs font-medium border"
+                                              :class="position.position_type === 'swing' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'">
+                                            {{ position.position_type === 'swing' ? 'Swing' : 'Day' }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.quantity }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.avg_cost?.toFixed(2) || '0.00' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.exit_price?.toFixed(2) || '—' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" :class="position.realized >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ position.realized >= 0 ? '+' : '' }}${{ position.realized?.toFixed(2) || '0.00' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.create_time }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.date }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Stats Tab -->
             <div v-if="activeTab === 'stats' && canAccessTab('stats')" class="space-y-6">
                 <!-- Stats Overview -->

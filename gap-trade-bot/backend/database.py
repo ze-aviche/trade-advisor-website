@@ -234,6 +234,7 @@ class DatabaseManager:
                 # trades: track which style produced the trade
                 ('trades',          'position_type',      "TEXT DEFAULT 'day'"),
                 ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
+                ('trades',          'source',             "TEXT DEFAULT 'brownbot'"),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
@@ -830,8 +831,8 @@ class DatabaseManager:
                     INSERT INTO trades (
                         trade_id, symbol, side, quantity, price, route,
                         trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
-                        position_type, days_held
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_type, days_held, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -847,6 +848,7 @@ class DatabaseManager:
                     trade_data['trade_date'],
                     trade_data.get('position_type', 'day'),
                     trade_data.get('days_held'),
+                    trade_data.get('source', 'brownbot'),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -1081,9 +1083,9 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 
                 query = '''
-                    SELECT id, trade_id, symbol, side, quantity, price, route, 
-                           trade_time, order_id, liquidity, ecn_fee, pnl, 
-                           trade_date, created_at
+                    SELECT id, trade_id, symbol, side, quantity, price, route,
+                           trade_time, order_id, liquidity, ecn_fee, pnl,
+                           trade_date, position_type, source, created_at
                     FROM trades
                     WHERE 1=1
                 '''
@@ -1686,202 +1688,222 @@ class DatabaseManager:
             }
 
     def get_total_positions_count(self, symbol=None, start_date=None, end_date=None):
-        """Get total count of positions from daily_positions table for historical stats"""
+        """Count closed positions (exit trades) from the trades table."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
-                query = 'SELECT COUNT(*) as total FROM daily_positions'
+                query = "SELECT COUNT(*) as total FROM trades WHERE side IN ('S', 'SS') AND source = 'brownbot'"
                 params = []
-                
                 if symbol:
-                    query += ' WHERE symbol = ?'
+                    query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                else:
-                    query += ' WHERE 1=1'
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
                 cursor.execute(query, params)
                 row = cursor.fetchone()
-                
                 return row['total'] if row else 0
         except Exception as e:
             print(f"Database error getting total positions count: {e}")
             return 0
 
     def get_total_positions_pnl(self, symbol=None, start_date=None, end_date=None):
-        """Get total P&L from daily_positions table for historical stats"""
+        """Sum realized P&L from closed BrownBot trades."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
-                query = 'SELECT COALESCE(SUM(realized), 0) as total_pnl FROM daily_positions WHERE realized != 0'
+                query = "SELECT COALESCE(SUM(pnl), 0) as total_pnl FROM trades WHERE side IN ('S', 'SS') AND source = 'brownbot'"
                 params = []
-                
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
                 cursor.execute(query, params)
                 row = cursor.fetchone()
-                
-                return row['total_pnl'] if row else 0
+                return float(row['total_pnl']) if row else 0.0
         except Exception as e:
             print(f"Database error getting total positions P&L: {e}")
-            return 0
+            return 0.0
 
     def get_positions_winrate(self, symbol=None, start_date=None, end_date=None):
-        """Get win rate from daily_positions table for historical stats"""
+        """Win rate from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
-                        COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
-                        COALESCE(SUM(CASE WHEN realized < 0 THEN 1 ELSE 0 END), 0) as losing_positions
-                    FROM daily_positions
-                    WHERE realized != 0
+                    SELECT
+                        COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) as wins,
+                        COALESCE(SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END), 0) as losses
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
                 cursor.execute(query, params)
                 row = cursor.fetchone()
-                
                 if row:
-                    profitable_positions = row['profitable_positions'] or 0
-                    losing_positions = row['losing_positions'] or 0
-                    total_positions = profitable_positions + losing_positions
-                    
-                    if total_positions > 0:
-                        win_rate = (profitable_positions / total_positions) * 100
-                        return round(win_rate, 2)
-                    else:
-                        return 0
-                else:
-                    return 0
+                    wins = row['wins'] or 0
+                    total = wins + (row['losses'] or 0)
+                    return round((wins / total) * 100, 2) if total > 0 else 0.0
+                return 0.0
         except Exception as e:
             print(f"Database error getting positions win rate: {e}")
-            return 0
+            return 0.0
 
     def get_daily_pnl_data(self, start_date=None, end_date=None):
-        """Get daily P&L data from daily_positions table for charting"""
+        """Daily P&L grouped by trade_date from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
-                        date,
-                        COALESCE(SUM(realized), 0) as daily_pnl,
+                    SELECT
+                        trade_date as date,
+                        COALESCE(SUM(pnl), 0) as daily_pnl,
                         COUNT(*) as positions_count
-                    FROM daily_positions 
-                    WHERE realized != 0
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += '''
-                    GROUP BY date 
-                    ORDER BY date ASC
-                '''
-                
+                query += ' GROUP BY trade_date ORDER BY trade_date ASC'
                 cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                daily_data = []
-                for row in rows:
-                    daily_data.append({
-                        'date': row['date'],
-                        'daily_pnl': float(row['daily_pnl']),
-                        'positions_count': row['positions_count']
-                    })
-                
-                return daily_data
+                return [
+                    {'date': row['date'], 'daily_pnl': float(row['daily_pnl']), 'positions_count': row['positions_count']}
+                    for row in cursor.fetchall()
+                ]
         except Exception as e:
             print(f"Database error getting daily P&L data: {e}")
             return []
 
     def get_cumulative_pnl_data(self, start_date=None, end_date=None):
-        """Get cumulative P&L data from daily_positions table for growth tracking"""
+        """Cumulative P&L running total from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
-                        date,
-                        COALESCE(SUM(realized), 0) as daily_pnl
-                    FROM daily_positions 
-                    WHERE realized != 0
+                    SELECT
+                        trade_date as date,
+                        COALESCE(SUM(pnl), 0) as daily_pnl
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += '''
-                    GROUP BY date 
-                    ORDER BY date ASC
-                '''
-                
+                query += ' GROUP BY trade_date ORDER BY trade_date ASC'
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
-                
-                cumulative_data = []
-                running_total = 0.0
-                
+                running = 0.0
+                result = []
                 for row in rows:
-                    daily_pnl = float(row['daily_pnl'])
-                    running_total += daily_pnl
-                    cumulative_data.append({
-                        'date': row['date'],
-                        'daily_pnl': daily_pnl,
-                        'cumulative_pnl': running_total
-                    })
-                
-                return cumulative_data
+                    daily = float(row['daily_pnl'])
+                    running += daily
+                    result.append({'date': row['date'], 'daily_pnl': daily, 'cumulative_pnl': running})
+                return result
         except Exception as e:
             print(f"Database error getting cumulative P&L data: {e}")
+            return []
+
+    def get_closed_positions(self, symbol=None, start_date=None, end_date=None, limit=1000):
+        """
+        Return closed BrownBot positions for the Positions tab.
+        Each row is an exit trade joined with its matching entry trade to get entry_price.
+        Shape matches what the Positions tab HTML expects.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = '''
+                    SELECT
+                        x.id,
+                        x.symbol,
+                        x.side,
+                        x.quantity,
+                        x.price          AS exit_price,
+                        x.pnl            AS realized,
+                        x.trade_date,
+                        x.trade_time,
+                        x.position_type,
+                        e.price          AS entry_price,
+                        e.trade_time     AS entry_time
+                    FROM trades x
+                    LEFT JOIN trades e
+                        ON  e.symbol     = x.symbol
+                        AND e.side       = 'B'
+                        AND e.source     = 'brownbot'
+                        AND e.trade_date = x.trade_date
+                    WHERE x.side IN ('S', 'SS')
+                      AND x.source = 'brownbot'
+                '''
+                params = []
+                if symbol:
+                    query += ' AND x.symbol = ?'
+                    params.append(symbol.upper())
+                if start_date:
+                    query += ' AND x.trade_date >= ?'
+                    params.append(start_date)
+                if end_date:
+                    query += ' AND x.trade_date <= ?'
+                    params.append(end_date)
+                query += ' ORDER BY x.trade_date DESC, x.trade_time DESC LIMIT ?'
+                params.append(limit)
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+
+                positions = []
+                for row in rows:
+                    entry_px = row['entry_price']
+                    exit_px  = float(row['exit_price'])
+                    qty      = row['quantity']
+                    pnl      = float(row['realized'])
+                    # Fall back to computing entry price from PnL if no matching entry row
+                    if entry_px is None:
+                        entry_px = exit_px - (pnl / qty) if qty else exit_px
+                    else:
+                        entry_px = float(entry_px)
+                    positions.append({
+                        'id':            row['id'],
+                        'symbol':        row['symbol'],
+                        'type':          1,   # BrownBot is long-only today
+                        'quantity':      qty,
+                        'avg_cost':      round(entry_px, 4),
+                        'init_quantity': qty,
+                        'init_price':    round(entry_px, 4),
+                        'exit_price':    round(exit_px, 4),
+                        'realized':      round(pnl, 2),
+                        'unrealized':    0.0,
+                        'create_time':   row['entry_time'] or row['trade_time'],
+                        'date':          row['trade_date'],
+                        'position_type': row['position_type'] or 'day',
+                    })
+                return positions
+        except Exception as e:
+            print(f"Database error getting closed positions: {e}")
             return []
 
     def get_long_short_pnl_data(self, start_date=None, end_date=None):

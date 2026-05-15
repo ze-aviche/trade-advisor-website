@@ -3017,6 +3017,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
             'trade_date':    datetime.now().strftime('%Y-%m-%d'),
             'position_type': position_type,
             'days_held':     None,
+            'source':        'brownbot',
         })
     except Exception as _e:
         _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
@@ -3287,6 +3288,7 @@ def _brown_close_position(position_id, position, exit_reason):
             'trade_date': datetime.now().strftime('%Y-%m-%d'),
             'position_type': position_type,
             'days_held': days_held,
+            'source': 'brownbot',
         }
         db_manager.add_trade(trade_data)
     except Exception as e:
@@ -4892,63 +4894,35 @@ def upsert_position():
 # Daily Position History API endpoints
 @app.route('/api/positions/daily', methods=['GET'])
 def get_daily_positions():
-    """Get daily position history with optional filtering"""
+    """Return closed BrownBot positions for the Positions tab."""
     try:
-        from database import db_manager
-        
-        # Get query parameters
-        symbol = request.args.get('symbol')
-        type_filter = request.args.get('type')
+        symbol     = request.args.get('symbol')
         start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        limit = int(request.args.get('limit', 1000))
-        
-        # Validate limit
-        if limit > 5000:
-            limit = 5000
-        
-        # Convert type_filter to int if provided
-        if type_filter:
-            try:
-                type_filter = int(type_filter)
-            except ValueError:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid type parameter. Must be a number.'
-                }), 400
-        
-        # Get daily positions from database
-        positions = db_manager.get_daily_positions(
+        end_date   = request.args.get('end_date')
+        limit      = min(int(request.args.get('limit', 1000)), 5000)
+
+        positions = db_manager.get_closed_positions(
             symbol=symbol,
-            type_filter=type_filter,
             start_date=start_date,
             end_date=end_date,
-            limit=limit
+            limit=limit,
         )
-        
-        # Get summary statistics
-        summary = db_manager.get_daily_position_summary(
-            symbol=symbol,
-            type_filter=type_filter,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
+        total_pnl = sum(p['realized'] for p in positions)
+        wins      = sum(1 for p in positions if p['realized'] > 0)
+        summary   = {
+            'total_positions': len(positions),
+            'total_pnl':       round(total_pnl, 2),
+            'win_rate':        round((wins / len(positions)) * 100, 2) if positions else 0,
+        }
         return jsonify({
             'success': True,
-            'data': {
-                'positions': positions,
-                'summary': summary
-            },
+            'data':    {'positions': positions, 'summary': summary},
+            'count':   len(positions),
             'timestamp': datetime.now().isoformat(),
-            'count': len(positions)
         })
     except Exception as e:
-        app_logger.error(f"Error getting daily positions: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        app_logger.error(f"Error getting closed positions: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/daily/<date>', methods=['GET'])
 def get_positions_by_date(date):
@@ -5041,24 +5015,21 @@ def get_positions_by_date_range():
                     'error': 'Invalid type parameter. Must be a number.'
                 }), 400
         
-        # Get positions for the date range
-        positions = db_manager.get_daily_positions(
+        positions = db_manager.get_closed_positions(
             symbol=symbol,
-            type_filter=type_filter,
             start_date=start_date,
             end_date=end_date,
-            limit=1000
+            limit=1000,
         )
-        
         return jsonify({
             'success': True,
             'data': {
                 'positions': positions,
                 'start_date': start_date,
                 'end_date': end_date,
-                'count': len(positions)
+                'count': len(positions),
             },
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
         })
     except Exception as e:
         app_logger.error(f"Error getting positions for date range: {e}")
