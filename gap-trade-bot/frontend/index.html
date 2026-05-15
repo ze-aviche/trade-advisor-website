@@ -42,7 +42,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='shieldGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%231E40AF;stop-opacity:1' /><stop offset='100%' style='stop-color:%233B82F6;stop-opacity:1' /></linearGradient><linearGradient id='chartGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%2310B981;stop-opacity:1' /><stop offset='100%' style='stop-color:%23059669;stop-opacity:1' /></linearGradient><linearGradient id='accentGradient' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%23F59E0B;stop-opacity:1' /><stop offset='100%' style='stop-color:%23D97706;stop-opacity:1' /></linearGradient></defs><path d='M16 3 L24 6 L24 13 C24 19 20 22 16 26 C12 22 8 19 8 13 L8 6 Z' fill='url(%23shieldGradient)' stroke='%23E5E7EB' stroke-width='1'/><path d='M12 12 L14 10 L16 12 L18 9 L20 11 L22 8 L24 10' stroke='url(%23chartGradient)' stroke-width='1.5' stroke-linecap='round' fill='none'/><path d='M13 19 L16 16 L19 19' stroke='url(%23accentGradient)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='16' cy='21' r='2' fill='url(%23accentGradient)' opacity='0.8'/></svg>">
 </head>
 <body class="bg-[#0d1117] text-white">
-    <div id="app" v-cloak>
+    <div id="app">
         <!-- Header -->
         <div class="bg-[#0d1117] border-b border-gray-800 px-4 py-3 md:px-6 md:py-4">
             <div class="flex items-center justify-between">
@@ -161,7 +161,7 @@
                 <button @click="handleTabClick('trades')"
                     :class="activeTab === 'trades' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('trades') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
-                    <i class="fas fa-exchange-alt text-xs"></i>Orders<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-0.5"></i>
+                    <i class="fas fa-exchange-alt text-xs"></i>Trades<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
                 <button @click="handleTabClick('positions')"
                     :class="activeTab === 'positions' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('positions') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
@@ -217,7 +217,7 @@
                 <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
-                <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Orders<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('stats')" :class="activeTab === 'stats' ? 'bg-blue-600 text-white' : canAccessTab('stats') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-bar mr-2 w-4"></i>Stats<i v-if="!canAccessTab('stats')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('backtest')" :class="activeTab === 'backtest' ? 'bg-blue-600 text-white' : canAccessTab('backtest') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-flask mr-2 w-4"></i>Backtest<i v-if="!canAccessTab('backtest')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -2452,26 +2452,21 @@
             </div>
             <!-- /BrownBot Tab -->
 
-            <!-- Orders Tab -->
+            <!-- Trade History Tab -->
             <div v-if="activeTab === 'trades' && canAccessTab('trades')" class="space-y-6">
                 <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-lg font-medium text-white">Orders</h3>
-                        <div class="flex items-center space-x-2">
-                            <button @click="downloadTradeHistoryCSV"
-                                    class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs font-medium text-gray-300">
-                                <i class="fas fa-download mr-1"></i>CSV
-                            </button>
-                            <button @click="loadTradeHistory"
-                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh
-                            </button>
-                        </div>
+                        <h3 class="text-lg font-medium text-white">Trade History</h3>
+                        <button @click="loadTradeHistory" 
+                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
                     </div>
 
                     <!-- Controls Section -->
-                    <div class="mb-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- Left Column: Search & Filter -->
                         <div class="bg-gray-700 rounded-lg p-4 space-y-4">
                             <h4 class="text-sm font-medium text-white">Search & Filter</h4>
                             <!-- Row 1: Ticker + Date Range -->
@@ -2532,8 +2527,24 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
 
+                        <!-- Right Column: Export Options -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button @click="downloadTradeHistoryCSV"
+                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export CSV
+                                </button>
+                                <button @click="downloadTradeHistoryExcel"
+                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export Excel
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Download trade history in your preferred format</p>
+                        </div>
+                    </div>
+                    
                     <div v-if="loading.trades" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Loading trade history...</p>
@@ -2596,21 +2607,18 @@
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
                         <h3 class="text-lg font-medium text-white">Positions History</h3>
-                        <div class="flex items-center space-x-2">
-                            <button @click="downloadPositionsHistoryCSV"
-                                    class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs font-medium text-gray-300">
-                                <i class="fas fa-download mr-1"></i>CSV
-                            </button>
-                            <button @click="loadPositionsHistory"
-                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh
-                            </button>
-                        </div>
+                        <button @click="loadPositionsHistory" 
+                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
                     </div>
 
                     <!-- Controls Section -->
-                    <div class="mb-6">
-                        <div class="bg-gray-700 rounded-lg p-4">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- Left Column: Search and Filter -->
+                        <div class="space-y-4">
+                            <!-- Search and Filter -->
+                            <div class="bg-gray-700 rounded-lg p-4">
                                 <h4 class="text-sm font-medium text-white mb-3">Search & Filter</h4>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
@@ -2667,8 +2675,24 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
 
+                        <!-- Right Column: Export Options -->
+                        <div class="bg-gray-700 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button @click="downloadPositionsHistoryCSV" 
+                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export CSV
+                                </button>
+                                <button @click="downloadPositionsHistoryExcel" 
+                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
+                                    <i class="fas fa-download mr-2"></i>Export Excel
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">Download positions history in your preferred format</p>
+                        </div>
+                    </div>
+                    
                     <div v-if="loading.positions" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Loading positions history...</p>
