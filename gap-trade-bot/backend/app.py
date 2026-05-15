@@ -2978,6 +2978,30 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
         _add_brown_log('error', f'Order rejected for {symbol}: {_order_err}')
         return
 
+    # Alpaca market orders are async — filled_avg_price is None on the initial response.
+    # Poll up to 5×0.5s so entry_price, profit_target, and stop_loss use the real fill.
+    if order_id:
+        for _attempt in range(5):
+            if _attempt > 0:
+                time.sleep(0.5)
+            try:
+                _filled = _brown_broker.get_order(str(order_id))
+                if _filled.filled_avg_price:
+                    _fill_price = float(_filled.filled_avg_price)
+                    quantity = int(_filled.filled_qty or quantity)
+                    if _fill_price != price:
+                        _add_brown_log('info',
+                            f'{symbol} fill confirmed ${_fill_price:.2f} '
+                            f'(scanner approx was ${price:.2f})')
+                    price = _fill_price
+                    break
+            except Exception as _fe:
+                app_logger.debug(f'BrownBot fill poll {symbol} attempt {_attempt+1}: {_fe}')
+                break
+        else:
+            _add_brown_log('info',
+                f'{symbol} fill not confirmed after 2.5s — using scanner approx ${price:.2f}')
+
     if position_type == 'day':
         tgt_pct = float(config.get('day_profit_target_pct', 5.0))
         stp_pct = float(config.get('day_stop_loss_pct', 2.5))
