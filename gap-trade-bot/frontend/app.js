@@ -2351,8 +2351,18 @@ const app = createApp({
             },
             
             async loadGapUps(silent = false) {
+                // Stale-while-revalidate: paint cached data instantly so the tab is never blank.
+                // The real fetch still runs — it updates via the silent in-place merge path.
                 if (!silent) {
-                    this.updateLoadingProgress('gapUps', 'loading');
+                    const cached = this._getGapUpsCache();
+                    if (cached && cached.length > 0) {
+                        this.gapUps = cached;
+                        this.prevGapUpTickers = cached.map(s => s.ticker);
+                        this.dashboardStats.gapUps = cached.length;
+                        silent = true; // upgrade to silent refresh — don't clobber the UI
+                    } else {
+                        this.updateLoadingProgress('gapUps', 'loading');
+                    }
                 }
 
                 const maxRetries = silent ? 1 : 3;
@@ -2406,6 +2416,7 @@ const app = createApp({
                             this.prevGapUpTickers = incoming.map(s => s.ticker);
                             this.dashboardStats.gapUps = this.gapUps.length;
                             if (!silent) this.updateLoadingProgress('gapUps', 'success');
+                            this._saveGapUpsCache(this.gapUps);
                             return;
                         } else {
                             throw new Error(data.error || data.message || 'Failed to load gap-ups');
@@ -2424,6 +2435,24 @@ const app = createApp({
                 if (!silent) this.updateLoadingProgress('gapUps', 'error');
             },
             
+            // Gap-ups stale-while-revalidate helpers
+            _getGapUpsCache() {
+                try {
+                    const raw = localStorage.getItem('gapUpsCache');
+                    if (!raw) return null;
+                    const { date, data } = JSON.parse(raw);
+                    // en-CA gives YYYY-MM-DD in the user's local time zone
+                    const today = new Date().toLocaleDateString('en-CA');
+                    return date === today ? data : null;
+                } catch { return null; }
+            },
+            _saveGapUpsCache(data) {
+                try {
+                    const today = new Date().toLocaleDateString('en-CA');
+                    localStorage.setItem('gapUpsCache', JSON.stringify({ date: today, data }));
+                } catch {}
+            },
+
             _statsDateQs() {
                 const p = [];
                 if (this.statsStartDate) p.push(`start_date=${this.statsStartDate}`);
