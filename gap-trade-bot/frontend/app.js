@@ -805,6 +805,12 @@ const app = createApp({
 
         mounted() {
             console.log('🎯 Vue.js app mounted successfully');
+            // Dismiss the loading screen now that Vue has rendered real content
+            const loader = document.getElementById('app-loader');
+            if (loader) {
+                loader.classList.add('fade-out');
+                setTimeout(() => loader.remove(), 260);
+            }
 
             // Handle Stripe payment redirect-back
             const urlParams = new URLSearchParams(window.location.search);

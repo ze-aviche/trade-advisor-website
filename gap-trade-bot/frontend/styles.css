@@ -1,7 +1,43 @@
 /* Custom styles for Trading Advisor Dashboard */
 
 /* Hide Vue template until the app has mounted (pairs with v-cloak on #app) */
-[v-cloak] { display: none; }
+[v-cloak] { display: none !important; }
+
+/* ── App loading screen ── */
+#app-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: #0d1117;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    transition: opacity 0.25s ease;
+}
+#app-loader.fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+@keyframes loader-spin {
+    to { transform: rotate(360deg); }
+}
+@keyframes loader-pulse {
+    0%, 100% { opacity: 1; filter: drop-shadow(0 0 10px rgba(59,130,246,0.6)); }
+    50%       { opacity: 0.7; filter: drop-shadow(0 0 20px rgba(59,130,246,0.9)); }
+}
+#app-loader img {
+    animation: loader-pulse 2s ease-in-out infinite;
+}
+#app-loader .loader-spinner {
+    width: 28px;
+    height: 28px;
+    border: 2px solid #1f2937;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: loader-spin 0.75s linear infinite;
+}
 
 /* ═══════════════════════════════════════════════════════
    THEME SYSTEM — dark (default) / light mode
