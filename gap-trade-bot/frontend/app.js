@@ -2378,6 +2378,13 @@ const app = createApp({
                         if (data.success) {
                             const incoming = data.data || [];
 
+                            // API returned nothing (cold start, market closed, transient empty).
+                            // Keep whatever is already displayed and don't touch the cache.
+                            if (incoming.length === 0) {
+                                if (!silent) this.updateLoadingProgress('gapUps', 'success');
+                                return;
+                            }
+
                             // Detect newly arrived tickers
                             if (this.prevGapUpTickers.length > 0) {
                                 const prevSet = new Set(this.prevGapUpTickers);
@@ -2416,7 +2423,9 @@ const app = createApp({
                             this.prevGapUpTickers = incoming.map(s => s.ticker);
                             this.dashboardStats.gapUps = this.gapUps.length;
                             if (!silent) this.updateLoadingProgress('gapUps', 'success');
-                            this._saveGapUpsCache(this.gapUps);
+                            // Only persist to cache when we have real data — never overwrite
+                            // a good cache with an empty or transient result
+                            this._saveGapUpsCache(incoming);
                             return;
                         } else {
                             throw new Error(data.error || data.message || 'Failed to load gap-ups');
