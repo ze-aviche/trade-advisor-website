@@ -1794,6 +1794,117 @@ class DatabaseManager:
             print(f"Database error getting monthly P&L data: {e}")
             return []
 
+    def get_extended_stats(self, start_date=None, end_date=None):
+        """Extended trading metrics: profit factor, expectancy, streaks, etc."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                base_filter = "side IN ('S','SS') AND source='brownbot'"
+                params = []
+                date_clause = ''
+                if start_date:
+                    date_clause += ' AND trade_date >= ?'
+                    params.append(start_date)
+                if end_date:
+                    date_clause += ' AND trade_date <= ?'
+                    params.append(end_date)
+
+                cursor.execute(f'''
+                    SELECT
+                        COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl  ELSE 0   END), 0) AS gross_profit,
+                        COALESCE(SUM(CASE WHEN pnl < 0 THEN pnl  ELSE 0   END), 0) AS gross_loss,
+                        COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl  ELSE NULL END), 0) AS avg_win,
+                        COALESCE(AVG(CASE WHEN pnl < 0 THEN pnl  ELSE NULL END), 0) AS avg_loss,
+                        COALESCE(MAX(pnl), 0) AS best_trade,
+                        COALESCE(MIN(pnl), 0) AS worst_trade,
+                        COALESCE(AVG(pnl),   0) AS avg_pnl,
+                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS win_count,
+                        SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) AS loss_count,
+                        SUM(CASE WHEN pnl = 0 THEN 1 ELSE 0 END) AS breakeven_count,
+                        COUNT(*) AS total_count
+                    FROM trades WHERE {base_filter}{date_clause}
+                ''', params)
+                row = cursor.fetchone()
+
+                if not row or (row['total_count'] or 0) == 0:
+                    return self._empty_extended_stats()
+
+                gross_profit   = float(row['gross_profit'])
+                gross_loss_raw = float(row['gross_loss'])   # negative
+                gross_loss     = abs(gross_loss_raw)
+                avg_win        = float(row['avg_win'])
+                avg_loss       = float(row['avg_loss'])     # negative
+                best_trade     = float(row['best_trade'])
+                worst_trade    = float(row['worst_trade'])
+                avg_pnl        = float(row['avg_pnl'])
+                win_count      = row['win_count'] or 0
+                loss_count     = row['loss_count'] or 0
+                total_count    = row['total_count'] or 0
+
+                profit_factor  = round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0.0
+                win_rate       = win_count / total_count if total_count else 0
+                loss_rate      = loss_count / total_count if total_count else 0
+                expectancy     = round((win_rate * avg_win) + (loss_rate * avg_loss), 2)
+                win_loss_ratio = round(avg_win / abs(avg_loss), 2) if avg_loss < 0 else 0.0
+
+                # Best/worst trade symbols
+                def _sym(pnl_val):
+                    q = f"SELECT symbol FROM trades WHERE {base_filter} AND pnl=?{date_clause} ORDER BY submitted_at DESC LIMIT 1"
+                    cursor.execute(q, [pnl_val] + params)
+                    r = cursor.fetchone()
+                    return r['symbol'] if r else ''
+
+                # Consecutive wins/losses — sorted by time
+                cursor.execute(
+                    f"SELECT pnl FROM trades WHERE {base_filter}{date_clause} ORDER BY submitted_at ASC",
+                    params
+                )
+                pnl_seq = [float(r['pnl']) for r in cursor.fetchall()]
+                max_cw = max_cl = cur_w = cur_l = 0
+                for p in pnl_seq:
+                    if p > 0:
+                        cur_w += 1; cur_l = 0
+                        max_cw = max(max_cw, cur_w)
+                    elif p < 0:
+                        cur_l += 1; cur_w = 0
+                        max_cl = max(max_cl, cur_l)
+                    else:
+                        cur_w = cur_l = 0
+
+                return {
+                    'gross_profit':          round(gross_profit, 2),
+                    'gross_loss':            round(gross_loss, 2),
+                    'profit_factor':         profit_factor,
+                    'avg_win':               round(avg_win, 2),
+                    'avg_loss':              round(avg_loss, 2),
+                    'win_loss_ratio':        win_loss_ratio,
+                    'best_trade':            round(best_trade, 2),
+                    'best_trade_symbol':     _sym(best_trade),
+                    'worst_trade':           round(worst_trade, 2),
+                    'worst_trade_symbol':    _sym(worst_trade),
+                    'avg_pnl':               round(avg_pnl, 2),
+                    'win_count':             win_count,
+                    'loss_count':            loss_count,
+                    'breakeven_count':       row['breakeven_count'] or 0,
+                    'total_count':           total_count,
+                    'expectancy':            expectancy,
+                    'max_consecutive_wins':  max_cw,
+                    'max_consecutive_losses': max_cl,
+                }
+        except Exception as e:
+            print(f"Database error getting extended stats: {e}")
+            return self._empty_extended_stats()
+
+    def _empty_extended_stats(self):
+        return {
+            'gross_profit': 0.0, 'gross_loss': 0.0, 'profit_factor': 0.0,
+            'avg_win': 0.0, 'avg_loss': 0.0, 'win_loss_ratio': 0.0,
+            'best_trade': 0.0, 'best_trade_symbol': '', 'worst_trade': 0.0,
+            'worst_trade_symbol': '', 'avg_pnl': 0.0, 'win_count': 0,
+            'loss_count': 0, 'breakeven_count': 0, 'total_count': 0,
+            'expectancy': 0.0, 'max_consecutive_wins': 0, 'max_consecutive_losses': 0,
+        }
+
     # ------------------------------------------------------------------
     # Gap-up snapshot methods
     # ------------------------------------------------------------------

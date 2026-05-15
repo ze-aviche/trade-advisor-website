@@ -431,6 +431,16 @@ const app = createApp({
                     total_pnl: 0,
                     win_rate: 0
                 },
+                extendedStats: {
+                    gross_profit: 0, gross_loss: 0, profit_factor: 0,
+                    avg_win: 0, avg_loss: 0, win_loss_ratio: 0,
+                    best_trade: 0, best_trade_symbol: '', worst_trade: 0, worst_trade_symbol: '',
+                    avg_pnl: 0, win_count: 0, loss_count: 0, breakeven_count: 0,
+                    total_count: 0, expectancy: 0, max_consecutive_wins: 0, max_consecutive_losses: 0,
+                },
+                statsStartDate: '',
+                statsEndDate: '',
+                statsPreset: 'all',
                 
                 // Daily P&L chart data
                 dailyPnlData: [],
@@ -475,6 +485,26 @@ const app = createApp({
 
         
         computed: {
+            maxDrawdown() {
+                if (!this.cumulativePnlData || this.cumulativePnlData.length < 1) return null;
+                let peak = -Infinity, maxDD = 0;
+                for (const d of this.cumulativePnlData) {
+                    const v = d.cumulative_pnl ?? d.pnl ?? 0;
+                    if (v > peak) peak = v;
+                    const dd = peak - v;
+                    if (dd > maxDD) maxDD = dd;
+                }
+                return Math.round(maxDD * 100) / 100;
+            },
+            sharpeRatio() {
+                if (!this.dailyPnlData || this.dailyPnlData.length < 2) return null;
+                const values = this.dailyPnlData.map(d => d.daily_pnl ?? 0);
+                const mean = values.reduce((s, v) => s + v, 0) / values.length;
+                const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+                const std = Math.sqrt(variance);
+                if (std === 0) return null;
+                return Math.round((mean / std) * Math.sqrt(252) * 100) / 100;
+            },
             changePwStrength() {
                 const p = this.changePwForm.newPw;
                 if (!p) return 0;
@@ -930,10 +960,8 @@ const app = createApp({
 
                     this.loadSwingDailyPicks();
                 } else if (tabName === 'stats') {
-                    console.log('📊 Stats tab selected - loading statistics...');
-                    this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
+                    this.stopPositionHistoryUpdates();
                     this.loadStats();
-                    this.loadDailyPnlData();
                 } else if (tabName === 'backtest') {
                     console.log('🧪 Backtest tab selected - loading backtest data...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
@@ -2387,46 +2415,75 @@ const app = createApp({
                 if (!silent) this.updateLoadingProgress('gapUps', 'error');
             },
             
-            async loadStats() {
-                console.log('📊 Loading statistics...');
-                this.loading.stats = true;
-                
+            _statsDateQs() {
+                const p = [];
+                if (this.statsStartDate) p.push(`start_date=${this.statsStartDate}`);
+                if (this.statsEndDate)   p.push(`end_date=${this.statsEndDate}`);
+                return p.length ? '?' + p.join('&') : '';
+            },
+
+            setStatsDatePreset(preset) {
+                this.statsPreset = preset;
+                const today = new Date();
+                const fmt = d => d.toISOString().split('T')[0];
+                if (preset === 'all')    { this.statsStartDate = ''; this.statsEndDate = ''; }
+                else if (preset === 'today') { this.statsStartDate = fmt(today); this.statsEndDate = fmt(today); }
+                else if (preset === 'week')  { const d = new Date(today); d.setDate(d.getDate() - 7);  this.statsStartDate = fmt(d); this.statsEndDate = fmt(today); }
+                else if (preset === 'month') { const d = new Date(today); d.setMonth(d.getMonth() - 1); this.statsStartDate = fmt(d); this.statsEndDate = fmt(today); }
+                else if (preset === '3month'){ const d = new Date(today); d.setMonth(d.getMonth() - 3); this.statsStartDate = fmt(d); this.statsEndDate = fmt(today); }
+                else if (preset === '6month'){ const d = new Date(today); d.setMonth(d.getMonth() - 6); this.statsStartDate = fmt(d); this.statsEndDate = fmt(today); }
+                else if (preset === 'ytd')   { this.statsStartDate = `${today.getFullYear()}-01-01`; this.statsEndDate = fmt(today); }
+                this.loadStats();
+            },
+
+            onStatsDateChange() {
+                this.statsPreset = '';
+                this.loadStats();
+            },
+
+            clearStatsFilter() {
+                this.statsStartDate = '';
+                this.statsEndDate = '';
+                this.statsPreset = 'all';
+                this.loadStats();
+            },
+
+            async loadExtendedStats() {
                 try {
-                    // Load total P&L
-                    const pnlResponse = await fetch('/api/positions/total_pnl');
-                    const pnlData = await pnlResponse.json();
-                    
-                    // Load win rate
-                    const winRateResponse = await fetch('/api/positions/winrate');
-                    const winRateData = await winRateResponse.json();
-                    
-                    // Load total positions
-                    const positionsResponse = await fetch('/api/positions/total_positions');
-                    const positionsData = await positionsResponse.json();
-                    
+                    const qs = this._statsDateQs();
+                    const res = await fetch(`/api/positions/extended-stats${qs}`);
+                    const data = await res.json();
+                    if (data.success) this.extendedStats = data.data;
+                } catch (e) {
+                    console.error('❌ Error loading extended stats:', e);
+                }
+            },
+
+            async loadStats() {
+                this.loading.stats = true;
+                const qs = this._statsDateQs();
+                try {
+                    const [pnlRes, winRes, posRes] = await Promise.all([
+                        fetch(`/api/positions/total_pnl${qs}`),
+                        fetch(`/api/positions/winrate${qs}`),
+                        fetch(`/api/positions/total_positions${qs}`),
+                    ]);
+                    const [pnlData, winRateData, positionsData] = await Promise.all([
+                        pnlRes.json(), winRes.json(), posRes.json()
+                    ]);
                     if (pnlData.success && winRateData.success && positionsData.success) {
-                        this.stats.total_pnl = pnlData.data.total_pnl || 0;
-                        this.stats.win_rate = winRateData.data.win_rate || 0;
-                        this.stats.total_positions = positionsData.data.total_positions || 0;
-                        
-                        console.log('✅ Statistics loaded successfully:');
-                        console.log('   Total P&L:', this.stats.total_pnl);
-                        console.log('   Win Rate:', this.stats.win_rate);
-                        console.log('   Total Positions:', this.stats.total_positions);
+                        this.stats.total_pnl        = pnlData.data.total_pnl || 0;
+                        this.stats.win_rate         = winRateData.data.win_rate || 0;
+                        this.stats.total_positions  = positionsData.data.total_positions || 0;
                     } else {
-                        console.error('❌ Failed to load statistics:', pnlData.message || winRateData.message || positionsData.message);
                         this.showNotification('Failed to load statistics', 'error');
                     }
-                    
-                    // Load daily P&L data
-                    await this.loadDailyPnlData();
-                    
-                    // Load cumulative P&L data
-                    await this.loadCumulativePnlData();
-                    
-                    // Load pie chart data
-                    await this.loadPieChartData();
-                    
+                    await Promise.all([
+                        this.loadExtendedStats(),
+                        this.loadDailyPnlData(),
+                        this.loadCumulativePnlData(),
+                        this.loadPieChartData(),
+                    ]);
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
                     this.showNotification('Error loading statistics', 'error');
@@ -2436,11 +2493,9 @@ const app = createApp({
             },
             
             async loadDailyPnlData() {
-                console.log('📊 Loading daily P&L data...');
                 this.loading.dailyPnl = true;
-                
                 try {
-                    const response = await fetch('/api/positions/daily-pnl');
+                    const response = await fetch(`/api/positions/daily-pnl${this._statsDateQs()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2464,11 +2519,9 @@ const app = createApp({
             },
             
             async loadCumulativePnlData() {
-                console.log('📈 Loading cumulative P&L data...');
                 this.loading.cumulativePnl = true;
-                
                 try {
-                    const response = await fetch('/api/positions/cumulative-pnl');
+                    const response = await fetch(`/api/positions/cumulative-pnl${this._statsDateQs()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2791,12 +2844,13 @@ const app = createApp({
                 this.loading.pieCharts = true;
                 
                 try {
-                    // Load all pie chart data in parallel
+                    const qs = this._statsDateQs();
+                    const sep = qs ? '&' : '?';
                     const [longShortResponse, symbolsResponse, winLossResponse, monthlyResponse] = await Promise.all([
-                        fetch('/api/positions/pie-chart/long-short'),
-                        fetch(`/api/positions/pie-chart/symbols?limit=${this.pieChartSymbolLimit}`),
-                        fetch('/api/positions/pie-chart/win-loss'),
-                        fetch('/api/positions/pie-chart/monthly')
+                        fetch(`/api/positions/pie-chart/long-short${qs}`),
+                        fetch(`/api/positions/pie-chart/symbols${qs}${sep}limit=${this.pieChartSymbolLimit}`),
+                        fetch(`/api/positions/pie-chart/win-loss${qs}`),
+                        fetch(`/api/positions/pie-chart/monthly${qs}`)
                     ]);
 
                     const [longShortData, symbolsData, winLossData, monthlyData] = await Promise.all([

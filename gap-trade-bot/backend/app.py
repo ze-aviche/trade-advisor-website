@@ -838,11 +838,19 @@ def serve_landing():
 
 @app.route('/app')
 def serve_app():
-    return send_from_directory(FRONTEND_DIR, 'index.html')
+    resp = send_from_directory(FRONTEND_DIR, 'index.html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 @app.route('/login')
 def serve_login():
-    return send_from_directory(FRONTEND_DIR, 'login.html')
+    resp = send_from_directory(FRONTEND_DIR, 'login.html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 @app.route('/brownbot-logs')
 @app.route('/brownbot-logs.html')
@@ -5548,6 +5556,20 @@ def get_monthly_pnl():
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/positions/extended-stats', methods=['GET'])
+def get_extended_stats_route():
+    """Extended trading metrics: profit factor, expectancy, streaks, avg win/loss, etc."""
+    try:
+        from database import db_manager
+        start_date = request.args.get('start_date')
+        end_date   = request.args.get('end_date')
+        data = db_manager.get_extended_stats(start_date=start_date, end_date=end_date)
+        return jsonify({'success': True, 'data': data, 'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        app_logger.error(f"Error getting extended stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # WebSocket events
 @socketio.on('connect')

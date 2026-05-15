@@ -2458,15 +2458,21 @@
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
                         <h3 class="text-lg font-medium text-white">Trade History</h3>
-                        <button @click="loadTradeHistory" 
-                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-sync-alt mr-2"></i>Refresh
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button @click="downloadTradeHistoryCSV"
+                                    class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs font-medium text-gray-300">
+                                <i class="fas fa-download mr-1"></i>CSV
+                            </button>
+                            <button @click="loadTradeHistory"
+                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Controls Section -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <!-- Left Column: Search & Filter -->
+                    <div class="mb-6">
+                        <!-- Search & Filter -->
                         <div class="bg-gray-700 rounded-lg p-4 space-y-4">
                             <h4 class="text-sm font-medium text-white">Search & Filter</h4>
                             <!-- Row 1: Ticker + Date Range -->
@@ -2528,21 +2534,6 @@
                             </div>
                         </div>
 
-                        <!-- Right Column: Export Options -->
-                        <div class="bg-gray-700 rounded-lg p-4">
-                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
-                            <div class="grid grid-cols-2 gap-3">
-                                <button @click="downloadTradeHistoryCSV"
-                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
-                                    <i class="fas fa-download mr-2"></i>Export CSV
-                                </button>
-                                <button @click="downloadTradeHistoryExcel"
-                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
-                                    <i class="fas fa-download mr-2"></i>Export Excel
-                                </button>
-                            </div>
-                            <p class="text-xs text-gray-400 mt-2">Download trade history in your preferred format</p>
-                        </div>
                     </div>
                     
                     <div v-if="loading.trades" class="text-center py-8">
@@ -2607,15 +2598,21 @@
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
                         <h3 class="text-lg font-medium text-white">Positions History</h3>
-                        <button @click="loadPositionsHistory" 
-                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-sync-alt mr-2"></i>Refresh
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button @click="downloadPositionsHistoryCSV"
+                                    class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs font-medium text-gray-300">
+                                <i class="fas fa-download mr-1"></i>CSV
+                            </button>
+                            <button @click="loadPositionsHistory"
+                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
+                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Controls Section -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <!-- Left Column: Search and Filter -->
+                    <div class="mb-6">
+                        <!-- Search and Filter -->
                         <div class="space-y-4">
                             <!-- Search and Filter -->
                             <div class="bg-gray-700 rounded-lg p-4">
@@ -2676,21 +2673,6 @@
                             </div>
                         </div>
 
-                        <!-- Right Column: Export Options -->
-                        <div class="bg-gray-700 rounded-lg p-4">
-                            <h4 class="text-sm font-medium text-white mb-3">Export Options</h4>
-                            <div class="grid grid-cols-2 gap-3">
-                                <button @click="downloadPositionsHistoryCSV" 
-                                        class="bg-green-600 hover:bg-green-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
-                                    <i class="fas fa-download mr-2"></i>Export CSV
-                                </button>
-                                <button @click="downloadPositionsHistoryExcel" 
-                                        class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-md text-sm font-medium flex items-center justify-center">
-                                    <i class="fas fa-download mr-2"></i>Export Excel
-                                </button>
-                            </div>
-                            <p class="text-xs text-gray-400 mt-2">Download positions history in your preferred format</p>
-                        </div>
                     </div>
                     
                     <div v-if="loading.positions" class="text-center py-8">
@@ -2746,140 +2728,219 @@
             <div v-if="activeTab === 'stats' && canAccessTab('stats')" class="space-y-6">
                 <!-- Stats Overview -->
                 <div class="bg-gray-800 rounded-lg p-6">
-                    <div class="flex items-center justify-between mb-6">
-                        <div class="flex items-center space-x-4">
-                            <h3 class="text-xl font-semibold text-white">Trading Statistics</h3>
-                            <div class="flex items-center space-x-2 text-sm text-gray-400">
-                                <i class="fas fa-chart-bar text-blue-400"></i>
-                                <span>Performance Overview</span>
-                            </div>
+                    <!-- Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-white">Trading Statistics</h3>
+                        <button @click="loadStats"
+                                :disabled="loading.stats"
+                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <i class="fas fa-sync-alt mr-1" :class="loading.stats ? 'fa-spin' : ''"></i>Refresh
+                        </button>
+                    </div>
+
+                    <!-- Date Range Filter -->
+                    <div class="flex flex-wrap items-center gap-2 mb-6 p-3 bg-gray-700/60 rounded-lg border border-gray-600">
+                        <i class="fas fa-calendar-alt text-gray-400 text-sm"></i>
+                        <span class="text-sm text-gray-300 font-medium mr-1">Period:</span>
+                        <div class="flex items-center gap-1 flex-wrap">
+                            <button v-for="p in [{k:'today',l:'Today'},{k:'week',l:'1W'},{k:'month',l:'1M'},{k:'3month',l:'3M'},{k:'6month',l:'6M'},{k:'ytd',l:'YTD'},{k:'all',l:'All'}]"
+                                    :key="p.k" @click="setStatsDatePreset(p.k)"
+                                    :class="statsPreset===p.k ? 'bg-blue-600 text-white' : 'bg-gray-600 hover:bg-gray-500 text-gray-300'"
+                                    class="px-2.5 py-1 rounded text-xs font-medium transition-colors">{{ p.l }}</button>
                         </div>
-                        <div class="flex items-center space-x-2">
-                            <button @click="loadStats" 
-                                    :disabled="loading.stats"
-                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                                <i class="fas fa-sync-alt mr-1" :class="loading.stats ? 'fa-spin' : ''"></i>Refresh
+                        <div class="flex items-center gap-2 ml-2">
+                            <input type="date" v-model="statsStartDate" @change="onStatsDateChange"
+                                   class="bg-gray-600 text-white text-xs rounded px-2 py-1.5 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                            <span class="text-gray-500 text-xs">—</span>
+                            <input type="date" v-model="statsEndDate" @change="onStatsDateChange"
+                                   class="bg-gray-600 text-white text-xs rounded px-2 py-1.5 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        <div v-if="statsStartDate || statsEndDate" class="ml-auto flex items-center gap-2">
+                            <span class="text-xs text-blue-400 font-medium">
+                                <i class="fas fa-filter mr-1"></i>Filtered
+                            </span>
+                            <button @click="clearStatsFilter" class="text-xs text-gray-400 hover:text-white bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded transition-colors">
+                                <i class="fas fa-times mr-1"></i>Clear
                             </button>
                         </div>
                     </div>
-                    
-                    <!-- Stats Cards -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-                        <!-- Total P&L Card -->
-                        <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="flex items-center space-x-3">
-                                    <div class="p-2 bg-green-500/20 rounded-lg">
-                                        <i class="fas fa-dollar-sign text-green-400 text-xl"></i>
-                                    </div>
-                                    <div>
-                                        <h4 class="text-lg font-bold text-white">Total P&L</h4>
-                                        <p class="text-sm text-gray-400">Realized profits/losses</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="text-3xl font-bold" :class="stats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                {{ formatCurrency(stats.total_pnl) }}
-                            </div>
-                            <div class="mt-2 text-sm text-gray-400">
-                                From {{ stats.total_positions || 0 }} positions
-                            </div>
-                        </div>
 
-                        <!-- Win Rate Card -->
-                        <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="flex items-center space-x-3">
-                                    <div class="p-2 bg-blue-500/20 rounded-lg">
-                                        <i class="fas fa-percentage text-blue-400 text-xl"></i>
-                                    </div>
-                                    <div>
-                                        <h4 class="text-lg font-bold text-white">Win Rate</h4>
-                                        <p class="text-sm text-gray-400">Winning positions</p>
-                                    </div>
-                                </div>
+                    <!-- Row 1: Core Metrics -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <!-- Total P&L -->
+                        <div class="bg-gray-700 rounded-lg p-5 border border-gray-600">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="p-2 bg-green-500/20 rounded-lg"><i class="fas fa-dollar-sign text-green-400"></i></div>
+                                <div><p class="text-sm font-semibold text-white">Total P&L</p><p class="text-xs text-gray-400">Realized profits/losses</p></div>
                             </div>
-                            <div class="text-3xl font-bold" :class="stats.win_rate >= 50 ? 'text-green-400' : 'text-yellow-400'">
-                                {{ formatPercentage(stats.win_rate) }}%
-                            </div>
-                            <div class="mt-2 text-sm text-gray-400">
-                                Based on realized positions
-                            </div>
+                            <div class="text-2xl font-bold" :class="stats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ formatCurrency(stats.total_pnl) }}</div>
+                            <div class="mt-1 text-xs text-gray-400">{{ stats.total_positions || 0 }} closed trades</div>
                         </div>
-
-                        <!-- Total Positions Card -->
-                        <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="flex items-center space-x-3">
-                                    <div class="p-2 bg-purple-500/20 rounded-lg">
-                                        <i class="fas fa-chart-line text-purple-400 text-xl"></i>
-                                    </div>
-                                    <div>
-                                        <h4 class="text-lg font-bold text-white">Total Positions</h4>
-                                        <p class="text-sm text-gray-400">All time positions</p>
-                                    </div>
-                                </div>
+                        <!-- Win Rate -->
+                        <div class="bg-gray-700 rounded-lg p-5 border border-gray-600">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="p-2 bg-blue-500/20 rounded-lg"><i class="fas fa-percentage text-blue-400"></i></div>
+                                <div><p class="text-sm font-semibold text-white">Win Rate</p><p class="text-xs text-gray-400">Profitable exits</p></div>
                             </div>
-                            <div class="text-3xl font-bold text-white">
-                                {{ stats.total_positions || 0 }}
+                            <div class="text-2xl font-bold" :class="stats.win_rate >= 50 ? 'text-green-400' : 'text-yellow-400'">{{ formatPercentage(stats.win_rate) }}%</div>
+                            <div class="mt-1 text-xs text-gray-400">{{ extendedStats.win_count || 0 }}W &nbsp;/&nbsp; {{ extendedStats.loss_count || 0 }}L &nbsp;/&nbsp; {{ extendedStats.breakeven_count || 0 }}BE</div>
+                        </div>
+                        <!-- Total Trades -->
+                        <div class="bg-gray-700 rounded-lg p-5 border border-gray-600">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="p-2 bg-purple-500/20 rounded-lg"><i class="fas fa-exchange-alt text-purple-400"></i></div>
+                                <div><p class="text-sm font-semibold text-white">Total Trades</p><p class="text-xs text-gray-400">Completed exits</p></div>
                             </div>
-                            <div class="mt-2 text-sm text-gray-400">
-                                Completed trades
-                            </div>
+                            <div class="text-2xl font-bold text-white">{{ stats.total_positions || 0 }}</div>
+                            <div class="mt-1 text-xs text-gray-400">Avg {{ formatCurrency(extendedStats.avg_pnl || 0) }} / trade</div>
                         </div>
                     </div>
 
-                    <!-- Statistics Explanation -->
-                    <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-                        <h4 class="text-lg font-bold text-white mb-4">How These Statistics Are Calculated</h4>
-                        <div class="space-y-4 text-sm text-gray-300">
-                            <div class="flex items-start space-x-3">
-                                <i class="fas fa-info-circle text-blue-400 mt-1"></i>
-                                <div>
-                                    <strong>Total P&L:</strong> Sum of all realized profits and losses from the positions table 
-                                    <code class="bg-gray-800 px-2 py-1 rounded text-xs">SELECT SUM(REALIZED) AS TOTAL_PNL FROM POSITIONS;</code>
-                                </div>
+                    <!-- Row 2: Risk & Return -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <!-- Profit Factor -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Profit Factor</p>
+                            <div class="text-xl font-bold" :class="extendedStats.profit_factor >= 1.5 ? 'text-green-400' : extendedStats.profit_factor >= 1 ? 'text-yellow-400' : 'text-red-400'">
+                                {{ extendedStats.total_count > 0 ? extendedStats.profit_factor.toFixed(2) : '—' }}
                             </div>
-                            <div class="flex items-start space-x-3">
-                                <i class="fas fa-info-circle text-blue-400 mt-1"></i>
-                                <div>
-                                    <strong>Win Rate:</strong> Percentage of winning positions (realized > 0) vs losing positions (realized < 0)
-                                    <code class="bg-gray-800 px-2 py-1 rounded text-xs">(SELECT COUNT(*) FROM POSITIONS WHERE REALIZED > 0) / (SELECT COUNT(*) FROM POSITIONS WHERE REALIZED < 0)</code>
-                                </div>
+                            <p class="text-xs text-gray-500 mt-1">Gross profit ÷ gross loss</p>
+                        </div>
+                        <!-- Expectancy -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Expectancy</p>
+                            <div class="text-xl font-bold" :class="extendedStats.expectancy >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.expectancy) : '—' }}
                             </div>
-                            <div class="flex items-start space-x-3">
-                                <i class="fas fa-info-circle text-blue-400 mt-1"></i>
+                            <p class="text-xs text-gray-500 mt-1">Expected $ per trade</p>
+                        </div>
+                        <!-- Max Drawdown -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Max Drawdown</p>
+                            <div class="text-xl font-bold text-red-400">
+                                {{ maxDrawdown !== null ? (maxDrawdown > 0 ? '-' + formatCurrency(maxDrawdown) : '$0.00') : '—' }}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Peak-to-trough P&L</p>
+                        </div>
+                        <!-- Sharpe Ratio -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Sharpe Ratio</p>
+                            <div class="text-xl font-bold" :class="sharpeRatio !== null && sharpeRatio >= 1 ? 'text-green-400' : sharpeRatio !== null && sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'">
+                                {{ sharpeRatio !== null ? sharpeRatio.toFixed(2) : '—' }}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Annualised (daily P&L)</p>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Trade Quality -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <!-- Avg Win -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Avg Win</p>
+                            <div class="text-xl font-bold text-green-400">
+                                {{ extendedStats.win_count > 0 ? formatCurrency(extendedStats.avg_win) : '—' }}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Per winning trade</p>
+                        </div>
+                        <!-- Avg Loss -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Avg Loss</p>
+                            <div class="text-xl font-bold text-red-400">
+                                {{ extendedStats.loss_count > 0 ? formatCurrency(extendedStats.avg_loss) : '—' }}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Per losing trade</p>
+                        </div>
+                        <!-- Win/Loss Ratio -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Win/Loss Ratio</p>
+                            <div class="text-xl font-bold" :class="extendedStats.win_loss_ratio >= 1 ? 'text-green-400' : 'text-yellow-400'">
+                                {{ (extendedStats.win_count > 0 && extendedStats.loss_count > 0) ? extendedStats.win_loss_ratio.toFixed(2) : '—' }}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Avg win ÷ avg loss</p>
+                        </div>
+                        <!-- Avg Trade -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 mb-1">Avg Trade P&L</p>
+                            <div class="text-xl font-bold" :class="extendedStats.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.avg_pnl) : '—' }}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Mean realized per exit</p>
+                        </div>
+                    </div>
+
+                    <!-- Row 4: Extremes & Streaks -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <!-- Best / Worst Trade -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 font-medium mb-3">Trade Extremes</p>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs text-gray-400">Best Trade</span>
+                                <span class="text-sm font-bold text-green-400">
+                                    {{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.best_trade) : '—' }}
+                                    <span v-if="extendedStats.best_trade_symbol" class="text-xs text-gray-400 ml-1">({{ extendedStats.best_trade_symbol }})</span>
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs text-gray-400">Worst Trade</span>
+                                <span class="text-sm font-bold text-red-400">
+                                    {{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.worst_trade) : '—' }}
+                                    <span v-if="extendedStats.worst_trade_symbol" class="text-xs text-gray-400 ml-1">({{ extendedStats.worst_trade_symbol }})</span>
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs text-gray-400">Gross Profit</span>
+                                <span class="text-sm font-bold text-green-400">{{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.gross_profit) : '—' }}</span>
+                            </div>
+                            <div class="flex justify-between items-center mt-2">
+                                <span class="text-xs text-gray-400">Gross Loss</span>
+                                <span class="text-sm font-bold text-red-400">{{ extendedStats.total_count > 0 ? '-' + formatCurrency(extendedStats.gross_loss) : '—' }}</span>
+                            </div>
+                        </div>
+                        <!-- Streaks -->
+                        <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                            <p class="text-xs text-gray-400 font-medium mb-3">Trading Streaks</p>
+                            <div class="flex justify-between items-center mb-3">
                                 <div>
-                                    <strong>Total Positions:</strong> Count of all positions in the positions table
-                                    <code class="bg-gray-800 px-2 py-1 rounded text-xs">SELECT COUNT(*) FROM POSITIONS;</code>
+                                    <p class="text-xs text-gray-400">Max Consecutive Wins</p>
+                                    <p class="text-2xl font-bold text-green-400">{{ extendedStats.max_consecutive_wins }}</p>
                                 </div>
+                                <i class="fas fa-snowflake text-green-400 text-xl opacity-60"></i>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-gray-400">Max Consecutive Losses</p>
+                                    <p class="text-2xl font-bold text-red-400">{{ extendedStats.max_consecutive_losses }}</p>
+                                </div>
+                                <i class="fas fa-fire text-red-400 text-xl opacity-60"></i>
                             </div>
                         </div>
                     </div>
 
                     <!-- Performance Insights -->
-                    <div class="bg-gray-700 rounded-lg p-6 border border-gray-600 mt-6">
-                        <h4 class="text-lg font-bold text-white mb-4">Performance Insights</h4>
-                        <div class="space-y-3 text-sm">
-                            <div v-if="stats.total_pnl > 0" class="flex items-center space-x-2 text-green-400">
-                                <i class="fas fa-arrow-up"></i>
-                                <span>You're currently profitable! Keep up the good work.</span>
+                    <div class="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                        <h4 class="text-sm font-semibold text-white mb-3"><i class="fas fa-lightbulb text-yellow-400 mr-2"></i>Performance Insights</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                            <div :class="stats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'" class="flex items-center gap-2">
+                                <i :class="stats.total_pnl >= 0 ? 'fas fa-arrow-up' : 'fas fa-arrow-down'"></i>
+                                <span>{{ stats.total_pnl >= 0 ? 'Account is profitable in selected period.' : 'Account is at a loss in selected period.' }}</span>
                             </div>
-                            <div v-else-if="stats.total_pnl < 0" class="flex items-center space-x-2 text-red-400">
-                                <i class="fas fa-arrow-down"></i>
-                                <span>You're currently at a loss. Consider reviewing your strategy.</span>
-                            </div>
-                            <div v-if="stats.win_rate >= 60" class="flex items-center space-x-2 text-green-400">
-                                <i class="fas fa-trophy"></i>
-                                <span>Excellent win rate! Your strategy is working well.</span>
-                            </div>
-                            <div v-else-if="stats.win_rate >= 40" class="flex items-center space-x-2 text-yellow-400">
+                            <div :class="(extendedStats.profit_factor||0) >= 1.5 ? 'text-green-400' : (extendedStats.profit_factor||0) >= 1 ? 'text-yellow-400' : 'text-red-400'" class="flex items-center gap-2">
                                 <i class="fas fa-balance-scale"></i>
-                                <span>Moderate win rate. Consider optimizing your entry/exit criteria.</span>
+                                <span v-if="(extendedStats.profit_factor||0) >= 2">Excellent profit factor (&gt;2). Strategy has strong edge.</span>
+                                <span v-else-if="(extendedStats.profit_factor||0) >= 1.5">Good profit factor. Strategy is performing well.</span>
+                                <span v-else-if="(extendedStats.profit_factor||0) >= 1">Marginal edge. Profit factor &lt;1.5 — optimize exits.</span>
+                                <span v-else>Profit factor below 1. Losing strategy in this period.</span>
                             </div>
-                            <div v-else class="flex items-center space-x-2 text-red-400">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <span>Low win rate. It's time to review and adjust your strategy.</span>
+                            <div :class="(extendedStats.expectancy||0) >= 0 ? 'text-green-400' : 'text-red-400'" class="flex items-center gap-2">
+                                <i class="fas fa-chart-line"></i>
+                                <span>Expectancy {{ formatCurrency(extendedStats.expectancy||0) }} per trade — {{ (extendedStats.expectancy||0) >= 0 ? 'positive edge' : 'negative edge' }}.</span>
+                            </div>
+                            <div v-if="sharpeRatio != null" :class="sharpeRatio >= 1 ? 'text-green-400' : sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'" class="flex items-center gap-2">
+                                <i class="fas fa-award"></i>
+                                <span v-if="sharpeRatio >= 2">Sharpe &gt;2 — outstanding risk-adjusted returns.</span>
+                                <span v-else-if="sharpeRatio >= 1">Sharpe &gt;1 — good risk-adjusted returns.</span>
+                                <span v-else-if="sharpeRatio >= 0">Sharpe between 0–1 — acceptable but could improve.</span>
+                                <span v-else>Negative Sharpe — returns don't compensate for volatility.</span>
                             </div>
                         </div>
                     </div>

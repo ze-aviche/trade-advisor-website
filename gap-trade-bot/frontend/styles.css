@@ -1,5 +1,8 @@
 /* Custom styles for Trading Advisor Dashboard */
 
+/* Hide Vue template until the app has mounted (pairs with v-cloak on #app) */
+[v-cloak] { display: none; }
+
 /* ═══════════════════════════════════════════════════════
    THEME SYSTEM — dark (default) / light mode
    Toggle by adding/removing class "light" on <html>
