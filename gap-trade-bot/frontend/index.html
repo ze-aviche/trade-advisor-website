@@ -847,19 +847,6 @@
                             </button>
                         </div>
 
-                        <!-- Pre-loaded ticker chips -->
-                        <div v-if="Object.keys(historicalPrefetchStatus).length > 0" class="flex flex-wrap items-center gap-1.5 pt-1">
-                            <span class="text-xs text-gray-500 whitespace-nowrap">
-                                <i class="fas fa-bolt text-yellow-400 mr-0.5"></i>Pre-loaded:
-                            </span>
-                            <button v-for="(info, ticker) in historicalPrefetchStatus" :key="ticker"
-                                    @click="historicalTicker = ticker; loadHistoricalData()"
-                                    :class="historicalTicker.toUpperCase() === ticker ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-green-300 hover:bg-gray-600'"
-                                    class="text-xs border px-2 py-0.5 rounded-full transition-colors">
-                                {{ ticker }}
-                                <span class="opacity-60 ml-0.5">{{ info.records }}d</span>
-                            </button>
-                        </div>
                     </div>
 
                     <!-- ── News Card (independent of historical data) ── -->
@@ -937,9 +924,6 @@
                                 <div>
                                     <div class="flex items-center gap-2">
                                         <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
-                                        <span v-if="historicalLoadedFromCache" class="text-xs bg-yellow-900/50 text-yellow-400 border border-yellow-700/40 px-2 py-0.5 rounded-full">
-                                            <i class="fas fa-bolt mr-0.5"></i>Instant
-                                        </span>
                                     </div>
                                     <p class="text-sm text-gray-400">{{ historicalData.length }} days of {{ minGapPercent }}%+ gap-up data ({{ getPeriodDescription() }} analysis)</p>
                                 </div>
@@ -2402,11 +2386,12 @@
                         <div class="px-5 py-4 text-center">
                             <div class="text-xs text-gray-400 mb-1">Circuit Breaker</div>
                             <div :class="brownBotRiskStatus.circuit_breaker_open ? 'text-red-400' : 'text-green-400'"
-                                 class="text-xl font-bold flex items-center justify-center gap-1">
+                                 class="text-sm font-bold flex items-center justify-center gap-1.5">
                                 <i :class="brownBotRiskStatus.circuit_breaker_open ? 'fas fa-ban' : 'fas fa-check-circle'"></i>
-                                {{ brownBotRiskStatus.circuit_breaker_open ? 'OPEN' : 'OK' }}
+                                {{ brownBotRiskStatus.circuit_breaker_open ? 'Triggered' : 'Not Triggered' }}
                             </div>
                             <div v-if="brownBotRiskStatus.circuit_breaker_open" class="text-xs text-red-400 mt-1">Trading halted</div>
+                            <div v-else class="text-xs text-gray-600 mt-1">In place</div>
                         </div>
                     </div>
 
