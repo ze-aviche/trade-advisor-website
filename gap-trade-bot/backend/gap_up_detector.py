@@ -45,14 +45,31 @@ def _load_session_tracker():
     try:
         from database import db_manager
         et_tz = pytz.timezone('US/Eastern')
-        today = dt.now(et_tz).date().isoformat()
+        now_et = dt.now(et_tz)
+        today = now_et.date().isoformat()
         rows = db_manager.get_gap_up_snapshot(today)
-        _session_tracker = {
-            row['ticker']: {'session': row['session'], 'date': today}
-            for row in rows if row.get('session')
-        }
+
+        # Before market open (9:30 AM ET), no stock can legitimately have been
+        # first seen during intraday. Any 'intraday' tag in the DB before 9:30 AM
+        # is a stale artifact (e.g. from an old overnight-scan bug). Correct it.
+        pre_open = (now_et.hour + now_et.minute / 60.0) < 9.5
+
+        corrected = 0
+        _session_tracker = {}
+        for row in rows:
+            if not row.get('session'):
+                continue
+            session = row['session']
+            if pre_open and session == 'intraday':
+                session = 'premarket'
+                corrected += 1
+            _session_tracker[row['ticker']] = {'session': session, 'date': today}
+
         if _session_tracker:
-            logger.info(f"Restored {len(_session_tracker)} session tracker entries from DB")
+            msg = f"Restored {len(_session_tracker)} session tracker entries from DB"
+            if corrected:
+                msg += f" ({corrected} stale 'intraday' corrected to 'premarket')"
+            logger.info(msg)
     except Exception as e:
         logger.warning(f"Could not restore session tracker from DB: {e}")
 
