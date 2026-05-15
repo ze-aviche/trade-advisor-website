@@ -323,7 +323,7 @@ def add_entry_bot_log(level, message):
     _entry_bot_log_id += 1
     log_entry = {
         'id': _entry_bot_log_id,
-        'timestamp': _et_now.strftime('%Y-%m-%dT%H:%M:%S ET'),
+        'timestamp': _et_now.isoformat(),
         'level': level,
         'message': message
     }
@@ -350,7 +350,7 @@ def _add_brown_log(level: str, message: str):
     _brown_bot_log_id += 1
     _brown_bot_logs.append({
         'id': _brown_bot_log_id,
-        'timestamp': _et_now.strftime('%Y-%m-%dT%H:%M:%S ET'),
+        'timestamp': _et_now.isoformat(),
         'level': level,
         'message': message,
     })
