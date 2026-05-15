@@ -2857,29 +2857,29 @@
                     </div>
 
                     <!-- Date Range Filter -->
-                    <div class="flex flex-wrap items-center gap-2 mb-6 p-3 bg-gray-700/60 rounded-lg border border-gray-600">
-                        <i class="fas fa-calendar-alt text-gray-400 text-sm"></i>
-                        <span class="text-sm text-gray-300 font-medium mr-1">Period:</span>
-                        <div class="flex items-center gap-1 flex-wrap">
+                    <div class="flex flex-col gap-2 mb-6 p-3 bg-gray-700/60 rounded-lg border border-gray-600">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <i class="fas fa-calendar-alt text-gray-400 text-sm"></i>
+                            <span class="text-sm text-gray-300 font-medium">Period:</span>
                             <button v-for="p in [{k:'today',l:'Today'},{k:'week',l:'1W'},{k:'month',l:'1M'},{k:'3month',l:'3M'},{k:'6month',l:'6M'},{k:'ytd',l:'YTD'},{k:'all',l:'All'}]"
                                     :key="p.k" @click="setStatsDatePreset(p.k)"
                                     :class="statsPreset===p.k ? 'bg-blue-600 text-white' : 'bg-gray-600 hover:bg-gray-500 text-gray-300'"
                                     class="px-2.5 py-1 rounded text-xs font-medium transition-colors">{{ p.l }}</button>
                         </div>
-                        <div class="flex items-center gap-2 ml-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <input type="date" v-model="statsStartDate" @change="onStatsDateChange"
-                                   class="bg-gray-600 text-white text-xs rounded px-2 py-1.5 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                   class="bg-gray-600 text-white text-xs rounded px-2 py-1.5 border border-gray-500 focus:border-blue-500 focus:outline-none flex-1 min-w-[130px]">
                             <span class="text-gray-500 text-xs">—</span>
                             <input type="date" v-model="statsEndDate" @change="onStatsDateChange"
-                                   class="bg-gray-600 text-white text-xs rounded px-2 py-1.5 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                        </div>
-                        <div v-if="statsStartDate || statsEndDate" class="ml-auto flex items-center gap-2">
-                            <span class="text-xs text-blue-400 font-medium">
-                                <i class="fas fa-filter mr-1"></i>Filtered
-                            </span>
-                            <button @click="clearStatsFilter" class="text-xs text-gray-400 hover:text-white bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded transition-colors">
-                                <i class="fas fa-times mr-1"></i>Clear
-                            </button>
+                                   class="bg-gray-600 text-white text-xs rounded px-2 py-1.5 border border-gray-500 focus:border-blue-500 focus:outline-none flex-1 min-w-[130px]">
+                            <div v-if="statsStartDate || statsEndDate" class="flex items-center gap-2">
+                                <span class="text-xs text-blue-400 font-medium">
+                                    <i class="fas fa-filter mr-1"></i>Filtered
+                                </span>
+                                <button @click="clearStatsFilter" class="text-xs text-gray-400 hover:text-white bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded transition-colors">
+                                    <i class="fas fa-times mr-1"></i>Clear
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -3064,24 +3064,24 @@
                     </div>
 
                     <!-- Daily P&L Chart -->
-                    <div class="bg-gray-700 rounded-lg p-6 border border-gray-600 mt-6">
-                        <div class="flex items-center justify-between mb-4">
+                    <div class="bg-gray-700 rounded-lg p-4 md:p-6 border border-gray-600 mt-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
                             <h4 class="text-lg font-bold text-white">Daily P&L Chart</h4>
-                            <div class="flex items-center space-x-2">
+                            <div class="flex items-center gap-2">
                                 <!-- Chart Type Toggle -->
                                 <div class="flex items-center bg-gray-600 rounded-md p-1">
-                                    <button @click="toggleDailyPnlChartType('bar')" 
+                                    <button @click="toggleDailyPnlChartType('bar')"
                                             :class="dailyPnlChartType === 'bar' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
                                             class="px-3 py-1 rounded text-sm font-medium transition-colors">
                                         <i class="fas fa-chart-bar mr-1"></i>Bar
                                     </button>
-                                    <button @click="toggleDailyPnlChartType('line')" 
+                                    <button @click="toggleDailyPnlChartType('line')"
                                             :class="dailyPnlChartType === 'line' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
                                             class="px-3 py-1 rounded text-sm font-medium transition-colors">
                                         <i class="fas fa-chart-line mr-1"></i>Line
                                     </button>
                                 </div>
-                                <button @click="loadDailyPnlData" 
+                                <button @click="loadDailyPnlData"
                                         :disabled="loading.dailyPnl"
                                         class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                     <i class="fas fa-sync-alt mr-1" :class="loading.dailyPnl ? 'fa-spin' : ''"></i>Refresh
@@ -3129,16 +3129,14 @@
                     </div>
 
                     <!-- Cumulative P&L Chart -->
-                    <div class="bg-gray-700 rounded-lg p-6 border border-gray-600 mt-6">
-                        <div class="flex items-center justify-between mb-4">
+                    <div class="bg-gray-700 rounded-lg p-4 md:p-6 border border-gray-600 mt-6">
+                        <div class="flex items-center justify-between mb-4 gap-2">
                             <h4 class="text-lg font-bold text-white">Cumulative P&L Growth</h4>
-                            <div class="flex items-center space-x-2">
-                                <button @click="loadCumulativePnlData" 
-                                        :disabled="loading.cumulativePnl"
-                                        class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                                    <i class="fas fa-sync-alt mr-1" :class="loading.cumulativePnl ? 'fa-spin' : ''"></i>Refresh
-                                </button>
-                            </div>
+                            <button @click="loadCumulativePnlData"
+                                    :disabled="loading.cumulativePnl"
+                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors shrink-0">
+                                <i class="fas fa-sync-alt mr-1" :class="loading.cumulativePnl ? 'fa-spin' : ''"></i>Refresh
+                            </button>
                         </div>
                         
                         <div class="mb-4">
@@ -3181,36 +3179,36 @@
                     </div>
 
                     <!-- Pie Chart Analysis -->
-                    <div class="bg-gray-700 rounded-lg p-6 border border-gray-600 mt-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h4 class="text-lg font-bold text-white">Trading Analysis Pie Charts</h4>
-                            <div class="flex items-center space-x-2">
-                                <!-- Chart Type Selector -->
-                                <div class="flex items-center bg-gray-600 rounded-md p-1">
-                                    <button @click="changePieChartType('longShort')" 
+                    <div class="bg-gray-700 rounded-lg p-4 md:p-6 border border-gray-600 mt-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+                            <h4 class="text-lg font-bold text-white shrink-0">Trading Analysis</h4>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <!-- Chart Type Selector — 2×2 on mobile, single row on sm+ -->
+                                <div class="grid grid-cols-2 sm:flex gap-1 bg-gray-600 rounded-md p-1">
+                                    <button @click="changePieChartType('longShort')"
                                             :class="pieChartType === 'longShort' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
-                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
-                                        <i class="fas fa-chart-pie mr-1"></i>Day/Swing
+                                            class="px-2.5 py-1 rounded text-xs font-medium transition-colors text-center">
+                                        Day/Swing
                                     </button>
-                                    <button @click="changePieChartType('symbols')" 
+                                    <button @click="changePieChartType('symbols')"
                                             :class="pieChartType === 'symbols' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
-                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
-                                        <i class="fas fa-chart-pie mr-1"></i>Symbols
+                                            class="px-2.5 py-1 rounded text-xs font-medium transition-colors text-center">
+                                        Symbols
                                     </button>
-                                    <button @click="changePieChartType('winLoss')" 
+                                    <button @click="changePieChartType('winLoss')"
                                             :class="pieChartType === 'winLoss' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
-                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
-                                        <i class="fas fa-chart-pie mr-1"></i>Win/Loss
+                                            class="px-2.5 py-1 rounded text-xs font-medium transition-colors text-center">
+                                        Win/Loss
                                     </button>
-                                    <button @click="changePieChartType('monthly')" 
+                                    <button @click="changePieChartType('monthly')"
                                             :class="pieChartType === 'monthly' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
-                                            class="px-3 py-1 rounded text-sm font-medium transition-colors">
-                                        <i class="fas fa-chart-pie mr-1"></i>Monthly
+                                            class="px-2.5 py-1 rounded text-xs font-medium transition-colors text-center">
+                                        Monthly
                                     </button>
                                 </div>
-                                <button @click="loadPieChartData" 
+                                <button @click="loadPieChartData"
                                         :disabled="loading.pieCharts"
-                                        class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                        class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors shrink-0">
                                     <i class="fas fa-sync-alt mr-1" :class="loading.pieCharts ? 'fa-spin' : ''"></i>Refresh
                                 </button>
                             </div>
