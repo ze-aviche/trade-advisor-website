@@ -4,7 +4,9 @@ from datetime import datetime
 
 class RiskManager:
     def __init__(self, config: dict):
-        self.max_daily_loss = float(config.get('max_daily_loss', -500.0))
+        # Always store as a negative threshold regardless of sign the user entered.
+        # e.g. both 500 and -500 mean "halt if daily P&L drops below -$500".
+        self.max_daily_loss = -abs(float(config.get('max_daily_loss', -500.0)))
         self.max_concurrent_day = int(config.get('max_concurrent_day', 3))
         self.max_concurrent_swing = int(config.get('max_concurrent_swing', 5))
 

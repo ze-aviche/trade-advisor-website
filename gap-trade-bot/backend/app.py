@@ -2939,6 +2939,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     _brown_attempted_symbols.add(symbol)
 
     price = float(approx_price or 0)
+    _add_brown_log('info', f'{symbol}: entry started — approx ${price:.2f}, type={position_type}')
     pct_key = 'day_position_pct' if position_type == 'day' else 'swing_position_pct'
     position_pct = float(config.get(pct_key, 5.0 if position_type == 'day' else 3.0))
 
@@ -3186,10 +3187,18 @@ def _brown_bot_scan_and_enter():
             _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}')
 
         if _brown_risk_manager:
+            _rs = _brown_risk_manager.status(active_copy)
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
             if not allowed:
-                _add_brown_log('warning', f'SKIP {symbol} [RISK] {reason}')
+                _add_brown_log('warning',
+                    f'SKIP {symbol} [RISK] {reason} '
+                    f'(daily P&L ${_rs["daily_pnl"]:.0f}, '
+                    f'limit ${_rs["max_daily_loss"]:.0f}, '
+                    f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]})')
                 continue
+            _add_brown_log('info',
+                f'{symbol} risk OK — daily P&L ${_rs["daily_pnl"]:.0f}, '
+                f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}')
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
         _brown_enter_position(symbol, 'day', config, s.get('price', 0))
         # Refresh active state after entry
