@@ -14,7 +14,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, time as time_class
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
@@ -136,12 +136,46 @@ socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode=_async_m
 # Tag each request with the authenticated user so Sentry errors show who was affected
 @app.before_request
 def _set_sentry_user():
+    g._req_start = time.time()
     if _sentry_dsn:
         token = request.headers.get('Authorization', '').replace('Bearer ', '') or request.cookies.get('session_token')
         if token and auth_manager:
             user = auth_manager.get_user_by_session(token)
             if user:
                 sentry_sdk.set_user({'id': user.get('id'), 'username': user.get('username'), 'email': user.get('email')})
+
+
+@app.after_request
+def _log_api_request(response):
+    """Log every API call with username, method, path, status, and duration."""
+    if not request.path.startswith('/api/'):
+        return response
+
+    ms = int((time.time() - getattr(g, '_req_start', time.time())) * 1000)
+
+    user = getattr(request, 'user', None)
+    if user:
+        who = user.get('username') or user.get('email') or f"uid:{user.get('id', '?')}"
+    else:
+        # Not a protected endpoint — try session token lookup for context
+        token = request.headers.get('Authorization', '').replace('Bearer ', '') or request.cookies.get('session_token')
+        if token and auth_manager:
+            u = auth_manager.get_user_by_session(token)
+            who = (u.get('username') or u.get('email')) if u else 'anonymous'
+        else:
+            who = 'anonymous'
+
+    msg = f"[{who}] {request.method} {request.path} → {response.status_code} ({ms}ms)"
+
+    if response.status_code >= 500:
+        app_logger.error(msg)
+    elif response.status_code >= 400:
+        app_logger.warning(msg)
+    else:
+        app_logger.info(msg)
+
+    return response
+
 
 # Global variables for real-time data
 active_stocks = set()
