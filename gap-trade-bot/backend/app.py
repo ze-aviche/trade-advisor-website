@@ -5772,8 +5772,10 @@ def _is_market_open() -> bool:
 
 
 def _last_trading_date() -> str:
-    """Return the most recent weekday as YYYY-MM-DD (skips weekends)."""
-    d = datetime.now()
+    """Return the most recent weekday as YYYY-MM-DD in US/Eastern time.
+    Uses ET so the date key is identical on local and cloud (UTC) servers."""
+    import pytz as _pytz
+    d = datetime.now(_pytz.timezone('US/Eastern'))
     while d.weekday() >= 5:
         d -= timedelta(days=1)
     return d.strftime('%Y-%m-%d')
