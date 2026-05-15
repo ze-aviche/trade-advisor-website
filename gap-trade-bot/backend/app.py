@@ -3513,7 +3513,19 @@ def _brown_bot_check_exits(check_swing_specific=False):
             continue
 
         current_price = _brown_get_current_price(symbol)
+
+        # EOD force-flatten: time-based — must fire even if price fetch failed.
+        # _brown_close_position falls back to entry_price when _current_price is None.
+        if position_type == 'day' and now_et >= eod_time:
+            _add_brown_log('trade', f'{symbol}: EOD force-flatten at {eod_str} ET')
+            app_logger.info(f'[BrownBot] EOD flatten {symbol} (now={now_et.strftime("%H:%M:%S")} ET, eod={eod_str})')
+            position_with_price = {**position, '_current_price': current_price}
+            _brown_close_position(position_id, position_with_price, f'EOD_FLATTEN ({eod_str} ET)')
+            continue
+
+        # All remaining exit checks need a live price — skip if unavailable
         if current_price is None:
+            app_logger.warning(f'[BrownBot] {symbol}: price unavailable, skipping exit check this tick')
             continue
 
         entry_price = float(position.get('entry_price', 0))
@@ -3550,8 +3562,6 @@ def _brown_bot_check_exits(check_swing_specific=False):
             exit_reason = 'PROFIT_TARGET'
         elif stop_loss and current_price <= stop_loss:
             exit_reason = 'STOP_LOSS'
-        elif position_type == 'day' and now_et >= eod_time:
-            exit_reason = f'EOD_FLATTEN ({eod_str} ET)'
         elif position_type == 'swing' and check_swing_specific:
             # Max hold days
             entry_time_str = position.get('entry_time', '')
