@@ -45,7 +45,7 @@ apply_emoji_filter()
 
 # Import real gap-up detection functions
 try:
-    from gap_up_detector import get_gap_up_stocks, get_gap_up_stocks_for_frontend
+    from gap_up_detector import get_gap_up_stocks_for_frontend
     from historical_data import get_historical_gap_up_data
     REAL_DATA_AVAILABLE = True
 except ImportError as e:
@@ -148,6 +148,10 @@ active_stocks = set()
 price_cache = {}
 websocket_connected = False
 real_time_gap_ups = []  # Store real-time detected gap-ups
+
+# Historical prefetch daemon state
+_hist_prefetch_status = {}   # {ticker: {'date': str, 'records': int, 'fetched_at': str}}
+_hist_prefetch_lock = threading.Lock()
 
 # Entry Bot global variables and data structures
 entry_bot_running = False
@@ -706,6 +710,7 @@ def enter_position(symbol, entry_price, entry_params):
         quantity    = entry_params.get('quantity', 100)
         order_type  = entry_params.get('order_type', 'MKT')
         limit_price = entry_params.get('limit_price')
+        route       = entry_params.get('route', 'SMAT')
 
         # Route through broker abstraction layer (falls back to DAS if no broker configured)
         success, order_id, result = place_order(
@@ -1984,6 +1989,20 @@ def get_historical_data(ticker):
             'success': False,
             'error': f'Unexpected error: {str(e)}'
         }), 500
+
+
+@app.route('/api/historical-prefetch/status')
+def get_historical_prefetch_status():
+    """Returns which gap-up tickers have been pre-fetched today for the Historical tab."""
+    today = datetime.now().date().isoformat()
+    with _hist_prefetch_lock:
+        today_ok = {
+            t: {'records': v['records'], 'fetched_at': v['fetched_at']}
+            for t, v in _hist_prefetch_status.items()
+            if v.get('date') == today and not v.get('error')
+        }
+    return jsonify({'success': True, 'prefetched': today_ok, 'total': len(today_ok), 'date': today})
+
 
 # ── In-memory cache + rate limiter (no Redis needed) ─────────────────────────
 import threading as _threading
@@ -5702,6 +5721,8 @@ def update_real_time_gap_ups():
     # Track which dates we've already saved a snapshot for this process run
     _snapshot_saved_dates = set()
 
+    app_logger.info("🔄 [GapUpMonitor] Thread started")
+
     while True:
         try:
             if REAL_DATA_AVAILABLE:
@@ -5751,10 +5772,11 @@ def update_real_time_gap_ups():
                 )
             else:
                 interval = 300
+                app_logger.debug("[GapUpMonitor] Real data not available — sleeping 300s")
 
             time.sleep(interval)
         except Exception as e:
-            app_logger.error(f"Error updating gap-ups: {e}")
+            app_logger.error(f"[GapUpMonitor] Unhandled error in gap-up monitor loop: {e}", exc_info=True)
             time.sleep(300)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6302,7 +6324,7 @@ def _swing_picks_eod_scheduler():
     import pytz as _pytz
 
     _et = _pytz.timezone('US/Eastern')
-    app_logger.info('Swing picks EOD scheduler started')
+    app_logger.info('[SwingPicksEOD] Thread started')
 
     polygon_key = os.environ.get('POLYGON_API_KEY', '')
 
@@ -6323,7 +6345,7 @@ def _swing_picks_eod_scheduler():
             _compute_and_save_swing_picks(session_date, polygon_key)
             app_logger.info(f'Swing picks scheduler: catch-up saved for {session_date}')
     except Exception as _e:
-        app_logger.error(f'Swing picks scheduler catch-up failed: {_e}')
+        app_logger.error(f'[SwingPicksEOD] Catch-up run failed: {_e}', exc_info=True)
 
     # ── Daily 8 PM ET loop ───────────────────────────────────────────────
     while True:
@@ -6714,10 +6736,13 @@ def _send_trial_expiry_reminders():
     from_email   = os.getenv('CONTACT_EMAIL_FROM', '')
     app_password = os.getenv('GMAIL_APP_PASSWORD', '')
 
+    app_logger.info("📧 [TrialReminder] Thread started")
+
     while True:
         try:
             from database import db_manager as _db
             users = _db.get_trial_expiring_users(hours_from_now=24, window_hours=2)
+            app_logger.debug(f"[TrialReminder] Hourly check: {len(users)} user(s) expiring in ~24h")
 
             for user in users:
                 email      = user.get('email', '')
@@ -6813,10 +6838,83 @@ def _send_trial_expiry_reminders():
                 _db.mark_trial_reminder_sent(user['id'])
 
         except Exception as exc:
-            app_logger.error(f"Trial reminder loop error: {exc}")
+            app_logger.error(f"[TrialReminder] Unhandled error in reminder loop: {exc}", exc_info=True)
 
-        # Check once per hour
+        app_logger.debug("[TrialReminder] Sleeping 1h until next check")
         time.sleep(3600)
+
+
+def _historical_prefetch_daemon():
+    """Pre-fetches historical gap-up data for today's gap-up tickers so the
+    Historical tab responds instantly when the user selects a ticker."""
+    if not REAL_DATA_AVAILABLE:
+        app_logger.info("📚 Historical prefetch daemon: skipping (no real data API)")
+        return
+
+    try:
+        from historical_data import get_historical_gap_up_data as _get_hist
+    except Exception as e:
+        app_logger.warning(f"📚 Historical prefetch daemon: cannot import historical_data: {e}")
+        return
+
+    import pytz as _pytz
+    et_tz = _pytz.timezone('US/Eastern')
+    app_logger.info("📚 Historical prefetch daemon started")
+
+    while True:
+        try:
+            now_et = datetime.now(et_tz)
+            today_str = now_et.date().isoformat()
+
+            # Collect current gap-up tickers from session tracker + live list
+            tickers = set()
+            try:
+                from gap_up_detector import _session_tracker as _st
+                for t, v in _st.items():
+                    if v.get('date') == today_str:
+                        tickers.add(t)
+            except Exception:
+                pass
+            for stock in real_time_gap_ups:
+                if isinstance(stock, dict) and stock.get('ticker'):
+                    tickers.add(stock['ticker'])
+
+            # Tickers not yet successfully pre-fetched today
+            with _hist_prefetch_lock:
+                pending = [
+                    t for t in sorted(tickers)
+                    if _hist_prefetch_status.get(t, {}).get('date') != today_str
+                    or _hist_prefetch_status.get(t, {}).get('error')
+                ]
+
+            if pending:
+                app_logger.info(f"[HistoricalPrefetch] {len(pending)} new ticker(s) to pre-fetch: {pending[:8]}")
+                for ticker in pending:
+                    try:
+                        data = _get_hist(ticker, days=365, use_cache=True, min_gap_percent=5)
+                        with _hist_prefetch_lock:
+                            _hist_prefetch_status[ticker] = {
+                                'date': today_str,
+                                'records': len(data) if data else 0,
+                                'fetched_at': datetime.now().isoformat()
+                            }
+                        app_logger.info(f"[HistoricalPrefetch] {ticker} done — {len(data) if data else 0} gap-up days cached")
+                    except Exception as e:
+                        app_logger.error(f"[HistoricalPrefetch] Failed to pre-fetch {ticker}: {e}", exc_info=True)
+                        with _hist_prefetch_lock:
+                            _hist_prefetch_status[ticker] = {
+                                'date': today_str,
+                                'records': 0,
+                                'error': str(e)[:120],
+                                'fetched_at': datetime.now().isoformat()
+                            }
+                    time.sleep(2)  # be kind to the Polygon API
+            else:
+                app_logger.debug(f"[HistoricalPrefetch] All {len(tickers)} gap-up ticker(s) already cached — sleeping 90s")
+        except Exception as e:
+            app_logger.error(f"[HistoricalPrefetch] Unhandled error in prefetch loop: {e}", exc_info=True)
+
+        time.sleep(90)  # poll for new tickers every 90 s
 
 
 # Start background gap-up monitor — runs under both `python app.py` and gunicorn
@@ -6825,19 +6923,30 @@ def _start_background_tasks():
     global _bg_thread_started
     if not _bg_thread_started:
         _bg_thread_started = True
-        update_thread = threading.Thread(target=update_real_time_gap_ups, daemon=True)
-        update_thread.daemon = True
-        update_thread.start()
-        app_logger.info("✅ Gap-up background monitor started")
 
-        reminder_thread = threading.Thread(target=_send_trial_expiry_reminders, daemon=True)
+        app_logger.info("━━━ Starting background daemon threads ━━━")
+
+        update_thread = threading.Thread(
+            target=update_real_time_gap_ups, daemon=True, name='GapUpMonitor')
+        update_thread.start()
+        app_logger.info("✅ [GapUpMonitor]       started — refreshes gap-ups every 2–15 min")
+
+        reminder_thread = threading.Thread(
+            target=_send_trial_expiry_reminders, daemon=True, name='TrialReminder')
         reminder_thread.start()
-        app_logger.info("✅ Trial expiry reminder service started")
+        app_logger.info("✅ [TrialReminder]      started — checks trial expiries every 1h")
 
         swing_sched_thread = threading.Thread(
             target=_swing_picks_eod_scheduler, daemon=True, name='SwingPicksEOD')
         swing_sched_thread.start()
-        app_logger.info("✅ Swing picks EOD scheduler started (fires daily at 8 PM ET)")
+        app_logger.info("✅ [SwingPicksEOD]      started — fires swing picks computation at 8 PM ET")
+
+        prefetch_thread = threading.Thread(
+            target=_historical_prefetch_daemon, daemon=True, name='HistoricalPrefetch')
+        prefetch_thread.start()
+        app_logger.info("✅ [HistoricalPrefetch] started — pre-fetches historical data for gap-up tickers every 90s")
+
+        app_logger.info("━━━ All background daemon threads launched ━━━")
 
 _start_background_tasks()
 

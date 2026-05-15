@@ -800,7 +800,7 @@
                             </div>
 
                             <select v-model="selectedPeriod"
-                                    @change="loadHistoricalData"
+                                    @change="historicalTicker.trim() && historicalData.length > 0 && loadHistoricalData()"
                                     class="bg-gray-700 text-white px-2 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600">
                                 <option value="180">6 Mo</option>
                                 <option value="365" selected>1 Yr</option>
@@ -846,8 +846,22 @@
                                 {{ loading.historicalAnalysis ? 'Predicting…' : 'AI Predict' }}
                             </button>
                         </div>
+
+                        <!-- Pre-loaded ticker chips -->
+                        <div v-if="Object.keys(historicalPrefetchStatus).length > 0" class="flex flex-wrap items-center gap-1.5 pt-1">
+                            <span class="text-xs text-gray-500 whitespace-nowrap">
+                                <i class="fas fa-bolt text-yellow-400 mr-0.5"></i>Pre-loaded:
+                            </span>
+                            <button v-for="(info, ticker) in historicalPrefetchStatus" :key="ticker"
+                                    @click="historicalTicker = ticker; loadHistoricalData()"
+                                    :class="historicalTicker.toUpperCase() === ticker ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-green-300 hover:bg-gray-600'"
+                                    class="text-xs border px-2 py-0.5 rounded-full transition-colors">
+                                {{ ticker }}
+                                <span class="opacity-60 ml-0.5">{{ info.records }}d</span>
+                            </button>
+                        </div>
                     </div>
-                    
+
                     <!-- ── News Card (independent of historical data) ── -->
                     <div v-if="loading.stockNews" class="mb-4 bg-gray-700 rounded-lg p-4 flex items-center gap-3">
                         <i class="fas fa-spinner fa-spin text-amber-400"></i>
@@ -921,7 +935,12 @@
                         <div class="bg-gray-700 rounded-lg p-4 mb-6">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-xl font-bold text-white">{{ historicalTicker.toUpperCase() }}</h4>
+                                        <span v-if="historicalLoadedFromCache" class="text-xs bg-yellow-900/50 text-yellow-400 border border-yellow-700/40 px-2 py-0.5 rounded-full">
+                                            <i class="fas fa-bolt mr-0.5"></i>Instant
+                                        </span>
+                                    </div>
                                     <p class="text-sm text-gray-400">{{ historicalData.length }} days of {{ minGapPercent }}%+ gap-up data ({{ getPeriodDescription() }} analysis)</p>
                                 </div>
                             </div>

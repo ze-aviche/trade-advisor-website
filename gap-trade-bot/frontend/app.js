@@ -241,6 +241,8 @@ const app = createApp({
                 historicalSectorInfo: null,
                 historicalSectorPerf: null,
                 historicalAnalysisCached: false,
+                historicalPrefetchStatus: {},    // {TICKER: {records, fetched_at}}
+                historicalLoadedFromCache: false,
                 stockNews: null,
                 _historicalCharts: {},
 
@@ -976,6 +978,7 @@ const app = createApp({
                 } else if (tabName === 'historical') {
                     console.log('📈 Historical Data tab selected - ready for analysis...');
                     this.stopPositionHistoryUpdates();
+                    this.loadHistoricalPrefetchStatus();
 
                 } else if (tabName === 'swing') {
                     console.log('📊 Swing Trading tab selected - loading daily picks...');
@@ -4505,6 +4508,14 @@ const app = createApp({
         },
         
         // Historical Data Methods
+        async loadHistoricalPrefetchStatus() {
+            try {
+                const resp = await fetch('/api/historical-prefetch/status');
+                const data = await resp.json();
+                if (data.success) this.historicalPrefetchStatus = data.prefetched || {};
+            } catch (e) { /* non-critical */ }
+        },
+
         async loadHistoricalData() {
             if (!this.historicalTicker.trim()) {
                 this.showNotification('Please enter a ticker symbol', 'warning');
@@ -4524,6 +4535,7 @@ const app = createApp({
                     this.historicalSectorInfo = null;
                     this.historicalSectorPerf = null;
                     this.historicalAnalysisCached = false;
+                    this.historicalLoadedFromCache = !!this.historicalPrefetchStatus[this.historicalTicker.trim().toUpperCase()];
                     console.log(`✅ Loaded ${this.historicalData.length} days of historical data for ${this.historicalTicker}`);
                     this.showNotification(`Loaded ${this.historicalData.length} days of historical data`, 'success');
                     this.debugHistoricalData();

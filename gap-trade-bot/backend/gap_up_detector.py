@@ -226,10 +226,6 @@ def check_market_timing():
     else:
         return "closed"
 
-def get_gap_up_stocks():
-    """Alias kept for backwards compatibility — delegates to get_gap_up_stocks_for_frontend."""
-    return get_gap_up_stocks_for_frontend()
-
 # Ticker suffixes that reliably indicate non-common-stock instruments
 _NON_CS_SUFFIXES = ('W', 'WS', 'R', 'U', 'Z')
 
@@ -706,7 +702,7 @@ def test_polygon_data_availability(ticker):
 
 if __name__ == "__main__":
     # Test the gap-up detection
-    gap_ups = get_gap_up_stocks()
+    gap_ups = get_gap_up_stocks_for_frontend()
     print(f"Found {len(gap_ups)} gap-up stocks")
     for stock in gap_ups[:5]:  # Show first 5
         print(f"  {stock['ticker']}: {stock['gap_percent']}% gap") 
