@@ -3396,41 +3396,21 @@ const app = createApp({
             try {
                 this.loading.positions = true;
                 
-                // Always use the daily positions API for historical data
-                let apiUrl = '/api/positions/daily';
                 const params = new URLSearchParams();
-                
-                // Check if date filters are set
-                const hasDateFilters = this.positionsHistoryStartDate && this.positionsHistoryEndDate;
-                
-                if (hasDateFilters) {
-                    // Use the date range API
-                    apiUrl = '/api/positions/daily/range';
-                    params.append('start_date', this.positionsHistoryStartDate);
-                    params.append('end_date', this.positionsHistoryEndDate);
-                } else {
-                    // Use the daily positions API with default limit
-                    params.append('limit', '1000');
-                }
-                
-                // Add other filters
-                if (this.positionsHistoryTicker && this.positionsHistoryTicker.trim()) {
+                params.append('limit', '1000');
+                if (this.positionsHistoryStartDate) params.append('start_date', this.positionsHistoryStartDate);
+                if (this.positionsHistoryEndDate)   params.append('end_date',   this.positionsHistoryEndDate);
+                if (this.positionsHistoryTicker && this.positionsHistoryTicker.trim())
                     params.append('symbol', this.positionsHistoryTicker.trim().toUpperCase());
-                }
-                
-                if (this.positionsHistoryType && this.positionsHistoryType.trim()) {
+                if (this.positionsHistoryType && this.positionsHistoryType.trim())
                     params.append('position_type', this.positionsHistoryType.trim());
-                }
-                
-                const response = await fetch(`${apiUrl}?${params.toString()}`);
+
+                const response = await fetch(`/api/positions/daily?${params.toString()}`);
                 const data = await response.json();
                 
                 if (data.success) {
                     this.positions = data.data.positions || [];
-                    const dateInfo = hasDateFilters ? 
-                        ` for date range ${this.positionsHistoryStartDate} to ${this.positionsHistoryEndDate}` : '';
-                    const symbolInfo = this.positionsHistoryTicker ? ` for ${this.positionsHistoryTicker}` : '';
-                    console.log(`📈 Loaded ${this.positions.length} positions from database${symbolInfo}${dateInfo}`);
+                    console.log(`📈 Loaded ${this.positions.length} positions from database`);
                 } else {
                     console.error('Failed to load positions history:', data.error);
                     this.showNotification('Failed to load positions history: ' + data.error, 'error');
@@ -4014,32 +3994,6 @@ const app = createApp({
             }
         },
         
-        async syncPositionsFromDAS() {
-            try {
-                console.log('🔄 Syncing positions from DAS Trader...');
-                this.loading.syncPositions = true;
-                
-                const response = await axios.post('/api/positions/sync-das');
-                
-                if (response.data.success) {
-                    const data = response.data.data;
-                    const message = `✅ Synced ${data.synced_count} positions from DAS Trader`;
-                    this.showNotification(message, 'success');
-                    console.log('✅ DAS positions sync completed successfully:', data);
-                    
-                    // Reload positions history
-                    await this.loadPositionsHistory();
-                } else {
-                    this.showNotification(`❌ Failed to sync positions from DAS: ${response.data.error}`, 'error');
-                    console.error('❌ DAS positions sync failed:', response.data.error);
-                }
-            } catch (error) {
-                console.error('❌ Error syncing positions from DAS:', error);
-                this.showNotification('❌ Error syncing positions from DAS Trader', 'error');
-            } finally {
-                this.loading.syncPositions = false;
-            }
-        },
         
         async importDASData() {
             try {

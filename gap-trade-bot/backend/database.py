@@ -82,26 +82,9 @@ class DatabaseManager:
                 )
             ''')
             
-            # Create positions table for current position tracking (latest state)
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS positions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL,
-                    type INTEGER NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    avg_cost REAL NOT NULL,
-                    init_quantity INTEGER DEFAULT 0,
-                    init_price REAL DEFAULT 0.0,
-                    realized REAL DEFAULT 0.0,
-                    create_time TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    unrealized REAL DEFAULT 0.0,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(symbol, type)
-                )
-            ''')
-            
+            # Drop the legacy DAS-only positions table — BrownBot never uses it
+            cursor.execute('DROP TABLE IF EXISTS positions')
+
             # Create daily_positions table for daily position history retention
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS daily_positions (
@@ -156,9 +139,6 @@ class DatabaseManager:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_trade_id ON trades(trade_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(type)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_updated ON positions(last_updated)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_symbol ON daily_positions(symbol)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_type ON daily_positions(type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_positions_date ON daily_positions(snapshot_date)')
@@ -220,13 +200,6 @@ class DatabaseManager:
 
             # ── Swing trading columns ─────────────────────────────────────────
             for tbl, col, defn in [
-                # positions: tag each row as day or swing
-                ('positions',       'position_type',      "TEXT DEFAULT 'day'"),
-                ('positions',       'swing_stop_loss',    'REAL DEFAULT NULL'),
-                ('positions',       'swing_target',       'REAL DEFAULT NULL'),
-                ('positions',       'swing_entry_reason', 'TEXT DEFAULT NULL'),
-                ('positions',       'max_hold_days',      'INTEGER DEFAULT NULL'),
-                ('positions',       'entry_date',         'TEXT DEFAULT NULL'),
                 # daily_positions: same tags for history
                 ('daily_positions', 'position_type',      "TEXT DEFAULT 'day'"),
                 ('daily_positions', 'swing_stop_loss',    'REAL DEFAULT NULL'),
@@ -855,174 +828,6 @@ class DatabaseManager:
         except Exception as e:
             return False, f"Database error adding trade: {str(e)}"
     
-    def upsert_position(self, position_data):
-        """Upsert position data (insert or update) and save daily snapshot"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Get current date for daily snapshot
-                current_date = datetime.now().strftime('%Y-%m-%d')
-                
-                # Check if position exists
-                cursor.execute('''
-                    SELECT id FROM positions 
-                    WHERE symbol = ? AND type = ?
-                ''', (position_data['symbol'], position_data['type']))
-                
-                existing = cursor.fetchone()
-                
-                if existing:
-                    # Update existing position (preserve swing fields if not provided)
-                    cursor.execute('''
-                        UPDATE positions SET
-                            quantity = ?,
-                            avg_cost = ?,
-                            init_quantity = ?,
-                            init_price = ?,
-                            realized = ?,
-                            create_time = ?,
-                            date = ?,
-                            unrealized = ?,
-                            position_type = COALESCE(?, position_type),
-                            entry_date = COALESCE(?, entry_date),
-                            swing_stop_loss = COALESCE(?, swing_stop_loss),
-                            swing_target = COALESCE(?, swing_target),
-                            swing_entry_reason = COALESCE(?, swing_entry_reason),
-                            max_hold_days = COALESCE(?, max_hold_days),
-                            last_updated = CURRENT_TIMESTAMP
-                        WHERE symbol = ? AND type = ?
-                    ''', (
-                        position_data['quantity'],
-                        position_data['avg_cost'],
-                        position_data.get('init_quantity', 0),
-                        position_data.get('init_price', 0.0),
-                        position_data.get('realized', 0.0),
-                        position_data['create_time'],
-                        position_data['date'],
-                        position_data.get('unrealized', 0.0),
-                        position_data.get('position_type'),
-                        position_data.get('entry_date'),
-                        position_data.get('swing_stop_loss'),
-                        position_data.get('swing_target'),
-                        position_data.get('swing_entry_reason'),
-                        position_data.get('max_hold_days'),
-                        position_data['symbol'],
-                        position_data['type']
-                    ))
-                else:
-                    # Insert new position
-                    cursor.execute('''
-                        INSERT INTO positions (
-                            symbol, type, quantity, avg_cost, init_quantity, init_price,
-                            realized, create_time, date, unrealized,
-                            position_type, entry_date, swing_stop_loss, swing_target,
-                            swing_entry_reason, max_hold_days
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        position_data['symbol'],
-                        position_data['type'],
-                        position_data['quantity'],
-                        position_data['avg_cost'],
-                        position_data.get('init_quantity', 0),
-                        position_data.get('init_price', 0.0),
-                        position_data.get('realized', 0.0),
-                        position_data['create_time'],
-                        position_data['date'],
-                        position_data.get('unrealized', 0.0),
-                        position_data.get('position_type', 'day'),
-                        position_data.get('entry_date'),
-                        position_data.get('swing_stop_loss'),
-                        position_data.get('swing_target'),
-                        position_data.get('swing_entry_reason'),
-                        position_data.get('max_hold_days'),
-                    ))
-
-                # Save daily snapshot - upsert to avoid duplicates for the same day
-                cursor.execute('''
-                    INSERT OR REPLACE INTO daily_positions (
-                        symbol, type, quantity, avg_cost, init_quantity, init_price,
-                        realized, create_time, date, unrealized, snapshot_date,
-                        position_type, swing_stop_loss, swing_target
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    position_data['symbol'],
-                    position_data['type'],
-                    position_data['quantity'],
-                    position_data['avg_cost'],
-                    position_data.get('init_quantity', 0),
-                    position_data.get('init_price', 0.0),
-                    position_data.get('realized', 0.0),
-                    position_data['create_time'],
-                    position_data['date'],
-                    position_data.get('unrealized', 0.0),
-                    current_date,
-                    position_data.get('position_type', 'day'),
-                    position_data.get('swing_stop_loss'),
-                    position_data.get('swing_target'),
-                ))
-                
-                conn.commit()
-                return True, "Position updated successfully"
-                
-        except Exception as e:
-            return False, f"Database error upserting position: {str(e)}"
-    
-    def get_positions(self, symbol=None, type_filter=None, limit=100):
-        """Get positions with optional filtering"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                query = '''
-                    SELECT id, symbol, type, quantity, avg_cost, init_quantity, init_price,
-                           realized, create_time, date, unrealized, last_updated, created_at
-                    FROM positions
-                    WHERE 1=1
-                '''
-                params = []
-                
-                if symbol:
-                    query += ' AND symbol = ?'
-                    params.append(symbol.upper())
-                
-                if type_filter is not None:
-                    query += ' AND type = ?'
-                    params.append(type_filter)
-                
-                query += ' ORDER BY last_updated DESC LIMIT ?'
-                params.append(limit)
-                
-                cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                positions = []
-                for row in rows:
-                    position = dict(row)
-                    positions.append(position)
-                
-                return positions
-                
-        except Exception as e:
-            print(f"Error getting positions: {e}")
-            return []
-
-    def get_position_type(self, symbol: str) -> str:
-        """Return the stored position_type ('day' or 'swing') for a symbol, or 'day' if not found."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    'SELECT position_type FROM positions WHERE symbol = ? ORDER BY last_updated DESC LIMIT 1',
-                    (symbol.upper(),)
-                )
-                row = cursor.fetchone()
-                if row and row['position_type']:
-                    return row['position_type']
-        except Exception as e:
-            print(f"Error looking up position_type for {symbol}: {e}")
-        return 'day'
-
     def get_position_summary(self, symbol=None, type_filter=None):
         """Get position summary statistics"""
         try:
@@ -1198,52 +1003,6 @@ class DatabaseManager:
             print(f"Database error getting trade summary: {e}")
             return None
 
-    def get_positions_summary(self):
-        """Get positions-based summary statistics for dashboard"""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Total Positions: count of number of positions in the positions table
-                cursor.execute('SELECT COUNT(*) as total_positions FROM positions')
-                total_positions = cursor.fetchone()['total_positions']
-                
-                # Total P&L: Sum of all realized positions
-                cursor.execute('SELECT COALESCE(SUM(realized), 0) as total_pnl FROM positions')
-                total_pnl = cursor.fetchone()['total_pnl']
-                
-                # Win Rate: (profitable positions) / (total positions with realized P&L)
-                cursor.execute('''
-                    SELECT 
-                        COALESCE(SUM(CASE WHEN realized > 0 THEN 1 ELSE 0 END), 0) as profitable_positions,
-                        COALESCE(SUM(CASE WHEN realized != 0 THEN 1 ELSE 0 END), 0) as total_realized_positions
-                    FROM positions
-                ''')
-                win_rate_data = cursor.fetchone()
-                profitable_positions = win_rate_data['profitable_positions']
-                total_realized_positions = win_rate_data['total_realized_positions']
-                
-                # Calculate win rate percentage
-                win_rate = (profitable_positions / total_realized_positions * 100) if total_realized_positions > 0 else 0
-                
-                # Active positions (positions with quantity > 0)
-                cursor.execute('SELECT COUNT(*) as active_positions FROM positions WHERE quantity > 0')
-                active_positions = cursor.fetchone()['active_positions']
-                
-                summary = {
-                    'total_positions': total_positions,
-                    'total_pnl': total_pnl,
-                    'win_rate': win_rate,
-                    'profitable_positions': profitable_positions,
-                    'total_realized_positions': total_realized_positions,
-                    'active_positions': active_positions
-                }
-                
-                return summary
-        except Exception as e:
-            print(f"Database error getting positions summary: {e}")
-            return None
-    
     def parse_das_trades_data(self, das_trades_text):
         """Parse DAS trades data and return list of trade dictionaries with calculated PnL"""
         trades = []
