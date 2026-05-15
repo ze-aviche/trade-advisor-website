@@ -117,18 +117,24 @@ Two daemon threads are started together on `POST /api/brown-bot/start` and stopp
 The running flag `_brown_bot_running` is the only shutdown signal — both loops poll it and exit cleanly.
 
 #### Entry pipeline (`_brown_bot_scan_and_enter`)
-1. Fetch gap-up candidates from `get_gap_up_stocks_for_frontend()`, filter by config thresholds (`min_gap_pct`, `min_price`, `max_price`, `min_volume_m`).
-2. Merge with `brown_watchlist` from DB.
-3. **Day trades** (scanner hits + watchlist `trade_type='day'`): time-gated to 09:35–10:30 ET.
-4. **Swing trades** (watchlist `trade_type='swing'`): run `_check_swing_signal()` first.
-5. All candidates: `RiskManager.can_enter()` check before any order.
-6. `_brown_enter_position()` → `place_das_order()` → store in `_brown_bot_active_positions`.
 
-#### Swing signal check (`_check_swing_signal`)
-Two-stage gate to balance quality vs. API cost:
-- **Stage 1** (cheap, always): `close > SMA20` + optional volume surge (1.5× 10-bar avg). Score 0.60–0.75. Uses `_ai_agent._get_technical_analysis()` (Polygon bars).
-- **Stage 2** (expensive, only when score < 0.8): `_ai_agent.process_message()` asks Claude for BUY/HOLD. BUY → score 0.85, HOLD → score 0.45.
-- Enter if final score ≥ 0.70.
+**Day trades** — sourced from auto-scanner gap-up hits (09:35–10:30 ET window):
+1. **Scanner filter**: gap % ≥ `min_gap_pct`, price between `min_price`/`max_price`, volume ≥ `min_volume_m`M, optional float filter.
+2. **Intraday trend signals** via `_check_day_entry_signal()` — all optional, all off by default:
+   - Above session VWAP (`day_check_vwap`)
+   - Last 1-min candle is bullish/close ≥ open (`day_check_candle`)
+   - Extension from gap price ≤ `day_max_extension_pct` (`day_max_extension_pct > 0`)
+   - Volume surge ≥ 1.5× recent bar average (`day_check_volume_surge`)
+3. **Risk manager**: `RiskManager.can_enter()` — slot cap (`max_concurrent_day`) + daily loss circuit breaker.
+4. **Buying power**: `equity × day_position_pct%` must be ≤ available buying power.
+5. `_brown_enter_position()` → `place_das_order()` → store in `_brown_bot_active_positions`.
+
+**Swing trades** — sourced from today's Claude-ranked daily picks (Swing tab):
+1. **Source**: `_daily_picks_cache[today]` / `db_manager.get_swing_picks(today)` — picks already graded by the Swing tab AI pipeline (SMA-10, intraday structure, market cap, Claude grade A/B/C + bullish/neutral/bearish bias). Only Grade A or B + Bullish picks are used.
+2. No additional signal check — avoids double AI cost since picks are pre-vetted.
+3. **Risk manager**: `RiskManager.can_enter()` — slot cap (`max_concurrent_swing`) + daily loss circuit breaker.
+4. **Buying power**: `equity × swing_position_pct%` must be ≤ available buying power.
+5. `_brown_enter_position()` → `place_das_order()` → store in `_brown_bot_active_positions`.
 
 #### Risk manager (`bot/risk_manager.py → RiskManager`)
 Instantiated from `brown_bot_config` when the bot starts. `can_enter(symbol, position_type, active_positions)` returns `(allowed, reason)` and enforces:
