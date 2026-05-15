@@ -314,8 +314,8 @@ class DatabaseManager:
                 ('day_check_candle',       'INTEGER DEFAULT 0'),
                 ('day_max_extension_pct',  'REAL DEFAULT 0.0'),
                 ('day_check_volume_surge', 'INTEGER DEFAULT 0'),
-                ('day_position_size',      'REAL DEFAULT 2000.0'),
-                ('swing_position_size',    'REAL DEFAULT 1000.0'),
+                ('day_position_pct',        'REAL DEFAULT 5.0'),
+                ('swing_position_pct',     'REAL DEFAULT 3.0'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -2218,7 +2218,7 @@ class DatabaseManager:
             'max_float_m': 0.0, 'float_operator': '<=',
             'day_check_vwap': False, 'day_check_candle': False,
             'day_max_extension_pct': 0.0, 'day_check_volume_surge': False,
-            'day_position_size': 2000.0, 'swing_position_size': 1000.0,
+            'day_position_pct': 5.0, 'swing_position_pct': 3.0,
         }
         try:
             with self.get_connection() as conn:
@@ -2249,7 +2249,7 @@ class DatabaseManager:
             'max_concurrent_swing', 'min_gap_pct', 'min_price', 'max_price', 'min_volume_m',
             'max_float_m', 'float_operator',
             'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge',
-            'day_position_size', 'swing_position_size',
+            'day_position_pct', 'swing_position_pct',
         ]
         try:
             with self.get_connection() as conn:

@@ -2939,28 +2939,30 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     _brown_attempted_symbols.add(symbol)
 
     price = float(approx_price or 0)
-    size_key = 'day_position_size' if position_type == 'day' else 'swing_position_size'
-    position_size = float(config.get(size_key, 2000.0 if position_type == 'day' else 1000.0))
-    quantity = max(1, int(position_size / price)) if price > 0 else 100
+    pct_key = 'day_position_pct' if position_type == 'day' else 'swing_position_pct'
+    position_pct = float(config.get(pct_key, 5.0 if position_type == 'day' else 3.0))
 
     if not _brown_broker:
         _add_brown_log('error', f'SKIP {symbol}: no broker available')
         return
 
-    # Pre-flight buying power check — avoids sending a doomed order to the broker.
-    if price > 0:
-        try:
-            acct = _brown_broker.get_account()
+    # Fetch account equity to size the position and check buying power.
+    quantity = 100  # safe fallback if account fetch fails
+    try:
+        acct = _brown_broker.get_account()
+        if acct.equity > 0 and price > 0:
+            dollar_size = acct.equity * (position_pct / 100.0)
+            quantity = max(1, int(dollar_size / price))
             required = price * quantity
             if acct.buying_power < required:
                 _add_brown_log('warning',
                     f'SKIP {symbol}: insufficient buying power '
-                    f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) — '
-                    f'will not retry this session')
+                    f'(need ${required:,.0f} = {position_pct}% of ${acct.equity:,.0f} equity, '
+                    f'have ${acct.buying_power:,.0f}) — will not retry this session')
                 return
-        except Exception as _bp_err:
-            app_logger.debug(f'BrownBot buying power pre-check failed for {symbol}: {_bp_err}')
-            # Fail-open: let the broker reject it if needed
+    except Exception as _bp_err:
+        app_logger.debug(f'BrownBot account fetch failed for {symbol}: {_bp_err}')
+        # Fail-open with fallback quantity; broker will reject if BP is insufficient
 
     try:
         from bot.broker.base import OrderSide, OrderType as OType
