@@ -2938,8 +2938,10 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     # locks the symbol for this session so the scanner won't retry it.
     _brown_attempted_symbols.add(symbol)
 
-    quantity = 100
     price = float(approx_price or 0)
+    size_key = 'day_position_size' if position_type == 'day' else 'swing_position_size'
+    position_size = float(config.get(size_key, 2000.0 if position_type == 'day' else 1000.0))
+    quantity = max(1, int(position_size / price)) if price > 0 else 100
 
     if not _brown_broker:
         _add_brown_log('error', f'SKIP {symbol}: no broker available')

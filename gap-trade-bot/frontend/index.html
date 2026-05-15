@@ -1885,6 +1885,21 @@
                                 <span class="text-xs font-bold text-yellow-400 uppercase tracking-widest">Day Trade Config</span>
                                 <span class="text-gray-600 text-xs font-normal ml-auto">exits &amp; timing</span>
                             </div>
+                            <!-- Position Size -->
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Position Size ($)
+                                    <span class="text-gray-600 ml-1">— dollar amount per trade · qty = size ÷ price</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-gray-400 text-sm">$</span>
+                                    <input v-model.number="brownBotConfig.day_position_size" type="number" step="100" min="100"
+                                           class="w-full bg-gray-800 border border-yellow-600/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                    <span v-if="brownBotConfig.day_position_size" class="text-xs text-gray-500 shrink-0 whitespace-nowrap">
+                                        ~{{ Math.max(1, Math.floor(brownBotConfig.day_position_size / 50)) }}–{{ Math.max(1, Math.floor(brownBotConfig.day_position_size / 5)) }} shares
+                                    </span>
+                                </div>
+                            </div>
                             <!-- Targets -->
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
@@ -2055,6 +2070,21 @@
                                 <div class="w-1.5 h-4 rounded-full bg-blue-400"></div>
                                 <span class="text-xs font-bold text-blue-400 uppercase tracking-widest">Swing Trade Config</span>
                                 <span class="text-gray-600 text-xs font-normal ml-auto">exits &amp; holds</span>
+                            </div>
+                            <!-- Position Size -->
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Position Size ($)
+                                    <span class="text-gray-600 ml-1">— dollar amount per trade · qty = size ÷ price</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-gray-400 text-sm">$</span>
+                                    <input v-model.number="brownBotConfig.swing_position_size" type="number" step="100" min="100"
+                                           class="w-full bg-gray-800 border border-blue-600/60 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                    <span v-if="brownBotConfig.swing_position_size" class="text-xs text-gray-500 shrink-0 whitespace-nowrap">
+                                        ~{{ Math.max(1, Math.floor(brownBotConfig.swing_position_size / 50)) }}–{{ Math.max(1, Math.floor(brownBotConfig.swing_position_size / 5)) }} shares
+                                    </span>
+                                </div>
                             </div>
                             <!-- Targets -->
                             <div class="grid grid-cols-2 gap-2">

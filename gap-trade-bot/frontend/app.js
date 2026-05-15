@@ -361,6 +361,8 @@ const app = createApp({
                 day_check_candle: false,
                 day_max_extension_pct: 0.0,
                 day_check_volume_surge: false,
+                day_position_size: 2000.0,
+                swing_position_size: 1000.0,
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
