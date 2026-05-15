@@ -3681,16 +3681,21 @@ def start_brown_bot():
             _add_brown_log('warning', f'RiskManager init failed: {e}')
     _brown_entry_counts.clear()
     _brown_attempted_symbols.clear()
+    # Always start with a clean slate — positions will be rebuilt from DB + broker check.
+    # Without this, in-memory ghosts from a previous stop/start cycle within the same
+    # server process inflate the count until the exit loop cleans them up.
+    with _brown_bot_lock:
+        _brown_bot_active_positions.clear()
 
-    # Restore any positions that were open before the server restarted.
-    # Day positions are only valid for today (ET); stale ones are deleted so they
-    # never show up again and never trigger accidental broker sells.
-    # Swing positions are kept regardless of age.
+    # Restore positions that were open when the server last stopped.
+    # Then cross-reference against the broker so we never track a position
+    # the broker no longer holds.
     try:
         import pytz as _pytz_r
         today_et = datetime.now(_pytz_r.timezone('US/Eastern')).strftime('%Y-%m-%d')
         saved = db_manager.get_brown_positions()
         restored, purged = 0, 0
+
         with _brown_bot_lock:
             for pos in (saved or []):
                 pid = pos.get('position_id')
@@ -3698,8 +3703,8 @@ def start_brown_bot():
                     continue
                 pos_type = (pos.get('position_type') or 'day').lower()
                 entry_time = pos.get('entry_time', '')
+                # Day positions are only valid for today's session — purge old ones
                 if pos_type == 'day':
-                    # Only restore day positions entered today (ET); purge stale ones
                     entry_date = entry_time[:10] if entry_time else ''
                     if entry_date != today_et:
                         db_manager.delete_brown_position(pid)
@@ -3712,10 +3717,35 @@ def start_brown_bot():
                     _brown_attempted_symbols.add(sym)
                     _brown_entry_counts[sym] = _brown_entry_counts.get(sym, 0) + 1
                 restored += 1
+
         if purged:
             _add_brown_log('info', f'Purged {purged} stale day position(s) from previous session(s)')
         if restored:
-            _add_brown_log('info', f'Restored {restored} position(s) from DB after restart')
+            _add_brown_log('info', f'Restored {restored} position(s) from DB — verifying with broker…')
+
+        # Cross-reference with broker: drop anything the broker no longer holds
+        if _brown_bot_active_positions and _brown_broker:
+            try:
+                broker_syms = {p.symbol.upper() for p in _brown_broker.get_positions()}
+                stale = [
+                    (pid, pos.get('symbol', ''))
+                    for pid, pos in list(_brown_bot_active_positions.items())
+                    if pos.get('symbol', '').upper() not in broker_syms
+                ]
+                with _brown_bot_lock:
+                    for pid, sym in stale:
+                        _brown_bot_active_positions.pop(pid, None)
+                        _brown_entry_counts.pop(sym, None)
+                        _brown_attempted_symbols.discard(sym)
+                        db_manager.delete_brown_position(pid)
+                if stale:
+                    _add_brown_log('info',
+                        f'Startup check: removed {len(stale)} position(s) not found in broker '
+                        f'({", ".join(s for _, s in stale)})')
+                else:
+                    _add_brown_log('info', 'Startup check: all restored positions confirmed in broker')
+            except Exception as _ve:
+                _add_brown_log('warning', f'Broker position verification failed (keeping DB positions): {_ve}')
     except Exception as _e:
         _add_brown_log('warning', f'Position restore from DB failed: {_e}')
 
