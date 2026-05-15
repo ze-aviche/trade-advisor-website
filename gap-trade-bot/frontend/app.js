@@ -3425,7 +3425,7 @@ const app = createApp({
                 }
                 
                 if (this.positionsHistoryType && this.positionsHistoryType.trim()) {
-                    params.append('type', this.positionsHistoryType.trim());
+                    params.append('position_type', this.positionsHistoryType.trim());
                 }
                 
                 const response = await fetch(`${apiUrl}?${params.toString()}`);

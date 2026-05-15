@@ -1829,7 +1829,7 @@ class DatabaseManager:
             print(f"Database error getting cumulative P&L data: {e}")
             return []
 
-    def get_closed_positions(self, symbol=None, start_date=None, end_date=None, limit=1000):
+    def get_closed_positions(self, symbol=None, start_date=None, end_date=None, limit=1000, position_type=None):
         """
         Return closed BrownBot positions for the Positions tab.
         Each row is an exit trade joined with its matching entry trade to get entry_price.
@@ -1870,6 +1870,9 @@ class DatabaseManager:
                 if end_date:
                     query += ' AND x.trade_date <= ?'
                     params.append(end_date)
+                if position_type:
+                    query += ' AND x.position_type = ?'
+                    params.append(position_type.lower())
                 query += ' ORDER BY x.trade_date DESC, x.trade_time DESC LIMIT ?'
                 params.append(limit)
                 cursor.execute(query, params)
@@ -1907,193 +1910,127 @@ class DatabaseManager:
             return []
 
     def get_long_short_pnl_data(self, start_date=None, end_date=None):
-        """Get P&L breakdown by long vs short positions for pie chart"""
+        """P&L breakdown by Day vs Swing (BrownBot is long-only so Long/Short is meaningless)."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
-                        CASE 
-                            WHEN type = 1 THEN 'Long'
-                            WHEN type = 2 THEN 'Short'
-                            ELSE 'Unknown'
-                        END as position_type,
-                        COALESCE(SUM(realized), 0) as total_pnl,
-                        COUNT(*) as position_count
-                    FROM daily_positions 
-                    WHERE realized != 0
+                    SELECT
+                        COALESCE(position_type, 'day') AS position_type,
+                        COALESCE(SUM(pnl), 0)          AS total_pnl,
+                        COUNT(*)                        AS position_count
+                    FROM trades
+                    WHERE side IN ('S', 'SS')
+                      AND source = 'brownbot'
+                      AND pnl != 0
                 '''
                 params = []
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += '''
-                    GROUP BY type
-                    ORDER BY total_pnl DESC
-                '''
-                
+                query += ' GROUP BY position_type ORDER BY total_pnl DESC'
                 cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                long_short_data = []
-                for row in rows:
-                    long_short_data.append({
-                        'position_type': row['position_type'],
-                        'total_pnl': float(row['total_pnl']),
-                        'position_count': row['position_count']
-                    })
-                
-                return long_short_data
+                return [{'position_type': r['position_type'], 'total_pnl': float(r['total_pnl']),
+                         'position_count': r['position_count']} for r in cursor.fetchall()]
         except Exception as e:
-            print(f"Database error getting long/short P&L data: {e}")
+            print(f"Database error getting day/swing P&L data: {e}")
             return []
 
     def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10):
-        """Get P&L breakdown by symbol for pie chart"""
+        """P&L breakdown by symbol for pie chart."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
+                    SELECT
                         symbol,
-                        COALESCE(SUM(realized), 0) as total_pnl,
-                        COUNT(*) as position_count,
-                        AVG(realized) as avg_pnl
-                    FROM daily_positions 
-                    WHERE realized != 0
+                        COALESCE(SUM(pnl), 0) AS total_pnl,
+                        COUNT(*)               AS position_count,
+                        AVG(pnl)               AS avg_pnl
+                    FROM trades
+                    WHERE side IN ('S', 'SS')
+                      AND source = 'brownbot'
+                      AND pnl != 0
                 '''
                 params = []
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += '''
-                    GROUP BY symbol
-                    ORDER BY total_pnl DESC
-                    LIMIT ?
-                '''
+                query += ' GROUP BY symbol ORDER BY total_pnl DESC LIMIT ?'
                 params.append(limit)
-                
                 cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                symbol_data = []
-                for row in rows:
-                    symbol_data.append({
-                        'symbol': row['symbol'],
-                        'total_pnl': float(row['total_pnl']),
-                        'position_count': row['position_count'],
-                        'avg_pnl': float(row['avg_pnl'])
-                    })
-                
-                return symbol_data
+                return [{'symbol': r['symbol'], 'total_pnl': float(r['total_pnl']),
+                         'position_count': r['position_count'], 'avg_pnl': float(r['avg_pnl'])}
+                        for r in cursor.fetchall()]
         except Exception as e:
             print(f"Database error getting symbol P&L data: {e}")
             return []
 
     def get_win_loss_pnl_data(self, start_date=None, end_date=None):
-        """Get P&L breakdown by winning vs losing trades for pie chart"""
+        """P&L breakdown by winning vs losing trades for pie chart."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
-                        CASE 
-                            WHEN realized > 0 THEN 'Winning'
-                            WHEN realized < 0 THEN 'Losing'
+                    SELECT
+                        CASE
+                            WHEN pnl > 0 THEN 'Winning'
+                            WHEN pnl < 0 THEN 'Losing'
                             ELSE 'Break Even'
-                        END as trade_result,
-                        COALESCE(SUM(realized), 0) as total_pnl,
-                        COUNT(*) as position_count
-                    FROM daily_positions 
-                    WHERE realized != 0
+                        END                    AS trade_result,
+                        COALESCE(SUM(pnl), 0)  AS total_pnl,
+                        COUNT(*)               AS position_count
+                    FROM trades
+                    WHERE side IN ('S', 'SS')
+                      AND source = 'brownbot'
                 '''
                 params = []
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += '''
-                    GROUP BY trade_result
-                    ORDER BY total_pnl DESC
-                '''
-                
+                query += ' GROUP BY trade_result ORDER BY total_pnl DESC'
                 cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                win_loss_data = []
-                for row in rows:
-                    win_loss_data.append({
-                        'trade_result': row['trade_result'],
-                        'total_pnl': float(row['total_pnl']),
-                        'position_count': row['position_count']
-                    })
-                
-                return win_loss_data
+                return [{'trade_result': r['trade_result'], 'total_pnl': float(r['total_pnl']),
+                         'position_count': r['position_count']} for r in cursor.fetchall()]
         except Exception as e:
             print(f"Database error getting win/loss P&L data: {e}")
             return []
 
     def get_monthly_pnl_data(self, start_date=None, end_date=None):
-        """Get P&L breakdown by month for pie chart"""
+        """P&L breakdown by month for pie chart."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
                 query = '''
-                    SELECT 
-                        strftime('%Y-%m', snapshot_date) as month,
-                        COALESCE(SUM(realized), 0) as total_pnl,
-                        COUNT(*) as position_count
-                    FROM daily_positions 
-                    WHERE realized != 0
+                    SELECT
+                        strftime('%Y-%m', trade_date) AS month,
+                        COALESCE(SUM(pnl), 0)         AS total_pnl,
+                        COUNT(*)                      AS position_count
+                    FROM trades
+                    WHERE side IN ('S', 'SS')
+                      AND source = 'brownbot'
+                      AND pnl != 0
                 '''
                 params = []
-                
                 if start_date:
-                    query += ' AND snapshot_date >= ?'
+                    query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
                 if end_date:
-                    query += ' AND snapshot_date <= ?'
+                    query += ' AND trade_date <= ?'
                     params.append(end_date)
-                
-                query += '''
-                    GROUP BY month
-                    ORDER BY month ASC
-                '''
-                
+                query += ' GROUP BY month ORDER BY month ASC'
                 cursor.execute(query, params)
-                rows = cursor.fetchall()
-                
-                monthly_data = []
-                for row in rows:
-                    monthly_data.append({
-                        'month': row['month'],
-                        'total_pnl': float(row['total_pnl']),
-                        'position_count': row['position_count']
-                    })
-                
-                return monthly_data
+                return [{'month': r['month'], 'total_pnl': float(r['total_pnl']),
+                         'position_count': r['position_count']} for r in cursor.fetchall()]
         except Exception as e:
             print(f"Database error getting monthly P&L data: {e}")
             return []

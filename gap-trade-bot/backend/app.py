@@ -4896,16 +4896,18 @@ def upsert_position():
 def get_daily_positions():
     """Return closed BrownBot positions for the Positions tab."""
     try:
-        symbol     = request.args.get('symbol')
-        start_date = request.args.get('start_date')
-        end_date   = request.args.get('end_date')
-        limit      = min(int(request.args.get('limit', 1000)), 5000)
+        symbol        = request.args.get('symbol')
+        start_date    = request.args.get('start_date')
+        end_date      = request.args.get('end_date')
+        position_type = request.args.get('position_type')
+        limit         = min(int(request.args.get('limit', 1000)), 5000)
 
         positions = db_manager.get_closed_positions(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
             limit=limit,
+            position_type=position_type,
         )
         total_pnl = sum(p['realized'] for p in positions)
         wins      = sum(1 for p in positions if p['realized'] > 0)
@@ -4983,43 +4985,26 @@ def get_positions_by_date_range():
         from database import db_manager
         
         # Get query parameters
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        symbol = request.args.get('symbol')
-        type_filter = request.args.get('type')
-        
-        # Validate required parameters
+        start_date    = request.args.get('start_date')
+        end_date      = request.args.get('end_date')
+        symbol        = request.args.get('symbol')
+        position_type = request.args.get('position_type')
+
         if not start_date or not end_date:
-            return jsonify({
-                'success': False,
-                'error': 'start_date and end_date parameters are required'
-            }), 400
-        
-        # Validate date format (YYYY-MM-DD)
+            return jsonify({'success': False, 'error': 'start_date and end_date parameters are required'}), 400
+
         try:
             datetime.strptime(start_date, '%Y-%m-%d')
             datetime.strptime(end_date, '%Y-%m-%d')
         except ValueError:
-            return jsonify({
-                'success': False,
-                'error': 'Invalid date format. Use YYYY-MM-DD.'
-            }), 400
-        
-        # Convert type_filter to int if provided
-        if type_filter:
-            try:
-                type_filter = int(type_filter)
-            except ValueError:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid type parameter. Must be a number.'
-                }), 400
-        
+            return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
         positions = db_manager.get_closed_positions(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
             limit=1000,
+            position_type=position_type,
         )
         return jsonify({
             'success': True,

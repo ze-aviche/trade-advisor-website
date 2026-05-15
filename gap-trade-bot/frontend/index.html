@@ -2589,38 +2589,6 @@
                         </button>
                     </div>
 
-                    <!-- Auto Sync Status Section -->
-                    <div class="bg-gray-700 rounded-lg p-4 mb-6">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-6">
-                                <div class="flex items-center space-x-2">
-                                    <span class="text-sm text-gray-300">Position Sync:</span>
-                                    <span :class="scheduledSyncStatus.is_running ? 'text-green-400' : 'text-red-400'" class="text-sm font-medium">
-                                        {{ scheduledSyncStatus.is_running ? 'Running' : 'Stopped' }}
-                                    </span>
-                                </div>
-                                <div class="flex items-center space-x-2">
-                                    <span class="text-sm text-gray-300">Bot Status:</span>
-                                    <span :class="botStatus.running ? 'text-green-400' : 'text-red-400'" class="text-sm font-medium">
-                                        {{ botStatus.running ? 'Running' : 'Stopped' }}
-                                    </span>
-                                </div>
-                                <div class="flex items-center space-x-2">
-                                    <span class="text-sm text-gray-300">Update Interval:</span>
-                                    <span class="text-sm text-blue-400 font-medium">10 seconds</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-2">
-                                <button @click="syncPositionsFromDAS" 
-                                        :disabled="loading.syncPositions"
-                                        class="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed px-3 py-1 rounded text-sm font-medium">
-                                    <i :class="loading.syncPositions ? 'fas fa-spinner fa-spin' : 'fas fa-download'" class="mr-1"></i>
-                                    {{ loading.syncPositions ? 'Syncing...' : 'Sync from DAS' }}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Controls Section -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                         <!-- Left Column: Search and Filter -->
@@ -2648,9 +2616,9 @@
                                         <label class="block text-sm text-gray-400 mb-2">Position Type</label>
                                         <select v-model="positionsHistoryType" @change="loadPositionsHistory"
                                                 class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                            <option value="">All Types</option>
-                                            <option value="1">Long</option>
-                                            <option value="2">Short</option>
+                                            <option value="">All Styles</option>
+                                            <option value="day">Day</option>
+                                            <option value="swing">Swing</option>
                                         </select>
                                     </div>
                                 </div>
@@ -3019,7 +2987,7 @@
                                     <button @click="changePieChartType('longShort')" 
                                             :class="pieChartType === 'longShort' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
                                             class="px-3 py-1 rounded text-sm font-medium transition-colors">
-                                        <i class="fas fa-chart-pie mr-1"></i>Long/Short
+                                        <i class="fas fa-chart-pie mr-1"></i>Day/Swing
                                     </button>
                                     <button @click="changePieChartType('symbols')" 
                                             :class="pieChartType === 'symbols' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'"
@@ -3047,7 +3015,7 @@
                         
                         <div class="mb-4">
                             <p class="text-sm text-gray-400">
-                                <span v-if="pieChartType === 'longShort'">P&L breakdown by long vs short positions</span>
+                                <span v-if="pieChartType === 'longShort'">P&L breakdown by Day vs Swing trades</span>
                                 <span v-else-if="pieChartType === 'symbols'">P&L breakdown by top performing symbols</span>
                                 <span v-else-if="pieChartType === 'winLoss'">P&L breakdown by winning vs losing trades</span>
                                 <span v-else-if="pieChartType === 'monthly'">P&L breakdown by month</span>
