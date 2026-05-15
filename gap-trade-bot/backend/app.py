@@ -6005,10 +6005,12 @@ def swing_daily_picks_latest():
     """
     market_open  = _is_market_open()
     session_date = _last_trading_date()
+    app_logger.info(f'swing-daily-picks/latest: session_date={session_date} market_open={market_open}')
 
     # Seed memory cache from DB if cold start
     if session_date not in _daily_picks_cache:
         db_row = db_manager.get_swing_picks(session_date)
+        app_logger.info(f'swing-daily-picks/latest: DB lookup date={session_date} → {"found" if db_row else "not found"}')
         if db_row:
             _daily_picks_cache[session_date] = {
                 'success': True, 'date': session_date,
@@ -6017,6 +6019,8 @@ def swing_daily_picks_latest():
                 'source_counts': db_row['source_counts'],
                 'sources_tickers': db_row['sources_tickers'],
             }
+    else:
+        app_logger.info(f'swing-daily-picks/latest: memory cache hit for {session_date}')
 
     if session_date in _daily_picks_cache:
         payload = dict(_daily_picks_cache[session_date])
@@ -6025,6 +6029,7 @@ def swing_daily_picks_latest():
 
     # Today not available — return latest from any previous session
     db_row = db_manager.get_swing_picks()  # most recent
+    app_logger.info(f'swing-daily-picks/latest: most-recent fallback → {"found date=" + db_row["date"] if db_row else "no rows at all"}')
     if not db_row:
         return jsonify({'success': False, 'error': 'No picks stored yet'}), 404
 
@@ -6236,15 +6241,18 @@ def swing_daily_picks():
     polygon_key  = os.environ.get('POLYGON_API_KEY', '')
     market_open  = _is_market_open()
     session_date = _last_trading_date()
+    app_logger.info(f'swing-daily-picks: session_date={session_date} market_open={market_open} ai_available={AI_AGENT_AVAILABLE}')
 
     # 1. Memory cache
     if session_date in _daily_picks_cache:
+        app_logger.info(f'swing-daily-picks: returning memory cache for {session_date}')
         payload = dict(_daily_picks_cache[session_date])
         payload.update({'cached': True, 'is_today': True, 'market_open': market_open})
         return jsonify(payload)
 
     # 2. DB cache (survives restarts)
     db_row = db_manager.get_swing_picks(session_date)
+    app_logger.info(f'swing-daily-picks: DB lookup date={session_date} → {"found " + str(len(db_row.get("picks",[]))) + " picks" if db_row else "not found"}')
     if db_row:
         payload = {
             'success': True, 'cached': True, 'is_today': True,

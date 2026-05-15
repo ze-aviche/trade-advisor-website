@@ -6,8 +6,11 @@ Handles SQLite database operations for users and sessions
 import sqlite3
 import os
 import json
+import logging
 from datetime import datetime, timedelta
 from contextlib import contextmanager
+
+_db_logger = logging.getLogger(__name__)
 
 # Use DATABASE_PATH env var if set (e.g. Render persistent disk at /data),
 # otherwise fall back to a local file next to this script.
@@ -2332,7 +2335,7 @@ class DatabaseManager:
                 conn.commit()
                 return True
         except Exception as e:
-            print(f'Database error saving swing_daily_picks: {e}')
+            _db_logger.error(f'Database error saving swing_daily_picks: {e}', exc_info=True)
             return False
 
     def get_swing_picks(self, date: str = None) -> dict | None:
@@ -2359,7 +2362,7 @@ class DatabaseManager:
                     'created_at':         row['created_at'],
                 }
         except Exception as e:
-            print(f'Database error fetching swing_daily_picks: {e}')
+            _db_logger.error(f'Database error fetching swing_daily_picks date={date}: {e}', exc_info=True)
             return None
 
     # ------------------------------------------------------------------
