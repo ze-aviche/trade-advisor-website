@@ -1052,6 +1052,7 @@ const app = createApp({
                     this.fetchBrownBotLogs();
                     this.loadBrownBotCandidates();
                     this.loadBrownBotRiskStatus();
+                    this.loadSwingDailyPicks();
                     this.startBrownBotPolling();
                 }
             },
@@ -5129,37 +5130,41 @@ const app = createApp({
 
         async loadSwingDailyPicks(force = false) {
             const today = new Date().toISOString().slice(0, 10);
-            if (!force && this.swingDailyPicks && this.swingDailyPicksDate === today) return;
+            // Only skip if we already have real picks for today
+            const hasGoodData = this.swingDailyPicks?.picks?.length > 0;
+            if (!force && hasGoodData && this.swingDailyPicksDate === today) return;
 
-            // Step 1: load latest stored picks instantly (previous session or today from DB)
-            if (!this.swingDailyPicks) {
-                try {
-                    const snap = await fetch('/api/swing-daily-picks/latest');
-                    const snapData = await snap.json();
-                    if (snapData.success && snapData.picks?.length) {
-                        this.swingDailyPicks = snapData;
-                        // If market is closed, show last session data and stop — no point
-                        // triggering a compute.  Mark date as today so tab switches don't
-                        // cause repeated retries while the market stays closed.
-                        if (!snapData.market_open && !force) {
-                            this.swingDailyPicksDate = today;
-                            return;
-                        }
-                        this.swingDailyPicksDate = snapData.date;
-                        // If this is already today's picks (from DB), we're done
-                        if (snapData.is_today && !force) return;
+            // Step 1: fast-path — always try the DB first (previous session or today)
+            try {
+                const snap = await fetch('/api/swing-daily-picks/latest');
+                const snapData = await snap.json();
+                if (snapData.success && snapData.picks?.length) {
+                    this.swingDailyPicks = snapData;
+                    // Market closed: show last session data, mark as "loaded for today"
+                    // so repeated tab switches don't keep retrying
+                    if (!snapData.market_open && !force) {
+                        this.swingDailyPicksDate = today;
+                        return;
                     }
-                } catch (_) { /* silent — fall through to full fetch */ }
-            }
+                    this.swingDailyPicksDate = snapData.date;
+                    // Today's picks already in DB — done
+                    if (snapData.is_today && !force) return;
+                }
+            } catch (_) { /* silent — fall through to full fetch */ }
 
             // Step 2: compute today's fresh picks (only reached when market is open)
             this.loading.swingDailyPicks = true;
+            const prevPicks = this.swingDailyPicks;
             try {
                 const res  = await fetch('/api/swing-daily-picks');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'No picks available');
-                this.swingDailyPicks = data;
-                this.swingDailyPicksDate = data.date || today;
+                // Only overwrite if new data has picks — don't clobber good prior data
+                // with an empty result from a stale after-hours compute
+                if (data.picks?.length || !prevPicks?.picks?.length) {
+                    this.swingDailyPicks = data;
+                    this.swingDailyPicksDate = data.date || today;
+                }
             } catch (e) {
                 this.showNotification(`Daily picks: ${e.message}`, 'error');
             } finally {

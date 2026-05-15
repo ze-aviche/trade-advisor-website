@@ -2260,7 +2260,10 @@ class DatabaseManager:
             return False
 
     def get_swing_picks(self, date: str = None) -> dict | None:
-        """Return picks for *date*, or the most recent row if date is None."""
+        """Return picks for *date*, or the most recent row if date is None.
+        When date is None, prefers the most recent row that has actual picks;
+        falls back to any row so the caller can distinguish "no rows" from
+        "rows with empty picks"."""
         try:
             with self.get_connection() as conn:
                 if date:
@@ -2268,9 +2271,15 @@ class DatabaseManager:
                         'SELECT * FROM swing_daily_picks WHERE date = ?', (date,)
                     ).fetchone()
                 else:
+                    # Prefer latest row with non-empty picks
                     row = conn.execute(
-                        'SELECT * FROM swing_daily_picks ORDER BY date DESC LIMIT 1'
+                        "SELECT * FROM swing_daily_picks WHERE picks_json != '[]'"
+                        " AND picks_json IS NOT NULL ORDER BY date DESC LIMIT 1"
                     ).fetchone()
+                    if not row:
+                        row = conn.execute(
+                            'SELECT * FROM swing_daily_picks ORDER BY date DESC LIMIT 1'
+                        ).fetchone()
                 if not row:
                     return None
                 return {
