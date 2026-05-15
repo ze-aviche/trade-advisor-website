@@ -1503,11 +1503,20 @@ const app = createApp({
             
             async initializeApp() {
                 console.log('🚀 Initializing Trading Advisor Dashboard...');
-                
+
+                // Paint stale cache immediately — before any backend ping — so the
+                // Gap Ups tab is never blank while connectivity checks are running.
+                const _cachedGapUps = this._getGapUpsCache();
+                if (_cachedGapUps && _cachedGapUps.length > 0) {
+                    this.gapUps = _cachedGapUps;
+                    this.prevGapUpTickers = _cachedGapUps.map(s => s.ticker);
+                    this.dashboardStats.gapUps = _cachedGapUps.length;
+                }
+
                 try {
                 // Force close any stuck modals or overlays first
                 this.forceCloseStuckModals();
-                
+
                     // Show overall loading state
                     this.showOverallLoadingState();
                     
@@ -4368,21 +4377,19 @@ const app = createApp({
         },
         
         showOverallLoadingState() {
-            // Show a loading overlay or indicator
             this.showNotification('Loading dashboard data...', 'info');
-            
-            // Update loading states for all components
             this.loading.dashboard = true;
-            this.loading.gapUps = true;
             this.loading.bot = true;
+            // Note: loading.gapUps is intentionally NOT set here.
+            // loadGapUps() owns its own spinner so hideOverallLoadingState()
+            // can't prematurely clear it before the API call completes.
         },
-        
+
         hideOverallLoadingState() {
-            // Hide loading indicators after a delay
             setTimeout(() => {
                 this.loading.dashboard = false;
-                this.loading.gapUps = false;
                 this.loading.bot = false;
+                // loading.gapUps is managed exclusively by loadGapUps()
             }, 2000);
         },
         
