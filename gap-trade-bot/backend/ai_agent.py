@@ -359,3 +359,276 @@ class ClaudeAIAgent:
     def clear_conversation_history(self, user_id: str) -> bool:
         _conversation_histories.pop(user_id, None)
         return True
+
+
+# ── Specialized agent: Historical gap-up intraday analysis ───────────────────
+
+GAP_UP_TRADE_SYSTEM_PROMPT = """You are a quantitative gap-up trading analyst specializing in intraday price action.
+
+Your sole job is to analyze a stock's multi-year history of gap-up days and produce a precise, evidence-based intraday trading playbook:
+- Long vs short bias (derived from Runner/Fader ratio and closing percent distribution)
+- Optimal entry type and timing (open, premarket high break, first pullback, etc.)
+- Specific stop placement (% from entry or reference price level)
+- Exit targets and time-based stops (derived from day-high time distribution)
+- Premarket signals that predict Runner vs Fader (premarket volume thresholds, extension %)
+
+Rules you MUST follow:
+- Base ALL conclusions on the statistical evidence in the data rows provided. Reference specific numbers.
+- Entry, stop, and target must be specific enough for a trader to execute immediately.
+- Never omit the stop loss.
+- Your setup_card must be self-contained — a trader should be able to trade from it alone.
+- Output ONLY valid JSON — no markdown, no commentary outside the JSON structure."""
+
+
+class GapUpTradeAgent:
+    """
+    Stateless single-shot agent for historical gap-up intraday pattern analysis.
+    Receives raw per-day data rows and returns a structured trading playbook.
+    Separate from ClaudeAIAgent (chat) and SwingPicksAgent — does not share conversation history.
+    """
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY', '')
+        self.client  = anthropic.Anthropic(api_key=self.api_key) if self.api_key else None
+        self.model   = 'claude-sonnet-4-6'  # Sonnet for higher-quality pattern analysis
+
+    def _format_rows(self, rows: list) -> str:
+        """Convert raw gap-up day rows to a compact text table for the prompt."""
+        header = (
+            'Date       | PDClose | PMOpen  | PMHigh  | PMHiTime | PMVol  '
+            '| Open    | Gap%  | DayHigh | DayHiTime | Close   | Close% | R/F'
+        )
+        lines = [header, '-' * len(header)]
+        for r in rows:
+            pm_vol = r.get('premarket volume') or 0
+            vol_str = f'{pm_vol/1e6:.1f}M' if pm_vol >= 1e6 else f'{pm_vol/1e3:.0f}k' if pm_vol else '—'
+            lines.append(
+                f'{str(r.get("date","")):<10} | '
+                f'{str(r.get("pd close","") or r.get("pd close","—")):<7} | '
+                f'{str(r.get("premarket open","") or "—"):<7} | '
+                f'{str(r.get("premarket high","") or "—"):<7} | '
+                f'{str(r.get("premarket high time","") or "—"):<8} | '
+                f'{vol_str:<6} | '
+                f'{str(r.get("open","")):<7} | '
+                f'{str(r.get("gap up % at open","")):<5} | '
+                f'{str(r.get("day high","") or r.get("high","")):<7} | '
+                f'{str(r.get("day high time","") or "—"):<9} | '
+                f'{str(r.get("close price","")):<7} | '
+                f'{str(r.get("closing percent","")):<6} | '
+                f'{r.get("Runner/Fader","—")}'
+            )
+        return '\n'.join(lines)
+
+    def analyze(
+        self,
+        ticker: str,
+        rows: list,
+        stats: dict,
+        sector_info: dict,
+        sector_perf: dict,
+    ) -> dict:
+        """
+        Analyze historical gap-up rows and return a structured trading playbook dict.
+        Raises on API error — caller should catch.
+        """
+        if not self.client:
+            raise RuntimeError('GapUpTradeAgent: ANTHROPIC_API_KEY not set')
+
+        # Limit to most recent 200 rows (sufficient for pattern detection, avoids huge prompts)
+        rows_for_prompt = rows[-200:] if len(rows) > 200 else rows
+        table = self._format_rows(rows_for_prompt)
+
+        etf_data  = sector_perf.get('sector_etf', {})
+        spy_data  = sector_perf.get('spy', {})
+        rel_str   = sector_perf.get('relative_strength', 'unknown')
+        sector_block = (
+            f"SECTOR: {sector_info.get('sector','N/A')} — ETF {sector_info.get('etf','N/A')}: "
+            f"1d {etf_data.get('change_1d_pct','N/A')}% | 5d {etf_data.get('change_5d_pct','N/A')}% | "
+            f"trend {etf_data.get('trend_5d','N/A')} | "
+            f"vs SPY 5d: {spy_data.get('change_5d_pct','N/A')}% | relative: {rel_str}"
+        )
+
+        prompt = f"""Analyze ALL {len(rows_for_prompt)} historical gap-up trading days for {ticker.upper()} \
+({sector_info.get('company_name','')}) and produce a precise intraday trading playbook.
+
+DATA ({stats.get('period','N/A')}, {stats.get('minGap',5)}%+ gaps, {len(rows_for_prompt)} gap-up days shown):
+
+{table}
+
+AGGREGATE SUMMARY (computed from same data):
+- Runner days: {stats.get('runnerDays',0)} ({stats.get('runnerPct',0)}%) | Fader days: {stats.get('faderDays',0)} ({stats.get('faderPct',0)}%)
+- Avg gap: {stats.get('avgGap',0)}% | Avg day high from prev close: {stats.get('avgDayHigh',0)}% | Avg closing: {stats.get('avgClose',0)}%
+- Avg premarket vol: {stats.get('avgPremarketVol',0)}M | Most common day-high time: {stats.get('commonHighTime','N/A')}
+- Gap distribution: {stats.get('gapDistribution',{})}
+- Recent 30d runner rate: {stats.get('recent30RunnerPct',0)}% vs full-period {stats.get('runnerPct',0)}%
+- High-vol days runner rate (top 50% by PM vol): {stats.get('highVolRunnerPct',0)}%
+{sector_block}
+
+Analyze the raw data rows directly. Identify:
+1. Under what premarket conditions (PM volume, PM extension %, PM high vs open) does this stock tend to be a Runner vs Fader?
+2. What is the optimal entry type and timing (at open, pullback, premarket high break)?
+3. Where should the stop be placed relative to entry?
+4. What are the realistic profit targets and when should a time-stop exit occur?
+
+Return ONLY valid JSON (no markdown, no text outside the JSON):
+{{
+  "bias": "Long" | "Short" | "Mixed",
+  "bias_confidence": "High" | "Medium" | "Low",
+  "bias_evidence": "One sentence citing specific runner/fader ratios and what drives the outcome",
+  "summary": "2-3 sentence executive summary of the intraday gap-up trading pattern for {ticker.upper()}",
+  "entry": {{
+    "type": "At open" | "Premarket high break" | "First pullback" | "Wait for confirmation" | "Short at open",
+    "specific_trigger": "Precise trigger — e.g. Buy 1-min candle break above premarket high, or Short if PM vol < 500k and open drops below premarket high",
+    "best_pm_signals": ["premarket signal that predicts Runner", "premarket signal that predicts Fader — avoid entry"],
+    "conditions": ["condition 1 for taking the entry", "condition 2"]
+  }},
+  "stop": {{
+    "placement": "Where to place the stop relative to entry (e.g. below premarket high, below open, below VWAP)",
+    "pct_from_entry": "X.X% below entry",
+    "rationale": "Why this level is meaningful based on the data"
+  }},
+  "exit": {{
+    "primary_target": "+X.X% from open (cite avg day high or specific distribution)",
+    "secondary_target": "+Y.Y% from open",
+    "optimal_exit_window": "Time range when day high most commonly occurs based on the data",
+    "time_stop": "Exit by HH:MM ET if primary target not hit",
+    "conditions": ["exit trigger 1", "exit trigger 2"]
+  }},
+  "pattern_insights": [
+    "Quantitative insight 1 — cite specific numbers from the data",
+    "Quantitative insight 2 — premarket volume or extension threshold observed",
+    "Quantitative insight 3 — gap size or time-of-day pattern",
+    "Quantitative insight 4 — regime or recent-trend observation"
+  ],
+  "setup_card": {{
+    "entry": "One-line entry instruction",
+    "stop": "One-line stop instruction",
+    "target_1": "+X.X% — rationale",
+    "target_2": "+Y.Y% — rationale",
+    "time_limit": "Exit by HH:MM if not at target 1",
+    "risk_reward": "1:X.X",
+    "notes": "Any important caveat (e.g. only trade if PM vol > X)"
+  }},
+  "sector_impact": "One sentence on how current {sector_info.get('sector','N/A')} sector trend affects the reliability of this setup today",
+  "caution": {{
+    "level": "High" | "Medium" | "Low",
+    "factors": ["risk factor 1", "risk factor 2"]
+  }}
+}}"""
+
+        resp = self.client.messages.create(
+            model=self.model,
+            max_tokens=2000,
+            system=GAP_UP_TRADE_SYSTEM_PROMPT,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = resp.content[0].text.strip()
+
+        import re as _re
+        m = _re.search(r'\{[\s\S]*\}', raw)
+        if not m:
+            raise ValueError(f'GapUpTradeAgent returned no JSON: {raw[:200]}')
+        return json.loads(m.group(0))
+
+
+# ── Specialized agent: Swing picks ranking ───────────────────────────────────
+
+SWING_PICKS_SYSTEM_PROMPT = """You are an expert swing trader ranking candidates for 3-10 day hold positions.
+
+Your grades feed the BrownBot autonomous trading system, so accuracy matters over breadth:
+- Grade A: high-confidence setup — strong volume confirmation, clean structure above SMA10, clear catalyst or momentum
+- Grade B: solid setup with one hesitation (e.g. slightly extended, or lower volume, or consolidating)
+- Grade C: speculative — informational only, BrownBot will not auto-trade these
+
+Bias must be Bullish or Bearish — never neutral on a pick.
+Output ONLY valid JSON — no markdown, no commentary outside the JSON structure."""
+
+
+class SwingPicksAgent:
+    """
+    Stateless single-shot agent for swing trade candidate ranking.
+    Replaces the inline Anthropic call in _compute_and_save_swing_picks().
+    Separate from ClaudeAIAgent (chat) and GapUpTradeAgent — no shared state.
+    """
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY', '')
+        self.client  = anthropic.Anthropic(api_key=self.api_key) if self.api_key else None
+        self.model   = 'claude-haiku-4-5-20251001'  # Haiku — fast, sufficient for structured ranking
+
+    def rank_candidates(self, candidates: list, session_date: str, market_open: bool) -> dict:
+        """
+        Rank swing candidates and return the AI result dict with 'picks' and 'market_note'.
+        Raises on API/JSON error — caller should catch.
+        """
+        if not self.client:
+            raise RuntimeError('SwingPicksAgent: ANTHROPIC_API_KEY not set')
+
+        def _row(c):
+            vol_tag  = f'  surge {c["vol_ratio"]:.1f}×' if c.get('vol_ratio') else ''
+            cap_tag  = (f'  mktcap ${c["market_cap_m"]/1000:.1f}B'
+                        if c.get('market_cap_m') and c['market_cap_m'] >= 1000
+                        else f'  mktcap ${c["market_cap_m"]:.0f}M' if c.get('market_cap_m') else '')
+            sma_tag  = f'  sma10 ${c["sma10"]:.2f}' if c.get('sma10') else ''
+            cpos_tag = f'  cpos {c["close_pos"]:.0%}' if c.get('close_pos') is not None else ''
+            return (
+                f"{c['ticker']:6s}  ${c['price']:>7.2f}"
+                f"  {'+' if c['chg_pct'] >= 0 else ''}{c['chg_pct']:>6.2f}%"
+                f"  vol {c['volume_m']:.1f}M  range {c['day_range']}%"
+                f"  [{c['direction']}]{vol_tag}{cap_tag}{sma_tag}{cpos_tag}"
+            )
+
+        market_ctx = (
+            'Note: this data is from the most recent completed trading session '
+            '(market is currently closed).' if not market_open else ''
+        )
+
+        prompt = f"""You are an expert swing trader scanning for the best setups on {session_date}.
+{market_ctx}
+
+Candidates are pre-filtered: all pass min $10 price, $3M+ daily dollar volume, $300M+ market cap, \
+close above 10-day SMA, and bullish intraday price structure (close in upper range, close ≥ VWAP). \
+Broken patterns and sell-off volume have already been removed.
+
+Column guide: cpos = close position in day range (100% = closed at high, 0% = closed at low). \
+sma10 = 10-day SMA. surge = today vol ÷ yesterday vol.
+
+Sources: [gainer/loser] top daily movers · [gap-up] intraday gap-ups · [vol-surge] unusual accumulation volume.
+
+Pick the 6-8 BEST swing trading candidates for a 3-10 day hold.
+Prefer: strong volume confirmation on up moves, gap-ups with continuation potential, \
+vol-surge with high close_pos (price held near high), stocks above SMA10 with room to run.
+Avoid: extended moves without consolidation, low-grade setups where the only edge is momentum without structure.
+
+CANDIDATES
+{chr(10).join(_row(c) for c in candidates)}
+
+Return ONLY a JSON object — no markdown, no commentary:
+{{
+  "picks": [
+    {{
+      "ticker": "SYM",
+      "grade": "A|B|C",
+      "bias": "Bullish|Bearish",
+      "reason": "One sentence on why this is a swing candidate",
+      "entry_zone": "price or range string",
+      "watch_for": "one short condition (e.g. hold above $X, volume > Y)",
+      "risk": "key stop or invalidation level"
+    }}
+  ],
+  "market_note": "1-2 sentence overall market context for swing traders"
+}}"""
+
+        msg = self.client.messages.create(
+            model=self.model,
+            max_tokens=2000,
+            system=SWING_PICKS_SYSTEM_PROMPT,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+            raw = raw.strip()
+        return json.loads(raw)  # raises JSONDecodeError on bad response

@@ -98,14 +98,18 @@ except Exception as e:
     stripe_mgr = None
     STRIPE_AVAILABLE = False
 
-# Import Claude AI Agent
+# Import Claude AI Agent (chat interface)
 try:
-    from ai_agent import ClaudeAIAgent
-    _ai_agent = ClaudeAIAgent()
+    from ai_agent import ClaudeAIAgent, GapUpTradeAgent, SwingPicksAgent
+    _ai_agent    = ClaudeAIAgent()
+    _gap_up_agent = GapUpTradeAgent()
+    _swing_agent  = SwingPicksAgent()
     AI_AGENT_AVAILABLE = True
 except Exception as e:
     app_logger.warning(f"Warning: Could not initialize Claude AI Agent: {e}")
-    _ai_agent = None
+    _ai_agent     = None
+    _gap_up_agent = None
+    _swing_agent  = None
     AI_AGENT_AVAILABLE = False
 
 # Feature flag: controls DAS Trader integration.
@@ -2301,87 +2305,33 @@ def get_historical_analysis(ticker):
                 'retry_after': retry_after
             }), 429
 
-        body = request.get_json(force=True) or {}
-        stats = body.get('stats', {})
+        if not _gap_up_agent:
+            return jsonify({'success': False, 'error': 'AI analysis not available'}), 503
 
-        # ── Analysis cache: keyed by ticker + params + calendar date ─────────
-        today = datetime.now().strftime('%Y-%m-%d')
-        cache_key = f"{ticker.upper()}|{stats.get('period', '')}|{stats.get('minGap', '')}|{today}"
+        body  = request.get_json(force=True) or {}
+        stats = body.get('stats', {})
+        rows  = body.get('rows', [])  # raw per-day data rows from the frontend
+
+        # ── Analysis cache: keyed by ticker + row count + min gap + calendar date ──
+        today     = datetime.now().strftime('%Y-%m-%d')
+        cache_key = f"{ticker.upper()}|rows={len(rows)}|minGap={stats.get('minGap','')}|{today}"
         cached_result = _cache_get(_analysis_cache, cache_key, _ANALYSIS_TTL)
         if cached_result is not None:
             app_logger.info(f"Analysis cache HIT for {cache_key}")
             cached_result['cached'] = True
             return jsonify(cached_result)
 
-        # Fetch sector context from Polygon (best-effort, won't block if it fails)
+        # Fetch sector context from Polygon (best-effort)
         polygon_key = os.getenv('POLYGON_API_KEY')
         sector_info, sector_perf = _get_sector_context(ticker, polygon_key)
 
-        # Build sector context block for the prompt
-        etf_data = sector_perf.get('sector_etf', {})
-        spy_data = sector_perf.get('spy', {})
-        rel_str = sector_perf.get('relative_strength', 'unknown')
-        sector_block = f"""
-SECTOR CONTEXT ({sector_info['sector']} — {sector_info['sic_description'] or 'N/A'}):
-- Sector ETF: {sector_info['etf']} | 1-day: {etf_data.get('change_1d_pct', 'N/A')}% | 5-day: {etf_data.get('change_5d_pct', 'N/A')}% | Trend: {etf_data.get('trend_5d', 'N/A')}
-- S&P 500 (SPY): 1-day: {spy_data.get('change_1d_pct', 'N/A')}% | 5-day: {spy_data.get('change_5d_pct', 'N/A')}%
-- Sector is {rel_str} the broader market by {abs(sector_perf.get('sector_vs_market_5d', 0))}% over 5 days
-- Use this to judge whether gap-up moves in {ticker.upper()} are more likely to hold (sector tailwind) or fade (sector headwind)"""
-
-        prompt = f"""You are analyzing historical gap-up trading data for {ticker.upper()} ({sector_info['company_name']}). Based on the statistics and live sector context below, predict how this stock will likely behave on its NEXT gap-up day and give actionable trading guidance.
-
-HISTORICAL GAP-UP STATISTICS ({stats.get('period', 'N/A')}, {stats.get('minGap', 0)}%+ gaps only):
-- Total gap-up events: {stats.get('totalDays', 0)}
-- Runner days (closed above open): {stats.get('runnerDays', 0)} ({stats.get('runnerPct', 0)}%)
-- Fader days (closed below open): {stats.get('faderDays', 0)} ({stats.get('faderPct', 0)}%)
-- Neutral days: {stats.get('neutralDays', 0)} ({stats.get('neutralPct', 0)}%)
-- Average gap-up %: {stats.get('avgGap', 0)}%
-- Average day high %: {stats.get('avgDayHigh', 0)}% (from prev close)
-- Average closing %: {stats.get('avgClose', 0)}% (from prev close)
-- Average premarket volume: {stats.get('avgPremarketVol', 0)}M shares
-- Most common day high time: {stats.get('commonHighTime', 'N/A')} EST
-- Gap size distribution: {stats.get('gapDistribution', {})}
-- RECENT TREND (last 30 days): runner rate {stats.get('recent30RunnerPct', 0)}% vs full-period {stats.get('runnerPct', 0)}%
-- High-volume runner rate (top 50% vol days): {stats.get('highVolRunnerPct', 0)}%
-{sector_block}
-
-Respond ONLY with valid JSON. No markdown, no explanation outside the JSON:
-{{
-  "outlook": "Bullish" | "Bearish" | "Mixed" | "Neutral",
-  "confidence": "High" | "Medium" | "Low",
-  "summary": "One concise sentence predicting next gap-up day behavior, referencing sector if relevant",
-  "regime_note": "One sentence comparing recent 30-day trend vs full-period trend — is behavior shifting?",
-  "sector_impact": "One sentence on how the current {sector_info['sector']} sector trend ({etf_data.get('trend_5d', 'N/A')}) affects the prediction — tailwind, headwind, or neutral?",
-  "entry": {{
-    "signal": "e.g. Buy at open / Wait for first pullback / Short bias — avoid long",
-    "price_context": "brief context referencing sector momentum if relevant",
-    "conditions": ["specific condition 1 (may include sector/market alignment)", "specific condition 2"]
-  }},
-  "exit": {{
-    "target": "+X% from open (based on avg day high of {stats.get('avgDayHigh', 0)}%)",
-    "timing": "typical exit time based on common high time {stats.get('commonHighTime', 'N/A')} EST",
-    "conditions": ["exit condition 1", "exit condition 2"]
-  }},
-  "caution": {{
-    "level": "High" | "Medium" | "Low",
-    "factors": ["risk factor 1 (consider sector headwind if applicable)", "risk factor 2"]
-  }},
-  "insights": ["data-backed pattern insight 1", "data-backed pattern insight 2", "sector-aware insight 3"]
-}}"""
-
-        response = _ai_agent.process_message(prompt, user_id=f"hist_analysis_{ticker.upper()}")
-        if not response.get('success'):
-            return jsonify({'success': False, 'error': response.get('error', 'AI analysis failed')}), 500
-
-        import re
-        text = response.get('response', '')
-        json_match = re.search(r'\{[\s\S]*\}', text)
-        if json_match:
-            analysis = json.loads(json_match.group(0))
-        else:
-            analysis = {'summary': text, 'outlook': 'Mixed', 'confidence': 'Low',
-                        'regime_note': '', 'sector_impact': '', 'entry': {}, 'exit': {},
-                        'caution': {}, 'insights': []}
+        analysis = _gap_up_agent.analyze(
+            ticker     = ticker,
+            rows       = rows,
+            stats      = stats,
+            sector_info = sector_info,
+            sector_perf = sector_perf,
+        )
 
         result = {
             'success': True,
@@ -6495,7 +6445,6 @@ def _compute_and_save_swing_picks(session_date: str, polygon_key: str,
     """
     import requests as _req
     import concurrent.futures as _cf
-    import anthropic as _anthropic
 
     if market_open is None:
         market_open = _is_market_open()
@@ -6579,65 +6528,10 @@ def _compute_and_save_swing_picks(session_date: str, polygon_key: str,
             'source_counts': {}, 'sources_tickers': {}, 'cached': False,
         }
 
-    # ── Step 3: Claude ranking ────────────────────────────────────────────
-    def _row(c):
-        vol_tag  = (f'  surge {c["vol_ratio"]:.1f}×' if c.get('vol_ratio') else '')
-        cap_tag  = (f'  mktcap ${c["market_cap_m"]/1000:.1f}B'
-                    if c.get('market_cap_m') and c['market_cap_m'] >= 1000
-                    else f'  mktcap ${c["market_cap_m"]:.0f}M' if c.get('market_cap_m') else '')
-        sma_tag  = (f'  sma10 ${c["sma10"]:.2f}' if c.get('sma10') else '')
-        cpos_tag = (f'  cpos {c["close_pos"]:.0%}' if c.get('close_pos') is not None else '')
-        return (f"{c['ticker']:6s}  ${c['price']:>7.2f}"
-                f"  {'+' if c['chg_pct'] >= 0 else ''}{c['chg_pct']:>6.2f}%"
-                f"  vol {c['volume_m']:.1f}M  range {c['day_range']}%"
-                f"  [{c['direction']}]{vol_tag}{cap_tag}{sma_tag}{cpos_tag}")
-
-    market_ctx = ("Note: this data is from the most recent completed trading session "
-                  "(market is currently closed)." if not market_open else "")
-
-    prompt = f"""You are an expert swing trader scanning for the best setups on {session_date}.
-{market_ctx}
-
-Candidates are pre-filtered: all pass min $10 price, $3M+ daily dollar volume, $300M+ market cap, close above 10-day SMA, and bullish intraday price structure (close in upper range, close ≥ VWAP). Broken patterns and sell-off volume have already been removed.
-
-Column guide: cpos = close position in day range (100% = closed at high, 0% = closed at low). sma10 = 10-day SMA. surge = today vol ÷ yesterday vol.
-
-Sources: [gainer/loser] top daily movers · [gap-up] intraday gap-ups · [vol-surge] unusual accumulation volume.
-
-Pick the 6-8 BEST swing trading candidates for a 3-10 day hold.
-Prefer: strong volume confirmation on up moves, gap-ups with continuation potential, vol-surge with high close_pos (price held near high), stocks above SMA10 with room to run.
-Avoid: extended moves without consolidation, low-grade setups where the only edge is momentum without structure.
-
-CANDIDATES
-{chr(10).join(_row(c) for c in candidates)}
-
-Return ONLY a JSON object — no markdown, no commentary:
-{{
-  "picks": [
-    {{
-      "ticker": "SYM",
-      "grade": "A|B|C",
-      "bias": "Bullish|Bearish",
-      "reason": "One sentence on why this is a swing candidate",
-      "entry_zone": "price or range string",
-      "watch_for": "one short condition (e.g. hold above $X, volume > Y)",
-      "risk": "key stop or invalidation level"
-    }}
-  ],
-  "market_note": "1-2 sentence overall market context for swing traders"
-}}"""
-
-    client = _anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
-    msg    = client.messages.create(model='claude-haiku-4-5-20251001', max_tokens=2000,
-                                    messages=[{'role': 'user', 'content': prompt}])
-    raw = msg.content[0].text.strip()
-    if raw.startswith('```'):
-        raw = raw.split('```')[1]
-        if raw.startswith('json'):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    ai_result = json.loads(raw)  # raises JSONDecodeError on bad response
+    # ── Step 3: SwingPicksAgent ranking ──────────────────────────────────────
+    if not _swing_agent:
+        raise RuntimeError('SwingPicksAgent not available — ANTHROPIC_API_KEY missing?')
+    ai_result = _swing_agent.rank_candidates(candidates, session_date, market_open)
 
     ticker_source = {c['ticker']: c['direction'] for c in candidates}
     sources_tickers = {

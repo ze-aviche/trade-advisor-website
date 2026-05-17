@@ -4921,10 +4921,15 @@ const app = createApp({
                 this.loading.historicalAnalysis = true;
                 this.historicalAnalysis = null;
                 const stats = this.buildHistoricalStats();
+                // Send raw filtered rows so the agent can do its own pattern detection
+                // (not just pre-aggregated stats). Cap at 200 rows to keep payload reasonable.
+                const filteredRows = this.historicalData
+                    .filter(d => (parseFloat(d['gap up % at open']) || 0) >= this.minGapPercent)
+                    .slice(-200);
                 const response = await fetch(`/api/historical-analysis/${this.historicalTicker.toUpperCase()}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stats })
+                    body: JSON.stringify({ stats, rows: filteredRows })
                 });
                 const data = await response.json();
                 if (data.success) {
