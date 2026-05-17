@@ -2853,14 +2853,14 @@
                     </div>
 
                     <!-- Empty -->
-                    <p v-else-if="openPositions.length === 0" class="text-gray-500 text-sm py-2">No open positions at broker.</p>
+                    <p v-else-if="openPositions.length === 0" class="text-gray-500 text-sm py-2">{{ openPositionsMessage || 'No open positions at broker.' }}</p>
 
                     <!-- Table -->
-                    <div v-else class="overflow-x-auto">
+                    <div v-else class="overflow-x-auto rounded-lg">
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead>
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Symbol</th>
+                                    <th class="sticky left-0 z-20 bg-gray-800 px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap border-r border-gray-700">Symbol</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Qty</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Avg Entry</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Current</th>
@@ -2870,8 +2870,8 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-700/60">
-                                <tr v-for="pos in openPositions" :key="pos.symbol" class="hover:bg-gray-700/40 transition-colors">
-                                    <td class="px-4 py-3 whitespace-nowrap">
+                                <tr v-for="pos in openPositions" :key="pos.symbol" class="group hover:bg-gray-700/40 transition-colors">
+                                    <td class="sticky left-0 z-10 px-4 py-3 whitespace-nowrap bg-gray-800 group-hover:bg-gray-700/40 border-r border-gray-700">
                                         <span class="text-sm font-semibold text-white">{{ pos.symbol }}</span>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ pos.qty }}</td>
@@ -2997,25 +2997,25 @@
                         <p class="text-sm text-gray-500 mt-2">Positions history will appear here once positions are tracked</p>
                     </div>
 
-                    <div v-else class="overflow-x-auto">
+                    <div v-else class="overflow-x-auto rounded-lg">
                         <table class="min-w-full divide-y divide-gray-700">
-                            <thead class="bg-gray-700">
+                            <thead>
                                 <tr>
-                                    <th @click="togglePositionsSort('symbol')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Symbol <i :class="positionsSort.key==='symbol' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Type</th>
-                                    <th @click="togglePositionsSort('qty')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Qty <i :class="positionsSort.key==='qty' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('avg_entry')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Avg Entry <i :class="positionsSort.key==='avg_entry' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('avg_exit')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Avg Exit <i :class="positionsSort.key==='avg_exit' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('pnl')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">P&amp;L <i :class="positionsSort.key==='pnl' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Duration</th>
-                                    <th @click="togglePositionsSort('entry_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Entry Date <i :class="positionsSort.key==='entry_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('exit_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Exit Date <i :class="positionsSort.key==='exit_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up text-blue-400' : 'fas fa-sort-down text-blue-400') : 'fas fa-sort'" class="ml-1"></i></th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Source</th>
+                                    <th @click="togglePositionsSort('symbol')" class="sticky left-0 z-20 bg-gray-700 px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap border-r border-gray-600">Symbol <i :class="positionsSort.key==='symbol' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700 whitespace-nowrap">Type</th>
+                                    <th @click="togglePositionsSort('qty')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Qty <i :class="positionsSort.key==='qty' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_entry')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Avg Entry <i :class="positionsSort.key==='avg_entry' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_exit')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Avg Exit <i :class="positionsSort.key==='avg_exit' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('pnl')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">P&amp;L <i :class="positionsSort.key==='pnl' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap bg-gray-700">Duration</th>
+                                    <th @click="togglePositionsSort('entry_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Entry Date <i :class="positionsSort.key==='entry_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('exit_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Exit Date <i :class="positionsSort.key==='exit_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up text-blue-400' : 'fas fa-sort-down text-blue-400') : 'fas fa-sort'" class="ml-1"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap bg-gray-700">Source</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="position in sortedPositions" :key="position.symbol + '_' + position.exit_date + '_' + position.position_type">
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
+                                <tr v-for="position in sortedPositions" :key="position.symbol + '_' + position.exit_date + '_' + position.position_type" class="group">
+                                    <td class="sticky left-0 z-10 px-4 py-3 whitespace-nowrap text-sm font-medium text-white bg-gray-800 group-hover:bg-gray-700 border-r border-gray-700">{{ position.symbol }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm">
                                         <span class="px-2 py-0.5 rounded text-xs font-medium border"
                                               :class="position.position_type === 'swing' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'">

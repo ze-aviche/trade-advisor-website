@@ -5968,15 +5968,18 @@ def get_extended_stats_route():
 @app.route('/api/positions/open', methods=['GET'])
 @require_auth
 def get_open_positions():
-    """Return live open positions from the broker (Alpaca).
+    """Return live open positions from the broker.
     Works even when BrownBot is stopped — reads broker config from DB."""
     try:
-        broker = _brown_broker or _get_broker()
+        user_id = request.user.get('id', 1)
+        broker = _brown_broker or _get_broker(user_id)
         if broker is None:
-            return jsonify({'success': True, 'data': [], 'message': 'No broker configured'})
+            app_logger.info(f'get_open_positions: no broker configured for user {user_id}')
+            return jsonify({'success': True, 'data': [], 'message': 'No broker configured. Set up a broker in Account Settings.'})
         if not broker.is_connected():
             if not broker.connect():
-                return jsonify({'success': True, 'data': [], 'message': 'Broker not connected'})
+                app_logger.warning(f'get_open_positions: broker {broker.name} failed to connect')
+                return jsonify({'success': True, 'data': [], 'message': f'Broker ({broker.name}) could not connect.'})
         raw_positions = broker.get_positions()
         result = []
         for pos in raw_positions:

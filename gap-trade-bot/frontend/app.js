@@ -280,6 +280,7 @@ const app = createApp({
                 positionsSummary: {},
                 positionsStatusFilter: 'closed',   // 'closed' | 'open' | 'all'
                 openPositions: [],
+                openPositionsMessage: '',
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
@@ -3526,12 +3527,16 @@ const app = createApp({
                 const data = await res.json();
                 if (data.success) {
                     this.openPositions = data.data || [];
+                    this.openPositionsMessage = this.openPositions.length === 0
+                        ? (data.message || 'No open positions at broker.')
+                        : '';
                 } else {
                     this.openPositions = [];
-                    this.showNotification('Could not load open positions: ' + (data.error || data.message), 'warning');
+                    this.openPositionsMessage = data.error || data.message || 'Failed to load positions.';
                 }
             } catch (e) {
                 this.openPositions = [];
+                this.openPositionsMessage = 'Could not reach server.';
             } finally {
                 this.loading.openPositions = false;
             }
