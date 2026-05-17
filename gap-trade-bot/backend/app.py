@@ -3089,6 +3089,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
         'entry_time': datetime.now().isoformat(),
         'entry_time_epoch': time.time(),
         'unrealized_pnl': 0.0,
+        'entry_order_id': str(order_id) if order_id else None,
     }
     with _brown_bot_lock:
         _brown_bot_active_positions[position_id] = position
@@ -3825,20 +3826,23 @@ def start_brown_bot():
 
                 # 1 — drop stale (in DB but not in broker)
                 stale = [
-                    (pid, pos.get('symbol', ''))
+                    (pid, pos.get('symbol', ''), pos.get('entry_order_id'))
                     for pid, pos in list(_brown_bot_active_positions.items())
                     if pos.get('symbol', '').upper() not in broker_pos_map
                 ]
                 with _brown_bot_lock:
-                    for pid, sym in stale:
+                    for pid, sym, entry_oid in stale:
                         _brown_bot_active_positions.pop(pid, None)
                         _brown_entry_counts.pop(sym, None)
                         _brown_attempted_symbols.discard(sym)
                         db_manager.delete_brown_position(pid)
+                        # Remove the phantom buy trade so it doesn't pollute FIFO matching
+                        if entry_oid:
+                            db_manager.delete_buy_trade_by_order_id(entry_oid)
                 if stale:
                     _add_brown_log('info',
                         f'Startup: removed {len(stale)} position(s) not in broker '
-                        f'({", ".join(s for _, s in stale)})')
+                        f'({", ".join(s for _, s in [(p, sym) for p, sym, _ in stale])})')
 
                 # 2 — adopt orphans (in broker but not tracked)
                 config = db_manager.get_brown_bot_config()

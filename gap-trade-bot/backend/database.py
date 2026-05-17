@@ -800,6 +800,26 @@ class DatabaseManager:
         except Exception as e:
             return False, str(e)
 
+    def delete_buy_trade_by_order_id(self, order_id: str) -> bool:
+        """Delete an unmatched BUY trade record by its broker order_id.
+
+        Used at startup when a stale position (in DB but not in broker) is discarded,
+        so its phantom buy entry doesn't pollute the Positions tab FIFO matching.
+        Only deletes side='B' rows to avoid accidentally removing sell records.
+        """
+        if not order_id:
+            return False
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM trades WHERE order_id = ? AND side = 'B'",
+                    (str(order_id),)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            return False
+
     def add_trade(self, trade_data):
         """Add a new trade to the database"""
         qty = int(trade_data.get('quantity', 0))
