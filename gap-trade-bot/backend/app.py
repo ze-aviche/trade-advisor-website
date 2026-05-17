@@ -5996,21 +5996,19 @@ def get_open_positions():
         raw_positions = broker.get_positions()
         app_logger.info(f'get_open_positions: got {len(raw_positions)} position(s) from {broker.name}')
 
-        # Build a symbol → position_type lookup.
-        # _brown_bot_active_positions is keyed by position_id, not symbol —
-        # iterate values and read the 'symbol' field.
+        # Build symbol → position_type map.
+        # Priority 1: in-memory BrownBot positions (bot running)
+        # Priority 2: brown_positions DB table (bot stopped but positions still open in broker)
         type_map = {}
         for bp in _brown_bot_active_positions.values():
             sym = (bp.get('symbol') or '').upper()
             if sym:
                 type_map[sym] = bp.get('position_type')  # 'day' or 'swing'
-        # Fill gaps from DB daily_positions table
         try:
-            db_rows = db_manager.get_daily_positions(limit=500)
-            for row in db_rows:
-                s = (row.get('symbol') or '').upper()
-                if s and s not in type_map:
-                    type_map[s] = row.get('position_type')
+            for bp in db_manager.get_brown_positions():
+                sym = (bp.get('symbol') or '').upper()
+                if sym and sym not in type_map:
+                    type_map[sym] = bp.get('position_type')
         except Exception:
             pass
 
