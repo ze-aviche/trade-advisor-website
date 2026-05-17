@@ -446,7 +446,8 @@ const app = createApp({
                 extendedStats: {
                     gross_profit: 0, gross_loss: 0, profit_factor: 0,
                     avg_win: 0, avg_loss: 0, win_loss_ratio: 0,
-                    best_trade: 0, best_trade_symbol: '', worst_trade: 0, worst_trade_symbol: '',
+                    best_trade: 0, best_trade_symbol: '', best_trade_date: '',
+                    worst_trade: 0, worst_trade_symbol: '', worst_trade_date: '',
                     avg_pnl: 0, win_count: 0, loss_count: 0, breakeven_count: 0,
                     total_count: 0, expectancy: 0, max_consecutive_wins: 0, max_consecutive_losses: 0,
                     max_drawdown: 0, sharpe_ratio: null,

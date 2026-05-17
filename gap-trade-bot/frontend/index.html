@@ -3118,19 +3118,19 @@
                         <!-- Best / Worst Trade -->
                         <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
                             <p class="text-xs text-gray-400 font-medium mb-3">Trade Extremes</p>
-                            <div class="flex justify-between items-center mb-2">
+                            <div class="flex justify-between items-start mb-2">
                                 <span class="text-xs text-gray-400">Best Trade</span>
-                                <span class="text-sm font-bold text-green-400">
-                                    {{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.best_trade) : '—' }}
-                                    <span v-if="extendedStats.best_trade_symbol" class="text-xs text-gray-400 ml-1">({{ extendedStats.best_trade_symbol }})</span>
-                                </span>
+                                <div class="text-right">
+                                    <span class="text-sm font-bold text-green-400">{{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.best_trade) : '—' }}</span>
+                                    <div v-if="extendedStats.best_trade_symbol" class="text-xs text-gray-400">{{ extendedStats.best_trade_symbol }}<span v-if="extendedStats.best_trade_date"> · {{ extendedStats.best_trade_date }}</span></div>
+                                </div>
                             </div>
-                            <div class="flex justify-between items-center mb-2">
+                            <div class="flex justify-between items-start mb-2">
                                 <span class="text-xs text-gray-400">Worst Trade</span>
-                                <span class="text-sm font-bold text-red-400">
-                                    {{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.worst_trade) : '—' }}
-                                    <span v-if="extendedStats.worst_trade_symbol" class="text-xs text-gray-400 ml-1">({{ extendedStats.worst_trade_symbol }})</span>
-                                </span>
+                                <div class="text-right">
+                                    <span class="text-sm font-bold text-red-400">{{ extendedStats.total_count > 0 ? formatCurrency(extendedStats.worst_trade) : '—' }}</span>
+                                    <div v-if="extendedStats.worst_trade_symbol" class="text-xs text-gray-400">{{ extendedStats.worst_trade_symbol }}<span v-if="extendedStats.worst_trade_date"> · {{ extendedStats.worst_trade_date }}</span></div>
+                                </div>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-xs text-gray-400">Gross Profit</span>
