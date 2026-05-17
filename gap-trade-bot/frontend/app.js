@@ -708,7 +708,13 @@ const app = createApp({
                 const { key, dir } = this.gapUpSort;
                 const filtered = this.activeGapUpData.filter(s => (s.session || 'premarket') === this.activeGapUpSubTab);
                 return filtered.sort((a, b) => {
-                    let va = a[key], vb = b[key];
+                    let va, vb;
+                    if (key === 'float_rotation') {
+                        va = (a.float_shares > 0 && a.volume > 0) ? a.volume / a.float_shares : null;
+                        vb = (b.float_shares > 0 && b.volume > 0) ? b.volume / b.float_shares : null;
+                    } else {
+                        va = a[key]; vb = b[key];
+                    }
                     if (va == null) return 1;
                     if (vb == null) return -1;
                     if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
@@ -1129,7 +1135,7 @@ const app = createApp({
                     this.gapUpSort.dir = this.gapUpSort.dir === 'asc' ? 'desc' : 'asc';
                 } else {
                     this.gapUpSort.key = key;
-                    this.gapUpSort.dir = ['gap_percent', 'volume', 'market_cap', 'float_shares', 'price'].includes(key) ? 'desc' : 'asc';
+                    this.gapUpSort.dir = ['gap_percent', 'volume', 'market_cap', 'float_shares', 'float_rotation', 'price'].includes(key) ? 'desc' : 'asc';
                 }
             },
 
@@ -3523,8 +3529,20 @@ const app = createApp({
         async loadOpenPositions() {
             this.loading.openPositions = true;
             try {
+                console.log('🔄 loadOpenPositions: fetching /api/positions/open');
                 const res  = await fetch('/api/positions/open', { headers: this.getAuthHeaders() });
-                const data = await res.json();
+                console.log('🔍 loadOpenPositions: HTTP status', res.status);
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const text = await res.text().catch(() => '');
+                    console.error('❌ loadOpenPositions: non-JSON response', res.status, text.slice(0, 300));
+                    this.openPositions = [];
+                    this.openPositionsMessage = `Server error (HTTP ${res.status}). Check console.`;
+                    return;
+                }
+                console.log('📦 loadOpenPositions: response', data);
                 if (data.success) {
                     this.openPositions = data.data || [];
                     this.openPositionsMessage = this.openPositions.length === 0
@@ -3535,6 +3553,7 @@ const app = createApp({
                     this.openPositionsMessage = data.error || data.message || 'Failed to load positions.';
                 }
             } catch (e) {
+                console.error('❌ loadOpenPositions: network error', e);
                 this.openPositions = [];
                 this.openPositionsMessage = 'Could not reach server.';
             } finally {

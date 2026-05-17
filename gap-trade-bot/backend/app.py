@@ -5954,19 +5954,47 @@ def get_monthly_pnl():
 @app.route('/api/positions/open', methods=['GET'])
 @require_auth
 def get_open_positions():
-    """Return live open positions from the broker.
-    Works even when BrownBot is stopped — reads broker config from DB."""
+    """Return live open positions from Alpaca.
+    Priority: running BrownBot broker → DB config → ALPACA_API_KEY env var."""
     try:
         user_id = request.user.get('id', 1)
-        broker = _brown_broker or _get_broker(user_id)
+
+        broker = _brown_broker
+        if broker:
+            app_logger.info('get_open_positions: using _brown_broker (bot is running)')
+        else:
+            broker = _get_broker(user_id)
+            if broker:
+                app_logger.info(f'get_open_positions: using DB broker config (user {user_id})')
+
+        # Fallback: build AlpacaBroker directly from env vars
         if broker is None:
-            app_logger.info(f'get_open_positions: no broker configured for user {user_id}')
-            return jsonify({'success': True, 'data': [], 'message': 'No broker configured. Set up a broker in Account Settings.'})
+            import os as _os
+            api_key    = _os.environ.get('ALPACA_API_KEY') or _os.environ.get('ALPACA_KEY')
+            api_secret = _os.environ.get('ALPACA_SECRET_KEY') or _os.environ.get('ALPACA_SECRET')
+            if api_key and api_secret:
+                from bot.broker.alpaca import AlpacaBroker
+                paper  = _os.environ.get('ALPACA_PAPER', 'true').lower() != 'false'
+                broker = AlpacaBroker(api_key, api_secret, paper=paper)
+                if not broker.connect():
+                    broker = None
+                    app_logger.warning('get_open_positions: env-var Alpaca credentials failed to connect')
+                else:
+                    app_logger.info('get_open_positions: using env-var Alpaca credentials')
+
+        if broker is None:
+            app_logger.info('get_open_positions: no broker available — DB config missing and no ALPACA_API_KEY env var')
+            return jsonify({'success': True, 'data': [],
+                            'message': 'No broker configured. Add Alpaca API keys in Account Settings.'})
+
         if not broker.is_connected():
             if not broker.connect():
-                app_logger.warning(f'get_open_positions: broker {broker.name} failed to connect')
-                return jsonify({'success': True, 'data': [], 'message': f'Broker ({broker.name}) could not connect.'})
+                app_logger.warning(f'get_open_positions: {broker.name} failed to reconnect')
+                return jsonify({'success': True, 'data': [],
+                                'message': f'{broker.name} could not connect. Check API keys.'})
+
         raw_positions = broker.get_positions()
+        app_logger.info(f'get_open_positions: got {len(raw_positions)} position(s) from {broker.name}')
         result = []
         for pos in raw_positions:
             pnl_pct = None
