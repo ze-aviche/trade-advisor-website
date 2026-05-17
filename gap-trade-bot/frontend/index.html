@@ -2959,7 +2959,7 @@
                                     <td class="px-4 py-3 whitespace-nowrap text-sm">
                                         <span class="px-2 py-0.5 rounded text-xs font-medium border"
                                               :class="position.source === 'brownbot' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'">
-                                            {{ position.source === 'brownbot' ? 'BrownBot' : (position.source || 'DAS') }}
+                                            {{ position.broker || (position.source === 'brownbot' ? 'Alpaca' : 'DAS') }}
                                         </span>
                                     </td>
                                 </tr>

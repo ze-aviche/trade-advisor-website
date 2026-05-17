@@ -211,6 +211,7 @@ class DatabaseManager:
                 ('trades',          'position_type',      "TEXT DEFAULT 'day'"),
                 ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
                 ('trades',          'source',             "TEXT DEFAULT 'brownbot'"),
+                ('trades',          'broker',             'TEXT DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
@@ -835,8 +836,8 @@ class DatabaseManager:
                     INSERT INTO trades (
                         trade_id, symbol, side, quantity, price, route,
                         trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
-                        position_type, days_held, source
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_type, days_held, source, broker
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -853,6 +854,7 @@ class DatabaseManager:
                     trade_data.get('position_type', 'day'),
                     trade_data.get('days_held'),
                     trade_data.get('source', 'brownbot'),
+                    trade_data.get('broker'),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -1641,7 +1643,8 @@ class DatabaseManager:
                 SELECT symbol, side, quantity, price, pnl, trade_date, trade_time,
                        COALESCE(position_type, 'day') AS position_type,
                        COALESCE(source, 'brownbot')   AS source,
-                       COALESCE(days_held, 0)          AS days_held
+                       COALESCE(days_held, 0)          AS days_held,
+                       broker
                 FROM trades
                 WHERE side IN ('B', 'S', 'SS')
             '''
@@ -1686,6 +1689,7 @@ class DatabaseManager:
                 exit_date  = row['trade_date']
                 exit_time  = row['trade_time'] or ''
                 src        = row['source']
+                broker     = row['broker']
 
                 # Consume buys FIFO to compute weighted avg entry
                 remaining    = sell_qty
@@ -1723,6 +1727,7 @@ class DatabaseManager:
                     'symbol':        sym,
                     'position_type': pt,
                     'source':        src,
+                    'broker':        broker,
                     'qty':           sell_qty,
                     'avg_entry':     round(avg_entry, 4) if avg_entry is not None else None,
                     'avg_exit':      round(sell_price, 4),

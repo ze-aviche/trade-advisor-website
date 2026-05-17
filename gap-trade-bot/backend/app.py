@@ -3118,6 +3118,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
             'position_type': position_type,
             'days_held':     None,
             'source':        'brownbot',
+            'broker':        _brown_broker.name if _brown_broker else None,
         })
     except Exception as _e:
         _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
@@ -3434,6 +3435,7 @@ def _brown_close_position(position_id, position, exit_reason):
             'position_type': position_type,
             'days_held': days_held,
             'source': 'brownbot',
+            'broker': _brown_broker.name if _brown_broker else None,
         }
         db_manager.add_trade(trade_data)
     except Exception as e:
