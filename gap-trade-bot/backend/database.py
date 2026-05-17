@@ -802,6 +802,12 @@ class DatabaseManager:
 
     def add_trade(self, trade_data):
         """Add a new trade to the database"""
+        qty = int(trade_data.get('quantity', 0))
+        if qty <= 0 or qty > 1_000_000:
+            return False, f"Rejected: quantity {qty} out of valid range (1–1,000,000)"
+        price = float(trade_data.get('price', 0))
+        if price <= 0 or price > 1_000_000:
+            return False, f"Rejected: price {price} out of valid range"
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1641,15 +1647,21 @@ class DatabaseManager:
             key  = (sym, pt)
             side = (row['side'] or '').upper()
 
+            raw_qty   = int(row['quantity'])
+            raw_price = float(row['price'])
+            # Skip obviously corrupt records (data sanity guard)
+            if raw_qty <= 0 or raw_qty > 1_000_000 or raw_price <= 0 or raw_price > 1_000_000:
+                continue
+
             if side == 'B':
                 buy_queues[key].append({
-                    'qty':   int(row['quantity']),
-                    'price': float(row['price']),
+                    'qty':   raw_qty,
+                    'price': raw_price,
                     'date':  row['trade_date'],
                 })
             elif side in ('S', 'SS'):
-                sell_qty   = int(row['quantity'])
-                sell_price = float(row['price'])
+                sell_qty   = raw_qty
+                sell_price = raw_price
                 pnl        = float(row['pnl'] or 0)
                 exit_date  = row['trade_date']
                 exit_time  = row['trade_time'] or ''
