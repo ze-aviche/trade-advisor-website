@@ -4563,6 +4563,15 @@ const app = createApp({
             } catch (e) { /* non-critical */ }
         },
 
+        openInHistorical(ticker) {
+            this.historicalTicker  = ticker.toUpperCase();
+            this.selectedPeriod    = '1825';   // 5 years
+            this.minGapPercent     = 5;        // widest gap filter
+            this.historicalData    = [];       // clear stale data
+            this.onTabChange('historical');
+            this.$nextTick(() => this.loadHistoricalData());
+        },
+
         async loadHistoricalData() {
             if (!this.historicalTicker.trim()) {
                 this.showNotification('Please enter a ticker symbol', 'warning');
