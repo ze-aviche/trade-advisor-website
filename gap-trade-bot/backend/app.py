@@ -5965,6 +5965,42 @@ def get_extended_stats_route():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/positions/open', methods=['GET'])
+@require_auth
+def get_open_positions():
+    """Return live open positions from the broker (Alpaca).
+    Works even when BrownBot is stopped — reads broker config from DB."""
+    try:
+        broker = _brown_broker or _get_broker()
+        if broker is None:
+            return jsonify({'success': True, 'data': [], 'message': 'No broker configured'})
+        if not broker.is_connected():
+            if not broker.connect():
+                return jsonify({'success': True, 'data': [], 'message': 'Broker not connected'})
+        raw_positions = broker.get_positions()
+        result = []
+        for pos in raw_positions:
+            pnl_pct = None
+            if pos.avg_entry_price and pos.avg_entry_price > 0:
+                pnl_pct = round((pos.unrealized_pnl / (pos.avg_entry_price * pos.qty)) * 100, 2)
+            result.append({
+                'symbol':            pos.symbol,
+                'qty':               pos.qty,
+                'side':              pos.side,
+                'avg_entry':         round(pos.avg_entry_price, 4),
+                'current_price':     round(pos.current_price, 4),
+                'unrealized_pnl':    round(pos.unrealized_pnl, 2),
+                'unrealized_pnl_pct': pnl_pct,
+                'market_value':      round(pos.market_value, 2),
+                'broker':            broker.name,
+                'status':            'open',
+            })
+        return jsonify({'success': True, 'data': result, 'broker': broker.name})
+    except Exception as e:
+        app_logger.error(f"get_open_positions error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():

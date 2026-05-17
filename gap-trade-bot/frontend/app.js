@@ -68,6 +68,7 @@ const app = createApp({
                     dasReconnect: false,
                     botToggle: false,
                     positions: false,
+                    openPositions: false,
                     syncPositions: false,
                     dailyPnl: false,
                     cumulativePnl: false,
@@ -277,6 +278,8 @@ const app = createApp({
                 positionsHistoryStartDate: '',
                 positionsHistoryEndDate: '',
                 positionsSummary: {},
+                positionsStatusFilter: 'closed',   // 'closed' | 'open' | 'all'
+                openPositions: [],
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
@@ -3515,6 +3518,37 @@ const app = createApp({
             }
         },
         
+        setPositionsStatusFilter(filter) {
+            this.positionsStatusFilter = filter;
+            if (filter === 'closed') {
+                this.loadPositionsHistory();
+            } else if (filter === 'open') {
+                this.loadOpenPositions();
+            } else {
+                // 'all' — load both in parallel
+                this.loadPositionsHistory(true);
+                this.loadOpenPositions();
+            }
+        },
+
+        async loadOpenPositions() {
+            this.loading.openPositions = true;
+            try {
+                const res  = await fetch('/api/positions/open');
+                const data = await res.json();
+                if (data.success) {
+                    this.openPositions = data.data || [];
+                } else {
+                    this.openPositions = [];
+                    this.showNotification('Could not load open positions: ' + (data.error || data.message), 'warning');
+                }
+            } catch (e) {
+                this.openPositions = [];
+            } finally {
+                this.loading.openPositions = false;
+            }
+        },
+
         async loadPositionsHistory(silent = false) {
             try {
                 if (!silent) this.loading.positions = true;
