@@ -3056,33 +3056,48 @@
                     <p v-else-if="openPositions.length === 0" class="text-gray-500 text-sm py-2">{{ openPositionsMessage || 'No open positions at broker.' }}</p>
 
                     <!-- Table -->
-                    <div v-else class="overflow-x-auto rounded-lg">
-                        <table class="min-w-full divide-y divide-gray-700">
-                            <thead>
+                    <div v-else class="overflow-x-auto rounded-lg -mx-1">
+                        <table class="min-w-[600px] w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700/60">
                                 <tr>
-                                    <th class="sticky left-0 z-20 bg-gray-800 px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap border-r border-gray-700">Symbol</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Qty</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Avg Entry</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Current</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Unrealized P&amp;L</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Mkt Value</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Broker</th>
+                                    <th class="sticky left-0 z-20 bg-gray-700/80 px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap border-r border-gray-600">Symbol</th>
+                                    <th class="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Type</th>
+                                    <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Qty</th>
+                                    <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Avg Entry</th>
+                                    <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Current</th>
+                                    <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Unrealized P&amp;L</th>
+                                    <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Mkt Value</th>
+                                    <th class="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Broker</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-700/60">
                                 <tr v-for="pos in openPositions" :key="pos.symbol" class="group hover:bg-gray-700/40 transition-colors">
                                     <td class="sticky left-0 z-10 px-4 py-3 whitespace-nowrap bg-gray-800 group-hover:bg-gray-700/40 border-r border-gray-700">
-                                        <span class="text-sm font-semibold text-white">{{ pos.symbol }}</span>
+                                        <div class="text-sm font-bold text-white">{{ pos.symbol }}</div>
+                                        <div class="text-xs text-gray-500 mt-0.5 capitalize">{{ pos.side }}</div>
                                     </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ pos.qty }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.avg_entry?.toFixed(2) }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.current_price?.toFixed(2) }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium" :class="pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        {{ pos.unrealized_pnl >= 0 ? '+' : '' }}${{ pos.unrealized_pnl?.toFixed(2) }}
-                                        <span v-if="pos.unrealized_pnl_pct != null" class="text-xs ml-1 opacity-60">({{ pos.unrealized_pnl_pct >= 0 ? '+' : '' }}{{ pos.unrealized_pnl_pct?.toFixed(2) }}%)</span>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span v-if="pos.position_type" class="px-2 py-0.5 rounded text-xs font-medium border"
+                                              :class="pos.position_type === 'swing' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'">
+                                            {{ pos.position_type === 'swing' ? 'Swing' : 'Day' }}
+                                        </span>
+                                        <span v-else class="text-xs text-gray-600">—</span>
                                     </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.market_value?.toFixed(2) }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-500">{{ pos.broker }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">{{ pos.qty }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">${{ pos.avg_entry?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">${{ pos.current_price?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-right">
+                                        <div class="text-sm font-semibold" :class="pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                            {{ pos.unrealized_pnl >= 0 ? '+' : '' }}${{ pos.unrealized_pnl?.toFixed(2) }}
+                                        </div>
+                                        <div v-if="pos.unrealized_pnl_pct != null" class="text-xs mt-0.5" :class="pos.unrealized_pnl_pct >= 0 ? 'text-green-500/70' : 'text-red-500/70'">
+                                            {{ pos.unrealized_pnl_pct >= 0 ? '+' : '' }}{{ pos.unrealized_pnl_pct?.toFixed(2) }}%
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">${{ pos.market_value?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="text-xs font-medium text-gray-300 bg-gray-700 px-2 py-0.5 rounded border border-gray-600">{{ pos.broker }}</span>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -3131,7 +3146,8 @@
                     <!-- Filters -->
                     <div class="mb-6">
                         <div class="bg-gray-700 rounded-lg p-4 space-y-3">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <!-- Row 1: Ticker + dates -->
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Ticker</label>
                                     <div class="flex items-center space-x-1">
@@ -3149,15 +3165,16 @@
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Exit From</label>
                                     <input v-model="positionsHistoryStartDate" type="date" @change="loadPositionsHistory"
-                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none [color-scheme:dark]">
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Exit To</label>
                                     <input v-model="positionsHistoryEndDate" type="date" @change="loadPositionsHistory"
-                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none [color-scheme:dark]">
                                 </div>
                             </div>
-                            <div class="grid grid-cols-3 gap-3 items-end">
+                            <!-- Row 2: Type + Broker + Clear -->
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Type</label>
                                     <select v-model="positionsHistoryType" @change="loadPositionsHistory"
@@ -3168,15 +3185,17 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-gray-400 mb-1">Source</label>
-                                    <select v-model="positionsHistorySource" @change="loadPositionsHistory"
+                                    <label class="block text-xs text-gray-400 mb-1">Broker</label>
+                                    <select v-model="positionsHistorySource"
                                             class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                        <option value="">All Sources</option>
-                                        <option value="brownbot">BrownBot</option>
+                                        <option value="">All Brokers</option>
+                                        <option value="alpaca">Alpaca</option>
                                         <option value="das">DAS</option>
+                                        <option value="tastytrade">Tastytrade</option>
+                                        <option value="tradier">Tradier</option>
                                     </select>
                                 </div>
-                                <div>
+                                <div class="col-span-2 sm:col-span-1">
                                     <button @click="clearPositionsFilters"
                                             class="w-full bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded-md text-sm font-medium text-gray-300">
                                         <i class="fas fa-times mr-1"></i>Clear All
@@ -3197,46 +3216,48 @@
                         <p class="text-sm text-gray-500 mt-2">Positions history will appear here once positions are tracked</p>
                     </div>
 
-                    <div v-else class="overflow-x-auto rounded-lg">
-                        <table class="min-w-full divide-y divide-gray-700">
-                            <thead>
+                    <div class="overflow-x-auto rounded-lg -mx-1">
+                        <table class="min-w-[780px] w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700/80">
                                 <tr>
                                     <th @click="togglePositionsSort('symbol')" class="sticky left-0 z-20 bg-gray-700 px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap border-r border-gray-600">Symbol <i :class="positionsSort.key==='symbol' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider bg-gray-700 whitespace-nowrap">Type</th>
-                                    <th @click="togglePositionsSort('qty')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Qty <i :class="positionsSort.key==='qty' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('avg_entry')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Avg Entry <i :class="positionsSort.key==='avg_entry' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('avg_exit')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Avg Exit <i :class="positionsSort.key==='avg_exit' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('pnl')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">P&amp;L <i :class="positionsSort.key==='pnl' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap bg-gray-700">Duration</th>
-                                    <th @click="togglePositionsSort('entry_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Entry Date <i :class="positionsSort.key==='entry_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('qty')" class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Qty <i :class="positionsSort.key==='qty' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_entry')" class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Entry <i :class="positionsSort.key==='avg_entry' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_exit')" class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Exit <i :class="positionsSort.key==='avg_exit' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('pnl')" class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">P&amp;L <i :class="positionsSort.key==='pnl' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap bg-gray-700">Held</th>
                                     <th @click="togglePositionsSort('exit_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap bg-gray-700">Exit Date <i :class="positionsSort.key==='exit_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up text-blue-400' : 'fas fa-sort-down text-blue-400') : 'fas fa-sort'" class="ml-1"></i></th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap bg-gray-700">Source</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap bg-gray-700">Broker</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="position in sortedPositions" :key="position.symbol + '_' + position.exit_date + '_' + position.position_type" class="group">
-                                    <td class="sticky left-0 z-10 px-4 py-3 whitespace-nowrap text-sm font-medium text-white bg-gray-800 group-hover:bg-gray-700 border-r border-gray-700">{{ position.symbol }}</td>
+                                <tr v-for="position in sortedPositions" :key="position.symbol + '_' + position.exit_date + '_' + position.position_type" class="group hover:bg-gray-700/40 transition-colors">
+                                    <td class="sticky left-0 z-10 px-4 py-3 whitespace-nowrap bg-gray-800 group-hover:bg-gray-700/40 border-r border-gray-700">
+                                        <div class="text-sm font-bold text-white">{{ position.symbol }}</div>
+                                        <div class="text-xs text-gray-500 mt-0.5">{{ position.entry_date || '—' }}</div>
+                                    </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm">
                                         <span class="px-2 py-0.5 rounded text-xs font-medium border"
                                               :class="position.position_type === 'swing' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'">
                                             {{ position.position_type === 'swing' ? 'Swing' : 'Day' }}
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ position.qty }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ position.avg_entry?.toFixed(2) || '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ position.avg_exit?.toFixed(2) || '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium" :class="position.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        {{ position.pnl >= 0 ? '+' : '' }}${{ position.pnl?.toFixed(2) || '0.00' }}
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">{{ position.qty }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">${{ position.avg_entry?.toFixed(2) || '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300 text-right">${{ position.avg_exit?.toFixed(2) || '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-right">
+                                        <div class="text-sm font-semibold" :class="position.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                            {{ position.pnl >= 0 ? '+' : '' }}${{ position.pnl?.toFixed(2) || '0.00' }}
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-400">
-                                        {{ position.duration_days === 0 ? 'Same day' : (position.duration_days === 1 ? '1 day' : position.duration_days + ' days') }}
+                                        {{ position.duration_days === 0 ? 'Same day' : (position.duration_days === 1 ? '1d' : position.duration_days + 'd') }}
                                     </td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-400">{{ position.entry_date || '—' }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ position.exit_date || '—' }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm">
-                                        <span class="px-2 py-0.5 rounded text-xs font-medium border"
-                                              :class="position.source === 'brownbot' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'">
-                                            {{ position.broker || (position.source === 'brownbot' ? 'Alpaca' : 'DAS') }}
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="text-xs font-medium px-2 py-0.5 rounded border bg-gray-700 text-gray-300 border-gray-600">
+                                            {{ position.broker || '—' }}
                                         </span>
                                     </td>
                                 </tr>

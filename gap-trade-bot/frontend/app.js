@@ -724,7 +724,11 @@ const app = createApp({
 
             sortedPositions() {
                 const { key, dir } = this.positionsSort;
-                return [...this.positions].sort((a, b) => {
+                const brokerFilter = (this.positionsHistorySource || '').toLowerCase();
+                const base = brokerFilter
+                    ? this.positions.filter(p => (p.broker || '').toLowerCase().includes(brokerFilter))
+                    : this.positions;
+                return [...base].sort((a, b) => {
                     let va = a[key], vb = b[key];
                     if (va == null) return 1;
                     if (vb == null) return -1;
@@ -3575,8 +3579,7 @@ const app = createApp({
                     params.append('symbol', this.positionsHistoryTicker.trim().toUpperCase());
                 if (this.positionsHistoryType && this.positionsHistoryType.trim())
                     params.append('position_type', this.positionsHistoryType.trim());
-                if (this.positionsHistorySource && this.positionsHistorySource.trim())
-                    params.append('source', this.positionsHistorySource.trim());
+                // broker filter applied client-side in sortedPositions computed
 
                 const response = await fetch(`/api/positions/daily?${params.toString()}`);
                 const data = await response.json();

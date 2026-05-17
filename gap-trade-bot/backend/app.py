@@ -5995,6 +5995,22 @@ def get_open_positions():
 
         raw_positions = broker.get_positions()
         app_logger.info(f'get_open_positions: got {len(raw_positions)} position(s) from {broker.name}')
+
+        # Build a symbol → position_type lookup: BrownBot in-memory first, then DB
+        type_map = {}
+        for sym, bp in _brown_bot_active_positions.items():
+            type_map[sym.upper()] = bp.get('position_type')  # 'day' or 'swing'
+        if len(type_map) < len(raw_positions):
+            # Fill gaps from DB daily_positions table
+            try:
+                db_rows = db_manager.get_daily_positions(limit=500)
+                for row in db_rows:
+                    s = (row.get('symbol') or '').upper()
+                    if s and s not in type_map:
+                        type_map[s] = row.get('position_type')
+            except Exception:
+                pass
+
         result = []
         for pos in raw_positions:
             pnl_pct = None
@@ -6004,6 +6020,7 @@ def get_open_positions():
                 'symbol':            pos.symbol,
                 'qty':               pos.qty,
                 'side':              pos.side,
+                'position_type':     type_map.get(pos.symbol.upper()),  # 'day', 'swing', or None
                 'avg_entry':         round(pos.avg_entry_price, 4),
                 'current_price':     round(pos.current_price, 4),
                 'unrealized_pnl':    round(pos.unrealized_pnl, 2),
