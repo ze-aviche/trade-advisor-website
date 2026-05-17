@@ -561,11 +561,27 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True, min_gap_percent=
                 logger.info(f"📊 Requested range: {requested_start} to {requested_end}")
                 logger.info(f"📊 Found {len(requested_cached_data)} gap-up days in requested range")
                 
-                # If cache is fresh and we have data, return it immediately
+                # If cache is fresh and we have data, only return early if the cache
+                # metadata range fully covers the requested date range.  Without this
+                # check a 1-yr cache would satisfy a 3-yr request prematurely.
                 if is_fresh and requested_cached_data:
-                    requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
-                    logger.info(f"✅ Returning {len(requested_cached_data)} fresh cached gap-up days for {ticker}")
-                    return _filter(requested_cached_data)
+                    cache_range_meta = cache_status.get('data_range', {})
+                    cache_start_meta = cache_range_meta.get('start') if cache_range_meta else None
+                    cache_end_meta   = cache_range_meta.get('end')   if cache_range_meta else None
+                    full_coverage = (
+                        cache_start_meta and cache_end_meta
+                        and cache_start_meta <= from_date
+                        and cache_end_meta   >= to_date
+                    )
+                    if full_coverage:
+                        requested_cached_data.sort(key=lambda x: x['date'], reverse=True)
+                        logger.info(f"✅ Returning {len(requested_cached_data)} fresh cached gap-up days for {ticker} (full range covered)")
+                        return _filter(requested_cached_data)
+                    logger.info(
+                        f"🔄 Cache is fresh but does not cover full requested range "
+                        f"({from_date}→{to_date}); cache covers ({cache_start_meta}→{cache_end_meta}). "
+                        f"Falling through to delta fetch."
+                    )
                 
                 # Check if requested range extends beyond cached range
                 cache_range = cache_status.get('data_range', {})
