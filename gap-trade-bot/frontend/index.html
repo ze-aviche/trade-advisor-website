@@ -352,204 +352,392 @@
             </div>
 
             <!-- Help Tab -->
-            <div v-if="activeTab === 'help'" class="space-y-6">
-                <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
-                    <div class="text-center mb-8">
-                        <i class="fas fa-question-circle text-5xl text-blue-400 mb-4"></i>
-                        <h2 class="text-3xl font-bold text-white mb-2">How to Use Each Tab</h2>
-                        <p class="text-gray-400">A guide to every section of the platform</p>
-                    </div>
+            <div v-if="activeTab === 'help'" class="space-y-4">
 
-                    <!-- Gap-Ups -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-green-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-arrow-up text-2xl text-green-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Gap-Ups Tab</h4>
-                        </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Identify stocks that have opened significantly higher than their previous closing price.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Configure Gap Percentage:</strong> Set the minimum gap percentage (default: 25%) to filter stocks</li>
-                                <li><strong>View Gap-Up Stocks:</strong> The system automatically scans and displays stocks meeting your criteria</li>
-                                <li><strong>Monitor Real-Time:</strong> The list updates automatically every 5 minutes during market hours</li>
-                                <li><strong>Take Action:</strong> Add promising stocks to your BrownBot watchlist for autonomous trading</li>
-                            </ol>
-                        </div>
-                        <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-600/30">
-                            <h5 class="text-lg font-bold text-blue-300 mb-2">💡 Pro Tip:</h5>
-                            <p class="text-blue-200 text-sm">Gap-up stocks often experience increased volatility and trading volume, presenting opportunities for quick profits. However, they also carry higher risk, so always use proper risk management.</p>
-                        </div>
-                    </div>
+                <!-- Header -->
+                <div class="bg-gray-800 rounded-xl p-6 shadow-lg text-center">
+                    <i class="fas fa-question-circle text-4xl text-blue-400 mb-3"></i>
+                    <h2 class="text-2xl font-bold text-white mb-1">Platform Guide</h2>
+                    <p class="text-gray-400 text-sm">Step-by-step instructions for every feature — updated to match the current version</p>
+                </div>
 
-                    <!-- Historical -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-blue-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-history text-2xl text-blue-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Historical Tab</h4>
-                        </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Access historical market data and analyze past performance to refine your trading strategies.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Select Date Range:</strong> Choose the period you want to analyze</li>
-                                <li><strong>Choose Data Type:</strong> Select between gap-up data, trade history, or position history</li>
-                                <li><strong>Apply Filters:</strong> Filter by ticker symbol, gap percentage, or other criteria</li>
-                                <li><strong>Export Data:</strong> Download data in Excel format for external analysis</li>
-                            </ol>
-                        </div>
-                        <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-600/30">
-                            <h5 class="text-lg font-bold text-blue-300 mb-2">💡 Pro Tip:</h5>
-                            <p class="text-blue-200 text-sm">Use historical data to backtest your strategies and identify patterns that lead to successful trades.</p>
-                        </div>
+                <!-- ── GAP-UPS TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-green-900/20">
+                        <i class="fas fa-arrow-up text-xl text-green-400"></i>
+                        <h3 class="text-lg font-bold text-white">Gap-Ups Tab</h3>
+                        <span class="ml-auto text-xs text-green-400 bg-green-900/40 px-2 py-0.5 rounded-full border border-green-700/50">Live scanner</span>
                     </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">Scans for stocks that have gapped up significantly from the previous session's close. Updates automatically every 5 minutes during market hours. Stocks that appear for the first time since the last refresh flash yellow briefly.</p>
 
-                    <!-- Trade History -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-orange-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-exchange-alt text-2xl text-orange-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Trade History Tab</h4>
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-sliders-h text-green-400"></i> Filters &amp; Controls</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Gap % filter</span> — slide or type a minimum gap percentage. Lower values (e.g. 5%) show more stocks; higher values (e.g. 25%) show only large movers.</li>
+                                <li><span class="text-white font-medium">Date picker (calendar)</span> — by default shows today's scan. Click the calendar icon to browse any past date that has a saved snapshot.</li>
+                                <li><span class="text-white font-medium">Premarket / Regular tabs</span> — switch between stocks that gapped before the open and those trading in the regular session.</li>
+                            </ul>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Review completed trades and analyze your trading performance over time.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Filter by Date:</strong> Select specific time periods to analyze</li>
-                                <li><strong>Sort and Filter:</strong> Organize trades by ticker, P&L, or trade type</li>
-                                <li><strong>Export Data:</strong> Download trade history for external analysis</li>
-                                <li><strong>Analyze Patterns:</strong> Identify which strategies work best for you</li>
-                            </ol>
-                        </div>
-                        <div class="bg-orange-900/20 rounded-lg p-4 border border-orange-600/30">
-                            <h5 class="text-lg font-bold text-orange-300 mb-2">📊 Analytics:</h5>
-                            <p class="text-orange-200 text-sm">Use trade history to calculate your win rate, average profit/loss, and identify your most profitable trading patterns.</p>
-                        </div>
-                    </div>
 
-                    <!-- Positions History -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-pink-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-chart-line text-2xl text-pink-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Positions History Tab</h4>
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-table text-green-400"></i> Understanding the Columns</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Ticker</span> — stock symbol. Sticky on the left so it stays visible when scrolling right on mobile.</li>
+                                <li><span class="text-white font-medium">Gap %</span> — percentage change from yesterday's close to today's open. Green = positive gap, red = negative (down-gap).</li>
+                                <li><span class="text-white font-medium">Volume</span> — shares traded so far today.</li>
+                                <li><span class="text-white font-medium">Float</span> — publicly tradeable shares (smaller float = wilder moves).</li>
+                                <li><span class="text-white font-medium">Float Rotation</span> — Volume ÷ Float. Shows how many times the float has been fully traded today. <span class="text-green-400">Green ≥ 2×</span> (heavy momentum), <span class="text-yellow-400">yellow 1–2×</span> (moderate), <span class="text-gray-500">gray &lt; 1×</span> (light). High float rotation on a low-float stock is often the hallmark of a runner.</li>
+                                <li><span class="text-white font-medium">Market Cap, Sector, List Date</span> — additional context. Click any column header to sort ascending/descending.</li>
+                            </ul>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Track the lifecycle of positions from entry to exit, including unrealized and realized P&L.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>View All Positions:</strong> See both open and closed positions</li>
-                                <li><strong>Filter by Status:</strong> Separate active positions from closed ones</li>
-                                <li><strong>Track Performance:</strong> Monitor unrealized P&L for open positions</li>
-                                <li><strong>Export Data:</strong> Download position data for portfolio analysis</li>
-                            </ol>
-                        </div>
-                        <div class="bg-pink-900/20 rounded-lg p-4 border border-pink-600/30">
-                            <h5 class="text-lg font-bold text-pink-300 mb-2">📈 Portfolio View:</h5>
-                            <p class="text-pink-200 text-sm">Use this tab to track your overall trading success and identify areas for improvement.</p>
-                        </div>
-                    </div>
 
-                    <!-- Stats -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-indigo-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-chart-bar text-2xl text-indigo-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Stats Tab</h4>
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-link text-green-400"></i> Links Column (rightmost)</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><i class="fas fa-chart-line text-blue-400 mr-1"></i> <span class="text-white font-medium">Blue chart icon</span> — jumps straight to the Historical tab pre-loaded with that ticker, 5-year range, and ≥ 5% filter so you can instantly see every gap-up this stock has had in the past 5 years.</li>
+                                <li><i class="fas fa-newspaper text-amber-400 mr-1"></i> <span class="text-white font-medium">Amber newspaper icon</span> — opens Yahoo Finance News for that ticker in a new browser tab so you can read the catalyst behind today's gap.</li>
+                            </ul>
                         </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> View comprehensive performance statistics and analytics to track your trading success.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>View Performance Metrics:</strong> See total P&L, win rate, and total positions</li>
-                                <li><strong>Analyze Daily Performance:</strong> Review daily P&L trends with interactive charts</li>
-                                <li><strong>Toggle Chart Types:</strong> Switch between bar and line charts</li>
-                                <li><strong>Track Progress:</strong> Monitor your trading performance over time</li>
-                            </ol>
-                        </div>
-                        <div class="bg-indigo-900/20 rounded-lg p-4 border border-indigo-600/30">
-                            <h5 class="text-lg font-bold text-indigo-300 mb-2">📊 Performance Analytics:</h5>
-                            <p class="text-indigo-200 text-sm">Key indicators include total realized P&L, win rate percentage, and daily performance trends.</p>
-                        </div>
-                    </div>
 
-                    <!-- Backtest -->
-                    <div class="bg-gray-700 rounded-lg p-6 mb-6 border-l-4 border-teal-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-flask text-2xl text-teal-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">Backtest Tab</h4>
-                        </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Test your trading strategies against historical data to validate their effectiveness before live trading.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Select Strategy:</strong> Choose from predefined strategies (Gap Up, Momentum, Mean Reversion, Breakout)</li>
-                                <li><strong>Set Date Range:</strong> Define the historical period for testing</li>
-                                <li><strong>Configure Parameters:</strong> Set initial capital, position size, and stop loss</li>
-                                <li><strong>Run Backtest:</strong> Execute the strategy against historical data</li>
-                                <li><strong>View Equity Curve:</strong> See how your portfolio would have performed over time</li>
-                            </ol>
-                        </div>
-                        <div class="bg-teal-900/20 rounded-lg p-4 border border-teal-600/30">
-                            <h5 class="text-lg font-bold text-teal-300 mb-2">🧪 Strategy Validation:</h5>
-                            <p class="text-teal-200 text-sm">Analyze key metrics like total return, win rate, max drawdown, and Sharpe ratio to optimize your approach before live trading.</p>
-                        </div>
-                    </div>
-
-                    <!-- AI Chat -->
-                    <div class="bg-gray-700 rounded-lg p-6 border-l-4 border-cyan-500">
-                        <div class="flex items-center mb-4">
-                            <i class="fas fa-robot text-2xl text-cyan-400 mr-4"></i>
-                            <h4 class="text-xl font-bold text-white">AI Chat Tab</h4>
-                        </div>
-                        <p class="text-gray-300 mb-4"><strong>Purpose:</strong> Get real-time assistance and insights from our AI trading assistant.</p>
-                        <div class="bg-gray-600 rounded-lg p-4 mb-4">
-                            <h5 class="text-lg font-bold text-white mb-2">How to Use:</h5>
-                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-                                <li><strong>Ask Questions:</strong> Inquire about market conditions, trading strategies, or platform features</li>
-                                <li><strong>Get Analysis:</strong> Request analysis of specific stocks or market trends</li>
-                                <li><strong>Strategy Advice:</strong> Get recommendations for entry/exit parameters</li>
-                                <li><strong>Market Insights:</strong> Receive real-time market commentary and analysis</li>
-                            </ol>
-                        </div>
-                        <div class="bg-cyan-900/20 rounded-lg p-4 border border-cyan-600/30">
-                            <h5 class="text-lg font-bold text-cyan-300 mb-2">🤖 AI Assistant:</h5>
-                            <p class="text-cyan-200 text-sm">Our AI assistant can provide personalized trading insights to enhance your decision-making process.</p>
+                        <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-700/40">
+                            <p class="text-blue-200 text-sm"><strong class="text-blue-300">Pro tip:</strong> Sort by <em>Float Rotation</em> descending first thing in the morning. The top names are turning their entire float multiple times — those are the stocks with the highest crowd interest and the most violent intraday swings. Cross-check the Gap % and Float before sizing a position.</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Contact Us section inside Help -->
-                <div class="bg-gray-800 rounded-xl p-8 shadow-lg">
-                    <div class="flex items-center gap-3 mb-6">
-                        <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center">
-                            <i class="fas fa-envelope text-blue-400"></i>
+                <!-- ── HISTORICAL TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-blue-900/20">
+                        <i class="fas fa-history text-xl text-blue-400"></i>
+                        <h3 class="text-lg font-bold text-white">Historical Tab</h3>
+                        <span class="ml-auto text-xs text-blue-400 bg-blue-900/40 px-2 py-0.5 rounded-full border border-blue-700/50">Per-ticker gap history</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">Look up every historical gap-up day for any single ticker. Useful for learning how a stock has behaved in the past — did it run or fade after gapping up? Data is fetched from Polygon and cached locally, so the second load is instant.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-search text-blue-400"></i> How to Search</h5>
+                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
+                                <li>Type a ticker symbol in the input box (e.g. <code class="bg-gray-600 px-1 rounded text-xs">NVDA</code>).</li>
+                                <li>Choose a <strong>period</strong>: 1 year, 2 years, 3 years, or 5 years. Longer periods give a fuller picture of the stock's gap behavior.</li>
+                                <li>Set a <strong>minimum gap %</strong>. 5% shows every gap-up day; 25% shows only major gaps. Start at 5% to see all historical data, then filter up.</li>
+                                <li>Click <strong>Load Data</strong>. First load fetches from the market data API (may take a few seconds). Subsequent loads use the local cache and are near-instant.</li>
+                            </ol>
                         </div>
-                        <div>
-                            <h3 class="text-xl font-bold text-white">Contact Support</h3>
-                            <p class="text-gray-400 text-sm">Need help? Reach out via the Contact Us tab or email us directly.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-table text-blue-400"></i> Reading the Results</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li>Each row is one historical gap-up day. Columns include date, gap %, open, high, low, close, session volume, dollar volume, and premarket high/time/volume.</li>
+                                <li>Summary cards at the top show total gap-up days found and the average gap % across all of them for the selected filter.</li>
+                                <li>Expand any row to see intraday stats — whether the stock made its high early and faded, or continued to run past the open.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-robot text-blue-400"></i> AI Analysis (Accentor)</h5>
+                            <p class="text-gray-300 text-sm">After data loads, click <strong>Analyze with AI</strong>. Accentor AI reads all the gap-up days and tells you: how often this stock runs vs fades after gapping, what gap sizes tend to produce the best intraday moves, and what time of day the high is typically set. This is the fastest way to build a stock-specific playbook.</p>
+                        </div>
+
+                        <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-700/40">
+                            <p class="text-blue-200 text-sm"><strong class="text-blue-300">Shortcut:</strong> In the Gap-Ups tab, click the <i class="fas fa-chart-line text-blue-400"></i> blue chart icon next to any ticker. It automatically opens the Historical tab with that ticker pre-filled, period set to 5 years, and minimum gap % set to 5% — so you get the maximum history in one click.</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="bg-gray-700 rounded-xl p-5 border border-gray-600 text-center">
-                            <i class="fas fa-envelope text-2xl text-blue-400 mb-3"></i>
+                </div>
+
+                <!-- ── SWING TRADING TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-purple-900/20">
+                        <i class="fas fa-wave-square text-xl text-purple-400"></i>
+                        <h3 class="text-lg font-bold text-white">Swing Trading Tab</h3>
+                        <span class="ml-auto text-xs text-purple-400 bg-purple-900/40 px-2 py-0.5 rounded-full border border-purple-700/50">AI-graded daily picks</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">Every trading day, the platform runs an AI pipeline that screens a universe of movers, gap-ups, and volume-surge stocks, then has Claude (Anthropic's AI) grade each one and assign a directional bias. The result is a short list of the highest-conviction swing trade candidates for that day.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-star text-purple-400"></i> Understanding Grades &amp; Bias</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Grade A</span> — high-conviction setup. Strong technicals, clean chart structure, fits the day's market theme.</li>
+                                <li><span class="text-white font-medium">Grade B</span> — moderate conviction. Worth watching; may need confirmation before entry.</li>
+                                <li><span class="text-white font-medium">Grade C</span> — low conviction. Informational only — not recommended for trading.</li>
+                                <li><span class="text-white font-medium">Bias</span> — Bullish, Neutral, or Bearish. BrownBot only auto-trades Grade A or B with a Bullish bias.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-layer-group text-purple-400"></i> Source Breakdown</h5>
+                            <p class="text-gray-300 text-sm">The pill buttons at the top of the picks list show how many candidates came from each source: <em>Top Movers</em> (stocks with the largest % move today), <em>Gap-Ups</em> (this morning's scanner results), and <em>Volume Surge</em> (unusual volume spikes). Click a source pill to expand and see only those stocks.</p>
+                        </div>
+
+                        <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-700/40">
+                            <p class="text-purple-200 text-sm"><strong class="text-purple-300">Note:</strong> Swing picks refresh once per trading day. If you open this tab after hours or on a weekend, you'll see the most recent session's picks. The AI grading considers SMA-10 relationship, market cap, intraday structure, and overall market context — not just the gap or price action alone.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── POSITIONS TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-pink-900/20">
+                        <i class="fas fa-briefcase text-xl text-pink-400"></i>
+                        <h3 class="text-lg font-bold text-white">Positions Tab</h3>
+                        <span class="ml-auto text-xs text-pink-400 bg-pink-900/40 px-2 py-0.5 rounded-full border border-pink-700/50">Live + closed positions</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">The Positions tab has two permanently visible sections: live broker positions pinned at the top, and your full closed-trade history below. You never need to toggle between views.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-circle text-green-400 animate-pulse"></i> Open Positions (top section)</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li>Pulls your <strong>live positions directly from Alpaca</strong> every time you visit this tab. This works whether BrownBot is running or stopped — it always reads from the broker.</li>
+                                <li>Columns: Symbol, Qty, Side (long/short), Avg Entry price, Current Price, Unrealized P&amp;L, Unrealized P&amp;L %, Market Value, Broker name.</li>
+                                <li>Click the <i class="fas fa-sync-alt text-gray-400"></i> refresh icon in the section header to re-fetch immediately.</li>
+                                <li>If you see "No broker configured" — go to <strong>My Account → Broker Settings</strong> and enter your Alpaca API keys.</li>
+                                <li>On mobile, scroll the table horizontally. The Symbol column stays fixed so you always know which row you're reading.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-history text-pink-400"></i> Closed Positions (bottom section)</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li>Shows every trade that has been closed, sourced from your trade history database.</li>
+                                <li>Use the <strong>date range filters</strong> to narrow down to a specific period (e.g. this week, this month).</li>
+                                <li>P&amp;L is color-coded: green = profitable close, red = loss.</li>
+                                <li>The Symbol column is sticky on mobile for easy reading while scrolling right through the data columns.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-yellow-900/20 rounded-lg p-4 border border-yellow-700/40">
+                            <p class="text-yellow-200 text-sm"><strong class="text-yellow-300">Important:</strong> BrownBot's in-memory active positions (shown in the BrownBot tab) disappear from that tab when the bot is stopped. The Positions tab Open section is the place to check your broker's actual holdings at any time, independent of whether the bot is running.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── BROWNBOT TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-yellow-900/20">
+                        <i class="fas fa-robot text-xl text-yellow-400"></i>
+                        <h3 class="text-lg font-bold text-white">BrownBot Tab</h3>
+                        <span class="ml-auto text-xs text-yellow-400 bg-yellow-900/40 px-2 py-0.5 rounded-full border border-yellow-700/50">Yogi tier — autonomous trader</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">BrownBot is a fully autonomous trading bot. Once started, it finds its own entry candidates, manages risk, and exits positions without any manual action. It trades two styles simultaneously: <strong>day trades</strong> (gap-up candidates, 9:35–10:30 ET entry window, flattened by EOD) and <strong>swing trades</strong> (AI-graded picks held for days to weeks).</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-play text-yellow-400"></i> Starting the Bot</h5>
+                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
+                                <li>Make sure your Alpaca API keys are saved in <strong>My Account → Broker Settings</strong> and the connection test passes.</li>
+                                <li>Configure your settings in the <strong>Day Trade</strong> and <strong>Swing Trade</strong> config panels (see below).</li>
+                                <li>Click <strong>Start BrownBot</strong>. Two background loops launch: a scanner (runs every 30 s) and an exit monitor (runs every 2 s).</li>
+                                <li>Click <strong>Stop</strong> to shut both loops down cleanly. Any open positions remain in your Alpaca account — check the Positions tab to manage them.</li>
+                            </ol>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-cog text-yellow-400"></i> Key Configuration Settings</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Min Gap % / Price range / Volume</span> — scanner filter. Only gap-up stocks that pass all three are considered for day-trade entry.</li>
+                                <li><span class="text-white font-medium">Entry signals</span> (optional, all off by default): Above VWAP, Bullish 1-min candle, Max extension from gap price, Volume surge vs recent bars. Turn on the ones you want for extra confirmation before entry.</li>
+                                <li><span class="text-white font-medium">Position size %</span> — e.g. 5% means each position uses 5% of your account equity.</li>
+                                <li><span class="text-white font-medium">Profit target % / Stop loss %</span> — exit thresholds from average entry price.</li>
+                                <li><span class="text-white font-medium">Breakeven trigger %</span> — once the position moves this % toward target, the stop is automatically moved to your entry price. Positions at breakeven show a <span class="bg-blue-600/30 text-blue-300 text-xs px-1 rounded">BE</span> badge.</li>
+                                <li><span class="text-white font-medium">Max concurrent positions</span> — how many day or swing slots can be open simultaneously.</li>
+                                <li><span class="text-white font-medium">Max daily loss</span> — circuit breaker. If today's realized P&amp;L hits this threshold (negative), the bot stops entering new trades for the rest of the day.</li>
+                                <li><span class="text-white font-medium">EOD flatten time</span> — all day-trade positions are closed at this time ET regardless of P&amp;L.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-list text-yellow-400"></i> Active Positions &amp; Logs</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><strong>Active Positions</strong> panel shows real-time unrealized P&amp;L for positions BrownBot is currently managing. This list is in-memory — it clears when you stop the bot. After stopping, use the <strong>Positions tab</strong> to see what remains in your Alpaca account.</li>
+                                <li><strong>Logs</strong> feed shows the last 100 events color-coded by severity: blue = info (entry/exit actions), yellow = warning, red = error.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-bookmark text-yellow-400"></i> Watchlist</h5>
+                            <p class="text-gray-300 text-sm">Add any ticker manually to the BrownBot Watchlist. Watchlist symbols are treated as swing-trade candidates and bypass the automatic gap-up scanner — useful for stocks you've identified yourself that you want BrownBot to trade even if they didn't appear in today's scan.</p>
+                        </div>
+
+                        <div class="bg-yellow-900/20 rounded-lg p-4 border border-yellow-700/40">
+                            <p class="text-yellow-200 text-sm"><strong class="text-yellow-300">Risk reminder:</strong> BrownBot places real orders with real money. Always test with paper trading first (set <em>Paper Trading = on</em> in Broker Settings), verify the circuit breaker and stop loss are configured, and monitor the Logs feed for the first few sessions before walking away.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── STATS TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-indigo-900/20">
+                        <i class="fas fa-chart-bar text-xl text-indigo-400"></i>
+                        <h3 class="text-lg font-bold text-white">Stats Tab</h3>
+                        <span class="ml-auto text-xs text-indigo-400 bg-indigo-900/40 px-2 py-0.5 rounded-full border border-indigo-700/50">Performance analytics</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">A full performance dashboard built from your closed trade history. Use the date range filter at the top to scope all charts and metrics to any time window.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-tachometer-alt text-indigo-400"></i> What's on the Page</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Summary cards</span> — Total Realized P&amp;L, Win Rate %, and total number of closed positions for the selected period.</li>
+                                <li><span class="text-white font-medium">Daily P&amp;L chart</span> — bar or line chart showing each day's net gain/loss. Toggle between bar and line with the buttons above the chart.</li>
+                                <li><span class="text-white font-medium">Cumulative P&amp;L chart</span> — your running account growth (or drawdown) over the selected period.</li>
+                                <li><span class="text-white font-medium">Pie charts</span> — Long vs Short split (which side makes/loses more), Symbol breakdown (which individual stocks contributed most to P&amp;L), and Win/Loss split (visualising your win rate).</li>
+                                <li><span class="text-white font-medium">Extended Stats</span> — deeper metrics: Profit Factor (gross profit ÷ gross loss; above 1.5 is healthy), Expectancy (average dollar gain per trade), consecutive win/loss streaks, average winning trade, average losing trade, and best/worst single trade.</li>
+                                <li><span class="text-white font-medium">Monthly breakdown</span> — P&amp;L grouped by calendar month for a longer-term view of consistency.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-indigo-900/20 rounded-lg p-4 border border-indigo-700/40">
+                            <p class="text-indigo-200 text-sm"><strong class="text-indigo-300">How to use it:</strong> Start with the date range set to "last 30 days" to see recent performance. Then widen to "all time" to spot seasonal patterns. If your win rate is high but P&amp;L is negative, check the avg win vs avg loss — you may be cutting winners too early and letting losers run.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── TRADE HISTORY TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-orange-900/20">
+                        <i class="fas fa-exchange-alt text-xl text-orange-400"></i>
+                        <h3 class="text-lg font-bold text-white">Trade History Tab</h3>
+                        <span class="ml-auto text-xs text-orange-400 bg-orange-900/40 px-2 py-0.5 rounded-full border border-orange-700/50">Filled orders log</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">A raw log of every filled order synced from your broker. Each row is one execution — a buy or a sell fill with the exact price, quantity, and timestamp.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-filter text-orange-400"></i> Filtering</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li>Use the <strong>date range</strong> pickers to narrow to a specific period (today, this week, custom).</li>
+                                <li>Type in the <strong>symbol filter</strong> box to show only trades in a specific stock.</li>
+                                <li>Click any column header to sort by that field (date, symbol, P&amp;L, etc.).</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-orange-900/20 rounded-lg p-4 border border-orange-700/40">
+                            <p class="text-orange-200 text-sm"><strong class="text-orange-300">Note:</strong> This tab shows individual fills (buy/sell legs), not net position P&amp;L. For net position-level P&amp;L (how much you made on each round-trip trade), use the <strong>Positions tab</strong>. For aggregate statistics, use the <strong>Stats tab</strong>.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── BACKTEST TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-teal-900/20">
+                        <i class="fas fa-flask text-xl text-teal-400"></i>
+                        <h3 class="text-lg font-bold text-white">Backtest Tab</h3>
+                        <span class="ml-auto text-xs text-teal-400 bg-teal-900/40 px-2 py-0.5 rounded-full border border-teal-700/50">Strategy simulation</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">Simulate a trading strategy against historical gap-up data without risking real money. Use it to validate whether a set of entry/exit rules would have been profitable in the past before applying them live.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-cog text-teal-400"></i> Setup</h5>
+                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
+                                <li>Pick a <strong>strategy type</strong> (Gap Up, Momentum, Mean Reversion, Breakout).</li>
+                                <li>Set the <strong>date range</strong> for the simulation.</li>
+                                <li>Configure <strong>initial capital</strong>, position size per trade, stop loss %, and profit target %.</li>
+                                <li>Click <strong>Run Backtest</strong>. Results appear as an equity curve chart plus a summary of key metrics.</li>
+                            </ol>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-chart-area text-teal-400"></i> Reading Results</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Equity curve</span> — portfolio value over time. A smooth upward slope is ideal; large drawdown periods show when the strategy struggled.</li>
+                                <li><span class="text-white font-medium">Total return, win rate, max drawdown, Sharpe ratio</span> — the four numbers that matter most. A strategy with a good Sharpe ratio (&gt; 1.0) and max drawdown you can stomach is worth considering for live testing.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-teal-900/20 rounded-lg p-4 border border-teal-700/40">
+                            <p class="text-teal-200 text-sm"><strong class="text-teal-300">Warning:</strong> Past performance does not guarantee future results. Backtests don't account for slippage, partial fills, or news events. Use them as a directional guide, not a guarantee.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── AI CHAT TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-cyan-900/20">
+                        <i class="fas fa-comments text-xl text-cyan-400"></i>
+                        <h3 class="text-lg font-bold text-white">AI Chat Tab</h3>
+                        <span class="ml-auto text-xs text-cyan-400 bg-cyan-900/40 px-2 py-0.5 rounded-full border border-cyan-700/50">Powered by Claude</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">A direct chat window to Claude (Anthropic's AI). Unlike a generic chatbot, this assistant has knowledge of how this platform works and can help you interpret your own data, plan trades, and understand market concepts.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-lightbulb text-cyan-400"></i> What to Ask</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li>"Why would a stock with a 30% gap and 5× float rotation be a good day-trade candidate?"</li>
+                                <li>"Explain profit factor and what a good number looks like."</li>
+                                <li>"My win rate is 60% but I'm still losing money — what could be wrong?"</li>
+                                <li>"What's the difference between a runner and a fader after a gap-up?"</li>
+                                <li>"How should I set my breakeven trigger in BrownBot for a 10% profit target?"</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-cyan-900/20 rounded-lg p-4 border border-cyan-700/40">
+                            <p class="text-cyan-200 text-sm"><strong class="text-cyan-300">Note:</strong> The AI Chat does not have real-time access to live market prices or your personal account. For real-time analysis of specific gap-ups, use the Historical tab's AI Analysis feature instead, which feeds the AI actual gap-up data for a specific stock.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── ACCOUNT SETTINGS ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-yellow-900/10">
+                        <i class="fas fa-crown text-xl text-yellow-400"></i>
+                        <h3 class="text-lg font-bold text-white">My Account</h3>
+                        <span class="ml-auto text-xs text-yellow-400 bg-yellow-900/40 px-2 py-0.5 rounded-full border border-yellow-700/50">Broker &amp; subscription</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">Manage your subscription, profile, and — most importantly — your broker connection. The broker connection is required for BrownBot to trade and for the Positions tab to show live open positions.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-plug text-yellow-400"></i> Setting Up Alpaca</h5>
+                            <ol class="text-gray-300 text-sm space-y-2 list-decimal list-inside">
+                                <li>Go to <a href="https://alpaca.markets" target="_blank" class="text-blue-400 underline">alpaca.markets</a> and create a free account.</li>
+                                <li>Navigate to your Alpaca dashboard → Paper Trading (or Live Trading) → API Keys → Generate new key.</li>
+                                <li>Copy the <strong>API Key ID</strong> and <strong>Secret Key</strong>.</li>
+                                <li>In this platform, open <strong>My Account → Broker Settings → Alpaca</strong>. Paste both keys and choose Paper or Live mode.</li>
+                                <li>Click <strong>Save</strong> then <strong>Test Connection</strong>. A green success message confirms the connection is working.</li>
+                            </ol>
+                        </div>
+
+                        <div class="bg-yellow-900/20 rounded-lg p-4 border border-yellow-700/40">
+                            <p class="text-yellow-200 text-sm"><strong class="text-yellow-300">Start with Paper Trading:</strong> Alpaca's paper trading account is free and simulates real order execution with virtual money. Run BrownBot on paper for at least a week before switching to a live account.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contact -->
+                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center gap-3 mb-4">
+                        <i class="fas fa-envelope text-blue-400 text-lg"></i>
+                        <h3 class="text-base font-bold text-white">Need More Help?</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div class="bg-gray-700 rounded-xl p-4 border border-gray-600 text-center">
+                            <i class="fas fa-envelope text-xl text-blue-400 mb-2"></i>
                             <div class="text-white font-semibold text-sm mb-1">Email Support</div>
-                            <div class="text-gray-400 text-xs">Use the Contact tab to send us a message and we'll respond within 24 hours.</div>
+                            <div class="text-gray-400 text-xs">Use the Contact tab — we reply within 24 hours.</div>
                         </div>
-                        <div class="bg-gray-700 rounded-xl p-5 border border-gray-600 text-center">
-                            <i class="fas fa-robot text-2xl text-cyan-400 mb-3"></i>
+                        <div class="bg-gray-700 rounded-xl p-4 border border-gray-600 text-center">
+                            <i class="fas fa-comments text-xl text-cyan-400 mb-2"></i>
                             <div class="text-white font-semibold text-sm mb-1">AI Chat</div>
-                            <div class="text-gray-400 text-xs">Get instant answers about platform features via the AI Chat tab.</div>
+                            <div class="text-gray-400 text-xs">Ask platform-specific questions instantly.</div>
                         </div>
-                        <div class="bg-gray-700 rounded-xl p-5 border border-gray-600 text-center">
-                            <i class="fas fa-question-circle text-2xl text-purple-400 mb-3"></i>
-                            <div class="text-white font-semibold text-sm mb-1">This Page</div>
-                            <div class="text-gray-400 text-xs">Browse the guides above for step-by-step instructions on every feature.</div>
+                        <div class="bg-gray-700 rounded-xl p-4 border border-gray-600 text-center">
+                            <i class="fas fa-question-circle text-xl text-purple-400 mb-2"></i>
+                            <div class="text-white font-semibold text-sm mb-1">This Guide</div>
+                            <div class="text-gray-400 text-xs">Scroll up — every feature is documented here.</div>
                         </div>
                     </div>
-                    <div class="mt-5 text-center">
-                        <button @click="onTabChange('contact')" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-sm">
+                    <div class="mt-4 text-center">
+                        <button @click="onTabChange('contact')" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2 rounded-xl transition-all text-sm">
                             <i class="fas fa-envelope mr-2"></i>Open Contact Form
                         </button>
                     </div>
                 </div>
+
             </div>
 
             <!-- Contact Us Tab -->

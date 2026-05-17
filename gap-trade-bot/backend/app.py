@@ -5957,7 +5957,7 @@ def get_open_positions():
     """Return live open positions from Alpaca.
     Priority: running BrownBot broker → DB config → ALPACA_API_KEY env var."""
     try:
-        user_id = request.user.get('id', 1)
+        user_id = getattr(request.user, 'id', 1)  # matches pattern used by all other broker endpoints
 
         broker = _brown_broker
         if broker:
