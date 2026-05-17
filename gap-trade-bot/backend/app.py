@@ -5645,6 +5645,83 @@ def get_positions_summary():
         app_logger.error(f"Error getting positions summary: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/positions/extended-stats', methods=['GET'])
+def get_extended_stats():
+    """Compute all Stats-tab metrics from the same FIFO-consolidated positions as the Positions tab."""
+    try:
+        symbol        = request.args.get('symbol')
+        start_date    = request.args.get('start_date')
+        end_date      = request.args.get('end_date')
+        position_type = request.args.get('position_type')
+        source        = request.args.get('source')
+
+        positions = db_manager.get_consolidated_positions(
+            symbol=symbol, start_date=start_date, end_date=end_date,
+            position_type=position_type, source=source, limit=10_000,
+        )
+
+        if not positions:
+            return jsonify({'success': True, 'data': {
+                'total_count': 0, 'win_count': 0, 'loss_count': 0, 'breakeven_count': 0,
+                'gross_profit': 0, 'gross_loss': 0, 'profit_factor': 0,
+                'avg_win': 0, 'avg_loss': 0, 'win_loss_ratio': 0, 'avg_pnl': 0,
+                'best_trade': 0, 'best_trade_symbol': '', 'worst_trade': 0, 'worst_trade_symbol': '',
+                'expectancy': 0, 'max_consecutive_wins': 0, 'max_consecutive_losses': 0,
+            }})
+
+        pnls   = [p['pnl'] for p in positions]
+        wins   = [p for p in positions if p['pnl'] > 0]
+        losses = [p for p in positions if p['pnl'] < 0]
+        bes    = [p for p in positions if p['pnl'] == 0]
+
+        gross_profit = sum(p['pnl'] for p in wins)
+        gross_loss   = abs(sum(p['pnl'] for p in losses))
+        avg_win      = round(gross_profit / len(wins), 2)   if wins   else 0
+        avg_loss     = round(sum(p['pnl'] for p in losses) / len(losses), 2) if losses else 0
+
+        best  = max(positions, key=lambda p: p['pnl'])
+        worst = min(positions, key=lambda p: p['pnl'])
+
+        win_rate  = len(wins)   / len(positions)
+        loss_rate = len(losses) / len(positions)
+        expectancy = round((win_rate * avg_win) + (loss_rate * avg_loss), 2)
+
+        # Consecutive streaks — positions are sorted newest-first, so reverse for time order
+        max_wins = max_losses = cur_wins = cur_losses = 0
+        for p in reversed(positions):
+            if p['pnl'] > 0:
+                cur_wins  += 1; cur_losses = 0
+            elif p['pnl'] < 0:
+                cur_losses += 1; cur_wins = 0
+            else:
+                cur_wins = cur_losses = 0
+            max_wins   = max(max_wins,   cur_wins)
+            max_losses = max(max_losses, cur_losses)
+
+        return jsonify({'success': True, 'data': {
+            'total_count':            len(positions),
+            'win_count':              len(wins),
+            'loss_count':             len(losses),
+            'breakeven_count':        len(bes),
+            'gross_profit':           round(gross_profit, 2),
+            'gross_loss':             round(gross_loss, 2),
+            'profit_factor':          round(gross_profit / gross_loss, 2) if gross_loss else 0,
+            'avg_win':                avg_win,
+            'avg_loss':               avg_loss,
+            'win_loss_ratio':         round(avg_win / abs(avg_loss), 2) if avg_loss else 0,
+            'avg_pnl':                round(sum(pnls) / len(pnls), 2),
+            'best_trade':             round(best['pnl'], 2),
+            'best_trade_symbol':      best['symbol'],
+            'worst_trade':            round(worst['pnl'], 2),
+            'worst_trade_symbol':     worst['symbol'],
+            'expectancy':             expectancy,
+            'max_consecutive_wins':   max_wins,
+            'max_consecutive_losses': max_losses,
+        }})
+    except Exception as e:
+        app_logger.error(f"Error getting extended stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Keep old single-stat endpoints as thin shims so nothing else breaks
 @app.route('/api/positions/total_positions', methods=['GET'])
 def get_total_positions():
