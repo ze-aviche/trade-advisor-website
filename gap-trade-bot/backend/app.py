@@ -3237,7 +3237,9 @@ def _brown_bot_scan_and_enter():
     )
 
     # ── Process auto-scanned gap-up candidates (day trade) ──
-    for symbol, s in scanner_hits.items():
+    if not config.get('day_trades_enabled', True):
+        _add_brown_log('info', 'Day trades disabled — skipping day trade entries')
+    for symbol, s in (scanner_hits.items() if config.get('day_trades_enabled', True) else []):
         if not _brown_bot_running:
             return
         if symbol in active_symbols:
@@ -3276,6 +3278,10 @@ def _brown_bot_scan_and_enter():
             active_copy = dict(_brown_bot_active_positions)
 
     # ── Process swing hot picks from the daily AI ranking ────────────────
+    if not config.get('swing_trades_enabled', True):
+        _add_brown_log('info', 'Swing trades disabled — skipping swing trade entries')
+        return
+
     # Source: today's Claude-ranked picks from the Swing tab (Grade A/B, Bullish).
     # These are already fully vetted (SMA-10, intraday structure, market cap, AI rank)
     # so _check_swing_signal() is skipped — avoid double AI cost.

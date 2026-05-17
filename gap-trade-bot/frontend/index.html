@@ -2120,11 +2120,27 @@
                     <div class="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
 
                         <!-- Day Trade -->
-                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3"
+                             :class="{'opacity-50': !brownBotConfig.day_trades_enabled}">
                             <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
-                                <div class="w-1.5 h-4 rounded-full bg-yellow-400"></div>
-                                <span class="text-xs font-bold text-yellow-400 uppercase tracking-widest">Day Trade Config</span>
-                                <span class="text-gray-600 text-xs font-normal ml-auto">exits &amp; timing</span>
+                                <div class="w-1.5 h-4 rounded-full transition-colors"
+                                     :class="brownBotConfig.day_trades_enabled ? 'bg-yellow-400' : 'bg-gray-600'"></div>
+                                <span class="text-xs font-bold uppercase tracking-widest transition-colors"
+                                      :class="brownBotConfig.day_trades_enabled ? 'text-yellow-400' : 'text-gray-500'">Day Trade Config</span>
+                                <!-- Enable/Disable toggle -->
+                                <label class="relative inline-flex items-center cursor-pointer ml-auto" title="Enable or disable day trade entries">
+                                    <input type="checkbox" v-model="brownBotConfig.day_trades_enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer
+                                                peer-checked:after:translate-x-full peer-checked:after:border-white
+                                                after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                                after:bg-white after:border-gray-300 after:border after:rounded-full
+                                                after:h-4 after:w-4 after:transition-all
+                                                peer-checked:bg-yellow-500 transition-colors"></div>
+                                    <span class="ml-1.5 text-xs font-medium transition-colors"
+                                          :class="brownBotConfig.day_trades_enabled ? 'text-yellow-400' : 'text-gray-500'">
+                                        {{ brownBotConfig.day_trades_enabled ? 'ON' : 'OFF' }}
+                                    </span>
+                                </label>
                             </div>
                             <!-- Position Size -->
                             <div>
@@ -2303,11 +2319,27 @@
                     <div class="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                         <!-- Swing Trade -->
-                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3"
+                             :class="{'opacity-50': !brownBotConfig.swing_trades_enabled}">
                             <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
-                                <div class="w-1.5 h-4 rounded-full bg-blue-400"></div>
-                                <span class="text-xs font-bold text-blue-400 uppercase tracking-widest">Swing Trade Config</span>
-                                <span class="text-gray-600 text-xs font-normal ml-auto">exits &amp; holds</span>
+                                <div class="w-1.5 h-4 rounded-full transition-colors"
+                                     :class="brownBotConfig.swing_trades_enabled ? 'bg-blue-400' : 'bg-gray-600'"></div>
+                                <span class="text-xs font-bold uppercase tracking-widest transition-colors"
+                                      :class="brownBotConfig.swing_trades_enabled ? 'text-blue-400' : 'text-gray-500'">Swing Trade Config</span>
+                                <!-- Enable/Disable toggle -->
+                                <label class="relative inline-flex items-center cursor-pointer ml-auto" title="Enable or disable swing trade entries">
+                                    <input type="checkbox" v-model="brownBotConfig.swing_trades_enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer
+                                                peer-checked:after:translate-x-full peer-checked:after:border-white
+                                                after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                                after:bg-white after:border-gray-300 after:border after:rounded-full
+                                                after:h-4 after:w-4 after:transition-all
+                                                peer-checked:bg-blue-500 transition-colors"></div>
+                                    <span class="ml-1.5 text-xs font-medium transition-colors"
+                                          :class="brownBotConfig.swing_trades_enabled ? 'text-blue-400' : 'text-gray-500'">
+                                        {{ brownBotConfig.swing_trades_enabled ? 'ON' : 'OFF' }}
+                                    </span>
+                                </label>
                             </div>
                             <!-- Position Size -->
                             <div>

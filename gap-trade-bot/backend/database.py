@@ -320,6 +320,8 @@ class DatabaseManager:
                 ('day_check_volume_surge', 'INTEGER DEFAULT 0'),
                 ('day_position_pct',        'REAL DEFAULT 5.0'),
                 ('swing_position_pct',     'REAL DEFAULT 3.0'),
+                ('day_trades_enabled',     'INTEGER DEFAULT 1'),
+                ('swing_trades_enabled',   'INTEGER DEFAULT 1'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -2320,6 +2322,7 @@ class DatabaseManager:
             'day_check_vwap': False, 'day_check_candle': False,
             'day_max_extension_pct': 0.0, 'day_check_volume_surge': False,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
+            'day_trades_enabled': True, 'swing_trades_enabled': True,
         }
         try:
             with self.get_connection() as conn:
@@ -2339,6 +2342,8 @@ class DatabaseManager:
                     cfg['day_check_vwap'] = bool(cfg.get('day_check_vwap', 0))
                     cfg['day_check_candle'] = bool(cfg.get('day_check_candle', 0))
                     cfg['day_check_volume_surge'] = bool(cfg.get('day_check_volume_surge', 0))
+                    cfg['day_trades_enabled']     = bool(cfg.get('day_trades_enabled', 1))
+                    cfg['swing_trades_enabled']   = bool(cfg.get('swing_trades_enabled', 1))
                     return cfg
         except Exception as e:
             print(f"Database error fetching brown_bot_config: {e}")
@@ -2356,6 +2361,7 @@ class DatabaseManager:
             'max_float_m', 'float_operator',
             'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge',
             'day_position_pct', 'swing_position_pct',
+            'day_trades_enabled', 'swing_trades_enabled',
         ]
         try:
             with self.get_connection() as conn:
