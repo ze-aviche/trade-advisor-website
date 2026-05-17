@@ -185,11 +185,20 @@ class DatabaseManager:
                 ('annual_income_range', 'TEXT DEFAULT NULL'),
                 ('trial_expires_at', 'TIMESTAMP DEFAULT NULL'),
                 ('trial_reminder_sent', 'INTEGER DEFAULT 0'),
+                ('email_digest_enabled', 'INTEGER DEFAULT 1'),
+                ('email_digest_unsubscribe_token', 'TEXT DEFAULT NULL'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE users ADD COLUMN {column} {definition}')
                 except sqlite3.OperationalError:
                     pass  # column already exists
+
+            # Generate unsubscribe tokens for users that don't have one yet
+            import uuid as _uuid
+            cursor.execute('SELECT id FROM users WHERE email_digest_unsubscribe_token IS NULL')
+            for _row in cursor.fetchall():
+                cursor.execute('UPDATE users SET email_digest_unsubscribe_token = ? WHERE id = ?',
+                               (str(_uuid.uuid4()), _row['id']))
 
             # Promote existing 'admin' role users to super_admin system_role
             cursor.execute("UPDATE users SET system_role = 'super_admin' WHERE role = 'admin' AND system_role IS NULL")
@@ -439,6 +448,8 @@ class DatabaseManager:
             system_role = 'super_admin'
 
         trial_expires_at = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+        import uuid as _uuid
+        unsubscribe_token = str(_uuid.uuid4())
 
         try:
             with self.get_connection() as conn:
@@ -447,10 +458,11 @@ class DatabaseManager:
                     INSERT INTO users (username, email, password_hash, system_role, subscription_tier,
                                        subscription_status, is_active, preferences,
                                        first_name, last_name, address, profession, annual_income_range,
-                                       trial_expires_at)
-                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?)
+                                       trial_expires_at, email_digest_unsubscribe_token)
+                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences),
-                      first_name, last_name, address, profession, annual_income_range, trial_expires_at))
+                      first_name, last_name, address, profession, annual_income_range, trial_expires_at,
+                      unsubscribe_token))
                 conn.commit()
                 return True, "User created successfully"
         except sqlite3.IntegrityError:
@@ -2382,6 +2394,44 @@ class DatabaseManager:
                 return True, "BrownBot config updated"
         except Exception as e:
             return False, f"Database error updating brown_bot_config: {e}"
+
+    # ── Daily digest ──────────────────────────────────────────────────────────
+
+    def get_digest_recipients(self) -> list:
+        """Return active users who have opted in to the daily digest email."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, username, email, first_name, last_name,
+                           subscription_status, trial_expires_at,
+                           email_digest_enabled, email_digest_unsubscribe_token
+                    FROM users
+                    WHERE is_active = 1
+                      AND email_digest_enabled = 1
+                      AND email IS NOT NULL
+                      AND subscription_status IN ('active', 'trialing')
+                    ORDER BY id ASC
+                ''')
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            print(f"Database error getting digest recipients: {e}")
+            return []
+
+    def set_email_digest_enabled(self, token: str, enabled: bool) -> bool:
+        """Enable or disable digest for the user who owns this unsubscribe token."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'UPDATE users SET email_digest_enabled = ? WHERE email_digest_unsubscribe_token = ?',
+                    (1 if enabled else 0, token)
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Database error updating digest preference: {e}")
+            return False
 
     # ── BrownBot watchlist ────────────────────────────────────────────────────
 

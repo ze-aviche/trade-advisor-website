@@ -894,6 +894,44 @@ def serve_login():
     resp.headers['Expires'] = '0'
     return resp
 
+@app.route('/unsubscribe/<token>')
+def unsubscribe_digest(token):
+    """One-click digest unsubscribe — no auth required, linked from email footer."""
+    if not token:
+        return 'Invalid link.', 400
+    success = db_manager.set_email_digest_enabled(token, False)
+    if success:
+        body = (
+            '<html><body style="font-family:Arial,sans-serif;text-align:center;padding:80px 20px;'
+            'background:#0d1117;color:#e2e8f0;">'
+            '<div style="max-width:420px;margin:0 auto;background:#161b22;border:1px solid #30363d;'
+            'border-radius:12px;padding:40px;">'
+            '<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:6px;">'
+            'Accentor <span style="color:#93c5fd;">AI</span></div>'
+            '<h2 style="color:#4ade80;margin:20px 0 10px;">Unsubscribed &#10003;</h2>'
+            '<p style="color:#9ca3af;font-size:14px;line-height:1.7;">'
+            "You've been removed from the daily digest. You can re-enable it in your Account Settings.</p>"
+            '<a href="/app" style="display:inline-block;margin-top:20px;background:#2563eb;color:#fff;'
+            'text-decoration:none;font-weight:700;font-size:13px;padding:10px 24px;border-radius:8px;">'
+            '&#8592; Go to Accentor AI</a></div></body></html>'
+        )
+        return body, 200
+    body = (
+        '<html><body style="font-family:Arial,sans-serif;text-align:center;padding:80px 20px;'
+        'background:#0d1117;color:#e2e8f0;">'
+        '<div style="max-width:420px;margin:0 auto;background:#161b22;border:1px solid #30363d;'
+        'border-radius:12px;padding:40px;">'
+        '<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:6px;">'
+        'Accentor <span style="color:#93c5fd;">AI</span></div>'
+        '<h2 style="color:#f87171;margin:20px 0 10px;">Link not found</h2>'
+        '<p style="color:#9ca3af;font-size:14px;">This unsubscribe link is invalid or has already been used.</p>'
+        '<a href="/app" style="display:inline-block;margin-top:20px;background:#2563eb;color:#fff;'
+        'text-decoration:none;font-weight:700;font-size:13px;padding:10px 24px;border-radius:8px;">'
+        '&#8592; Go to Accentor AI</a></div></body></html>'
+    )
+    return body, 404
+
+
 @app.route('/brownbot-logs')
 @app.route('/brownbot-logs.html')
 def serve_brownbot_logs():
@@ -7112,6 +7150,267 @@ Return ONLY this JSON (no markdown, no commentary):
         return jsonify({'success': False, 'error': str(exc)}), 500
 
 
+def _build_digest_html(date_str, name, movers, earnings_data, ai_summary, unsub_url):
+    """Render the HTML body for the daily morning digest email."""
+    # Premarket movers table rows
+    movers_rows = ''
+    for s in movers[:12]:
+        gap_pct = s.get('gap_percent', 0)
+        price   = s.get('price', 0)
+        vol_m   = s.get('volume', 0) / 1_000_000
+        ticker  = s.get('ticker', '')
+        color   = '#4ade80' if gap_pct >= 15 else '#86efac' if gap_pct >= 10 else '#fde68a'
+        movers_rows += (
+            f'<tr>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;font-weight:700;color:#fff;">{ticker}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:{color};font-weight:700;">+{gap_pct:.1f}%</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:#e2e8f0;">${price:.2f}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:#9ca3af;">{vol_m:.1f}M</td>'
+            f'</tr>'
+        )
+    if not movers_rows:
+        movers_rows = '<tr><td colspan="4" style="padding:12px;color:#6b7280;text-align:center;">No premarket movers available yet</td></tr>'
+
+    # Earnings table rows
+    earnings_rows = ''
+    for e in (earnings_data.get('earnings_next_5_days') or [])[:12]:
+        dt_label = e.get('date', '')
+        try:
+            from datetime import datetime as _dt2
+            dt_label = _dt2.fromisoformat(e['date']).strftime('%a %b %d')
+        except Exception:
+            pass
+        tl = (e.get('time') or '').lower()
+        if 'before' in tl or 'bmo' in tl:
+            tl = 'Pre-market'
+        elif 'after' in tl or 'amc' in tl:
+            tl = 'After close'
+        else:
+            tl = tl.title() or '—'
+        earnings_rows += (
+            f'<tr>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;font-weight:700;color:#fff;">{e.get("symbol") or "—"}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:#9ca3af;">{(e.get("company") or "—")[:28]}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:#e2e8f0;">{dt_label}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:#fde68a;">{tl}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #21262d;color:#86efac;">{e.get("eps_forecast") or "—"}</td>'
+            f'</tr>'
+        )
+    if not earnings_rows:
+        earnings_rows = '<tr><td colspan="5" style="padding:12px;color:#6b7280;text-align:center;">No earnings data available</td></tr>'
+
+    unsub_section = (
+        f'<tr><td style="padding:20px 40px;text-align:center;border-top:1px solid #21262d;">'
+        f'<p style="color:#4b5563;font-size:11px;margin:0;">'
+        f'You\'re receiving this because you have an active Accentor AI account.<br>'
+        f'<a href="{unsub_url}" style="color:#6b7280;text-decoration:underline;">Unsubscribe from daily digest</a>'
+        f'</p></td></tr>'
+    ) if unsub_url else ''
+
+    return f"""<html><body style="margin:0;padding:0;background:#0d1117;font-family:Arial,sans-serif;color:#e2e8f0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d1117;padding:32px 0;">
+<tr><td align="center">
+<table width="640" cellpadding="0" cellspacing="0" style="background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;">
+  <tr><td style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);padding:24px 40px;">
+    <div style="font-size:24px;font-weight:800;color:#fff;">Accentor <span style="color:#93c5fd;">AI</span></div>
+    <div style="color:#bfdbfe;font-size:12px;margin-top:2px;">Morning Trading Digest</div>
+    <div style="color:#ddd6fe;font-size:13px;margin-top:6px;font-weight:600;">{date_str}</div>
+  </td></tr>
+  <tr><td style="padding:28px 40px 0;">
+    <p style="color:#e2e8f0;font-size:15px;margin:0 0 4px;">Good morning, <strong>{name}</strong> &#128075;</p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">Here's what's moving before the bell. Log in to act on these setups.</p>
+  </td></tr>
+  <tr><td style="padding:20px 40px 0;">
+    <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px 20px;">
+      <div style="font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Market Context</div>
+      <p style="color:#d1d5db;font-size:13px;line-height:1.75;margin:0;">{ai_summary}</p>
+    </div>
+  </td></tr>
+  <tr><td style="padding:20px 40px 0;">
+    <div style="font-size:11px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Premarket Top Movers</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #21262d;border-radius:8px;overflow:hidden;">
+      <tr style="background:#0d1117;">
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Ticker</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Gap %</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Price</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Volume</th>
+      </tr>
+      {movers_rows}
+    </table>
+  </td></tr>
+  <tr><td style="padding:20px 40px 28px;">
+    <div style="font-size:11px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Earnings This Week</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #21262d;border-radius:8px;overflow:hidden;">
+      <tr style="background:#0d1117;">
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Ticker</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Company</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Date</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">Time</th>
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;">EPS Est.</th>
+      </tr>
+      {earnings_rows}
+    </table>
+  </td></tr>
+  <tr><td style="padding:0 40px 28px;text-align:center;">
+    <a href="https://accentorai.com/app"
+       style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 32px;border-radius:8px;">
+      Open Accentor AI →
+    </a>
+  </td></tr>
+  {unsub_section}
+</table>
+</td></tr>
+</table>
+</body></html>"""
+
+
+def _send_daily_digest():
+    """Fetch premarket movers, earnings, generate Claude summary, email all digest recipients."""
+    from_email   = os.getenv('CONTACT_EMAIL_FROM', '')
+    app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+
+    app_logger.info('[DailyDigest] Building digest...')
+
+    import pytz as _pytz
+    _et      = _pytz.timezone('US/Eastern')
+    now_et   = datetime.now(_et)
+    date_str = now_et.strftime('%A, %B %d, %Y')
+
+    # 1. Premarket movers — reuse existing gap-up detector
+    premarket_movers = []
+    try:
+        from gap_up_detector import fetch_gap_up_stocks
+        premarket_movers = sorted(
+            fetch_gap_up_stocks(min_price=2.0) or [],
+            key=lambda s: s.get('gap_percent', 0), reverse=True
+        )[:15]
+        app_logger.info(f'[DailyDigest] Got {len(premarket_movers)} premarket movers from scanner')
+    except Exception as _e:
+        app_logger.warning(f'[DailyDigest] Premarket scan failed ({_e}), falling back to DB snapshot')
+        try:
+            yesterday = (now_et.date() - timedelta(days=1)).isoformat()
+            premarket_movers = sorted(
+                db_manager.get_gap_up_snapshot(yesterday) or [],
+                key=lambda s: s.get('gap_percent', 0), reverse=True
+            )[:15]
+        except Exception:
+            pass
+
+    # 2. Earnings calendar for this week (next 5 trading days)
+    earnings_data = {}
+    try:
+        if _ai_agent:
+            earnings_data = _ai_agent._get_earnings_calendar()
+        else:
+            import requests as _req
+            hdrs = {'User-Agent': 'Mozilla/5.0'}
+            rows = []
+            for _delta in range(5):
+                ds = (now_et.date() + timedelta(days=_delta)).isoformat()
+                try:
+                    _r = _req.get('https://api.nasdaq.com/api/calendar/earnings',
+                                  params={'date': ds}, headers=hdrs, timeout=8)
+                    if _r.status_code == 200:
+                        for _row in (_r.json().get('data', {}).get('rows') or [])[:12]:
+                            rows.append({'date': ds, 'symbol': _row.get('symbol'),
+                                         'company': _row.get('name'), 'time': _row.get('time'),
+                                         'eps_forecast': _row.get('epsForecast')})
+                except Exception:
+                    pass
+            earnings_data = {'earnings_next_5_days': rows}
+    except Exception as _e:
+        app_logger.warning(f'[DailyDigest] Earnings fetch failed: {_e}')
+
+    # 3. Claude AI market summary (Haiku — cheap and fast)
+    ai_summary = 'Market summary temporarily unavailable.'
+    try:
+        import anthropic as _ant
+        _ant_key = os.getenv('ANTHROPIC_API_KEY', '')
+        if _ant_key:
+            movers_text = '\n'.join(
+                f"- {s.get('ticker')}: +{s.get('gap_percent',0):.1f}%, ${s.get('price',0):.2f}, vol {s.get('volume',0)/1e6:.1f}M"
+                for s in premarket_movers[:10]
+            ) or 'No premarket data available.'
+            earnings_text = '\n'.join(
+                f"- {e.get('symbol')} ({e.get('company','')}) on {e.get('date')} {e.get('time','')}"
+                for e in (earnings_data.get('earnings_next_5_days') or [])[:10]
+            ) or 'No earnings data available.'
+            _client = _ant.Anthropic(api_key=_ant_key)
+            _resp = _client.messages.create(
+                model='claude-haiku-4-5-20251001',
+                max_tokens=350,
+                messages=[{'role': 'user', 'content': (
+                    f'You are a professional trading analyst. Today is {date_str}.\n'
+                    f'Write a concise 3-4 sentence market context paragraph for day traders and swing traders '
+                    f'starting their day. Cover overall market sentiment, key sector themes to watch, and how '
+                    f'the current environment favors gap-up day trading or swing trading. '
+                    f'Be specific and professional. No headers, no bullets — clean prose only.\n\n'
+                    f'Premarket top movers:\n{movers_text}\n\n'
+                    f'Earnings this week:\n{earnings_text}\n\n'
+                    f'Write the paragraph:'
+                )}]
+            )
+            ai_summary = _resp.content[0].text.strip()
+            app_logger.info('[DailyDigest] Claude summary generated')
+    except Exception as _e:
+        app_logger.warning(f'[DailyDigest] Claude summary failed: {_e}')
+
+    # 4. Send to all opted-in users
+    recipients = db_manager.get_digest_recipients()
+    app_logger.info(f'[DailyDigest] Sending to {len(recipients)} recipient(s)')
+
+    if not from_email or not app_password:
+        app_logger.warning('[DailyDigest] SMTP not configured — digest skipped')
+        return
+
+    subject = f'Your Morning Trading Digest — {now_et.strftime("%b %d, %Y")}'
+    for user in recipients:
+        _email = user.get('email', '')
+        if not _email:
+            continue
+        _name      = user.get('first_name') or user.get('username', 'there')
+        _token     = user.get('email_digest_unsubscribe_token', '')
+        _unsub_url = f'https://accentorai.com/unsubscribe/{_token}' if _token else ''
+        try:
+            html = _build_digest_html(date_str, _name, premarket_movers, earnings_data, ai_summary, _unsub_url)
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From']    = from_email
+            msg['To']      = _email
+            msg.attach(MIMEText(html, 'html'))
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as _server:
+                _server.login(from_email, app_password)
+                _server.sendmail(from_email, _email, msg.as_string())
+            app_logger.info(f'[DailyDigest] Sent to {_email}')
+        except Exception as _e:
+            app_logger.warning(f'[DailyDigest] Failed for {_email}: {_e}')
+
+
+def _daily_digest_scheduler():
+    """Daemon thread — fires _send_daily_digest() every day at 06:00 ET."""
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    app_logger.info('[DailyDigest] Scheduler started')
+    while True:
+        try:
+            now_et    = datetime.now(_et)
+            target_et = now_et.replace(hour=6, minute=0, second=0, microsecond=0)
+            if now_et >= target_et:
+                target_et = target_et + timedelta(days=1)
+            sleep_s = (target_et - now_et).total_seconds()
+            app_logger.info(
+                f'[DailyDigest] Next digest at {target_et.strftime("%Y-%m-%d %H:%M %Z")} '
+                f'(in {sleep_s/3600:.1f}h)'
+            )
+            time.sleep(sleep_s)
+            # Confirm we're in the right window before firing
+            if datetime.now(_et).hour == 6:
+                _send_daily_digest()
+        except Exception as _exc:
+            app_logger.error(f'[DailyDigest] Scheduler error: {_exc}', exc_info=True)
+            time.sleep(3600)
+
+
 def _send_trial_expiry_reminders():
     """
     Background loop — runs every hour, sends a reminder email to users whose
@@ -7324,6 +7623,11 @@ def _start_background_tasks():
             target=_swing_picks_eod_scheduler, daemon=True, name='SwingPicksEOD')
         swing_sched_thread.start()
         app_logger.info("✅ [SwingPicksEOD]      started — fires swing picks computation at 8 PM ET")
+
+        digest_thread = threading.Thread(
+            target=_daily_digest_scheduler, daemon=True, name='DailyDigest')
+        digest_thread.start()
+        app_logger.info("✅ [DailyDigest]        started — sends morning digest to users at 6 AM ET")
 
         prefetch_thread = threading.Thread(
             target=_historical_prefetch_daemon, daemon=True, name='HistoricalPrefetch')
