@@ -1594,6 +1594,146 @@ class DatabaseManager:
             print(f"Database error getting closed positions: {e}")
             return []
 
+    def get_consolidated_positions(self, symbol=None, start_date=None, end_date=None,
+                                    position_type=None, source=None, limit=1000):
+        """
+        Consolidated closed positions — one row per round-trip per symbol per session.
+
+        Algorithm:
+          1. Fetch all BUY and SELL trades sorted chronologically.
+          2. FIFO-match buys to sells per (symbol, position_type).
+             Handles multiple buys before one sell (weighted avg entry).
+          3. Consolidate multiple sells on the same (symbol, exit_date, position_type)
+             into a single row (user may exit in batches).
+          4. Apply start_date filter at result level so FIFO has full buy history.
+        """
+        from collections import defaultdict, deque
+        from datetime import date as _date
+
+        with self.get_connection() as conn:
+            query = '''
+                SELECT symbol, side, quantity, price, pnl, trade_date, trade_time,
+                       COALESCE(position_type, 'day') AS position_type,
+                       COALESCE(source, 'brownbot')   AS source,
+                       COALESCE(days_held, 0)          AS days_held
+                FROM trades
+                WHERE side IN ('B', 'S', 'SS')
+            '''
+            params = []
+            if symbol:
+                query += ' AND symbol = ?';        params.append(symbol.upper())
+            if source:
+                query += ' AND source = ?';        params.append(source)
+            if position_type:
+                query += ' AND position_type = ?'; params.append(position_type.lower())
+            if end_date:
+                # Include all buys up to end_date so FIFO matching is complete
+                query += ' AND trade_date <= ?';   params.append(end_date)
+            query += ' ORDER BY symbol, position_type, trade_date, trade_time'
+            rows = conn.execute(query, params).fetchall()
+
+        buy_queues = defaultdict(deque)
+        raw_results = []
+
+        for row in rows:
+            sym  = row['symbol']
+            pt   = row['position_type']
+            key  = (sym, pt)
+            side = (row['side'] or '').upper()
+
+            if side == 'B':
+                buy_queues[key].append({
+                    'qty':   int(row['quantity']),
+                    'price': float(row['price']),
+                    'date':  row['trade_date'],
+                })
+            elif side in ('S', 'SS'):
+                sell_qty   = int(row['quantity'])
+                sell_price = float(row['price'])
+                pnl        = float(row['pnl'] or 0)
+                exit_date  = row['trade_date']
+                exit_time  = row['trade_time'] or ''
+                src        = row['source']
+
+                # Consume buys FIFO to compute weighted avg entry
+                remaining    = sell_qty
+                matched_buys = []
+                queue        = buy_queues[key]
+
+                while remaining > 0 and queue:
+                    b    = queue[0]
+                    take = min(b['qty'], remaining)
+                    matched_buys.append({'qty': take, 'price': b['price'], 'date': b['date']})
+                    remaining -= take
+                    if take == b['qty']:
+                        queue.popleft()
+                    else:
+                        queue[0] = {**b, 'qty': b['qty'] - take}
+
+                if matched_buys:
+                    total_cost = sum(b['qty'] * b['price'] for b in matched_buys)
+                    total_qty  = sum(b['qty'] for b in matched_buys)
+                    avg_entry  = total_cost / total_qty if total_qty else None
+                    entry_date = min(b['date'] for b in matched_buys)
+                else:
+                    # No buy found — back-calculate from stored P&L
+                    avg_entry  = sell_price - (pnl / sell_qty) if sell_qty else None
+                    entry_date = exit_date
+
+                try:
+                    duration_days = (
+                        _date.fromisoformat(exit_date) - _date.fromisoformat(entry_date)
+                    ).days
+                except Exception:
+                    duration_days = int(row['days_held'] or 0)
+
+                raw_results.append({
+                    'symbol':        sym,
+                    'position_type': pt,
+                    'source':        src,
+                    'qty':           sell_qty,
+                    'avg_entry':     round(avg_entry, 4) if avg_entry is not None else None,
+                    'avg_exit':      round(sell_price, 4),
+                    'pnl':           round(pnl, 2),
+                    'entry_date':    entry_date,
+                    'exit_date':     exit_date,
+                    'exit_time':     exit_time,
+                    'duration_days': duration_days,
+                })
+
+        # Consolidate multiple sells for the same (symbol, exit_date, position_type)
+        from collections import OrderedDict
+        consolidated = OrderedDict()
+        for r in raw_results:
+            ck = (r['symbol'], r['exit_date'], r['position_type'])
+            if ck not in consolidated:
+                consolidated[ck] = dict(r)
+            else:
+                ex      = consolidated[ck]
+                old_qty = ex['qty']
+                add_qty = r['qty']
+                total   = old_qty + add_qty
+                if ex['avg_entry'] and r['avg_entry']:
+                    ex['avg_entry'] = round(
+                        (ex['avg_entry'] * old_qty + r['avg_entry'] * add_qty) / total, 4
+                    )
+                ex['avg_exit'] = round(
+                    (ex['avg_exit'] * old_qty + r['avg_exit'] * add_qty) / total, 4
+                )
+                ex['qty']           += add_qty
+                ex['pnl']            = round(ex['pnl'] + r['pnl'], 2)
+                ex['entry_date']     = min(ex['entry_date'], r['entry_date'])
+                ex['duration_days']  = max(ex['duration_days'], r['duration_days'])
+
+        results = list(consolidated.values())
+
+        # Apply start_date on exit_date (couldn't do it in SQL or FIFO would miss earlier buys)
+        if start_date:
+            results = [r for r in results if r['exit_date'] >= start_date]
+
+        results.sort(key=lambda r: (r['exit_date'], r['exit_time']), reverse=True)
+        return results[:limit]
+
     def get_long_short_pnl_data(self, start_date=None, end_date=None):
         """P&L breakdown by Day vs Swing (BrownBot is long-only so Long/Short is meaningless)."""
         try:

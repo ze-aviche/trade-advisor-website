@@ -2813,7 +2813,10 @@
                 <!-- Header Section -->
                 <div class="bg-gray-800 rounded-lg p-6">
                     <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-lg font-medium text-white">Positions History</h3>
+                        <div>
+                            <h3 class="text-lg font-medium text-white">Closed Positions</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">One row per round-trip — consolidated across partial fills</p>
+                        </div>
                         <div class="flex items-center gap-2">
                             <button @click="downloadPositionsHistoryCSV"
                                     class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-xs font-medium text-gray-300">
@@ -2826,67 +2829,85 @@
                         </div>
                     </div>
 
-                    <!-- Controls Section -->
+                    <!-- Summary chips -->
+                    <div v-if="positionsSummary.total_positions" class="flex flex-wrap gap-3 mb-5">
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Positions:</span>
+                            <span class="text-white font-semibold ml-1">{{ positionsSummary.total_positions }}</span>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Total P&L:</span>
+                            <span class="font-semibold ml-1" :class="positionsSummary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ positionsSummary.total_pnl >= 0 ? '+' : '' }}${{ positionsSummary.total_pnl?.toFixed(2) }}
+                            </span>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Win Rate:</span>
+                            <span class="font-semibold ml-1" :class="positionsSummary.win_rate >= 50 ? 'text-green-400' : 'text-yellow-400'">
+                                {{ positionsSummary.win_rate?.toFixed(1) }}%
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Filters -->
                     <div class="mb-6">
-                        <!-- Search and Filter -->
-                        <div class="space-y-4">
-                            <!-- Search and Filter -->
-                            <div class="bg-gray-700 rounded-lg p-4">
-                                <h4 class="text-sm font-medium text-white mb-3">Search & Filter</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-sm text-gray-400 mb-2">Ticker Symbol</label>
-                                        <div class="flex items-center space-x-2">
-                                            <input v-model="positionsHistoryTicker" 
-                                                   @keyup.enter="loadPositionsHistory"
-                                                   @input="onPositionsHistoryTickerChange"
-                                                   placeholder="e.g., AAPL"
-                                                   class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                            <button @click="clearPositionsHistoryTicker" 
-                                                    v-if="positionsHistoryTicker"
-                                                    class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm text-gray-400 mb-2">Position Type</label>
-                                        <select v-model="positionsHistoryType" @change="loadPositionsHistory"
-                                                class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                            <option value="">All Styles</option>
-                                            <option value="day">Day</option>
-                                            <option value="swing">Swing</option>
-                                        </select>
+                        <div class="bg-gray-700 rounded-lg p-4 space-y-3">
+                            <!-- Row 1: Ticker + Start Date + End Date -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Ticker</label>
+                                    <div class="flex items-center space-x-1">
+                                        <input v-model="positionsHistoryTicker"
+                                               @keyup.enter="loadPositionsHistory"
+                                               @input="onPositionsHistoryTickerChange"
+                                               placeholder="e.g., NVDA"
+                                               class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        <button @click="clearPositionsHistoryTicker" v-if="positionsHistoryTicker"
+                                                class="bg-gray-500 hover:bg-gray-600 px-2 py-2 rounded-md text-sm">
+                                            <i class="fas fa-times"></i>
+                                        </button>
                                     </div>
                                 </div>
-                                
-                                <!-- Date Range Filter -->
-                                <div class="mt-4 pt-4 border-t border-gray-600">
-                                    <h5 class="text-sm font-medium text-white mb-3">Date Range Filter</h5>
-                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div>
-                                            <label class="block text-sm text-gray-400 mb-2">From Date</label>
-                                            <input v-model="positionsHistoryStartDate" 
-                                                   type="date"
-                                                   @change="loadPositionsHistory"
-                                                   class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm text-gray-400 mb-2">To Date</label>
-                                            <input v-model="positionsHistoryEndDate" 
-                                                   type="date"
-                                                   @change="loadPositionsHistory"
-                                                   class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
-                                        </div>
-                                        <div class="flex items-end">
-                                            <button @click="clearDateFilters" 
-                                                    class="w-full bg-gray-500 hover:bg-gray-600 px-4 py-2 rounded-md text-sm font-medium">
-                                                <i class="fas fa-times mr-2"></i>Clear Dates
-                                            </button>
-                                        </div>
-                                    </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Exit From</label>
+                                    <input v-model="positionsHistoryStartDate" type="date" @change="loadPositionsHistory"
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Exit To</label>
+                                    <input v-model="positionsHistoryEndDate" type="date" @change="loadPositionsHistory"
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                 </div>
                             </div>
+                            <!-- Row 2: Type + Source + Clear -->
+                            <div class="grid grid-cols-3 gap-3 items-end">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Type</label>
+                                    <select v-model="positionsHistoryType" @change="loadPositionsHistory"
+                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        <option value="">All Types</option>
+                                        <option value="day">Day</option>
+                                        <option value="swing">Swing</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Source</label>
+                                    <select v-model="positionsHistorySource" @change="loadPositionsHistory"
+                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                        <option value="">All Sources</option>
+                                        <option value="brownbot">BrownBot</option>
+                                        <option value="das">DAS</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <button @click="clearPositionsFilters"
+                                            class="w-full bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded-md text-sm font-medium text-gray-300">
+                                        <i class="fas fa-times mr-1"></i>Clear All
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                         </div>
 
                     </div>
@@ -2906,33 +2927,44 @@
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead class="bg-gray-700">
                                 <tr>
-                                    <th @click="togglePositionsSort('symbol')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Symbol <i :class="positionsSort.key==='symbol' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Style</th>
-                                    <th @click="togglePositionsSort('quantity')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Qty <i :class="positionsSort.key==='quantity' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('avg_cost')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Entry Price <i :class="positionsSort.key==='avg_cost' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('exit_price')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Exit Price <i :class="positionsSort.key==='exit_price' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('realized')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">P&L <i :class="positionsSort.key==='realized' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('create_time')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Entry Time <i :class="positionsSort.key==='create_time' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
-                                    <th @click="togglePositionsSort('date')" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Date <i :class="positionsSort.key==='date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort-down text-blue-400'" class="ml-1"></i></th>
+                                    <th @click="togglePositionsSort('symbol')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Symbol <i :class="positionsSort.key==='symbol' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Type</th>
+                                    <th @click="togglePositionsSort('qty')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Qty <i :class="positionsSort.key==='qty' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_entry')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Avg Entry <i :class="positionsSort.key==='avg_entry' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('avg_exit')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Avg Exit <i :class="positionsSort.key==='avg_exit' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('pnl')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">P&amp;L <i :class="positionsSort.key==='pnl' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Duration</th>
+                                    <th @click="togglePositionsSort('entry_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Entry Date <i :class="positionsSort.key==='entry_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up' : 'fas fa-sort-down') : 'fas fa-sort'" class="ml-1 text-gray-500"></i></th>
+                                    <th @click="togglePositionsSort('exit_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-600 select-none whitespace-nowrap">Exit Date <i :class="positionsSort.key==='exit_date' ? (positionsSort.dir==='asc' ? 'fas fa-sort-up text-blue-400' : 'fas fa-sort-down text-blue-400') : 'fas fa-sort'" class="ml-1"></i></th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Source</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                <tr v-for="position in sortedPositions" :key="position.id">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <tr v-for="position in sortedPositions" :key="position.symbol + '_' + position.exit_date + '_' + position.position_type">
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-white">{{ position.symbol }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm">
                                         <span class="px-2 py-0.5 rounded text-xs font-medium border"
                                               :class="position.position_type === 'swing' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'">
                                             {{ position.position_type === 'swing' ? 'Swing' : 'Day' }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.quantity }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.avg_cost?.toFixed(2) || '0.00' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${{ position.exit_price?.toFixed(2) || '—' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" :class="position.realized >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        {{ position.realized >= 0 ? '+' : '' }}${{ position.realized?.toFixed(2) || '0.00' }}
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ position.qty }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ position.avg_entry?.toFixed(2) || '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ position.avg_exit?.toFixed(2) || '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium" :class="position.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ position.pnl >= 0 ? '+' : '' }}${{ position.pnl?.toFixed(2) || '0.00' }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.create_time }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ position.date }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-400">
+                                        {{ position.duration_days === 0 ? 'Same day' : (position.duration_days === 1 ? '1 day' : position.duration_days + ' days') }}
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-400">{{ position.entry_date || '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ position.exit_date || '—' }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm">
+                                        <span class="px-2 py-0.5 rounded text-xs font-medium border"
+                                              :class="position.source === 'brownbot' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'">
+                                            {{ position.source === 'brownbot' ? 'BrownBot' : (position.source || 'DAS') }}
+                                        </span>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>

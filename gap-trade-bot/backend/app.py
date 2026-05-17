@@ -5079,23 +5079,25 @@ def get_position_sync_status():
 # Daily Position History API endpoints
 @app.route('/api/positions/daily', methods=['GET'])
 def get_daily_positions():
-    """Return closed BrownBot positions for the Positions tab."""
+    """Return consolidated closed positions for the Positions tab.
+
+    Each row is one complete round-trip (all buys + exit) per symbol per session.
+    FIFO-matched and consolidated across partial fills.
+    """
     try:
         symbol        = request.args.get('symbol')
         start_date    = request.args.get('start_date')
         end_date      = request.args.get('end_date')
         position_type = request.args.get('position_type')
+        source        = request.args.get('source')
         limit         = min(int(request.args.get('limit', 1000)), 5000)
 
-        positions = db_manager.get_closed_positions(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-            limit=limit,
-            position_type=position_type,
+        positions = db_manager.get_consolidated_positions(
+            symbol=symbol, start_date=start_date, end_date=end_date,
+            position_type=position_type, source=source, limit=limit,
         )
-        total_pnl = sum(p['realized'] for p in positions)
-        wins      = sum(1 for p in positions if p['realized'] > 0)
+        total_pnl = sum(p['pnl'] for p in positions)
+        wins      = sum(1 for p in positions if p['pnl'] > 0)
         summary   = {
             'total_positions': len(positions),
             'total_pnl':       round(total_pnl, 2),
@@ -5108,7 +5110,7 @@ def get_daily_positions():
             'timestamp': datetime.now().isoformat(),
         })
     except Exception as e:
-        app_logger.error(f"Error getting closed positions: {e}")
+        app_logger.error(f"Error getting consolidated positions: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/daily/<date>', methods=['GET'])

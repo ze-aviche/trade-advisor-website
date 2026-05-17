@@ -175,7 +175,7 @@ const app = createApp({
                 
                 // Gap-up configuration
                 gapUpSort: { key: 'gap_percent', dir: 'desc' },
-                positionsSort: { key: 'date', dir: 'desc' },
+                positionsSort: { key: 'exit_date', dir: 'desc' },
                 tradesSort: { key: 'submitted_at', dir: 'desc' },
                 activePositionsSort: { key: 'entry_time', dir: 'desc' },
                 trackingSort: { key: 'symbol', dir: 'asc' },
@@ -271,10 +271,12 @@ const app = createApp({
                 
                 // Positions History
                 positions: [],
-                positionsHistoryTicker: '', // Ticker search filter for positions
-                positionsHistoryType: '', // Position type filter (number)
-                positionsHistoryStartDate: '', // Start date filter (YYYY-MM-DD)
-                positionsHistoryEndDate: '', // End date filter (YYYY-MM-DD)
+                positionsHistoryTicker: '',
+                positionsHistoryType: '',
+                positionsHistorySource: '',
+                positionsHistoryStartDate: '',
+                positionsHistoryEndDate: '',
+                positionsSummary: {},
                 
                 // Dashboard Trade Period
                 dashboardTradePeriod: '365', // Default to 1 year
@@ -1129,7 +1131,7 @@ const app = createApp({
                     this.positionsSort.dir = this.positionsSort.dir === 'asc' ? 'desc' : 'asc';
                 } else {
                     this.positionsSort.key = key;
-                    this.positionsSort.dir = ['avg_cost', 'init_price', 'realized', 'unrealized', 'quantity', 'init_quantity'].includes(key) ? 'desc' : 'asc';
+                    this.positionsSort.dir = ['qty', 'avg_entry', 'avg_exit', 'pnl', 'duration_days'].includes(key) ? 'desc' : 'asc';
                 }
             },
 
@@ -3529,17 +3531,20 @@ const app = createApp({
                     params.append('symbol', this.positionsHistoryTicker.trim().toUpperCase());
                 if (this.positionsHistoryType && this.positionsHistoryType.trim())
                     params.append('position_type', this.positionsHistoryType.trim());
+                if (this.positionsHistorySource && this.positionsHistorySource.trim())
+                    params.append('source', this.positionsHistorySource.trim());
 
                 const response = await fetch(`/api/positions/daily?${params.toString()}`);
                 const data = await response.json();
 
                 if (data.success) {
-                    this.positions = data.data.positions || [];
+                    this.positions       = data.data.positions || [];
+                    this.positionsSummary = data.data.summary  || {};
                 } else if (!silent) {
-                    this.showNotification('Failed to load positions history: ' + data.error, 'error');
+                    this.showNotification('Failed to load positions: ' + data.error, 'error');
                 }
             } catch (error) {
-                if (!silent) this.showNotification('Error loading positions history: ' + error.message, 'error');
+                if (!silent) this.showNotification('Error loading positions: ' + error.message, 'error');
             } finally {
                 this.loading.positions = false;
             }
@@ -5262,12 +5267,19 @@ const app = createApp({
             this.loadPositionsHistory();
         },
         
-        // Helper method to clear date filters
+        clearPositionsFilters() {
+            this.positionsHistoryStartDate = '';
+            this.positionsHistoryEndDate   = '';
+            this.positionsHistoryTicker    = '';
+            this.positionsHistoryType      = '';
+            this.positionsHistorySource    = '';
+            this.loadPositionsHistory();
+        },
+
         clearDateFilters() {
             this.positionsHistoryStartDate = '';
-            this.positionsHistoryEndDate = '';
+            this.positionsHistoryEndDate   = '';
             this.loadPositionsHistory();
-            this.showNotification('Date filters cleared', 'success');
         },
         
         // Helper method to handle trade history ticker input changes
