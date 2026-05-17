@@ -273,6 +273,10 @@ _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_broker = None        # BrokerBase instance held for the bot's lifetime
 _brown_exit_thread = None
+# Playbook cache — keyed by symbol, populated by background threads, cleared on bot start
+_playbook_cache:   dict = {}   # symbol → GapUpTradeAgent playbook dict
+_playbook_pending: set  = set()  # symbols whose background fetch is in progress
+_playbook_failed:  set  = set()  # symbols where fetch failed — fall back to config defaults
 
 
 class _DasDirectSocket:
@@ -2092,7 +2096,7 @@ _cache_lock = _threading.Lock()
 _ANALYSIS_TTL    = 4 * 3600    # re-use analysis result for 4 h
 _SECTOR_ETF_TTL  = 4 * 3600    # sector ETF bars stale after 4 h
 _NEWS_TTL        = 30 * 60     # news stale after 30 min
-_RATE_MAX        = 5            # max AI Predict clicks
+_RATE_MAX        = 20           # max AI Predict calls per hour per IP (cache hits don't count)
 _RATE_WINDOW     = 3600         # …per hour per IP
 
 
@@ -2291,7 +2295,24 @@ def get_historical_analysis(ticker):
         if not AI_AGENT_AVAILABLE or not _ai_agent:
             return jsonify({'success': False, 'error': 'AI analysis not available'}), 503
 
-        # ── Rate limit: 5 calls per IP per hour ───────────────────────────────
+        if not _gap_up_agent:
+            return jsonify({'success': False, 'error': 'AI analysis not available'}), 503
+
+        body  = request.get_json(force=True) or {}
+        stats = body.get('stats', {})
+        rows  = body.get('rows', [])  # raw per-day data rows from the frontend
+
+        # ── Analysis cache: keyed by ticker + row count + min gap + calendar date ──
+        # Check cache BEFORE rate limiting — cache hits are free and don't count against the limit.
+        today     = datetime.now().strftime('%Y-%m-%d')
+        cache_key = f"{ticker.upper()}|rows={len(rows)}|minGap={stats.get('minGap','')}|{today}"
+        cached_result = _cache_get(_analysis_cache, cache_key, _ANALYSIS_TTL)
+        if cached_result is not None:
+            app_logger.info(f"Analysis cache HIT for {cache_key}")
+            cached_result['cached'] = True
+            return jsonify(cached_result)
+
+        # ── Rate limit: only applies to real Claude API calls, not cache hits ──
         client_ip = (request.headers.get('X-Forwarded-For', request.remote_addr) or 'unknown').split(',')[0].strip()
         allowed, retry_after = _check_rate_limit(client_ip)
         if not allowed:
@@ -2304,22 +2325,6 @@ def get_historical_analysis(ticker):
                 'rate_limited': True,
                 'retry_after': retry_after
             }), 429
-
-        if not _gap_up_agent:
-            return jsonify({'success': False, 'error': 'AI analysis not available'}), 503
-
-        body  = request.get_json(force=True) or {}
-        stats = body.get('stats', {})
-        rows  = body.get('rows', [])  # raw per-day data rows from the frontend
-
-        # ── Analysis cache: keyed by ticker + row count + min gap + calendar date ──
-        today     = datetime.now().strftime('%Y-%m-%d')
-        cache_key = f"{ticker.upper()}|rows={len(rows)}|minGap={stats.get('minGap','')}|{today}"
-        cached_result = _cache_get(_analysis_cache, cache_key, _ANALYSIS_TTL)
-        if cached_result is not None:
-            app_logger.info(f"Analysis cache HIT for {cache_key}")
-            cached_result['cached'] = True
-            return jsonify(cached_result)
 
         # Fetch sector context from Polygon (best-effort)
         polygon_key = os.getenv('POLYGON_API_KEY')
@@ -2980,7 +2985,129 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
 
 
 
-def _brown_enter_position(symbol, position_type, config, approx_price):
+def _compute_stats_from_rows(rows: list, min_gap: float = 5.0) -> dict:
+    """Python equivalent of the frontend buildHistoricalStats() — builds aggregate stats from raw gap-up rows."""
+    data = [r for r in rows if (r.get('gap up % at open') or 0) >= min_gap]
+    total = len(data)
+    if not total:
+        return {'totalDays': 0, 'period': f'5yr', 'minGap': min_gap}
+
+    runner_days  = sum(1 for d in data if d.get('Runner/Fader') == 'Runner')
+    fader_days   = sum(1 for d in data if d.get('Runner/Fader') == 'Fader')
+    neutral_days = total - runner_days - fader_days
+
+    def _avg(key):
+        vals = [float(d[key]) for d in data if d.get(key) not in (None, '')]
+        return round(sum(vals) / len(vals), 2) if vals else 0
+
+    # Most common day-high time
+    time_counts = {}
+    for d in data:
+        t = d.get('day high time')
+        if t:
+            time_counts[t] = time_counts.get(t, 0) + 1
+    common_high_time = max(time_counts, key=time_counts.get) if time_counts else 'N/A'
+
+    # Gap size distribution
+    gap_dist = {'5-15%': 0, '15-30%': 0, '30-50%': 0, '50%+': 0}
+    for d in data:
+        g = float(d.get('gap up % at open') or 0)
+        if   g >= 50: gap_dist['50%+']  += 1
+        elif g >= 30: gap_dist['30-50%'] += 1
+        elif g >= 15: gap_dist['15-30%'] += 1
+        else:         gap_dist['5-15%']  += 1
+
+    # Recent 30-day runner rate
+    from datetime import datetime as _dt2
+    cutoff = (_dt2.now().date() - __import__('datetime').timedelta(days=30)).isoformat()
+    recent = [d for d in data if str(d.get('date', '')) >= cutoff]
+    recent30_runner_pct = (
+        round(sum(1 for d in recent if d.get('Runner/Fader') == 'Runner') / len(recent) * 100)
+        if recent else 0
+    )
+
+    # High-volume runner rate (top 50% by premarket volume)
+    sorted_by_vol = sorted(data, key=lambda d: float(d.get('premarket volume') or 0), reverse=True)
+    top_half = sorted_by_vol[:max(1, total // 2)]
+    high_vol_runner_pct = round(
+        sum(1 for d in top_half if d.get('Runner/Fader') == 'Runner') / len(top_half) * 100
+    )
+
+    return {
+        'totalDays':        total,
+        'runnerDays':       runner_days,
+        'faderDays':        fader_days,
+        'neutralDays':      neutral_days,
+        'runnerPct':        round(runner_days  / total * 100) if total else 0,
+        'faderPct':         round(fader_days   / total * 100) if total else 0,
+        'neutralPct':       round(neutral_days / total * 100) if total else 0,
+        'avgGap':           _avg('gap up % at open'),
+        'avgDayHigh':       _avg('day high %'),
+        'avgClose':         _avg('closing percent'),
+        'avgPremarketVol':  round(_avg('premarket volume') / 1_000_000, 2),
+        'commonHighTime':   common_high_time,
+        'gapDistribution':  gap_dist,
+        'recent30RunnerPct': recent30_runner_pct,
+        'highVolRunnerPct': high_vol_runner_pct,
+        'period':           '5yr',
+        'minGap':           min_gap,
+    }
+
+
+def _parse_playbook_pcts(playbook: dict):
+    """
+    Extract (stop_pct, target_pct) floats from the playbook string fields.
+    Returns (None, None) when neither can be parsed.
+    """
+    import re as _re
+
+    def _first_float(s):
+        m = _re.search(r'(\d+(?:\.\d+)?)', str(s or ''))
+        return float(m.group(1)) if m else None
+
+    stop_pct   = _first_float((playbook.get('stop')   or {}).get('pct_from_entry', ''))
+    target_pct = _first_float((playbook.get('exit')   or {}).get('primary_target', ''))
+    # Fallback to setup_card if the structured fields don't parse
+    if not stop_pct and not target_pct:
+        card = playbook.get('setup_card') or {}
+        stop_pct   = _first_float(card.get('stop', ''))
+        target_pct = _first_float(card.get('target_1', ''))
+    return stop_pct, target_pct
+
+
+def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict):
+    """
+    Background thread: fetch 5-year gap-up history and run GapUpTradeAgent for a symbol.
+    Result is stored in _playbook_cache[symbol]; _playbook_pending/failed updated on exit.
+    """
+    global _playbook_cache, _playbook_pending, _playbook_failed
+    try:
+        from historical_data import get_historical_gap_up_data
+        _add_brown_log('info', f'[Playbook] Fetching 5yr history for {symbol}…')
+        rows = get_historical_gap_up_data(symbol, days=1825, use_cache=True, min_gap_percent=5) or []
+        if not rows:
+            _add_brown_log('warning', f'[Playbook] No historical data for {symbol} — using config defaults')
+            _playbook_failed.add(symbol)
+            return
+        stats    = _compute_stats_from_rows(rows, min_gap=5.0)
+        playbook = _gap_up_agent.analyze(symbol, rows, stats, sector_info, sector_perf)
+        _playbook_cache[symbol] = playbook
+        bias = playbook.get('bias', '?')
+        conf = playbook.get('bias_confidence', '?')
+        stp, tgt = _parse_playbook_pcts(playbook)
+        _add_brown_log('info',
+            f'[Playbook] {symbol} ready — bias={bias}/{conf} '
+            f'stop={stp}% target={tgt}% '
+            f'({stats["totalDays"]} gap-up days analyzed)')
+    except Exception as _e:
+        _add_brown_log('warning', f'[Playbook] {symbol} fetch failed: {_e} — will use config defaults')
+        app_logger.warning(f'Playbook fetch failed for {symbol}: {_e}', exc_info=True)
+        _playbook_failed.add(symbol)
+    finally:
+        _playbook_pending.discard(symbol)
+
+
+def _brown_enter_position(symbol, position_type, config, approx_price, playbook_override=None):
     """Place a BUY order for BrownBot and record the position in memory."""
     global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts, _brown_attempted_symbols
 
@@ -3054,30 +3181,57 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
                 f'{symbol} fill not confirmed after 2.5s — using scanner approx ${price:.2f}')
 
     if position_type == 'day':
-        tgt_pct = float(config.get('day_profit_target_pct', 5.0))
-        stp_pct = float(config.get('day_stop_loss_pct', 2.5))
+        cfg_tgt = float(config.get('day_profit_target_pct', 5.0))
+        cfg_stp = float(config.get('day_stop_loss_pct', 2.5))
     else:
-        tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
-        stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
+        cfg_tgt = float(config.get('swing_profit_target_pct', 15.0))
+        cfg_stp = float(config.get('swing_stop_loss_pct', 7.0))
+
+    # Apply playbook stop/target with safety bounds so we never chase a tiny
+    # target or risk more than 1.5× the configured stop.
+    playbook_bias = None
+    playbook_summary = None
+    tgt_src = stp_src = 'config'
+    if playbook_override:
+        playbook_bias    = playbook_override.get('bias')
+        playbook_summary = playbook_override.get('summary')
+        pb_stp, pb_tgt  = _parse_playbook_pcts(playbook_override)
+        if pb_tgt is not None:
+            tgt_pct = max(pb_tgt, cfg_tgt * 0.5)
+            tgt_src = 'playbook'
+        else:
+            tgt_pct = cfg_tgt
+        if pb_stp is not None:
+            stp_pct = min(pb_stp, cfg_stp * 1.5)
+            stp_src = 'playbook'
+        else:
+            stp_pct = cfg_stp
+    else:
+        tgt_pct = cfg_tgt
+        stp_pct = cfg_stp
 
     profit_target = round(price * (1 + tgt_pct / 100), 2) if price else None
     stop_loss = round(price * (1 - stp_pct / 100), 2) if price else None
     position_id = f"BROWN_{symbol}_{int(time.time())}"
 
     position = {
-        'position_id': position_id,
-        'symbol': symbol,
-        'position_type': position_type,
-        'entry_price': price,
-        'quantity': quantity,
-        'profit_target': profit_target,
-        'profit_target_pct': tgt_pct,
-        'stop_loss': stop_loss,
-        'stop_loss_pct': stp_pct,
-        'entry_time': datetime.now().isoformat(),
-        'entry_time_epoch': time.time(),
-        'unrealized_pnl': 0.0,
-        'entry_order_id': str(order_id) if order_id else None,
+        'position_id':         position_id,
+        'symbol':              symbol,
+        'position_type':       position_type,
+        'entry_price':         price,
+        'quantity':            quantity,
+        'profit_target':       profit_target,
+        'profit_target_pct':   tgt_pct,
+        'stop_loss':           stop_loss,
+        'stop_loss_pct':       stp_pct,
+        'entry_time':          datetime.now().isoformat(),
+        'entry_time_epoch':    time.time(),
+        'unrealized_pnl':      0.0,
+        'entry_order_id':      str(order_id) if order_id else None,
+        'playbook_bias':       playbook_bias,
+        'playbook_stop_pct':   stp_pct if playbook_override else None,
+        'playbook_target_pct': tgt_pct if playbook_override else None,
+        'playbook_summary':    playbook_summary,
     }
     with _brown_bot_lock:
         _brown_bot_active_positions[position_id] = position
@@ -3120,7 +3274,8 @@ def _brown_enter_position(symbol, position_type, config, approx_price):
     _add_brown_log(
         'info',
         f"ENTERED {position_type.upper()} {symbol} {times_str} ~${price:.2f} | "
-        f"target ${profit_target} (+{tgt_pct}%) | stop ${stop_loss} (-{stp_pct}%)"
+        f"target ${profit_target} (+{tgt_pct}%, {tgt_src}) | stop ${stop_loss} (-{stp_pct}%, {stp_src})"
+        + (f' | playbook bias={playbook_bias}' if playbook_bias else '')
     )
 
 
@@ -3245,6 +3400,41 @@ def _brown_bot_scan_and_enter():
         if sig_checks:
             _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}')
 
+        # Playbook gate — AI analysis of 5-yr gap history for this symbol.
+        # Short/High-confidence bias means it historically gaps and reverses — skip.
+        # If the playbook isn't ready yet, defer to the next scan cycle.
+        playbook_override = None
+        if AI_AGENT_AVAILABLE and _gap_up_agent:
+            if symbol in _playbook_cache:
+                pb       = _playbook_cache[symbol]
+                pb_bias  = pb.get('bias', '')
+                pb_conf  = pb.get('bias_confidence', '')
+                if pb_bias == 'Short' and pb_conf == 'High':
+                    _add_brown_log('info',
+                        f'SKIP {symbol} [PLAYBOOK] bias=Short/High — historically bearish after gap')
+                    continue
+                playbook_override = pb
+                _add_brown_log('info',
+                    f'{symbol} playbook ready — bias={pb_bias}/{pb_conf}, using for stop/target')
+            elif symbol in _playbook_pending:
+                _add_brown_log('info',
+                    f'DEFER {symbol}: playbook fetch in progress — will retry next scan cycle')
+                continue
+            elif symbol not in _playbook_failed:
+                # First encounter — kick off background fetch and defer entry
+                _playbook_pending.add(symbol)
+                _pb_thread = threading.Thread(
+                    target=_fetch_and_cache_playbook,
+                    args=(symbol, {}, {}),
+                    daemon=True,
+                    name=f'Playbook-{symbol}',
+                )
+                _pb_thread.start()
+                _add_brown_log('info',
+                    f'DEFER {symbol}: started playbook fetch — will enter on next scan cycle')
+                continue
+            # else: playbook fetch previously failed → proceed with config defaults
+
         if _brown_risk_manager:
             _rs = _brown_risk_manager.status(active_copy)
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
@@ -3259,7 +3449,7 @@ def _brown_bot_scan_and_enter():
                 f'{symbol} risk OK — daily P&L ${_rs["daily_pnl"]:.0f}, '
                 f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}')
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
-        _brown_enter_position(symbol, 'day', config, s.get('price', 0))
+        _brown_enter_position(symbol, 'day', config, s.get('price', 0), playbook_override=playbook_override)
         # Refresh active state after entry
         with _brown_bot_lock:
             active_symbols.add(symbol)
@@ -3767,6 +3957,9 @@ def start_brown_bot():
             _add_brown_log('warning', f'RiskManager init failed: {e}')
     _brown_entry_counts.clear()
     _brown_attempted_symbols.clear()
+    _playbook_cache.clear()
+    _playbook_pending.clear()
+    _playbook_failed.clear()
     # Always start with a clean slate — positions will be rebuilt from DB + broker check.
     # Without this, in-memory ghosts from a previous stop/start cycle within the same
     # server process inflate the count until the exit loop cleans them up.
