@@ -2502,6 +2502,7 @@
                                             {{ pos.position_type === 'swing' ? 'Swing' : 'Day' }}
                                         </span>
                                         <span v-if="pos._at_breakeven" class="ml-1 text-xs text-amber-400" title="Stop at breakeven">BE</span>
+                                        <span v-if="pos._recovered" class="ml-1 text-xs text-purple-400" title="Recovered from broker — targets estimated from current config">REC</span>
                                     </td>
                                     <td class="px-4 py-3 text-right font-mono text-gray-300">{{ pos.quantity ?? '—' }}</td>
                                     <td class="px-4 py-3 text-right font-mono text-gray-200">${{ pos.entry_price?.toFixed(2) }}</td>

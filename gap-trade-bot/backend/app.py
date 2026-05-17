@@ -3723,14 +3723,22 @@ def start_brown_bot():
         if restored:
             _add_brown_log('info', f'Restored {restored} position(s) from DB — verifying with broker…')
 
-        # Cross-reference with broker: drop anything the broker no longer holds
-        if _brown_bot_active_positions and _brown_broker:
+        # Cross-reference with broker (both directions):
+        # 1. Remove positions we track but broker no longer holds (stale).
+        # 2. Adopt positions broker holds that we lost track of (orphans) —
+        #    e.g. from a DB write failure or server crash after order fill.
+        if _brown_broker:
             try:
-                broker_syms = {p.symbol.upper() for p in _brown_broker.get_positions()}
+                all_broker_pos = _brown_broker.get_positions()
+                broker_pos_map  = {p.symbol.upper(): p for p in all_broker_pos}
+                tracked_syms    = {pos.get('symbol', '').upper()
+                                   for pos in _brown_bot_active_positions.values()}
+
+                # 1 — drop stale (in DB but not in broker)
                 stale = [
                     (pid, pos.get('symbol', ''))
                     for pid, pos in list(_brown_bot_active_positions.items())
-                    if pos.get('symbol', '').upper() not in broker_syms
+                    if pos.get('symbol', '').upper() not in broker_pos_map
                 ]
                 with _brown_bot_lock:
                     for pid, sym in stale:
@@ -3740,10 +3748,44 @@ def start_brown_bot():
                         db_manager.delete_brown_position(pid)
                 if stale:
                     _add_brown_log('info',
-                        f'Startup check: removed {len(stale)} position(s) not found in broker '
+                        f'Startup: removed {len(stale)} position(s) not in broker '
                         f'({", ".join(s for _, s in stale)})')
-                else:
-                    _add_brown_log('info', 'Startup check: all restored positions confirmed in broker')
+
+                # 2 — adopt orphans (in broker but not tracked)
+                config = db_manager.get_brown_bot_config()
+                tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
+                stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
+                adopted = 0
+                for sym_up, bp in broker_pos_map.items():
+                    if sym_up not in tracked_syms:
+                        entry_price = float(bp.avg_entry_price or bp.current_price or 0)
+                        pid = f'BROWN_{sym_up}_{int(time.time())}_{adopted}'
+                        pos = {
+                            'position_id':       pid,
+                            'symbol':            sym_up,
+                            'position_type':     'swing',  # safest assumption for recovered positions
+                            'entry_price':       entry_price,
+                            'quantity':          int(abs(float(bp.qty or 0))),
+                            'profit_target':     round(entry_price * (1 + tgt_pct / 100), 2) if entry_price else None,
+                            'profit_target_pct': tgt_pct,
+                            'stop_loss':         round(entry_price * (1 - stp_pct / 100), 2) if entry_price else None,
+                            'stop_loss_pct':     stp_pct,
+                            'entry_time':        datetime.now().isoformat(),
+                            'entry_time_epoch':  time.time(),
+                            'unrealized_pnl':    float(bp.unrealized_pnl or 0),
+                            '_recovered':        True,
+                        }
+                        with _brown_bot_lock:
+                            _brown_bot_active_positions[pid] = pos
+                            _brown_attempted_symbols.add(sym_up)
+                            _brown_entry_counts[sym_up] = _brown_entry_counts.get(sym_up, 0) + 1
+                        db_manager.save_brown_position(pid, pos)
+                        adopted += 1
+                        _add_brown_log('warning',
+                            f'Adopted orphan position: {sym_up} @ ${entry_price:.2f} '
+                            f'(was in broker but not in DB — targets set from current config)')
+                if not stale and not adopted:
+                    _add_brown_log('info', 'Startup check: all positions confirmed in sync with broker')
             except Exception as _ve:
                 _add_brown_log('warning', f'Broker position verification failed (keeping DB positions): {_ve}')
     except Exception as _e:
