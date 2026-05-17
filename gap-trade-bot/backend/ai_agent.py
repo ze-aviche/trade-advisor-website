@@ -372,7 +372,15 @@ Your sole job is to analyze a stock's multi-year history of gap-up days and prod
 - Exit targets and time-based stops (derived from day-high time distribution)
 - Premarket signals that predict Runner vs Fader (premarket volume thresholds, extension %)
 
-Rules you MUST follow:
+MISSING DATA RULES — strictly follow:
+- "—" in the table means the data point was unavailable for that day. It does NOT mean zero.
+- "0vol" means premarket volume was confirmed as zero (no premarket activity). Treat as a meaningful signal (no PM interest).
+- Never infer a pattern from a column that has many "—" values — instead state that the signal is unreliable due to missing data.
+- Only draw statistical conclusions from rows where the relevant field is present.
+- A row where Runner/Fader is "—" provides no bias information — exclude it from Runner/Fader analysis.
+- When fewer than 5 complete data points exist for a signal, say "insufficient data" rather than inventing a pattern.
+
+Other rules:
 - Base ALL conclusions on the statistical evidence in the data rows provided. Reference specific numbers.
 - Entry, stop, and target must be specific enough for a trader to execute immediately.
 - Never omit the stop loss.
@@ -390,7 +398,14 @@ class GapUpTradeAgent:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY', '')
         self.client  = anthropic.Anthropic(api_key=self.api_key) if self.api_key else None
-        self.model   = 'claude-sonnet-4-6'  # Sonnet for higher-quality pattern analysis
+        self.model   = 'claude-sonnet-4-6'  # Sonnet — higher-quality pattern analysis
+
+    @staticmethod
+    def _fmt(val, width: int) -> str:
+        """Format a value for the table: None → '—', preserve 0 as '0'."""
+        if val is None or val == '':
+            return f'{"—":<{width}}'
+        return f'{str(val):<{width}}'
 
     def _format_rows(self, rows: list) -> str:
         """Convert raw gap-up day rows to a compact text table for the prompt."""
@@ -400,23 +415,62 @@ class GapUpTradeAgent:
         )
         lines = [header, '-' * len(header)]
         for r in rows:
-            pm_vol = r.get('premarket volume') or 0
-            vol_str = f'{pm_vol/1e6:.1f}M' if pm_vol >= 1e6 else f'{pm_vol/1e3:.0f}k' if pm_vol else '—'
+            # Distinguish None (no data → "—") from 0 (confirmed zero volume → "0vol")
+            pm_vol_raw = r.get('premarket volume')
+            if pm_vol_raw is None:
+                vol_str = '—'
+            elif pm_vol_raw == 0:
+                vol_str = '0vol'
+            elif pm_vol_raw >= 1e6:
+                vol_str = f'{pm_vol_raw/1e6:.1f}M'
+            else:
+                vol_str = f'{pm_vol_raw/1e3:.0f}k'
+
             lines.append(
-                f'{str(r.get("date","")):<10} | '
-                f'{str(r.get("pd close","") or r.get("pd close","—")):<7} | '
-                f'{str(r.get("premarket open","") or "—"):<7} | '
-                f'{str(r.get("premarket high","") or "—"):<7} | '
-                f'{str(r.get("premarket high time","") or "—"):<8} | '
+                f'{self._fmt(r.get("date"), 10)} | '
+                f'{self._fmt(r.get("pd close"), 7)} | '
+                f'{self._fmt(r.get("premarket open"), 7)} | '
+                f'{self._fmt(r.get("premarket high"), 7)} | '
+                f'{self._fmt(r.get("premarket high time"), 8)} | '
                 f'{vol_str:<6} | '
-                f'{str(r.get("open","")):<7} | '
-                f'{str(r.get("gap up % at open","")):<5} | '
-                f'{str(r.get("day high","") or r.get("high","")):<7} | '
-                f'{str(r.get("day high time","") or "—"):<9} | '
-                f'{str(r.get("close price","")):<7} | '
-                f'{str(r.get("closing percent","")):<6} | '
-                f'{r.get("Runner/Fader","—")}'
+                f'{self._fmt(r.get("open"), 7)} | '
+                f'{self._fmt(r.get("gap up % at open"), 5)} | '
+                f'{self._fmt(r.get("day high") or r.get("high"), 7)} | '
+                f'{self._fmt(r.get("day high time"), 9)} | '
+                f'{self._fmt(r.get("close price"), 7)} | '
+                f'{self._fmt(r.get("closing percent"), 6)} | '
+                f'{r.get("Runner/Fader") or "—"}'
             )
+        return '\n'.join(lines)
+
+    def _data_quality_summary(self, rows: list) -> str:
+        """
+        Compute per-column completeness so Claude knows which signals are reliable.
+        A field counts as present if it is not None and not empty string.
+        """
+        n = len(rows)
+        if n == 0:
+            return 'No rows.'
+
+        def pct(key):
+            count = sum(1 for r in rows if r.get(key) not in (None, '', 0))
+            return f'{round(count / n * 100)}%'
+
+        rf_complete = sum(1 for r in rows if r.get('Runner/Fader') in ('Runner', 'Fader', 'Neutral'))
+        missing_rf  = n - rf_complete
+
+        lines = [
+            f'Total rows: {n}  |  Rows with valid Runner/Fader outcome: {rf_complete}'
+            + (f'  |  Rows excluded from bias analysis (missing R/F): {missing_rf}' if missing_rf else ''),
+            f'Column completeness (non-null present):',
+            f'  premarket open:      {pct("premarket open")}',
+            f'  premarket high:      {pct("premarket high")}',
+            f'  premarket high time: {pct("premarket high time")}',
+            f'  premarket volume:    {pct("premarket volume")}',
+            f'  day high time:       {pct("day high time")}',
+            f'  closing percent:     {pct("closing percent")}',
+            f'  gap up % at open:    {pct("gap up % at open")}',
+        ]
         return '\n'.join(lines)
 
     def analyze(
@@ -436,7 +490,8 @@ class GapUpTradeAgent:
 
         # Limit to most recent 200 rows (sufficient for pattern detection, avoids huge prompts)
         rows_for_prompt = rows[-200:] if len(rows) > 200 else rows
-        table = self._format_rows(rows_for_prompt)
+        table   = self._format_rows(rows_for_prompt)
+        dq_note = self._data_quality_summary(rows_for_prompt)
 
         etf_data  = sector_perf.get('sector_etf', {})
         spy_data  = sector_perf.get('spy', {})
@@ -450,6 +505,13 @@ class GapUpTradeAgent:
 
         prompt = f"""Analyze ALL {len(rows_for_prompt)} historical gap-up trading days for {ticker.upper()} \
 ({sector_info.get('company_name','')}) and produce a precise intraday trading playbook.
+
+DATA QUALITY NOTE — read before analyzing:
+{dq_note}
+"—" = data unavailable for that day (not zero, not applicable — simply missing).
+"0vol" = confirmed zero premarket volume (no premarket activity; this IS informative).
+Only draw conclusions from columns with high completeness. If a column is below ~40% complete, \
+note the signal as unreliable rather than deriving a pattern from it.
 
 DATA ({stats.get('period','N/A')}, {stats.get('minGap',5)}%+ gaps, {len(rows_for_prompt)} gap-up days shown):
 
@@ -518,17 +580,35 @@ Return ONLY valid JSON (no markdown, no text outside the JSON):
 
         resp = self.client.messages.create(
             model=self.model,
-            max_tokens=2000,
+            max_tokens=4096,  # JSON schema is large; 2000 always truncated mid-object
             system=GAP_UP_TRADE_SYSTEM_PROMPT,
             messages=[{'role': 'user', 'content': prompt}],
         )
         raw = resp.content[0].text.strip()
+        logger.debug(f'GapUpTradeAgent raw response ({len(raw)} chars): {raw[:500]}')
 
+        # Strip markdown fences if present
         import re as _re
+        if raw.startswith('```'):
+            raw = _re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = _re.sub(r'\s*```$', '', raw).strip()
+
+        # Extract the outermost JSON object
         m = _re.search(r'\{[\s\S]*\}', raw)
         if not m:
-            raise ValueError(f'GapUpTradeAgent returned no JSON: {raw[:200]}')
-        return json.loads(m.group(0))
+            logger.error(f'GapUpTradeAgent: no JSON object in response: {raw[:300]}')
+            raise ValueError(f'GapUpTradeAgent returned no JSON object')
+
+        json_str = m.group(0)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as exc:
+            logger.error(
+                f'GapUpTradeAgent: JSON parse failed ({exc}). '
+                f'stop_reason={resp.stop_reason} raw_len={len(raw)} '
+                f'json_len={len(json_str)} tail={json_str[-200:]}'
+            )
+            raise
 
 
 # ── Specialized agent: Swing picks ranking ───────────────────────────────────
