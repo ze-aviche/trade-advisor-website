@@ -3257,7 +3257,7 @@
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ position.exit_date || '—' }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap">
                                         <span class="text-xs font-medium px-2 py-0.5 rounded border bg-gray-700 text-gray-300 border-gray-600">
-                                            {{ position.broker || '—' }}
+                                            {{ position.broker || (position.source === 'brownbot' ? 'Alpaca' : position.source === 'das' ? 'DAS' : '—') }}
                                         </span>
                                     </td>
                                 </tr>

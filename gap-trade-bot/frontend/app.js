@@ -725,8 +725,14 @@ const app = createApp({
             sortedPositions() {
                 const { key, dir } = this.positionsSort;
                 const brokerFilter = (this.positionsHistorySource || '').toLowerCase();
+                const effectiveBroker = p => {
+                    if (p.broker) return p.broker.toLowerCase();
+                    if (p.source === 'brownbot') return 'alpaca';
+                    if (p.source === 'das') return 'das';
+                    return (p.source || '').toLowerCase();
+                };
                 const base = brokerFilter
-                    ? this.positions.filter(p => (p.broker || '').toLowerCase().includes(brokerFilter))
+                    ? this.positions.filter(p => effectiveBroker(p).includes(brokerFilter))
                     : this.positions;
                 return [...base].sort((a, b) => {
                     let va = a[key], vb = b[key];
