@@ -752,7 +752,7 @@
                                         <div class="text-sm font-bold" :class="getPriceColor(stock)">${{ stock.price }}</div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm font-bold text-green-400">+{{ stock.gap_percent }}%</div>
+                                        <div class="text-sm font-bold" :class="stock.gap_percent >= 0 ? 'text-green-400' : 'text-red-400'">{{ stock.gap_percent >= 0 ? '+' : '' }}{{ stock.gap_percent }}%</div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-300">{{ formatNumber(stock.volume) }}</div>
@@ -2231,7 +2231,7 @@
                                     <tr v-for="s in brownBotCandidates.scanner" :key="s.ticker"
                                         class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
                                         <td class="px-4 py-2 font-mono font-bold text-white">{{ s.ticker }}</td>
-                                        <td class="px-4 py-2 text-right text-green-400 font-semibold">+{{ s.gap_percent?.toFixed(1) }}%</td>
+                                        <td class="px-4 py-2 text-right font-semibold" :class="s.gap_percent >= 0 ? 'text-green-400' : 'text-red-400'">{{ s.gap_percent >= 0 ? '+' : '' }}{{ s.gap_percent?.toFixed(1) }}%</td>
                                         <td class="px-4 py-2 text-right text-gray-300">${{ s.price?.toFixed(2) }}</td>
                                         <td class="px-4 py-2 text-right text-gray-400">{{ ((s.volume || 0) / 1e6).toFixed(2) }}</td>
                                         <td class="px-4 py-2">
@@ -2828,20 +2828,73 @@
                 </div>
             </div>
 
-            <!-- Positions History Tab -->
-            <div v-if="activeTab === 'positions' && canAccessTab('positions')" class="space-y-6">
-                <!-- Header Section -->
+            <!-- Positions Tab -->
+            <div v-if="activeTab === 'positions' && canAccessTab('positions')" class="space-y-4">
+
+                <!-- ── Open Positions (always visible) ── -->
+                <div class="bg-gray-800 rounded-lg p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-circle text-green-400 text-xs animate-pulse"></i>
+                            <h3 class="text-sm font-semibold text-white uppercase tracking-wide">Open Positions</h3>
+                            <span v-if="openPositions.length" class="bg-green-500/20 text-green-300 border border-green-500/40 text-xs font-medium px-2 py-0.5 rounded-full">{{ openPositions.length }}</span>
+                        </div>
+                        <button @click="loadOpenPositions" :disabled="loading.openPositions"
+                                class="text-gray-400 hover:text-white transition-colors p-1"
+                                title="Refresh open positions">
+                            <i class="fas fa-sync-alt text-sm" :class="loading.openPositions ? 'fa-spin' : ''"></i>
+                        </button>
+                    </div>
+
+                    <!-- Loading -->
+                    <div v-if="loading.openPositions" class="flex items-center gap-2 py-3 text-gray-400 text-sm">
+                        <i class="fas fa-spinner fa-spin text-green-400"></i>
+                        <span>Fetching live positions from broker…</span>
+                    </div>
+
+                    <!-- Empty -->
+                    <p v-else-if="openPositions.length === 0" class="text-gray-500 text-sm py-2">No open positions at broker.</p>
+
+                    <!-- Table -->
+                    <div v-else class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Symbol</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Qty</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Avg Entry</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Current</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Unrealized P&amp;L</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Mkt Value</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">Broker</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-700/60">
+                                <tr v-for="pos in openPositions" :key="pos.symbol" class="hover:bg-gray-700/40 transition-colors">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="text-sm font-semibold text-white">{{ pos.symbol }}</span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ pos.qty }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.avg_entry?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.current_price?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium" :class="pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ pos.unrealized_pnl >= 0 ? '+' : '' }}${{ pos.unrealized_pnl?.toFixed(2) }}
+                                        <span v-if="pos.unrealized_pnl_pct != null" class="text-xs ml-1 opacity-60">({{ pos.unrealized_pnl_pct >= 0 ? '+' : '' }}{{ pos.unrealized_pnl_pct?.toFixed(2) }}%)</span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.market_value?.toFixed(2) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-500">{{ pos.broker }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ── Closed Positions ── -->
                 <div class="bg-gray-800 rounded-lg p-6">
-                    <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center justify-between mb-5">
                         <div>
-                            <h3 class="text-lg font-medium text-white">
-                                {{ positionsStatusFilter === 'open' ? 'Open Positions' : positionsStatusFilter === 'all' ? 'All Positions' : 'Closed Positions' }}
-                            </h3>
-                            <p class="text-xs text-gray-500 mt-0.5">
-                                <span v-if="positionsStatusFilter === 'closed'">One row per round-trip — consolidated across partial fills</span>
-                                <span v-else-if="positionsStatusFilter === 'open'">Live positions from broker</span>
-                                <span v-else>Open (live) + closed (FIFO-matched) positions</span>
-                            </p>
+                            <h3 class="text-sm font-semibold text-white uppercase tracking-wide">Closed Positions</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">One row per round-trip — consolidated across partial fills</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <button @click="downloadPositionsHistoryCSV"
@@ -2850,28 +2903,9 @@
                             </button>
                             <button @click="loadPositionsHistory"
                                     class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                                <i class="fas fa-sync-alt mr-2" :class="loading.positions ? 'fa-spin' : ''"></i>Refresh
                             </button>
                         </div>
-                    </div>
-
-                    <!-- Status pills -->
-                    <div class="flex gap-2 mb-5">
-                        <button @click="setPositionsStatusFilter('closed')"
-                                :class="positionsStatusFilter === 'closed' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600 hover:text-white'"
-                                class="px-4 py-1.5 rounded-full text-xs font-medium border transition-all">
-                            Closed
-                        </button>
-                        <button @click="setPositionsStatusFilter('open')"
-                                :class="positionsStatusFilter === 'open' ? 'bg-green-600 text-white border-green-600' : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600 hover:text-white'"
-                                class="px-4 py-1.5 rounded-full text-xs font-medium border transition-all">
-                            <i class="fas fa-circle text-green-400 text-xs mr-1" :class="positionsStatusFilter === 'open' ? 'text-white' : ''"></i>Open
-                        </button>
-                        <button @click="setPositionsStatusFilter('all')"
-                                :class="positionsStatusFilter === 'all' ? 'bg-purple-600 text-white border-purple-600' : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600 hover:text-white'"
-                                class="px-4 py-1.5 rounded-full text-xs font-medium border transition-all">
-                            All
-                        </button>
                     </div>
 
                     <!-- Summary chips -->
@@ -2897,7 +2931,6 @@
                     <!-- Filters -->
                     <div class="mb-6">
                         <div class="bg-gray-700 rounded-lg p-4 space-y-3">
-                            <!-- Row 1: Ticker + Start Date + End Date -->
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Ticker</label>
@@ -2924,7 +2957,6 @@
                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                 </div>
                             </div>
-                            <!-- Row 2: Type + Source + Clear -->
                             <div class="grid grid-cols-3 gap-3 items-end">
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Type</label>
@@ -2954,70 +2986,18 @@
                         </div>
                     </div>
 
-                    <!-- Open positions section -->
-                    <div v-if="positionsStatusFilter === 'open' || positionsStatusFilter === 'all'" class="mb-6">
-                        <div v-if="loading.openPositions" class="text-center py-6">
-                            <i class="fas fa-spinner fa-spin text-xl text-green-400"></i>
-                            <p class="mt-2 text-gray-400 text-sm">Fetching live positions from broker…</p>
-                        </div>
-                        <div v-else-if="openPositions.length === 0" class="text-center py-6 bg-gray-700/40 rounded-lg">
-                            <i class="fas fa-inbox text-3xl text-gray-500 mb-2"></i>
-                            <p class="text-gray-400 text-sm">No open positions at broker</p>
-                        </div>
-                        <div v-else>
-                            <p v-if="positionsStatusFilter === 'all'" class="text-xs text-green-400 font-medium mb-2 uppercase tracking-wider">Open (live)</p>
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-700">
-                                    <thead class="bg-gray-700">
-                                        <tr>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Symbol</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Qty</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Avg Entry</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Current</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Unrealized P&amp;L</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Market Value</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider whitespace-nowrap">Broker</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-gray-800 divide-y divide-gray-700">
-                                        <tr v-for="pos in openPositions" :key="pos.symbol" class="hover:bg-gray-700/60">
-                                            <td class="px-4 py-3 whitespace-nowrap">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-sm font-medium text-white">{{ pos.symbol }}</span>
-                                                    <span class="px-1.5 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/40">Open</span>
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{{ pos.qty }}</td>
-                                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.avg_entry?.toFixed(2) }}</td>
-                                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.current_price?.toFixed(2) }}</td>
-                                            <td class="px-4 py-3 whitespace-nowrap text-sm font-medium" :class="pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                                {{ pos.unrealized_pnl >= 0 ? '+' : '' }}${{ pos.unrealized_pnl?.toFixed(2) }}
-                                                <span v-if="pos.unrealized_pnl_pct != null" class="text-xs ml-1 opacity-70">({{ pos.unrealized_pnl_pct >= 0 ? '+' : '' }}{{ pos.unrealized_pnl_pct?.toFixed(2) }}%)</span>
-                                            </td>
-                                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-300">${{ pos.market_value?.toFixed(2) }}</td>
-                                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-400">{{ pos.broker }}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Closed positions section -->
-                    <p v-if="positionsStatusFilter === 'all' && positions.length" class="text-xs text-gray-400 font-medium mb-2 uppercase tracking-wider">Closed (historical)</p>
-
-                    <div v-if="positionsStatusFilter !== 'open' && loading.positions" class="text-center py-8">
+                    <div v-if="loading.positions" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Loading positions history...</p>
                     </div>
 
-                    <div v-else-if="positionsStatusFilter !== 'open' && positions.length === 0" class="text-center py-8">
+                    <div v-else-if="positions.length === 0" class="text-center py-8">
                         <i class="fas fa-chart-line text-4xl text-gray-500 mb-4"></i>
                         <p class="text-lg text-gray-400">No closed positions to display</p>
                         <p class="text-sm text-gray-500 mt-2">Positions history will appear here once positions are tracked</p>
                     </div>
 
-                    <div v-if="positionsStatusFilter !== 'open'" class="overflow-x-auto">
+                    <div v-else class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-700">
                             <thead class="bg-gray-700">
                                 <tr>

@@ -1014,8 +1014,9 @@ const app = createApp({
                 } else if (tabName === 'positions') {
                     try {
                         await this.loadPositionSyncStatus();
-                        // If data is already cached, refresh silently in the background
+                        // Load both sections in parallel — open positions always pinned at top
                         this.loadPositionsHistory(this.positions.length > 0);
+                        this.loadOpenPositions();
                         this.startPositionHistoryUpdates();
                         this.stopRealTimeUpdates();
                     } catch (error) {
@@ -3518,23 +3519,10 @@ const app = createApp({
             }
         },
         
-        setPositionsStatusFilter(filter) {
-            this.positionsStatusFilter = filter;
-            if (filter === 'closed') {
-                this.loadPositionsHistory();
-            } else if (filter === 'open') {
-                this.loadOpenPositions();
-            } else {
-                // 'all' — load both in parallel
-                this.loadPositionsHistory(true);
-                this.loadOpenPositions();
-            }
-        },
-
         async loadOpenPositions() {
             this.loading.openPositions = true;
             try {
-                const res  = await fetch('/api/positions/open');
+                const res  = await fetch('/api/positions/open', { headers: this.getAuthHeaders() });
                 const data = await res.json();
                 if (data.success) {
                     this.openPositions = data.data || [];
