@@ -86,6 +86,7 @@ const app = createApp({
                     brownBotConfig: false,
                     brownBotCandidates: false,
                     brownBotSignals: false,
+                    brownBotOrders: false,
                     // Broker loading states
                     brokerSave: false,
                     brokerTest: false,
@@ -384,6 +385,10 @@ const app = createApp({
                 circuit_breaker_open: false,
             },
             brownBotConfigCollapsed: false,
+            brownBotOrdersCollapsed: false,
+            brownBotBrokerOrders: [],
+            brownBotOrdersAfter: '',
+            brownBotOrdersUntil: '',
 
             // Broker connection settings
             supportedBrokers: [],
@@ -1053,6 +1058,7 @@ const app = createApp({
                     this.loadBrownBotCandidates();
                     this.loadBrownBotRiskStatus();
                     this.loadSwingDailyPicks();
+                    this.loadBrownBotBrokerOrders();
                     this.startBrownBotPolling();
                 }
             },
@@ -5978,6 +5984,26 @@ const app = createApp({
                 }
             } catch (error) {
                 console.error('Error loading BrownBot risk status:', error);
+            }
+        },
+
+        async loadBrownBotBrokerOrders() {
+            this.loading.brownBotOrders = true;
+            try {
+                const params = new URLSearchParams({ status: 'filled', limit: 100 });
+                if (this.brownBotOrdersAfter)  params.set('after', this.brownBotOrdersAfter);
+                if (this.brownBotOrdersUntil) params.set('until', this.brownBotOrdersUntil);
+                const response = await axios.get(
+                    `/api/brown-bot/broker-orders?${params}`,
+                    { headers: this.authHeaders() }
+                );
+                if (response.data.success) {
+                    this.brownBotBrokerOrders = response.data.orders || [];
+                }
+            } catch (error) {
+                console.error('Error loading broker orders:', error);
+            } finally {
+                this.loading.brownBotOrders = false;
             }
         },
 

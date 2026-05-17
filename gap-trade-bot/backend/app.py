@@ -3616,6 +3616,31 @@ def get_brown_bot_status():
         # Symbols attempted but not filled (rejected or insufficient BP)
         skipped_symbols = list(_brown_attempted_symbols - set(_brown_entry_counts.keys()))
 
+    # Enrich positions with live broker data — use Alpaca as source of truth
+    # for current_price, unrealized_pnl, and market_value.  When the bot is
+    # running the exit loop refreshes these every 2 s anyway; when stopped,
+    # this call ensures the UI still shows live numbers.
+    if broker and positions_list:
+        try:
+            live_pos_map = {p.symbol.upper(): p for p in broker.get_positions()}
+            enriched = []
+            for pos in positions_list:
+                sym = pos.get('symbol', '').upper()
+                lp  = live_pos_map.get(sym)
+                if lp:
+                    pos = {
+                        **pos,
+                        '_current_price': lp.current_price,
+                        'unrealized_pnl': lp.unrealized_pnl,
+                        'market_value':   lp.market_value,
+                        'quantity':       int(abs(lp.qty)),
+                        '_broker_synced': True,
+                    }
+                enriched.append(pos)
+            positions_list = enriched
+        except Exception as _be:
+            app_logger.debug(f'BrownBot status: broker enrichment skipped: {_be}')
+
     # Pull today's entry/exit counts from DB so stats survive restarts.
     # Use last_trading_date (ET) so trades entered during US market hours
     # are always bucketed to the same date regardless of server UTC offset.
@@ -3653,6 +3678,70 @@ def get_brown_bot_status():
         'entry_counts': entry_counts,
         'skipped_symbols': skipped_symbols,
     })
+
+
+@app.route('/api/brown-bot/broker-orders', methods=['GET'])
+@require_auth
+def get_brown_bot_broker_orders():
+    """Return filled/closed orders directly from the broker (Alpaca).
+
+    Query params:
+        status  – 'filled' (default) | 'all' | 'open'
+        limit   – max orders to return (default 50, max 100)
+        after   – ISO date YYYY-MM-DD lower bound
+        until   – ISO date YYYY-MM-DD upper bound
+        symbols – comma-separated ticker filter, e.g. NVDA,TSLA
+    """
+    broker = _brown_broker or _get_broker()
+    if not broker:
+        return jsonify({'success': False, 'error': 'No broker configured'})
+    if not hasattr(broker, 'get_orders_history'):
+        return jsonify({'success': False, 'error': f'{broker.name} does not support order history API'})
+
+    status  = request.args.get('status', 'filled')
+    limit   = min(int(request.args.get('limit', 50)), 100)
+    after   = request.args.get('after')
+    until   = request.args.get('until')
+    sym_raw = request.args.get('symbols', '')
+    symbols = [s.strip().upper() for s in sym_raw.split(',') if s.strip()] or None
+
+    try:
+        orders = broker.get_orders_history(
+            status=status, limit=limit,
+            after=after, until=until, symbols=symbols,
+        )
+        return jsonify({'success': True, 'orders': orders, 'count': len(orders)})
+    except Exception as e:
+        app_logger.warning(f'broker-orders error: {e}')
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/brown-bot/broker-activities', methods=['GET'])
+@require_auth
+def get_brown_bot_broker_activities():
+    """Return account activities directly from the broker (Alpaca).
+
+    Query params:
+        type  – activity type, default 'FILL'
+        date  – ISO date YYYY-MM-DD (Alpaca UTC day boundary)
+        limit – max results (default 50, max 100)
+    """
+    broker = _brown_broker or _get_broker()
+    if not broker:
+        return jsonify({'success': False, 'error': 'No broker configured'})
+    if not hasattr(broker, 'get_activities'):
+        return jsonify({'success': False, 'error': f'{broker.name} does not support activities API'})
+
+    activity_type = request.args.get('type', 'FILL').upper()
+    date          = request.args.get('date')
+    limit         = min(int(request.args.get('limit', 50)), 100)
+
+    try:
+        activities = broker.get_activities(activity_type=activity_type, date=date, limit=limit)
+        return jsonify({'success': True, 'activities': activities, 'count': len(activities)})
+    except Exception as e:
+        app_logger.warning(f'broker-activities error: {e}')
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/api/brown-bot/start', methods=['POST'])
