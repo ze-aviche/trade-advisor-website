@@ -3530,7 +3530,9 @@ const app = createApp({
             this.loading.openPositions = true;
             try {
                 console.log('🔄 loadOpenPositions: fetching /api/positions/open');
-                const res  = await fetch('/api/positions/open', { headers: this.getAuthHeaders() });
+                const res  = await fetch('/api/positions/open', {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+                });
                 console.log('🔍 loadOpenPositions: HTTP status', res.status);
                 let data;
                 try {
