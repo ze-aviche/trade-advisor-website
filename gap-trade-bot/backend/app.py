@@ -5951,20 +5951,6 @@ def get_monthly_pnl():
             'error': str(e)
         }), 500
 
-@app.route('/api/positions/extended-stats', methods=['GET'])
-def get_extended_stats_route():
-    """Extended trading metrics: profit factor, expectancy, streaks, avg win/loss, etc."""
-    try:
-        from database import db_manager
-        start_date = request.args.get('start_date')
-        end_date   = request.args.get('end_date')
-        data = db_manager.get_extended_stats(start_date=start_date, end_date=end_date)
-        return jsonify({'success': True, 'data': data, 'timestamp': datetime.now().isoformat()})
-    except Exception as e:
-        app_logger.error(f"Error getting extended stats: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/api/positions/open', methods=['GET'])
 @require_auth
 def get_open_positions():
