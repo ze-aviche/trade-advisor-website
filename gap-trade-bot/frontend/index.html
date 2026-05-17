@@ -3085,7 +3085,7 @@
                             <div class="text-xl font-bold text-green-400">
                                 {{ extendedStats.win_count > 0 ? formatCurrency(extendedStats.avg_win) : '—' }}
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Per winning trade</p>
+                            <p class="text-xs text-gray-500 mt-1">{{ extendedStats.win_count }} winning trade{{ extendedStats.win_count !== 1 ? 's' : '' }}</p>
                         </div>
                         <!-- Avg Loss -->
                         <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
@@ -3093,13 +3093,13 @@
                             <div class="text-xl font-bold text-red-400">
                                 {{ extendedStats.loss_count > 0 ? formatCurrency(extendedStats.avg_loss) : '—' }}
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Per losing trade</p>
+                            <p class="text-xs text-gray-500 mt-1">{{ extendedStats.loss_count }} losing trade{{ extendedStats.loss_count !== 1 ? 's' : '' }}</p>
                         </div>
-                        <!-- Win/Loss Ratio -->
+                        <!-- Risk/Reward Ratio -->
                         <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
-                            <p class="text-xs text-gray-400 mb-1">Win/Loss Ratio</p>
+                            <p class="text-xs text-gray-400 mb-1">Risk/Reward</p>
                             <div class="text-xl font-bold" :class="extendedStats.win_loss_ratio >= 1 ? 'text-green-400' : 'text-yellow-400'">
-                                {{ (extendedStats.win_count > 0 && extendedStats.loss_count > 0) ? extendedStats.win_loss_ratio.toFixed(2) : '—' }}
+                                {{ (extendedStats.win_count > 0 && extendedStats.loss_count > 0) ? extendedStats.win_loss_ratio.toFixed(2) + 'R' : '—' }}
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Avg win ÷ avg loss</p>
                         </div>
@@ -3141,22 +3141,26 @@
                                 <span class="text-sm font-bold text-red-400">{{ extendedStats.total_count > 0 ? '-' + formatCurrency(extendedStats.gross_loss) : '—' }}</span>
                             </div>
                         </div>
-                        <!-- Streaks -->
+                        <!-- Streaks & Counts -->
                         <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
-                            <p class="text-xs text-gray-400 font-medium mb-3">Trading Streaks</p>
-                            <div class="flex justify-between items-center mb-3">
-                                <div>
-                                    <p class="text-xs text-gray-400">Max Consecutive Wins</p>
-                                    <p class="text-2xl font-bold text-green-400">{{ extendedStats.max_consecutive_wins }}</p>
-                                </div>
-                                <i class="fas fa-snowflake text-green-400 text-xl opacity-60"></i>
+                            <p class="text-xs text-gray-400 font-medium mb-3">Trading Streaks &amp; Counts</p>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs text-gray-400">Total Winning Trades</span>
+                                <span class="text-sm font-bold text-green-400">{{ extendedStats.win_count }}</span>
                             </div>
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="text-xs text-gray-400">Max Consecutive Losses</p>
-                                    <p class="text-2xl font-bold text-red-400">{{ extendedStats.max_consecutive_losses }}</p>
+                            <div class="flex justify-between items-center mb-3">
+                                <span class="text-xs text-gray-400">Total Losing Trades</span>
+                                <span class="text-sm font-bold text-red-400">{{ extendedStats.loss_count }}</span>
+                            </div>
+                            <div class="border-t border-gray-600 pt-3">
+                                <div class="flex justify-between items-center mb-2">
+                                    <p class="text-xs text-gray-400">Max Consecutive Wins</p>
+                                    <p class="text-sm font-bold text-green-400">{{ extendedStats.max_consecutive_wins }}</p>
                                 </div>
-                                <i class="fas fa-fire text-red-400 text-xl opacity-60"></i>
+                                <div class="flex justify-between items-center">
+                                    <p class="text-xs text-gray-400">Max Consecutive Losses</p>
+                                    <p class="text-sm font-bold text-red-400">{{ extendedStats.max_consecutive_losses }}</p>
+                                </div>
                             </div>
                         </div>
                     </div>
