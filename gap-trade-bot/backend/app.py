@@ -5660,14 +5660,16 @@ def get_extended_stats():
             position_type=position_type, source=source, limit=10_000,
         )
 
+        _empty = {
+            'total_count': 0, 'win_count': 0, 'loss_count': 0, 'breakeven_count': 0,
+            'gross_profit': 0, 'gross_loss': 0, 'profit_factor': 0,
+            'avg_win': 0, 'avg_loss': 0, 'win_loss_ratio': 0, 'avg_pnl': 0,
+            'best_trade': 0, 'best_trade_symbol': '', 'worst_trade': 0, 'worst_trade_symbol': '',
+            'expectancy': 0, 'max_consecutive_wins': 0, 'max_consecutive_losses': 0,
+            'max_drawdown': 0, 'sharpe_ratio': None,
+        }
         if not positions:
-            return jsonify({'success': True, 'data': {
-                'total_count': 0, 'win_count': 0, 'loss_count': 0, 'breakeven_count': 0,
-                'gross_profit': 0, 'gross_loss': 0, 'profit_factor': 0,
-                'avg_win': 0, 'avg_loss': 0, 'win_loss_ratio': 0, 'avg_pnl': 0,
-                'best_trade': 0, 'best_trade_symbol': '', 'worst_trade': 0, 'worst_trade_symbol': '',
-                'expectancy': 0, 'max_consecutive_wins': 0, 'max_consecutive_losses': 0,
-            }})
+            return jsonify({'success': True, 'data': _empty})
 
         pnls   = [p['pnl'] for p in positions]
         wins   = [p for p in positions if p['pnl'] > 0]
@@ -5686,7 +5688,7 @@ def get_extended_stats():
         loss_rate = len(losses) / len(positions)
         expectancy = round((win_rate * avg_win) + (loss_rate * avg_loss), 2)
 
-        # Consecutive streaks — positions are sorted newest-first, so reverse for time order
+        # Consecutive streaks — positions sorted newest-first, reverse for time order
         max_wins = max_losses = cur_wins = cur_losses = 0
         for p in reversed(positions):
             if p['pnl'] > 0:
@@ -5697,6 +5699,33 @@ def get_extended_stats():
                 cur_wins = cur_losses = 0
             max_wins   = max(max_wins,   cur_wins)
             max_losses = max(max_losses, cur_losses)
+
+        # Max Drawdown — peak-to-trough cumulative P&L (chronological order)
+        chron = list(reversed(positions))   # positions list is newest-first
+        cum_pnl = peak = 0.0
+        max_drawdown = 0.0
+        for p in chron:
+            cum_pnl += p['pnl']
+            if cum_pnl > peak:
+                peak = cum_pnl
+            dd = peak - cum_pnl
+            if dd > max_drawdown:
+                max_drawdown = dd
+
+        # Sharpe Ratio — aggregate P&L by trading day, then annualise
+        from collections import defaultdict
+        import math
+        daily = defaultdict(float)
+        for p in chron:
+            daily[p['exit_date']] += p['pnl']
+        daily_vals = list(daily.values())
+        sharpe_ratio = None
+        if len(daily_vals) >= 2:
+            n       = len(daily_vals)
+            mean    = sum(daily_vals) / n
+            std     = math.sqrt(sum((x - mean) ** 2 for x in daily_vals) / (n - 1))
+            if std > 0:
+                sharpe_ratio = round((mean / std) * math.sqrt(252), 2)
 
         return jsonify({'success': True, 'data': {
             'total_count':            len(positions),
@@ -5717,6 +5746,8 @@ def get_extended_stats():
             'expectancy':             expectancy,
             'max_consecutive_wins':   max_wins,
             'max_consecutive_losses': max_losses,
+            'max_drawdown':           round(max_drawdown, 2),
+            'sharpe_ratio':           sharpe_ratio,
         }})
     except Exception as e:
         app_logger.error(f"Error getting extended stats: {e}")

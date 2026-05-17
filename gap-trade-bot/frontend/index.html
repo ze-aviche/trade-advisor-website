@@ -3063,15 +3063,15 @@
                         <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
                             <p class="text-xs text-gray-400 mb-1">Max Drawdown</p>
                             <div class="text-xl font-bold text-red-400">
-                                {{ maxDrawdown !== null ? (maxDrawdown > 0 ? '-' + formatCurrency(maxDrawdown) : '$0.00') : '—' }}
+                                {{ extendedStats.total_count > 0 ? (extendedStats.max_drawdown > 0 ? '-' + formatCurrency(extendedStats.max_drawdown) : '$0.00') : '—' }}
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Peak-to-trough P&L</p>
                         </div>
                         <!-- Sharpe Ratio -->
                         <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
                             <p class="text-xs text-gray-400 mb-1">Sharpe Ratio</p>
-                            <div class="text-xl font-bold" :class="sharpeRatio !== null && sharpeRatio >= 1 ? 'text-green-400' : sharpeRatio !== null && sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'">
-                                {{ sharpeRatio !== null ? sharpeRatio.toFixed(2) : '—' }}
+                            <div class="text-xl font-bold" :class="extendedStats.sharpe_ratio !== null && extendedStats.sharpe_ratio >= 1 ? 'text-green-400' : extendedStats.sharpe_ratio !== null && extendedStats.sharpe_ratio >= 0 ? 'text-yellow-400' : 'text-red-400'">
+                                {{ extendedStats.sharpe_ratio !== null ? extendedStats.sharpe_ratio.toFixed(2) : '—' }}
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Annualised (daily P&L)</p>
                         </div>
@@ -3180,11 +3180,11 @@
                                 <i class="fas fa-chart-line"></i>
                                 <span>Expectancy {{ formatCurrency(extendedStats.expectancy||0) }} per trade — {{ (extendedStats.expectancy||0) >= 0 ? 'positive edge' : 'negative edge' }}.</span>
                             </div>
-                            <div v-if="sharpeRatio != null" :class="sharpeRatio >= 1 ? 'text-green-400' : sharpeRatio >= 0 ? 'text-yellow-400' : 'text-red-400'" class="flex items-center gap-2">
+                            <div v-if="extendedStats.sharpe_ratio != null" :class="extendedStats.sharpe_ratio >= 1 ? 'text-green-400' : extendedStats.sharpe_ratio >= 0 ? 'text-yellow-400' : 'text-red-400'" class="flex items-center gap-2">
                                 <i class="fas fa-award"></i>
-                                <span v-if="sharpeRatio >= 2">Sharpe &gt;2 — outstanding risk-adjusted returns.</span>
-                                <span v-else-if="sharpeRatio >= 1">Sharpe &gt;1 — good risk-adjusted returns.</span>
-                                <span v-else-if="sharpeRatio >= 0">Sharpe between 0–1 — acceptable but could improve.</span>
+                                <span v-if="extendedStats.sharpe_ratio >= 2">Sharpe &gt;2 — outstanding risk-adjusted returns.</span>
+                                <span v-else-if="extendedStats.sharpe_ratio >= 1">Sharpe &gt;1 — good risk-adjusted returns.</span>
+                                <span v-else-if="extendedStats.sharpe_ratio >= 0">Sharpe between 0–1 — acceptable but could improve.</span>
                                 <span v-else>Negative Sharpe — returns don't compensate for volatility.</span>
                             </div>
                         </div>

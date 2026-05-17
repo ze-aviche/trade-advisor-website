@@ -449,6 +449,7 @@ const app = createApp({
                     best_trade: 0, best_trade_symbol: '', worst_trade: 0, worst_trade_symbol: '',
                     avg_pnl: 0, win_count: 0, loss_count: 0, breakeven_count: 0,
                     total_count: 0, expectancy: 0, max_consecutive_wins: 0, max_consecutive_losses: 0,
+                    max_drawdown: 0, sharpe_ratio: null,
                 },
                 statsStartDate: '',
                 statsEndDate: '',
