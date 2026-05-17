@@ -2584,18 +2584,12 @@ const app = createApp({
                 this.loading.stats = true;
                 const qs = this._statsDateQs();
                 try {
-                    const [pnlRes, winRes, posRes] = await Promise.all([
-                        fetch(`/api/positions/total_pnl${qs}`),
-                        fetch(`/api/positions/winrate${qs}`),
-                        fetch(`/api/positions/total_positions${qs}`),
-                    ]);
-                    const [pnlData, winRateData, positionsData] = await Promise.all([
-                        pnlRes.json(), winRes.json(), posRes.json()
-                    ]);
-                    if (pnlData.success && winRateData.success && positionsData.success) {
-                        this.stats.total_pnl        = pnlData.data.total_pnl || 0;
-                        this.stats.win_rate         = winRateData.data.win_rate || 0;
-                        this.stats.total_positions  = positionsData.data.total_positions || 0;
+                    const summaryRes  = await fetch(`/api/positions/summary${qs}`);
+                    const summaryData = await summaryRes.json();
+                    if (summaryData.success) {
+                        this.stats.total_pnl       = summaryData.data.total_pnl       || 0;
+                        this.stats.win_rate        = summaryData.data.win_rate        || 0;
+                        this.stats.total_positions = summaryData.data.total_positions || 0;
                     } else {
                         this.showNotification('Failed to load statistics', 'error');
                     }

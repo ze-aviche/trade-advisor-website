@@ -932,8 +932,8 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 
                 query = '''
-                    SELECT 
-                        COUNT(*) as total_trades,
+                    SELECT
+                        COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN 1 ELSE 0 END), 0) as total_trades,
                         COALESCE(SUM(CASE WHEN side = 'B' THEN quantity ELSE 0 END), 0) as total_buy_quantity,
                         COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN quantity ELSE 0 END), 0) as total_sell_quantity,
                         COALESCE(SUM(CASE WHEN side = 'B' THEN quantity * price ELSE 0 END), 0) as total_buy_value,
@@ -1368,7 +1368,7 @@ class DatabaseManager:
                         COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) as total_profits,
                         COALESCE(SUM(CASE WHEN pnl < 0 THEN pnl ELSE 0 END), 0) as total_losses
                     FROM trades
-                    WHERE pnl != 0
+                    WHERE side IN ('S', 'SS')
                 '''
                 params = []
                 if symbol:

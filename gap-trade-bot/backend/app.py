@@ -5612,101 +5612,49 @@ def get_debug_logs():
         }), 500
 
 # Positions-based API endpoints (replacing trades endpoints)
-@app.route('/api/positions/total_positions', methods=['GET'])
-def get_total_positions():
-    """Get total count of positions"""
+@app.route('/api/positions/summary', methods=['GET'])
+def get_positions_summary():
+    """Return total_positions, total_pnl, and win_rate using the same FIFO-consolidated
+    round-trip logic as the Positions tab, so Stats and Positions always agree."""
     try:
-        from database import db_manager
-        
-        # Get query parameters
-        symbol = request.args.get('symbol')
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        # Get total positions count from database
-        total_count = db_manager.get_total_positions_count(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date
+        symbol        = request.args.get('symbol')
+        start_date    = request.args.get('start_date')
+        end_date      = request.args.get('end_date')
+        position_type = request.args.get('position_type')
+        source        = request.args.get('source')
+
+        positions  = db_manager.get_consolidated_positions(
+            symbol=symbol, start_date=start_date, end_date=end_date,
+            position_type=position_type, source=source, limit=10_000,
         )
-        
+        total_pnl  = sum(p['pnl'] for p in positions)
+        wins       = sum(1 for p in positions if p['pnl'] > 0)
+        total      = len(positions)
         return jsonify({
             'success': True,
             'data': {
-                'total_positions': total_count
+                'total_positions': total,
+                'total_pnl':       round(total_pnl, 2),
+                'win_rate':        round((wins / total * 100), 2) if total else 0,
             },
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
         })
     except Exception as e:
-        app_logger.error(f"Error getting total positions: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        app_logger.error(f"Error getting positions summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Keep old single-stat endpoints as thin shims so nothing else breaks
+@app.route('/api/positions/total_positions', methods=['GET'])
+def get_total_positions():
+    return get_positions_summary()
 
 @app.route('/api/positions/total_pnl', methods=['GET'])
 def get_total_pnl():
-    """Get total P&L from realized positions"""
-    try:
-        from database import db_manager
-        
-        # Get query parameters
-        symbol = request.args.get('symbol')
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        # Get total P&L from database
-        total_pnl = db_manager.get_total_positions_pnl(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'total_pnl': total_pnl
-            },
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        app_logger.error(f"Error getting total P&L: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    return get_positions_summary()
 
 @app.route('/api/positions/winrate', methods=['GET'])
 def get_winrate():
-    """Get win rate from positions"""
-    try:
-        from database import db_manager
-        
-        # Get query parameters
-        symbol = request.args.get('symbol')
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        # Get win rate from database
-        win_rate = db_manager.get_positions_winrate(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'win_rate': win_rate
-            },
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        app_logger.error(f"Error getting win rate: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    return get_positions_summary()
 
 @app.route('/api/positions/daily-pnl', methods=['GET'])
 def get_daily_pnl():
