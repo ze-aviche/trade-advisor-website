@@ -203,19 +203,66 @@ class AlpacaBroker(BrokerBase):
 
     def close_position(self, symbol: str) -> Order:
         self._require_client()
+        import time as _time
+        sym = symbol.upper()
+
+        # Cancel any open orders for this symbol so held_for_orders is freed
+        # before we submit the closing market order. If none exist, this is a no-op.
+        cancelled = self._cancel_open_orders_for(sym)
+        if cancelled:
+            # Give Alpaca a moment to settle the cancellations; without this the
+            # close_position call arrives while shares are still held_for_orders.
+            _time.sleep(1.0)
+
         try:
-            resp = self._client.close_position(symbol.upper())
+            resp = self._client.close_position(sym)
             return Order(
                 order_id  = str(resp.id),
-                symbol    = symbol.upper(),
+                symbol    = sym,
                 side      = OrderSide.SELL,
                 qty       = float(resp.qty),
                 order_type= OrderType.MARKET,
                 status    = _map_order_status(str(resp.status)),
                 raw       = {'id': str(resp.id)},
             )
+        except Exception as first_err:
+            err_str = str(first_err)
+            # If Alpaca still reports held_for_orders, wait a bit longer and retry once.
+            if 'held_for_orders' in err_str or 'insufficient qty' in err_str:
+                logger.warning(f'close_position {sym}: held_for_orders still set — waiting 2 s and retrying')
+                if not cancelled:
+                    # We didn't cancel earlier; try now in case an order appeared
+                    self._cancel_open_orders_for(sym)
+                _time.sleep(2.0)
+                try:
+                    resp = self._client.close_position(sym)
+                    return Order(
+                        order_id  = str(resp.id),
+                        symbol    = sym,
+                        side      = OrderSide.SELL,
+                        qty       = float(resp.qty),
+                        order_type= OrderType.MARKET,
+                        status    = _map_order_status(str(resp.status)),
+                        raw       = {'id': str(resp.id)},
+                    )
+                except Exception as retry_err:
+                    raise BrokerError(f'Alpaca close_position {sym} failed: {retry_err}') from retry_err
+            raise BrokerError(f'Alpaca close_position {sym} failed: {first_err}') from first_err
+
+    def _cancel_open_orders_for(self, symbol: str) -> int:
+        """Cancel all open orders for *symbol*. Returns the number cancelled."""
+        sym = symbol.upper()
+        cancelled = 0
+        try:
+            orders = self.get_orders_history(status='open', symbols=[sym])
+            for order in orders:
+                if order['status'] in ('pending_new', 'new', 'partially_filled', 'accepted', 'held'):
+                    logger.info(f'Cancelling open order {order["order_id"]} for {sym} before close')
+                    if self.cancel_order(order['order_id']):
+                        cancelled += 1
         except Exception as e:
-            raise BrokerError(f'Alpaca close_position {symbol} failed: {e}') from e
+            logger.warning(f'_cancel_open_orders_for {sym}: {e}')
+        return cancelled
 
     # ------------------------------------------------------------------
     # Market data
