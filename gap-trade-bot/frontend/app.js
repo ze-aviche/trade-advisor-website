@@ -231,21 +231,6 @@ const app = createApp({
                     requiredPrice: '',
                     requiredTier: ''
                 },
-
-                chartModal: {
-                    show: false,
-                    symbol: '',
-                    period: '1D',
-                    loading: false,
-                    error: null,
-                    entryPrice: null,
-                    entryTime: null,
-                    exitPrice: null,
-                    exitDate: null,
-                    targetPrice: null,
-                    stopPrice: null,
-                },
-                chartPeriods: ['1D', '5D', '1M', '3M', '1Y'],
                 
                 // Historical data
                 historicalTicker: '',
@@ -1739,16 +1724,14 @@ const app = createApp({
             
         // Force close any stuck modals or overlays
         forceCloseStuckModals() {
-            // Close Vue-managed modals via reactive state (never use DOM .remove() on these)
+            // Close Vue-managed modals via reactive state
             this.showImportModal = false;
             if (this.upgradeModal) this.upgradeModal.show = false;
-            if (this.chartModal) this.chartModal.show = false;
 
-            // Remove only actual stuck loading overlays (not Vue-managed modals)
-            const stuckOverlays = document.querySelectorAll('.loading-overlay, .modal-overlay');
-            stuckOverlays.forEach(overlay => overlay.remove());
+            // Remove only actual stuck loading overlays — never use .remove() on app modals
+            document.querySelectorAll('.loading-overlay, .modal-overlay').forEach(el => el.remove());
 
-            // Ensure body is not blocked
+            // Ensure body scroll is not blocked
             document.body.style.overflow = 'auto';
             document.body.style.pointerEvents = 'auto';
         },
@@ -5155,151 +5138,6 @@ const app = createApp({
             this.loadSwingData();
         },
 
-        // ── Candlestick Chart Modal ──────────────────────────────────────────
-
-        openChart(symbol, opts = {}) {
-            const posType = opts.positionType || 'swing';
-            // Day trades default to intraday (1D); swing/other default to 1M
-            const defaultPeriod = posType === 'day' ? '1D' : '1M';
-            this.chartModal = {
-                show: true,
-                symbol: symbol.toUpperCase(),
-                period: defaultPeriod,
-                loading: true,
-                error: null,
-                entryPrice:  opts.entryPrice  || null,
-                entryTime:   opts.entryTime   || opts.entryDate || null,
-                exitPrice:   opts.exitPrice   || null,
-                exitDate:    opts.exitDate    || null,
-                targetPrice: opts.targetPrice || null,
-                stopPrice:   opts.stopPrice   || null,
-            };
-            this.$nextTick(() => this._initLwChart());
-        },
-
-        closeChart() {
-            if (this._lwChart) {
-                this._lwChart.remove();
-                this._lwChart = null;
-                this._lwCandles = null;
-                this._lwVolume = null;
-            }
-            this.chartModal.show = false;
-        },
-
-        changeChartPeriod(period) {
-            if (this.chartModal.period === period) return;
-            this.chartModal.period = period;
-            this.chartModal.loading = true;
-            this.chartModal.error = null;
-            this._fetchAndRenderChart();
-        },
-
-        async _initLwChart() {
-            await this.$nextTick();
-            const container = this.$refs.lwChartContainer;
-            if (!container) return;
-
-            if (this._lwChart) { this._lwChart.remove(); }
-
-            this._lwChart = LightweightCharts.createChart(container, {
-                layout: { background: { color: '#111827' }, textColor: '#9CA3AF' },
-                grid:   { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: { borderColor: '#374151' },
-                timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false },
-                width:  container.clientWidth,
-                height: 380,
-            });
-
-            this._lwCandles = this._lwChart.addCandlestickSeries({
-                upColor: '#10B981', downColor: '#EF4444',
-                borderUpColor: '#10B981', borderDownColor: '#EF4444',
-                wickUpColor:   '#10B981', wickDownColor:   '#EF4444',
-            });
-
-            this._lwVolume = this._lwChart.addHistogramSeries({
-                priceFormat:  { type: 'volume' },
-                priceScaleId: 'vol',
-                scaleMargins: { top: 0.82, bottom: 0 },
-            });
-            this._lwChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-
-            // Resize chart when window resizes
-            this._lwResizeObs = new ResizeObserver(() => {
-                if (this._lwChart && container.clientWidth > 0) {
-                    this._lwChart.applyOptions({ width: container.clientWidth });
-                }
-            });
-            this._lwResizeObs.observe(container);
-
-            await this._fetchAndRenderChart();
-        },
-
-        async _fetchAndRenderChart() {
-            try {
-                const resp = await fetch(
-                    `/api/chart/bars?symbol=${this.chartModal.symbol}&period=${this.chartModal.period}`,
-                    { headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` } }
-                );
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Failed to load bars');
-
-                const bars = data.bars || [];
-                if (!bars.length) throw new Error('No data available for this period');
-
-                this._lwCandles.setData(bars.map(b => ({
-                    time: b.time, open: b.open, high: b.high, low: b.low, close: b.close,
-                })));
-                this._lwVolume.setData(bars.map(b => ({
-                    time: b.time, value: b.volume,
-                    color: b.close >= b.open ? '#10B98133' : '#EF444433',
-                })));
-
-                // Price lines for target / stop (active positions)
-                if (this.chartModal.targetPrice) {
-                    this._lwCandles.createPriceLine({ price: this.chartModal.targetPrice, color: '#10B981', lineWidth: 1, lineStyle: 2, title: 'Target' });
-                }
-                if (this.chartModal.stopPrice) {
-                    this._lwCandles.createPriceLine({ price: this.chartModal.stopPrice, color: '#EF4444', lineWidth: 1, lineStyle: 2, title: 'Stop' });
-                }
-
-                // Entry / exit markers
-                const markers = [];
-                const _findTime = (isoOrDate) => {
-                    if (!isoOrDate) return null;
-                    const target = new Date(isoOrDate).getTime() / 1000;
-                    let best = bars[0].time, bestDiff = Infinity;
-                    for (const b of bars) {
-                        const d = Math.abs(b.time - target);
-                        if (d < bestDiff) { bestDiff = d; best = b.time; }
-                    }
-                    return best;
-                };
-                if (this.chartModal.entryPrice) {
-                    const t = _findTime(this.chartModal.entryTime) || bars[0].time;
-                    markers.push({ time: t, position: 'belowBar', color: '#10B981', shape: 'arrowUp', text: `Buy $${this.chartModal.entryPrice.toFixed(2)}` });
-                }
-                if (this.chartModal.exitPrice) {
-                    const t = _findTime(this.chartModal.exitDate) || bars[bars.length - 1].time;
-                    markers.push({ time: t, position: 'aboveBar', color: '#EF4444', shape: 'arrowDown', text: `Sell $${this.chartModal.exitPrice.toFixed(2)}` });
-                }
-                if (markers.length) {
-                    markers.sort((a, b) => a.time - b.time);
-                    this._lwCandles.setMarkers(markers);
-                }
-
-                this._lwChart.timeScale().fitContent();
-                this.chartModal.loading = false;
-                this.chartModal.error   = null;
-            } catch (e) {
-                this.chartModal.error   = e.message;
-                this.chartModal.loading = false;
-            }
-        },
-
-        // ── End Chart Modal methods ──────────────────────────────────────────
-
         // ── End Swing methods ────────────────────────────────────────────────
 
         // Helper method to get color class for pattern types
@@ -5358,6 +5196,7 @@ const app = createApp({
         // Helper method to clear trade history for a specific ticker
         clearTradeHistoryTicker() {
             this.tradeHistoryTicker = '';
+            this.loadTradeHistory();
         },
 
         clearTradeFilters() {
@@ -5366,10 +5205,13 @@ const app = createApp({
             this.tradeHistoryEndDate   = '';
             this.tradeHistoryStyle     = '';
             this.tradeHistoryStatus    = '';
+            this.loadTradeHistory();
         },
-
+        
+        // Helper method to clear positions history for a specific ticker
         clearPositionsHistoryTicker() {
             this.positionsHistoryTicker = '';
+            this.loadPositionsHistory();
         },
         
         clearPositionsFilters() {
@@ -5378,11 +5220,29 @@ const app = createApp({
             this.positionsHistoryTicker    = '';
             this.positionsHistoryType      = '';
             this.positionsHistorySource    = '';
+            this.loadPositionsHistory();
         },
 
         clearDateFilters() {
             this.positionsHistoryStartDate = '';
             this.positionsHistoryEndDate   = '';
+            this.loadPositionsHistory();
+        },
+        
+        // Helper method to handle trade history ticker input changes
+        onTradeHistoryTickerChange() {
+            // Auto-load trade history when ticker is entered
+            if (this.tradeHistoryTicker.trim()) {
+                this.loadTradeHistory();
+            }
+        },
+        
+        // Helper method to handle positions history ticker input changes
+        onPositionsHistoryTickerChange() {
+            // Auto-load positions history when ticker is entered
+            if (this.positionsHistoryTicker.trim()) {
+                this.loadPositionsHistory();
+            }
         },
         
         // Helper method to download trade history as CSV
