@@ -171,17 +171,26 @@ def _ts_is_utc(ts_str: str) -> bool:
 # ── Info endpoint ──────────────────────────────────────────────────────────────
 
 def get_backtest_info() -> dict:
-    with _conn() as conn:
-        row = conn.execute(
-            "SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(*) as total "
-            "FROM gap_data"
-        ).fetchone()
-        distinct_days = conn.execute(
-            "SELECT COUNT(DISTINCT date) FROM gap_data"
-        ).fetchone()[0]
-        distinct_tickers = conn.execute(
-            "SELECT COUNT(DISTINCT ticker) FROM gap_data"
-        ).fetchone()[0]
+    min_date = max_date = None
+    total = distinct_days = distinct_tickers = 0
+
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(*) as total "
+                "FROM gap_data"
+            ).fetchone()
+            min_date        = row['min_date']
+            max_date        = row['max_date']
+            total           = row['total'] or 0
+            distinct_days   = conn.execute(
+                "SELECT COUNT(DISTINCT date) FROM gap_data"
+            ).fetchone()[0] or 0
+            distinct_tickers = conn.execute(
+                "SELECT COUNT(DISTINCT ticker) FROM gap_data"
+            ).fetchone()[0] or 0
+    except Exception:
+        pass  # gap_data table not yet populated on this instance
 
     ohlcv_rows = ohlcv_days = 0
     if os.path.exists(OHLCV_DB_PATH):
@@ -193,9 +202,9 @@ def get_backtest_info() -> dict:
             pass
 
     return {
-        'min_date':          row['min_date'],
-        'max_date':          row['max_date'],
-        'total_candidates':  row['total'],
+        'min_date':          min_date,
+        'max_date':          max_date,
+        'total_candidates':  total,
         'distinct_days':     distinct_days,
         'distinct_tickers':  distinct_tickers,
         'ohlcv_1m_rows':     ohlcv_rows,
@@ -692,13 +701,16 @@ def _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_fl
     """
     params: list[Any] = [start, end, min_gap, min_price, max_price, min_vol]
 
-    with _conn() as conn:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_data)").fetchall()}
-        if 'float_shares' in cols and max_float > 0:
-            query += " AND (float_shares IS NULL OR float_shares / 1e6 <= ?)"
-            params.append(max_float)
-        query += " ORDER BY date ASC, gap_percentage DESC"
-        return conn.execute(query, params).fetchall()
+    try:
+        with _conn() as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_data)").fetchall()}
+            if 'float_shares' in cols and max_float > 0:
+                query += " AND (float_shares IS NULL OR float_shares / 1e6 <= ?)"
+                params.append(max_float)
+            query += " ORDER BY date ASC, gap_percentage DESC"
+            return conn.execute(query, params).fetchall()
+    except Exception:
+        return []  # gap_data table not populated on this instance
 
 
 def _calc_summary(trades, initial_capital, final_equity, max_dd, daily_returns) -> dict:
