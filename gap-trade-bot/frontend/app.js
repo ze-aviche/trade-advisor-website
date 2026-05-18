@@ -1739,32 +1739,18 @@ const app = createApp({
             
         // Force close any stuck modals or overlays
         forceCloseStuckModals() {
-            console.log('🔧 Force closing any stuck modals...');
-            
-            // Close import modal if stuck
+            // Close Vue-managed modals via reactive state (never use DOM .remove() on these)
             this.showImportModal = false;
-            
-            // Remove any stuck loading overlays from DOM
-            const stuckOverlays = document.querySelectorAll('.loading-overlay, .modal-overlay, [class*="fixed inset-0"]');
-            stuckOverlays.forEach(overlay => {
-                console.log('🗑️ Removing stuck overlay:', overlay);
-                overlay.remove();
-            });
-            
-            // Remove any stuck notifications
-            const stuckNotifications = document.querySelectorAll('[class*="fixed top-0"]');
-            stuckNotifications.forEach(notification => {
-                if (notification.textContent.includes('Loading')) {
-                    console.log('🗑️ Removing stuck notification:', notification);
-                    notification.remove();
-                }
-            });
-            
+            if (this.upgradeModal) this.upgradeModal.show = false;
+            if (this.chartModal) this.chartModal.show = false;
+
+            // Remove only actual stuck loading overlays (not Vue-managed modals)
+            const stuckOverlays = document.querySelectorAll('.loading-overlay, .modal-overlay');
+            stuckOverlays.forEach(overlay => overlay.remove());
+
             // Ensure body is not blocked
             document.body.style.overflow = 'auto';
             document.body.style.pointerEvents = 'auto';
-            
-            console.log('✅ Modal cleanup completed');
         },
         
         // Emergency escape method - can be called from browser console
