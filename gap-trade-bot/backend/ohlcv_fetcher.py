@@ -42,7 +42,7 @@ _lock = threading.Lock()
 
 # All 1-min bar data lives in a dedicated file to avoid locking the main DB.
 # The migration script (backtest/migrate_timescaledb_to_sqlite.py) writes here too.
-OHLCV_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ohlcv_1m.db')
+OHLCV_DB_PATH = os.getenv('OHLCV_DB_PATH') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ohlcv_1m.db')
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────

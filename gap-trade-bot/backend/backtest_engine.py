@@ -37,7 +37,7 @@ ET = pytz.timezone('US/Eastern')
 DB_PATH = os.getenv('DATABASE_PATH') or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'trading_advisor.db'
 )
-OHLCV_DB_PATH = os.path.join(
+OHLCV_DB_PATH = os.getenv('OHLCV_DB_PATH') or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'ohlcv_1m.db'
 )
 
