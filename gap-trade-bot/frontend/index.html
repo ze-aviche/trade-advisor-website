@@ -15,6 +15,8 @@
     
     <!-- Chart.js for charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lightweight Charts for candlestick charting -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     
     <!-- Socket.IO client -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -1700,9 +1702,16 @@
                             <div v-if="pick.watch_for" class="mt-1.5 text-[11px] text-gray-600 truncate">
                                 <i class="fas fa-eye text-[10px] mr-1"></i>{{ pick.watch_for }}
                             </div>
-                            <!-- Click hint -->
-                            <div class="mt-2.5 text-[11px] text-blue-600 group-hover:text-blue-400 transition-colors flex items-center gap-1">
-                                <i class="fas fa-chart-mixed text-[10px]"></i> Load full analysis
+                            <!-- Bottom row: analysis hint + chart button -->
+                            <div class="mt-2.5 flex items-center justify-between">
+                                <div class="text-[11px] text-blue-600 group-hover:text-blue-400 transition-colors flex items-center gap-1">
+                                    <i class="fas fa-chart-mixed text-[10px]"></i> Load full analysis
+                                </div>
+                                <button @click.stop="openChart(pick.ticker, {positionType: 'swing'})"
+                                        class="text-[11px] text-gray-500 hover:text-emerald-400 transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-gray-700/60"
+                                        title="View chart">
+                                    <i class="fas fa-chart-candlestick text-[10px]"></i> Chart
+                                </button>
                             </div>
                         </button>
                     </div>
@@ -2743,6 +2752,7 @@
                                     <th class="px-4 py-3 text-right">Stop</th>
                                     <th class="px-4 py-3 text-right">Unrealized P&L</th>
                                     <th class="px-4 py-3 text-right hidden sm:table-cell">Held</th>
+                                    <th class="px-4 py-3 text-center w-10"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2771,6 +2781,12 @@
                                     </td>
                                     <td class="px-4 py-3 text-right text-gray-500 text-xs hidden sm:table-cell">
                                         {{ pos.entry_time ? brownBotDaysHeld(pos.entry_time) : '—' }}
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <button @click="openChart(pos.symbol, {positionType: pos.position_type, entryPrice: pos.entry_price, entryTime: pos.entry_time, targetPrice: pos.profit_target, stopPrice: pos.stop_loss})"
+                                                class="text-gray-500 hover:text-emerald-400 transition-colors" title="View chart">
+                                            <i class="fas fa-chart-candlestick text-sm"></i>
+                                        </button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -3265,8 +3281,16 @@
                             <tbody class="bg-gray-800 divide-y divide-gray-700">
                                 <tr v-for="position in sortedPositions" :key="position.symbol + '_' + position.exit_date + '_' + position.position_type" class="group hover:bg-gray-700/40 transition-colors">
                                     <td class="sticky left-0 z-10 px-4 py-3 whitespace-nowrap bg-gray-800 group-hover:bg-gray-700/40 border-r border-gray-700">
-                                        <div class="text-sm font-bold text-white">{{ position.symbol }}</div>
-                                        <div class="text-xs text-gray-500 mt-0.5">{{ position.entry_date || '—' }}</div>
+                                        <div class="flex items-center gap-2">
+                                            <div>
+                                                <div class="text-sm font-bold text-white">{{ position.symbol }}</div>
+                                                <div class="text-xs text-gray-500 mt-0.5">{{ position.entry_date || '—' }}</div>
+                                            </div>
+                                            <button @click="openChart(position.symbol, {positionType: position.position_type, entryPrice: position.avg_entry, exitPrice: position.avg_exit, entryDate: position.entry_date, exitDate: position.exit_date})"
+                                                    class="text-gray-600 hover:text-emerald-400 transition-colors flex-shrink-0" title="View chart">
+                                                <i class="fas fa-chart-candlestick text-xs"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm">
                                         <span class="px-2 py-0.5 rounded text-xs font-medium border"
@@ -4869,6 +4893,55 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- ── Candlestick Chart Modal ─────────────────────────────────────── -->
+    <div v-if="chartModal.show" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm px-4"
+         @click.self="closeChart">
+        <div class="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-4xl shadow-2xl flex flex-col" style="max-height:90vh">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-700 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <span class="font-black text-white text-lg font-mono">{{ chartModal.symbol }}</span>
+                    <span v-if="chartModal.entryPrice" class="text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded">
+                        Entry ${{ chartModal.entryPrice?.toFixed(2) }}
+                    </span>
+                    <span v-if="chartModal.exitPrice" class="text-xs text-red-400 bg-red-900/30 px-2 py-0.5 rounded">
+                        Exit ${{ chartModal.exitPrice?.toFixed(2) }}
+                    </span>
+                    <span v-if="chartModal.targetPrice" class="text-xs text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded">
+                        Target ${{ chartModal.targetPrice?.toFixed(2) }}
+                    </span>
+                    <span v-if="chartModal.stopPrice" class="text-xs text-orange-400 bg-orange-900/30 px-2 py-0.5 rounded">
+                        Stop ${{ chartModal.stopPrice?.toFixed(2) }}
+                    </span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <!-- Period buttons -->
+                    <div class="flex gap-1 bg-gray-800 rounded-lg p-1">
+                        <button v-for="p in ['1D','5D','1M','3M','1Y']" :key="p"
+                                @click="changeChartPeriod(p)"
+                                :class="chartModal.period === p ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'"
+                                class="px-2.5 py-1 rounded text-xs font-semibold transition-colors">{{ p }}</button>
+                    </div>
+                    <button @click="closeChart" class="text-gray-500 hover:text-white transition-colors ml-1">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Chart area -->
+            <div class="p-4 flex-1 min-h-0">
+                <div v-if="chartModal.loading" class="flex flex-col items-center justify-center h-72 gap-3">
+                    <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                    <span class="text-gray-500 text-sm">Loading chart data…</span>
+                </div>
+                <div v-else-if="chartModal.error" class="flex flex-col items-center justify-center h-72 gap-2 text-red-400">
+                    <i class="fas fa-exclamation-triangle text-2xl"></i>
+                    <span class="text-sm">{{ chartModal.error }}</span>
+                </div>
+                <div ref="lwChartContainer" style="height:380px" v-show="!chartModal.loading && !chartModal.error"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Upgrade Modal -->
