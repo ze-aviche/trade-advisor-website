@@ -34,3 +34,5 @@ my_notes.md
 postman_collection.json
 *.bak
 *.tmp
+*.db-wal
+*.db-shm

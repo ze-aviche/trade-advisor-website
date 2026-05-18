@@ -488,14 +488,35 @@ const app = createApp({
                 pieChartSymbolLimit: 10, // Number of symbols to show in pie chart
 
                 // Backtest data
+                backtestTradeType: 'day',   // 'day' | 'swing'
                 backtestConfig: {
-                    strategy: 'gap_up',
+                    // ── Shared ──────────────────────────────
                     startDate: '',
                     endDate: '',
                     initialCapital: 100000,
-                    positionSize: 10,
-                    stopLoss: 2.0
+                    minGapPct: 5,
+                    minPrice: 1,
+                    maxPrice: 500,
+                    minVolumeMillion: 1,
+                    // ── Day trade ────────────────────────────
+                    dayPositionSizePct: 10,
+                    dayStopLossPct: 2.0,
+                    dayProfitTargetPct: 4.0,
+                    entryStartTime: '09:35',
+                    entryEndTime: '10:30',
+                    eodExitTime: '15:55',
+                    dayCheckVwap: false,
+                    dayCheckCandle: false,
+                    dayMaxExtensionPct: 0,
+                    dayCheckVolumeSurge: false,
+                    // ── Swing trade ──────────────────────────
+                    swingPositionSizePct: 3,
+                    swingStopLossPct: 7.0,
+                    swingProfitTargetPct: 15.0,
+                    swingMaxHoldDays: 20,
+                    swingMinMarketCapM: 500,
                 },
+                backtestInfo: null,
                 backtestResults: null,
                 equityCurveChart: null
 
@@ -3162,259 +3183,132 @@ const app = createApp({
 
             // Backtest Methods
             async loadBacktestData() {
-                console.log('🧪 Loading backtest data...');
                 this.loading.backtest = true;
-                
                 try {
-                    // Set default dates if not set
-                    if (!this.backtestConfig.startDate) {
-                        const today = new Date();
-                        const thirtyDaysAgo = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
-                        this.backtestConfig.startDate = thirtyDaysAgo.toISOString().split('T')[0];
-                        this.backtestConfig.endDate = today.toISOString().split('T')[0];
+                    const resp = await fetch('/api/backtest/info');
+                    const data = await resp.json();
+                    if (data.success) {
+                        this.backtestInfo = data;
+                        if (!this.backtestConfig.startDate && data.min_date) {
+                            this.backtestConfig.startDate = data.min_date;
+                            this.backtestConfig.endDate   = data.max_date;
+                        }
                     }
-                    
-                    console.log('✅ Backtest configuration loaded');
-                } catch (error) {
-                    console.error('❌ Error loading backtest data:', error);
-                    this.showNotification('Error loading backtest data', 'error');
+                } catch (e) {
+                    console.error('loadBacktestData error', e);
                 } finally {
                     this.loading.backtest = false;
                 }
             },
 
             async runBacktest() {
-                console.log('🧪 Running backtest...');
+                const c = this.backtestConfig;
+                if (!c.startDate || !c.endDate) {
+                    this.showNotification('Please select start and end dates', 'error'); return;
+                }
+                if (c.initialCapital <= 0) {
+                    this.showNotification('Initial capital must be > 0', 'error'); return;
+                }
                 this.loading.runBacktest = true;
-                
+                this.backtestResults = null;
+                const isDay = this.backtestTradeType === 'day';
                 try {
-                    // Validate configuration
-                    if (!this.backtestConfig.startDate || !this.backtestConfig.endDate) {
-                        this.showNotification('Please select start and end dates', 'error');
-                        return;
+                    const payload = {
+                        trade_type:   this.backtestTradeType,
+                        // shared
+                        start_date:        c.startDate,
+                        end_date:          c.endDate,
+                        initial_capital:   c.initialCapital,
+                        min_gap_pct:       c.minGapPct,
+                        min_price:         c.minPrice,
+                        max_price:         c.maxPrice,
+                        min_volume_m:      c.minVolumeMillion,
+                    };
+                    if (isDay) {
+                        Object.assign(payload, {
+                            position_size_pct:       c.dayPositionSizePct,
+                            stop_loss_pct:           c.dayStopLossPct,
+                            profit_target_pct:       c.dayProfitTargetPct,
+                            entry_start_time:        c.entryStartTime,
+                            entry_end_time:          c.entryEndTime,
+                            eod_exit_time:           c.eodExitTime,
+                            day_check_vwap:          c.dayCheckVwap,
+                            day_check_candle:        c.dayCheckCandle,
+                            day_max_extension_pct:   c.dayMaxExtensionPct,
+                            day_check_volume_surge:  c.dayCheckVolumeSurge,
+                        });
+                    } else {
+                        Object.assign(payload, {
+                            swing_position_pct:      c.swingPositionSizePct,
+                            swing_stop_loss_pct:     c.swingStopLossPct,
+                            swing_profit_target_pct: c.swingProfitTargetPct,
+                            swing_max_hold_days:     c.swingMaxHoldDays,
+                            min_market_cap_m:        c.swingMinMarketCapM,
+                        });
                     }
-                    
-                    if (this.backtestConfig.initialCapital <= 0) {
-                        this.showNotification('Initial capital must be greater than 0', 'error');
-                        return;
-                    }
-                    
-                    // Generate mock backtest results for now
-                    const mockResults = this.generateMockBacktestResults();
-                    this.backtestResults = mockResults;
-                    
-                    // Update equity curve chart
-                    this.$nextTick(() => {
-                        this.updateEquityCurveChart();
+                    const resp = await fetch('/api/backtest/run', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.sessionToken}` },
+                        body: JSON.stringify(payload),
                     });
-                    
-                    console.log('✅ Backtest completed successfully');
-                    this.showNotification('Backtest completed successfully', 'success');
-                    
-                } catch (error) {
-                    console.error('❌ Error running backtest:', error);
-                    this.showNotification('Error running backtest', 'error');
+                    const data = await resp.json();
+                    if (!data.success) throw new Error(data.error || 'Backtest failed');
+                    this.backtestResults = { ...data, tradeType: this.backtestTradeType };
+                    this.$nextTick(() => this.updateEquityCurveChart());
+                    this.showNotification(`${isDay ? 'Day' : 'Swing'} backtest complete — ${data.summary.total_trades} trades`, 'success');
+                } catch (e) {
+                    this.showNotification('Backtest error: ' + e.message, 'error');
                 } finally {
                     this.loading.runBacktest = false;
                 }
             },
 
-            generateMockBacktestResults() {
-                console.log('🧪 Generating mock backtest results...');
-                
-                const startDate = new Date(this.backtestConfig.startDate);
-                const endDate = new Date(this.backtestConfig.endDate);
-                const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
-                
-                // Generate mock trades
-                const trades = [];
-                const totalTrades = Math.floor(Math.random() * 20) + 10; // 10-30 trades
-                
-                for (let i = 0; i < totalTrades; i++) {
-                    const tradeDate = new Date(startDate.getTime() + (Math.random() * daysDiff * 24 * 60 * 60 * 1000));
-                    const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'AMZN', 'NVDA', 'META', 'NFLX'];
-                    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
-                    const action = Math.random() > 0.5 ? 'BUY' : 'SELL';
-                    const price = Math.random() * 500 + 50;
-                    const pnl = (Math.random() - 0.4) * 2000; // 60% chance of profit
-                    const returnPercent = (pnl / (price * 100)) * 100;
-                    
-                    trades.push({
-                        id: i + 1,
-                        date: tradeDate.toISOString().split('T')[0],
-                        symbol: symbol,
-                        action: action,
-                        price: price,
-                        pnl: pnl,
-                        returnPercent: returnPercent
-                    });
-                }
-                
-                // Sort trades by date
-                trades.sort((a, b) => new Date(a.date) - new Date(b.date));
-                
-                // Calculate metrics
-                const totalPnl = trades.reduce((sum, trade) => sum + trade.pnl, 0);
-                const winningTrades = trades.filter(trade => trade.pnl > 0);
-                const losingTrades = trades.filter(trade => trade.pnl < 0);
-                const winRate = trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0;
-                const totalReturn = (totalPnl / this.backtestConfig.initialCapital) * 100;
-                const finalCapital = this.backtestConfig.initialCapital + totalPnl;
-                
-                const avgWin = winningTrades.length > 0 ? winningTrades.reduce((sum, trade) => sum + trade.pnl, 0) / winningTrades.length : 0;
-                const avgLoss = losingTrades.length > 0 ? losingTrades.reduce((sum, trade) => sum + trade.pnl, 0) / losingTrades.length : 0;
-                const largestWin = winningTrades.length > 0 ? Math.max(...winningTrades.map(trade => trade.pnl)) : 0;
-                const largestLoss = losingTrades.length > 0 ? Math.min(...losingTrades.map(trade => trade.pnl)) : 0;
-                
-                // Mock risk metrics
-                const maxDrawdown = Math.random() * 15; // 0-15% max drawdown
-                const sharpeRatio = (Math.random() * 2) + 0.5; // 0.5-2.5 Sharpe ratio
-                const profitFactor = (Math.random() * 3) + 0.5; // 0.5-3.5 profit factor
-                
-                return {
-                    totalReturn: totalReturn,
-                    finalCapital: finalCapital,
-                    winRate: winRate,
-                    totalTrades: trades.length,
-                    maxDrawdown: maxDrawdown,
-                    sharpeRatio: sharpeRatio,
-                    profitFactor: profitFactor,
-                    avgWin: avgWin,
-                    avgLoss: avgLoss,
-                    largestWin: largestWin,
-                    largestLoss: largestLoss,
-                    trades: trades,
-                    equityCurve: this.generateEquityCurve(trades, this.backtestConfig.initialCapital)
-                };
-            },
-
-            generateEquityCurve(trades, initialCapital) {
-                const equityCurve = [];
-                let currentCapital = initialCapital;
-                
-                // Sort trades by date
-                const sortedTrades = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date));
-                
-                for (let i = 0; i < sortedTrades.length; i++) {
-                    currentCapital += sortedTrades[i].pnl;
-                    equityCurve.push({
-                        date: sortedTrades[i].date,
-                        equity: currentCapital
-                    });
-                }
-                
-                return equityCurve;
-            },
-
             updateEquityCurveChart() {
-                if (!this.backtestResults || !this.backtestResults.equityCurve) {
-                    console.log('📊 No equity curve data to display');
-                    return;
-                }
-                
+                if (!this.backtestResults?.equity_curve?.length) return;
                 const ctx = document.getElementById('equityCurveChart');
-                if (!ctx) {
-                    console.error('❌ Equity curve chart canvas not found');
-                    return;
-                }
-                
-                // Destroy existing chart if it exists
-                if (this.equityCurveChart) {
-                    this.equityCurveChart.destroy();
-                }
-                
-                // Prepare data for chart
-                const labels = this.backtestResults.equityCurve.map(point => point.date);
-                const data = this.backtestResults.equityCurve.map(point => point.equity);
-                
-                // Create new chart
+                if (!ctx) return;
+                if (this.equityCurveChart) this.equityCurveChart.destroy();
+
+                const curve    = this.backtestResults.equity_curve;
+                const labels   = curve.map(p => p.date);
+                const values   = curve.map(p => p.equity);
+                const initCap  = this.backtestResults.summary.initial_capital;
+                const colors   = values.map(v => v >= initCap ? 'rgba(52,211,153,0.8)' : 'rgba(248,113,113,0.8)');
+
                 this.equityCurveChart = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: labels,
+                        labels,
                         datasets: [{
-                            label: 'Portfolio Value',
-                            data: data,
+                            label: 'Equity',
+                            data: values,
                             borderColor: '#3B82F6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            backgroundColor: 'rgba(59,130,246,0.08)',
                             borderWidth: 2,
                             fill: true,
-                            tension: 0.4,
-                            pointBackgroundColor: '#3B82F6',
-                            pointBorderColor: '#3B82F6',
-                            pointRadius: 3,
-                            pointHoverRadius: 5
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
+                        responsive: true, maintainAspectRatio: false,
                         plugins: {
-                            legend: {
-                                display: false
-                            },
+                            legend: { display: false },
                             tooltip: {
-                                mode: 'index',
-                                intersect: false,
+                                mode: 'index', intersect: false,
                                 callbacks: {
-                                    label: function(context) {
-                                        const value = context.parsed.y;
-                                        return `Portfolio Value: ${new Intl.NumberFormat('en-US', {
-                                            style: 'currency',
-                                            currency: 'USD'
-                                        }).format(value)}`;
-                                    }
+                                    label: ctx => `$${ctx.parsed.y.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0})}`
                                 }
                             }
                         },
                         scales: {
-                            x: {
-                                display: true,
-                                title: {
-                                    display: true,
-                                    text: 'Date',
-                                    color: '#9CA3AF'
-                                },
-                                ticks: {
-                                    color: '#9CA3AF',
-                                    maxRotation: 45
-                                },
-                                grid: {
-                                    color: '#374151'
-                                }
-                            },
-                            y: {
-                                display: true,
-                                title: {
-                                    display: true,
-                                    text: 'Portfolio Value ($)',
-                                    color: '#9CA3AF'
-                                },
-                                ticks: {
-                                    color: '#9CA3AF',
-                                    callback: function(value) {
-                                        return new Intl.NumberFormat('en-US', {
-                                            style: 'currency',
-                                            currency: 'USD',
-                                            minimumFractionDigits: 0,
-                                            maximumFractionDigits: 0
-                                        }).format(value);
-                                    }
-                                },
-                                grid: {
-                                    color: '#374151'
-                                }
-                            }
+                            x: { ticks: { color:'#9CA3AF', maxTicksLimit:12, maxRotation:30 }, grid: { color:'#374151' } },
+                            y: { ticks: { color:'#9CA3AF', callback: v => '$' + (v/1000).toFixed(0)+'k' }, grid: { color:'#374151' } }
                         },
-                        interaction: {
-                            mode: 'nearest',
-                            axis: 'x',
-                            intersect: false
-                        }
+                        interaction: { mode:'nearest', axis:'x', intersect:false }
                     }
                 });
-                
-                console.log('✅ Equity curve chart updated');
             },
 
             

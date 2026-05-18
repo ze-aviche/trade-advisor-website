@@ -3787,6 +3787,40 @@ def _brown_bot_exit_loop():
     _add_brown_log('info', 'BrownBot exit loop stopped')
 
 
+# ── Backtest API endpoints ─────────────────────────────────────────────────
+
+@app.route('/api/backtest/info', methods=['GET'])
+def get_backtest_info():
+    """Return date range and candidate counts available in gap_data."""
+    try:
+        from backtest_engine import get_backtest_info as _info
+        return jsonify({'success': True, **_info()})
+    except Exception as e:
+        app_logger.error(f'[Backtest] info error: {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backtest/run', methods=['POST'])
+@require_auth
+def run_backtest():
+    """Run a gap-up backtest simulation and return trades + stats + equity curve."""
+    try:
+        from backtest_engine import run_backtest as _run
+        cfg = request.get_json(force=True) or {}
+
+        # Basic validation
+        if not cfg.get('start_date') or not cfg.get('end_date'):
+            return jsonify({'success': False, 'error': 'start_date and end_date are required'}), 400
+        if float(cfg.get('initial_capital', 0)) <= 0:
+            return jsonify({'success': False, 'error': 'initial_capital must be > 0'}), 400
+
+        result = _run(cfg)
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        app_logger.error(f'[Backtest] run error: {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ── BrownBot API endpoints ─────────────────────────────────────────────────
 
 @app.route('/api/brown-bot/status', methods=['GET'])
@@ -7720,6 +7754,15 @@ def _start_background_tasks():
             target=_historical_prefetch_daemon, daemon=True, name='HistoricalPrefetch')
         prefetch_thread.start()
         app_logger.info("✅ [HistoricalPrefetch] started — pre-fetches historical data for gap-up tickers every 90s")
+
+        try:
+            from ohlcv_fetcher import ohlcv_daemon
+            ohlcv_thread = threading.Thread(
+                target=ohlcv_daemon, daemon=True, name='OHLCVFetcher')
+            ohlcv_thread.start()
+            app_logger.info("✅ [OHLCVFetcher]       started — backfills gap_data bars, then fetches EOD bars daily at 4:30 PM ET")
+        except Exception as _e:
+            app_logger.warning(f"[OHLCVFetcher] failed to start: {_e}")
 
         app_logger.info("━━━ All background daemon threads launched ━━━")
 

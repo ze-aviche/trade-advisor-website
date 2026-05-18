@@ -25,6 +25,8 @@ polygon_key.txt
 trading_advisor.db
 sessions.json
 users.json
+*.db-wal
+*.db-shm
 
 # Log files
 *.log
