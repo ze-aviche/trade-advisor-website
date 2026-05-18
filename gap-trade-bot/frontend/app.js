@@ -3248,7 +3248,7 @@ const app = createApp({
                     }
                     const resp = await fetch('/api/backtest/run', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.sessionToken}` },
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('session_token')}` },
                         body: JSON.stringify(payload),
                     });
                     const data = await resp.json();
