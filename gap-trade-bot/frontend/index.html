@@ -15,8 +15,8 @@
     
     <!-- Chart.js for charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Lightweight Charts for candlestick charting -->
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Lightweight Charts v4 for candlestick charting (pinned — v5 has incompatible API) -->
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     
     <!-- Socket.IO client -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -812,8 +812,8 @@
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <button @click="loadGapUps" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                            <button @click="loadGapUps" class="bg-blue-600 hover:bg-blue-700 px-2.5 py-2 rounded-md text-sm" title="Refresh">
+                                <i class="fas fa-sync-alt"></i>
                             </button>
                         </div>
                     </div>
@@ -1596,9 +1596,8 @@
                             </template>
                         </div>
                         <button @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
-                            class="text-xs text-gray-400 hover:text-white flex items-center gap-1 disabled:opacity-40 transition-colors">
+                            class="text-xs text-gray-400 hover:text-white disabled:opacity-40 transition-colors" title="Refresh">
                             <i :class="loading.swingDailyPicks ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-right'" class="text-[11px]"></i>
-                            Refresh
                         </button>
                     </div>
 
@@ -1710,7 +1709,7 @@
                                 <button @click.stop="openChart(pick.ticker, {positionType: 'swing'})"
                                         class="text-[11px] text-gray-500 hover:text-emerald-400 transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-gray-700/60"
                                         title="View chart">
-                                    <i class="fas fa-chart-candlestick text-[10px]"></i> Chart
+                                    <i class="fas fa-chart-line text-[10px]"></i> Chart
                                 </button>
                             </div>
                         </button>
@@ -2448,9 +2447,8 @@
                                     Signals
                                 </button>
                                 <button @click="loadBrownBotCandidates" :disabled="loading.brownBotCandidates"
-                                        class="text-xs text-gray-400 hover:text-yellow-400 transition-colors disabled:opacity-50 flex items-center gap-1">
+                                        class="text-xs text-gray-400 hover:text-yellow-400 transition-colors disabled:opacity-50" title="Refresh">
                                     <i :class="loading.brownBotCandidates ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
-                                    Refresh
                                 </button>
                             </div>
                         </div>
@@ -2524,9 +2522,8 @@
                                 </span>
                             </div>
                             <button @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
-                                    class="text-xs text-gray-400 hover:text-blue-400 transition-colors disabled:opacity-50 flex items-center gap-1">
+                                    class="text-xs text-gray-400 hover:text-blue-400 transition-colors disabled:opacity-50" title="Refresh">
                                 <i :class="loading.swingDailyPicks ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
-                                Refresh
                             </button>
                         </div>
                         <!-- No picks state -->
@@ -2602,8 +2599,8 @@
                             <i class="fas fa-shield-alt text-amber-400"></i>
                             Risk Status
                         </div>
-                        <button @click="loadBrownBotRiskStatus" class="text-xs text-gray-400 hover:text-amber-400 transition-colors flex items-center gap-1">
-                            <i class="fas fa-sync-alt"></i> Refresh
+                        <button @click="loadBrownBotRiskStatus" class="text-xs text-gray-400 hover:text-amber-400 transition-colors" title="Refresh">
+                            <i class="fas fa-sync-alt"></i>
                         </button>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-gray-700">
@@ -2731,8 +2728,8 @@
                                 {{ brownBotStatus.active_positions_count || 0 }}
                             </span>
                         </div>
-                        <button @click="loadBrownBotStatus" class="text-xs text-gray-400 hover:text-white transition-colors">
-                            <i class="fas fa-sync-alt mr-1"></i>Refresh
+                        <button @click="loadBrownBotStatus" class="text-xs text-gray-400 hover:text-white transition-colors" title="Refresh">
+                            <i class="fas fa-sync-alt"></i>
                         </button>
                     </div>
                     <div v-if="!brownBotStatus.active_positions?.length" class="px-5 py-8 text-center text-gray-500 text-sm">
@@ -2785,7 +2782,7 @@
                                     <td class="px-4 py-3 text-center">
                                         <button @click="openChart(pos.symbol, {positionType: pos.position_type, entryPrice: pos.entry_price, entryTime: pos.entry_time, targetPrice: pos.profit_target, stopPrice: pos.stop_loss})"
                                                 class="text-gray-500 hover:text-emerald-400 transition-colors" title="View chart">
-                                            <i class="fas fa-chart-candlestick text-sm"></i>
+                                            <i class="fas fa-chart-line text-sm"></i>
                                         </button>
                                     </td>
                                 </tr>
@@ -2798,6 +2795,7 @@
                                         {{ bbTotalUnrealized >= 0 ? '+' : '' }}${{ bbTotalUnrealized.toFixed(2) }}
                                     </td>
                                     <td class="hidden sm:table-cell"></td>
+                                    <td></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -2827,9 +2825,8 @@
                                    @change="loadBrownBotBrokerOrders"
                                    class="hidden sm:block bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-amber-500">
                             <button @click="loadBrownBotBrokerOrders" :disabled="loading.brownBotOrders"
-                                    class="text-xs text-gray-400 hover:text-amber-400 transition-colors disabled:opacity-50 flex items-center gap-1">
+                                    class="text-xs text-gray-400 hover:text-amber-400 transition-colors disabled:opacity-50" title="Refresh">
                                 <i :class="loading.brownBotOrders ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
-                                Refresh
                             </button>
                             <i class="fas fa-chevron-down text-gray-400 text-sm transition-transform duration-200"
                                :style="brownBotOrdersCollapsed ? 'transform:rotate(180deg)' : ''"></i>
@@ -2947,8 +2944,8 @@
                                 <i class="fas fa-download mr-1"></i>CSV
                             </button>
                             <button @click="loadTradeHistory"
-                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2"></i>Refresh
+                                    class="bg-blue-600 hover:bg-blue-700 px-2.5 py-2 rounded-md text-sm" title="Refresh">
+                                <i class="fas fa-sync-alt"></i>
                             </button>
                         </div>
                     </div>
@@ -2965,7 +2962,6 @@
                                     <div class="flex items-center space-x-1">
                                         <input v-model="tradeHistoryTicker"
                                                @keyup.enter="loadTradeHistory"
-                                               @input="onTradeHistoryTickerChange"
                                                placeholder="e.g., AAPL"
                                                class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                         <button @click="clearTradeHistoryTicker"
@@ -2978,18 +2974,16 @@
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Start Date</label>
                                     <input v-model="tradeHistoryStartDate" type="date"
-                                           @change="loadTradeHistory"
-                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none [color-scheme:dark]">
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">End Date</label>
                                     <input v-model="tradeHistoryEndDate" type="date"
-                                           @change="loadTradeHistory"
-                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
+                                           class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none [color-scheme:dark]">
                                 </div>
                             </div>
-                            <!-- Row 2: Style + Status + Clear -->
-                            <div class="grid grid-cols-3 gap-3 items-end">
+                            <!-- Row 2: Style + Status + Clear + Search -->
+                            <div class="grid grid-cols-4 gap-3 items-end">
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Style</label>
                                     <select v-model="tradeHistoryStyle"
@@ -3000,7 +2994,7 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-gray-400 mb-1">Status</label>
+                                    <label class="block text-xs text-gray-400 mb-1">Side</label>
                                     <select v-model="tradeHistoryStatus"
                                             class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                         <option value="">All</option>
@@ -3012,6 +3006,12 @@
                                     <button @click="clearTradeFilters"
                                             class="w-full bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded-md text-sm font-medium text-gray-300">
                                         <i class="fas fa-times mr-1"></i>Clear
+                                    </button>
+                                </div>
+                                <div>
+                                    <button @click="loadTradeHistory"
+                                            class="w-full bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium text-white">
+                                        <i class="fas fa-search mr-1"></i>Search
                                     </button>
                                 </div>
                             </div>
@@ -3164,8 +3164,8 @@
                                 <i class="fas fa-download mr-1"></i>CSV
                             </button>
                             <button @click="loadPositionsHistory"
-                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-sync-alt mr-2" :class="loading.positions ? 'fa-spin' : ''"></i>Refresh
+                                    class="bg-blue-600 hover:bg-blue-700 px-2.5 py-2 rounded-md text-sm" title="Refresh">
+                                <i class="fas fa-sync-alt" :class="loading.positions ? 'fa-spin' : ''"></i>
                             </button>
                         </div>
                     </div>
@@ -3200,7 +3200,6 @@
                                     <div class="flex items-center space-x-1">
                                         <input v-model="positionsHistoryTicker"
                                                @keyup.enter="loadPositionsHistory"
-                                               @input="onPositionsHistoryTickerChange"
                                                placeholder="e.g., NVDA"
                                                class="flex-1 bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                         <button @click="clearPositionsHistoryTicker" v-if="positionsHistoryTicker"
@@ -3211,20 +3210,20 @@
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Exit From</label>
-                                    <input v-model="positionsHistoryStartDate" type="date" @change="loadPositionsHistory"
+                                    <input v-model="positionsHistoryStartDate" type="date"
                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none [color-scheme:dark]">
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Exit To</label>
-                                    <input v-model="positionsHistoryEndDate" type="date" @change="loadPositionsHistory"
+                                    <input v-model="positionsHistoryEndDate" type="date"
                                            class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none [color-scheme:dark]">
                                 </div>
                             </div>
-                            <!-- Row 2: Type + Broker + Clear -->
-                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
+                            <!-- Row 2: Type + Broker + Clear + Search -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                                 <div>
                                     <label class="block text-xs text-gray-400 mb-1">Type</label>
-                                    <select v-model="positionsHistoryType" @change="loadPositionsHistory"
+                                    <select v-model="positionsHistoryType"
                                             class="w-full bg-gray-600 text-white text-sm rounded-md px-3 py-2 border border-gray-500 focus:border-blue-500 focus:outline-none">
                                         <option value="">All Types</option>
                                         <option value="day">Day</option>
@@ -3242,10 +3241,16 @@
                                         <option value="tradier">Tradier</option>
                                     </select>
                                 </div>
-                                <div class="col-span-2 sm:col-span-1">
+                                <div>
                                     <button @click="clearPositionsFilters"
                                             class="w-full bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded-md text-sm font-medium text-gray-300">
-                                        <i class="fas fa-times mr-1"></i>Clear All
+                                        <i class="fas fa-times mr-1"></i>Clear
+                                    </button>
+                                </div>
+                                <div>
+                                    <button @click="loadPositionsHistory"
+                                            class="w-full bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium text-white">
+                                        <i class="fas fa-search mr-1"></i>Search
                                     </button>
                                 </div>
                             </div>
@@ -3288,7 +3293,7 @@
                                             </div>
                                             <button @click="openChart(position.symbol, {positionType: position.position_type, entryPrice: position.avg_entry, exitPrice: position.avg_exit, entryDate: position.entry_date, exitDate: position.exit_date})"
                                                     class="text-gray-600 hover:text-emerald-400 transition-colors flex-shrink-0" title="View chart">
-                                                <i class="fas fa-chart-candlestick text-xs"></i>
+                                                <i class="fas fa-chart-line text-xs"></i>
                                             </button>
                                         </div>
                                     </td>
@@ -3331,8 +3336,8 @@
                         <h3 class="text-xl font-semibold text-white">Trading Statistics</h3>
                         <button @click="loadStats"
                                 :disabled="loading.stats"
-                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                            <i class="fas fa-sync-alt mr-1" :class="loading.stats ? 'fa-spin' : ''"></i>Refresh
+                                class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-2.5 py-2 rounded-md text-sm transition-colors" title="Refresh">
+                            <i class="fas fa-sync-alt" :class="loading.stats ? 'fa-spin' : ''"></i>
                         </button>
                     </div>
 
@@ -3568,7 +3573,7 @@
                                 <button @click="loadDailyPnlData"
                                         :disabled="loading.dailyPnl"
                                         class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                                    <i class="fas fa-sync-alt mr-1" :class="loading.dailyPnl ? 'fa-spin' : ''"></i>Refresh
+                                    <i class="fas fa-sync-alt" :class="loading.dailyPnl ? 'fa-spin' : ''"></i>
                                 </button>
                             </div>
                         </div>
@@ -3619,7 +3624,7 @@
                             <button @click="loadCumulativePnlData"
                                     :disabled="loading.cumulativePnl"
                                     class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors shrink-0">
-                                <i class="fas fa-sync-alt mr-1" :class="loading.cumulativePnl ? 'fa-spin' : ''"></i>Refresh
+                                <i class="fas fa-sync-alt" :class="loading.cumulativePnl ? 'fa-spin' : ''"></i>
                             </button>
                         </div>
                         
@@ -3693,7 +3698,7 @@
                                 <button @click="loadPieChartData"
                                         :disabled="loading.pieCharts"
                                         class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-md text-sm font-medium transition-colors shrink-0">
-                                    <i class="fas fa-sync-alt mr-1" :class="loading.pieCharts ? 'fa-spin' : ''"></i>Refresh
+                                    <i class="fas fa-sync-alt" :class="loading.pieCharts ? 'fa-spin' : ''"></i>
                                 </button>
                             </div>
                         </div>
@@ -4793,8 +4798,8 @@
                                 ({{ filteredAdminUsers.length }}<span v-if="adminSearchQuery"> of {{ adminUsers.length }}</span>)
                             </span>
                         </h3>
-                        <button @click="loadAdminUsers()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm text-gray-300 transition-colors">
-                            <i :class="adminLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-1"></i>Refresh
+                        <button @click="loadAdminUsers()" class="bg-gray-700 hover:bg-gray-600 px-2.5 py-1.5 rounded-lg text-sm text-gray-300 transition-colors" title="Refresh">
+                            <i :class="adminLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
                         </button>
                     </div>
                     <div class="mb-4 relative">
@@ -4933,7 +4938,7 @@
             <div class="p-4 flex-1 min-h-0">
                 <div v-if="chartModal.loading" class="flex flex-col items-center justify-center h-72 gap-3">
                     <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
-                    <span class="text-gray-500 text-sm">Loading chart data…</span>
+                    <span class="text-gray-500 text-sm">Loading chart data...</span>
                 </div>
                 <div v-else-if="chartModal.error" class="flex flex-col items-center justify-center h-72 gap-2 text-red-400">
                     <i class="fas fa-exclamation-triangle text-2xl"></i>

@@ -245,6 +245,7 @@ const app = createApp({
                     targetPrice: null,
                     stopPrice: null,
                 },
+                chartPeriods: ['1D', '5D', '1M', '3M', '1Y'],
                 
                 // Historical data
                 historicalTicker: '',
@@ -5371,7 +5372,6 @@ const app = createApp({
         // Helper method to clear trade history for a specific ticker
         clearTradeHistoryTicker() {
             this.tradeHistoryTicker = '';
-            this.loadTradeHistory();
         },
 
         clearTradeFilters() {
@@ -5380,13 +5380,10 @@ const app = createApp({
             this.tradeHistoryEndDate   = '';
             this.tradeHistoryStyle     = '';
             this.tradeHistoryStatus    = '';
-            this.loadTradeHistory();
         },
-        
-        // Helper method to clear positions history for a specific ticker
+
         clearPositionsHistoryTicker() {
             this.positionsHistoryTicker = '';
-            this.loadPositionsHistory();
         },
         
         clearPositionsFilters() {
@@ -5395,29 +5392,11 @@ const app = createApp({
             this.positionsHistoryTicker    = '';
             this.positionsHistoryType      = '';
             this.positionsHistorySource    = '';
-            this.loadPositionsHistory();
         },
 
         clearDateFilters() {
             this.positionsHistoryStartDate = '';
             this.positionsHistoryEndDate   = '';
-            this.loadPositionsHistory();
-        },
-        
-        // Helper method to handle trade history ticker input changes
-        onTradeHistoryTickerChange() {
-            // Auto-load trade history when ticker is entered
-            if (this.tradeHistoryTicker.trim()) {
-                this.loadTradeHistory();
-            }
-        },
-        
-        // Helper method to handle positions history ticker input changes
-        onPositionsHistoryTickerChange() {
-            // Auto-load positions history when ticker is entered
-            if (this.positionsHistoryTicker.trim()) {
-                this.loadPositionsHistory();
-            }
         },
         
         // Helper method to download trade history as CSV
