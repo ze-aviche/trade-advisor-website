@@ -269,6 +269,7 @@ _brown_bot_stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swin
 _brown_bot_active_positions = {}  # position_id -> position dict
 _brown_entry_counts: dict = {}    # symbol -> successful entries this session (fills only)
 _brown_attempted_symbols: set = set()  # all symbols attempted this session (prevents retry)
+_brown_eod_flattened_symbols: set = set()  # day symbols EOD-flattened today — blocked from re-entry
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_broker = None        # BrokerBase instance held for the bot's lifetime
@@ -3388,12 +3389,18 @@ def _brown_bot_scan_and_enter():
         if symbol in active_symbols:
             _add_brown_log('info', f'SKIP {symbol}: already in active positions')
             continue
+        if symbol in _brown_eod_flattened_symbols:
+            _add_brown_log('info', f'SKIP {symbol}: EOD-flattened earlier today — no re-entry')
+            continue
         if not day_window_open:
             _add_brown_log('info', f'SKIP {symbol}: outside day time gate ({now_et.strftime("%H:%M")} ET, window {_gate_str})')
             continue
-        # Intraday trend signal check
+        # Intraday trend signal check — use live broker quote for current price so
+        # VWAP/extension checks aren't comparing against a stale gap-open price.
+        # gap_price stays as the scanner price (the price at which the gap was detected).
+        live_price = _brown_get_current_price(symbol) or s.get('price', 0)
         sig_ok, sig_checks, sig_reason = _check_day_entry_signal(
-            symbol, s.get('price', 0), s.get('price', 0), config)
+            symbol, live_price, s.get('price', 0), config)
         if not sig_ok:
             _add_brown_log('info', f'SKIP {symbol} [TREND] {sig_reason}')
             continue
@@ -3541,7 +3548,7 @@ def _brown_get_current_price(symbol):
 
 def _brown_close_position(position_id, position, exit_reason):
     """Close a BrownBot position, record the trade, and remove from active positions."""
-    global _brown_bot_active_positions, _brown_bot_stats
+    global _brown_bot_active_positions, _brown_bot_stats, _brown_eod_flattened_symbols
     symbol = position['symbol']
     quantity = int(position.get('quantity', 100))
     current_price = position.get('_current_price') or position.get('entry_price', 0)
@@ -3635,6 +3642,8 @@ def _brown_close_position(position_id, position, exit_reason):
 
     if position_type == 'day':
         _brown_bot_stats['day_exited'] += 1
+        if 'EOD_FLATTEN' in exit_reason:
+            _brown_eod_flattened_symbols.add(symbol)
     else:
         _brown_bot_stats['swing_exited'] += 1
 
@@ -3991,6 +4000,7 @@ def start_brown_bot():
             _add_brown_log('warning', f'RiskManager init failed: {e}')
     _brown_entry_counts.clear()
     _brown_attempted_symbols.clear()
+    _brown_eod_flattened_symbols.clear()
     _playbook_cache.clear()
     _playbook_pending.clear()
     _playbook_failed.clear()
@@ -4089,7 +4099,6 @@ def start_brown_bot():
                             'entry_time':        datetime.now().isoformat(),
                             'entry_time_epoch':  time.time(),
                             'unrealized_pnl':    float(bp.unrealized_pnl or 0),
-                            '_recovered':        True,
                         }
                         with _brown_bot_lock:
                             _brown_bot_active_positions[pid] = pos
