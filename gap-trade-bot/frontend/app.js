@@ -388,6 +388,8 @@ const app = createApp({
             brownBotWatchlistForm: { symbol: '', trade_type: 'day', note: '' },
             brownBotRiskStatus: {
                 daily_pnl: 0,
+                realized_pnl: 0,
+                unrealized_pnl: 0,
                 max_daily_loss: -500,
                 open_day: 0,
                 max_concurrent_day: 3,
@@ -879,7 +881,7 @@ const app = createApp({
                     .reduce((sum, p) => sum + (p.unrealized_pnl || 0), 0);
             },
             bbTotalRealized() {
-                return this.brownBotRiskStatus.daily_pnl || 0;
+                return this.brownBotRiskStatus.realized_pnl || 0;
             },
             bbTotalPnl() {
                 return this.bbTotalRealized + this.bbTotalUnrealized;

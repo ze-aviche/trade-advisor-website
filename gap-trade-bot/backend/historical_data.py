@@ -152,7 +152,7 @@ def count_vwap_crosses(polygon_client, ticker, date):
             prev_close, prev_vwap = curr_close, curr_vwap
             continue
         if (prev_close < prev_vwap and curr_close > curr_vwap) or \
-           (prev_close > prev_vwap and curr_close < prev_vwap):
+           (prev_close > prev_vwap and curr_close < curr_vwap):
             cross_count += 1
         prev_close, prev_vwap = curr_close, curr_vwap
 
