@@ -3787,12 +3787,14 @@ def _brown_rank_swing_ai(candidates):
             f'Swing AI ranked {len(picks)} picks — '
             f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…')
         _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
-        # Persist to DB so the Swing tab picks them up via /api/swing-daily-picks/latest
-        try:
-            db_manager.save_swing_picks(session_key, picks, market_note,
-                                        candidates_scanned=len(candidates))
-        except Exception as _db_err:
-            app_logger.warning(f'BrownBot swing picks DB save failed: {_db_err}')
+        # Only save to DB when picks is non-empty — prevents overwriting good picks
+        # with the empty result from a follow-up scan that excluded already-entered symbols.
+        if picks:
+            try:
+                db_manager.save_swing_picks(session_key, picks, market_note,
+                                            candidates_scanned=len(candidates))
+            except Exception as _db_err:
+                app_logger.warning(f'BrownBot swing picks DB save failed: {_db_err}')
         return picks
     except Exception as e:
         app_logger.warning(f'BrownBot swing AI ranking failed: {e}', exc_info=True)
@@ -4008,6 +4010,10 @@ def _brown_bot_scan_and_enter():
             active_copy = dict(_brown_bot_active_positions)
 
     # ── Process swing candidates from broad-market scan ──────────────────
+    if not _in_market_hours:
+        _add_brown_log('info',
+            f'Outside market hours ({now_et.strftime("%H:%M ET %A")}) — skipping swing entries')
+        return
     if not config.get('swing_trades_enabled', True):
         _add_brown_log('info', 'Swing trades disabled — skipping swing trade entries')
         return
