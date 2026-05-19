@@ -3142,10 +3142,6 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     """Place a BUY order for BrownBot and record the position in memory."""
     global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts, _brown_attempted_symbols, _brown_pending_orders
 
-    # Mark as attempted BEFORE the order — any outcome (fill, rejection, or BP skip)
-    # locks the symbol for this session so the scanner won't retry it.
-    _brown_attempted_symbols.add(symbol)
-
     price = float(approx_price or 0)
     _add_brown_log('info', f'{symbol}: entry started — approx ${price:.2f}, type={position_type}')
     pct_key = 'day_position_pct' if position_type == 'day' else 'swing_position_pct'
@@ -3183,9 +3179,15 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         except Exception:
             pass
         if price <= 0:
+            # Transient price failure — do NOT mark attempted so the next scan can retry.
             _add_brown_log('warning',
-                f'SKIP {symbol}: could not determine current price — cannot size position')
+                f'SKIP {symbol}: could not determine current price — will retry next scan')
             return
+
+    # Mark as attempted now that we have a price and will proceed toward placing an order.
+    # Fills, broker rejections, and insufficient-BP skips all lock the symbol for this
+    # session; a transient price failure (above) does not — it was returned early.
+    _brown_attempted_symbols.add(symbol)
 
     # Fetch account equity to size the position and check buying power.
     try:
