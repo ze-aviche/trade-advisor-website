@@ -4010,20 +4010,19 @@ def _brown_bot_scan_and_enter():
             active_copy = dict(_brown_bot_active_positions)
 
     # ── Process swing candidates from broad-market scan ──────────────────
-    if not _in_market_hours:
-        _add_brown_log('info',
-            f'Outside market hours ({now_et.strftime("%H:%M ET %A")}) — skipping swing entries')
-        return
+    # Steps 1-3 (scan → signal filter → AI ranking) run regardless of market hours
+    # so the BrownBot table and Swing tab always show fresh candidates.
+    # Step 4 (position entry) is gated to market hours only.
+    _swing_entry_allowed = _in_market_hours and config.get('swing_trades_enabled', True)
     if not config.get('swing_trades_enabled', True):
-        _add_brown_log('info', 'Swing trades disabled — skipping swing trade entries')
-        return
+        _add_brown_log('info', 'Swing trades disabled — will scan but not enter')
 
     # Step 1 — Universe scan: Alpaca most-actives + gainers, then
     # price / avg-volume / market-cap / float filters + daily-bar technicals.
     # Results are cached 5 min so the 30-s loop doesn't hammer the API.
     swing_raw = _brown_scan_swing_candidates(config)
     if not swing_raw:
-        _add_brown_log('info', 'Swing scanner: no candidates after filters — skipping swing entries')
+        _add_brown_log('info', 'Swing scanner: no candidates after filters')
         return
 
     # Step 2 — User-configured entry signal filters (optional, all off by default).
@@ -4044,16 +4043,22 @@ def _brown_bot_scan_and_enter():
 
     # Step 3 — AI ranking via SwingPicksAgent (Haiku, Grade A/B + Bullish only).
     # Results cached 15 min; only re-runs when the candidate fingerprint changes.
+    # Always runs so the BrownBot table and Swing tab are populated.
     ai_picks = _brown_rank_swing_ai(signal_passed)
     hot_swing_picks = [
         p for p in ai_picks
         if p.get('grade') in ('A', 'B') and p.get('bias', '').lower() == 'bullish'
     ]
     if not hot_swing_picks:
-        _add_brown_log('info', 'Swing AI: no Grade A/B Bullish picks — skipping swing entries')
+        _add_brown_log('info', 'Swing AI: no Grade A/B Bullish picks')
         return
 
-    # Step 4 — Risk gate + position entry
+    # Step 4 — Risk gate + position entry (market hours only)
+    if not _swing_entry_allowed:
+        _add_brown_log('info',
+            f'Swing scan complete ({len(hot_swing_picks)} picks ready) — '
+            f'entry {"disabled" if not config.get("swing_trades_enabled", True) else "waiting for market open"}')
+        return
     for pick in hot_swing_picks:
         if not _brown_bot_running:
             return

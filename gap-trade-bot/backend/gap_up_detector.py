@@ -876,8 +876,40 @@ def get_gap_up_stocks_for_frontend():
         except Exception as e:
             logger.warning(f"Universe scan supplemental failed: {e}")
 
-    # after_hours: Alpaca still shows today's closing movers (not AH catalysts);
-    # the dedicated AH scan below handles that session — primary_stocks stays empty.
+    elif market_status == 'after_hours':
+        # Load today's full intraday DB snapshot as primary so all 700 intraday
+        # stocks are preserved in the display — the live AH fetch only returns ~50-100.
+        primary_label = 'db_snapshot'
+        try:
+            from database import db_manager as _db_inner
+            _today_ah = dt.now(pytz.timezone('US/Eastern')).date().isoformat()
+            db_snapshot = _db_inner.get_gap_up_snapshot(_today_ah)
+            if db_snapshot:
+                primary_stocks = db_snapshot
+                logger.info(f'AH mode: loaded {len(primary_stocks)} stocks from today\'s DB snapshot')
+        except Exception as e:
+            logger.warning(f'AH mode: DB snapshot load failed: {e}')
+
+        # Supplemental: Alpaca full-universe scan — during AH latestTrade.p is the
+        # AH price, so this catches big AH movers not yet in the intraday DB.
+        try:
+            universe_cached = gap_up_cache.get('gap_up_universe_scan', 'default')
+            if universe_cached is None:
+                universe_stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
+                gap_up_cache.set('gap_up_universe_scan', universe_stocks, 'default')
+            else:
+                universe_stocks = universe_cached
+            seen_primary = {s['ticker'] for s in primary_stocks}
+            added_u = 0
+            for s in universe_stocks:
+                if s['ticker'] not in seen_primary:
+                    primary_stocks.append(s)
+                    seen_primary.add(s['ticker'])
+                    added_u += 1
+            if added_u:
+                logger.info(f'AH universe scan supplemental: added {added_u} new tickers')
+        except Exception as e:
+            logger.warning(f'AH universe scan supplemental failed: {e}')
 
     # ── Day gainers: metadata enrichment + missed tickers ────────────────────
     yf_stocks = []
@@ -928,10 +960,38 @@ def get_gap_up_stocks_for_frontend():
             yf_ah = _fetch_afterhours_from_yfinance(GAP_UP_MIN_PRICE)
         except Exception as e:
             logger.warning(f"yfinance AH scan unavailable: {e}")
+        _et_ah   = pytz.timezone('US/Eastern')
+        _today_s = dt.now(_et_ah).date().isoformat()
+        merged_map = {s['ticker']: s for s in merged}
+        ah_new = 0
+        ah_updated = 0
         for s in yf_ah:
-            if s['ticker'] not in seen:
+            ticker = s['ticker']
+            if ticker not in seen:
+                # Genuinely new AH mover — add fresh, will be tagged 'afterhours' below
                 merged.append(s)
-                seen.add(s['ticker'])
+                merged_map[ticker] = s
+                seen.add(ticker)
+                ah_new += 1
+            else:
+                # Already in merged from intraday — update to AH price/gap data and
+                # force session to 'afterhours' so it appears in the AH tab
+                existing = merged_map.get(ticker)
+                if existing:
+                    existing['price']          = s['price']
+                    existing['change']         = s['change']
+                    existing['change_percent'] = s['change_percent']
+                    existing['gap_percent']    = s['gap_percent']
+                    existing['data_source']    = 'yfinance_ah'
+                    existing['session']        = 'afterhours'
+                    # Update tracker so _tag_with_session doesn't revert the tag
+                    _session_tracker[ticker] = {'session': 'afterhours', 'date': _today_s}
+                    ah_updated += 1
+        if yf_ah:
+            logger.info(
+                f'AH scan: {len(yf_ah)} movers '
+                f'({ah_new} new, {ah_updated} intraday updated to afterhours)'
+            )
 
     merged.sort(key=lambda x: x['gap_percent'], reverse=True)
 
