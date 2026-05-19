@@ -299,7 +299,7 @@ def _fetch_from_alpaca(min_price):
     resp = requests.get(
         'https://data.alpaca.markets/v1beta1/screener/stocks/movers',
         headers=headers,
-        params={'top': 500},
+        params={'top': 50},
         timeout=15,
     )
     resp.raise_for_status()

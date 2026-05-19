@@ -8196,7 +8196,7 @@ def swing_technicals(ticker):
             params={'timeframe': '1Day',
                     'start': start_dt.strftime('%Y-%m-%d'),
                     'end':   end_dt.strftime('%Y-%m-%d'),
-                    'limit': 500, 'adjustment': 'raw', 'feed': 'sip'},
+                    'limit': 500, 'adjustment': 'raw', 'feed': 'iex'},
             timeout=10,
         )
         resp.raise_for_status()
