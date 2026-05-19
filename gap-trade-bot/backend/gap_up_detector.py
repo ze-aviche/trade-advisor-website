@@ -690,53 +690,59 @@ def _fetch_afterhours_from_yfinance(min_price):
     return stocks
 
 
+def _apply_fundamentals(stock: dict, data: dict) -> None:
+    """Apply a fetched/cached fundamentals dict to a stock dict in-place."""
+    if data.get('market_cap'):
+        stock['market_cap'] = data['market_cap']
+    if data.get('float_shares'):
+        stock['float_shares'] = data['float_shares']
+    if data.get('company_name') and stock.get('company_name') == stock.get('ticker'):
+        stock['company_name'] = data['company_name']
+    if data.get('sector') and data['sector'] != 'Unknown':
+        stock['sector'] = data['sector']
+
+
 def _enrich_missing_fundamentals(stocks: list) -> None:
     """
-    Fill market_cap, float_shares, company_name, and sector for any stock that
-    still has market_cap == 0 (Alpaca-sourced stocks without fundamental data).
+    Fill market_cap, float_shares, company_name, and sector for Alpaca-sourced
+    stocks that are missing any of these fields.
 
-    Strategy:
-    - Check _fundamentals_cache first — cache hits are free (no network call).
-    - Only call yfinance for tickers not yet in cache; store results in cache
-      so subsequent scans never re-fetch the same ticker.
-    - No hard cap on how many tickers are enriched — cache makes this safe.
-    - Concurrent fetch with ThreadPoolExecutor (max 15 workers, 20 s timeout).
-    - Modifies the list in-place.
+    Cache strategy:
+    - _fundamentals_cache (module-level dict) stores per-ticker results for the
+      process lifetime so yfinance is only called once per ticker per deploy.
+    - Only results with at least one useful field are cached. If yfinance returns
+      nothing (unknown ticker, network error), the ticker is NOT cached so it
+      will be retried on the next scan cycle.
     """
     import yfinance as yf
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    missing = [s for s in stocks if not s.get('market_cap')]
+    def _needs_enrichment(s):
+        return (
+            not s.get('market_cap') or
+            not s.get('float_shares') or
+            s.get('sector') in (None, 'Unknown', '')
+        )
+
+    missing = [s for s in stocks if _needs_enrichment(s)]
     if not missing:
         return
 
-    # Split into cache hits and tickers that need a network fetch
     cache_hits = [s for s in missing if s['ticker'] in _fundamentals_cache]
     need_fetch  = [s for s in missing if s['ticker'] not in _fundamentals_cache]
 
-    # Apply cache hits immediately — no network call needed
     for s in cache_hits:
-        data = _fundamentals_cache[s['ticker']]
-        if data.get('market_cap'):
-            s['market_cap'] = data['market_cap']
-        if data.get('float_shares'):
-            s['float_shares'] = data['float_shares']
-        if data.get('company_name') and s.get('company_name') == s['ticker']:
-            s['company_name'] = data['company_name']
-        if data.get('sector') and s.get('sector') in (None, 'Unknown'):
-            s['sector'] = data['sector']
+        _apply_fundamentals(s, _fundamentals_cache[s['ticker']])
 
     if not need_fetch:
-        logger.info(f'Fundamentals enrichment: {len(cache_hits)} from cache, 0 fetched')
+        logger.info(f'Fundamentals enrichment: {len(cache_hits)} cache hits, 0 fetched')
         return
 
-    def _fetch(stock):
-        ticker = stock['ticker']
+    def _fetch(ticker: str):
         try:
             info = yf.Ticker(ticker).info
-            # yfinance returns a near-empty dict for unknown tickers
-            if not info or info.get('trailingPegRatio') is None and not info.get('marketCap'):
-                return ticker, {}
+            if not info or not isinstance(info, dict):
+                return ticker, None
             return ticker, {
                 'market_cap':   int(info.get('marketCap') or 0),
                 'float_shares': int(info.get('floatShares') or info.get('sharesOutstanding') or 0),
@@ -744,41 +750,40 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
                 'sector':       info.get('sector') or 'Unknown',
             }
         except Exception:
-            return ticker, {}
+            return ticker, None
 
-    info_map = {}
+    info_map: dict = {}
     with ThreadPoolExecutor(max_workers=15) as ex:
-        futures = {ex.submit(_fetch, s): s['ticker'] for s in need_fetch}
+        futures = {ex.submit(_fetch, s['ticker']): s['ticker'] for s in need_fetch}
         for future in as_completed(futures, timeout=25):
             try:
                 ticker, data = future.result()
-                info_map[ticker] = data  # store even if empty — prevents re-fetch
+                info_map[ticker] = data
             except Exception:
                 pass
 
     fetched = enriched = 0
     for s in need_fetch:
         ticker = s['ticker']
-        data = info_map.get(ticker, {})
-        # Cache the result (empty dict = "yfinance has no data for this ticker")
-        _fundamentals_cache[ticker] = data
-        if not data:
-            continue
-        fetched += 1
-        if data.get('market_cap'):
-            s['market_cap'] = data['market_cap']
-            enriched += 1
-        if data.get('float_shares'):
-            s['float_shares'] = data['float_shares']
-        if data.get('company_name') and s.get('company_name') == s['ticker']:
-            s['company_name'] = data['company_name']
-        if data.get('sector') and s.get('sector') in (None, 'Unknown'):
-            s['sector'] = data['sector']
+        data = info_map.get(ticker)   # None = total failure (network/unknown ticker)
+        if data is None:
+            continue  # don't cache — allow retry on next scan
+
+        # Only cache if we got at least one useful field
+        useful = (data.get('market_cap') or data.get('float_shares') or
+                  data.get('sector', 'Unknown') != 'Unknown' or
+                  data.get('company_name', ticker) != ticker)
+        if useful:
+            _fundamentals_cache[ticker] = data
+            fetched += 1
+            if data.get('market_cap') or data.get('float_shares'):
+                enriched += 1
+
+        _apply_fundamentals(s, data)
 
     logger.info(
         f'Fundamentals enrichment: {len(cache_hits)} cache hits, '
-        f'{fetched}/{len(need_fetch)} fetched via yfinance, '
-        f'{enriched} enriched with market cap'
+        f'{fetched}/{len(need_fetch)} fetched, {enriched} enriched'
     )
 
 
