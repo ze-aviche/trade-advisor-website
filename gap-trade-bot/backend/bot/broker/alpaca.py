@@ -251,16 +251,22 @@ class AlpacaBroker(BrokerBase):
 
     def close_all_positions(self) -> list[dict]:
         """Close every open position via Alpaca's bulk endpoint.
-        Returns a list of {symbol, order_id, qty} for each position closed."""
+        Returns a list of {symbol, order_id, qty} for each position closed.
+
+        close_all_positions() returns ClosePositionResponse objects; the
+        actual order details are nested under .order (an Order object).
+        """
         self._require_client()
         try:
-            orders = self._client.close_all_positions(cancel_orders=True)
+            responses = self._client.close_all_positions(cancel_orders=True)
             result = []
-            for o in (orders or []):
+            for r in (responses or []):
+                # ClosePositionResponse has .order (the submitted sell Order)
+                order = getattr(r, 'order', None) or r
                 result.append({
-                    'symbol':   str(o.symbol).upper(),
-                    'order_id': str(o.id),
-                    'qty':      float(o.qty or 0),
+                    'symbol':   str(getattr(order, 'symbol', '') or '').upper(),
+                    'order_id': str(getattr(order, 'id', '') or ''),
+                    'qty':      float(getattr(order, 'qty', 0) or 0),
                 })
             return result
         except Exception as e:
