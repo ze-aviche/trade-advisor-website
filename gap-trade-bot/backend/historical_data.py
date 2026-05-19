@@ -86,26 +86,22 @@ def count_vwap_crosses(polygon_client, ticker, date):
     if not bars:
         return 0
 
-    # Compute session VWAP incrementally, then count crosses
-    vwap_num = vwap_den = 0.0
-    vwaps = []
-    closes = []
-    for b in bars:
-        h, l, c, v = b.get('h', 0), b.get('l', 0), b.get('c', 0), b.get('v', 0)
-        tp = (h + l + c) / 3
-        vwap_num += tp * v
-        vwap_den += v
-        vwaps.append(vwap_num / vwap_den if vwap_den else None)
-        closes.append(c)
-
+    # Alpaca returns vw (bar VWAP) directly — use it the same way the original
+    # Polygon code did: compare each bar's close vs its own bar VWAP.
     cross_count = 0
-    for i in range(1, len(closes)):
-        pv, cv = vwaps[i - 1], vwaps[i]
-        pc, cc = closes[i - 1], closes[i]
-        if None in (pv, cv, pc, cc):
+    prev_close = bars[0].get('c')
+    prev_vwap  = bars[0].get('vw')
+
+    for b in bars[1:]:
+        curr_close = b.get('c')
+        curr_vwap  = b.get('vw')
+        if None in (prev_close, prev_vwap, curr_close, curr_vwap):
+            prev_close, prev_vwap = curr_close, curr_vwap
             continue
-        if (pc < pv and cc > cv) or (pc > pv and cc < pv):
+        if (prev_close < prev_vwap and curr_close > curr_vwap) or \
+           (prev_close > prev_vwap and curr_close < prev_vwap):
             cross_count += 1
+        prev_close, prev_vwap = curr_close, curr_vwap
 
     return cross_count
 
