@@ -331,6 +331,23 @@ class DatabaseManager:
                 ('swing_position_pct',     'REAL DEFAULT 3.0'),
                 ('day_trades_enabled',     'INTEGER DEFAULT 1'),
                 ('swing_trades_enabled',   'INTEGER DEFAULT 1'),
+                # Swing scanner filters
+                ('swing_scan_source',      "TEXT DEFAULT 'both'"),
+                ('swing_scan_top_n',       'INTEGER DEFAULT 30'),
+                ('swing_min_price',        'REAL DEFAULT 5.0'),
+                ('swing_max_price',        'REAL DEFAULT 500.0'),
+                ('swing_min_avg_vol_k',    'REAL DEFAULT 500.0'),
+                ('swing_min_market_cap_m', 'REAL DEFAULT 200.0'),
+                ('swing_max_market_cap_m', 'REAL DEFAULT 0.0'),
+                ('swing_max_float_m',      'REAL DEFAULT 0.0'),
+                # Swing entry signals
+                ('swing_check_above_sma20','INTEGER DEFAULT 0'),
+                ('swing_check_ma_cross',   'INTEGER DEFAULT 0'),
+                ('swing_check_rsi_range',  'INTEGER DEFAULT 0'),
+                ('swing_rsi_min',          'REAL DEFAULT 40.0'),
+                ('swing_rsi_max',          'REAL DEFAULT 70.0'),
+                ('swing_check_rel_vol',    'INTEGER DEFAULT 0'),
+                ('swing_rel_vol_min',      'REAL DEFAULT 1.2'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -2348,6 +2365,16 @@ class DatabaseManager:
             'day_max_extension_pct': 0.0, 'day_check_volume_surge': False,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
+            # Swing scanner filters
+            'swing_scan_source': 'both', 'swing_scan_top_n': 30,
+            'swing_min_price': 5.0, 'swing_max_price': 500.0,
+            'swing_min_avg_vol_k': 500.0,
+            'swing_min_market_cap_m': 200.0, 'swing_max_market_cap_m': 0.0,
+            'swing_max_float_m': 0.0,
+            # Swing entry signals
+            'swing_check_above_sma20': False, 'swing_check_ma_cross': False,
+            'swing_check_rsi_range': False, 'swing_rsi_min': 40.0, 'swing_rsi_max': 70.0,
+            'swing_check_rel_vol': False, 'swing_rel_vol_min': 1.2,
         }
         try:
             with self.get_connection() as conn:
@@ -2367,8 +2394,12 @@ class DatabaseManager:
                     cfg['day_check_vwap'] = bool(cfg.get('day_check_vwap', 0))
                     cfg['day_check_candle'] = bool(cfg.get('day_check_candle', 0))
                     cfg['day_check_volume_surge'] = bool(cfg.get('day_check_volume_surge', 0))
-                    cfg['day_trades_enabled']     = bool(cfg.get('day_trades_enabled', 1))
-                    cfg['swing_trades_enabled']   = bool(cfg.get('swing_trades_enabled', 1))
+                    cfg['day_trades_enabled']       = bool(cfg.get('day_trades_enabled', 1))
+                    cfg['swing_trades_enabled']     = bool(cfg.get('swing_trades_enabled', 1))
+                    cfg['swing_check_above_sma20']  = bool(cfg.get('swing_check_above_sma20', 0))
+                    cfg['swing_check_ma_cross']     = bool(cfg.get('swing_check_ma_cross', 0))
+                    cfg['swing_check_rsi_range']    = bool(cfg.get('swing_check_rsi_range', 0))
+                    cfg['swing_check_rel_vol']      = bool(cfg.get('swing_check_rel_vol', 0))
                     return cfg
         except Exception as e:
             print(f"Database error fetching brown_bot_config: {e}")
@@ -2387,6 +2418,12 @@ class DatabaseManager:
             'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge',
             'day_position_pct', 'swing_position_pct',
             'day_trades_enabled', 'swing_trades_enabled',
+            'swing_scan_source', 'swing_scan_top_n',
+            'swing_min_price', 'swing_max_price', 'swing_min_avg_vol_k',
+            'swing_min_market_cap_m', 'swing_max_market_cap_m', 'swing_max_float_m',
+            'swing_check_above_sma20', 'swing_check_ma_cross',
+            'swing_check_rsi_range', 'swing_rsi_min', 'swing_rsi_max',
+            'swing_check_rel_vol', 'swing_rel_vol_min',
         ]
         try:
             with self.get_connection() as conn:

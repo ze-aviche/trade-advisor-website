@@ -2399,6 +2399,133 @@
                             </div>
                         </div>
 
+                        <!-- Swing Scanner Filters -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-indigo-400"></div>
+                                <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Swing Scanner Filters</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">universe &amp; thresholds</span>
+                            </div>
+                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Scans the broad market (Alpaca most-actives + gainers) instead of gap-ups. Stocks not meeting these thresholds never reach AI ranking.</p>
+                            <!-- Universe source -->
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Universe Source</label>
+                                <select v-model="brownBotConfig.swing_scan_source"
+                                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                                    <option value="both">Most-Actives + Gainers (both)</option>
+                                    <option value="actives">Most-Actives by volume only</option>
+                                    <option value="gainers">Top Gainers only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Top N symbols to pull from screener</label>
+                                <input v-model.number="brownBotConfig.swing_scan_top_n" type="number" step="5" min="10" max="100"
+                                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Min Price ($)</label>
+                                    <input v-model.number="brownBotConfig.swing_min_price" type="number" step="1" min="1"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Price ($)</label>
+                                    <input v-model.number="brownBotConfig.swing_max_price" type="number" step="50" min="10"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Min Avg Daily Volume (K shares)
+                                    <span class="text-gray-600 ml-1">— 20-day average</span>
+                                </label>
+                                <input v-model.number="brownBotConfig.swing_min_avg_vol_k" type="number" step="100" min="0"
+                                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Min Market Cap (M$)
+                                        <span class="text-gray-600">0=off</span></label>
+                                    <input v-model.number="brownBotConfig.swing_min_market_cap_m" type="number" step="50" min="0"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 mb-1">Max Market Cap (M$)
+                                        <span class="text-gray-600">0=off</span></label>
+                                    <input v-model.number="brownBotConfig.swing_max_market_cap_m" type="number" step="500" min="0"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Max Float (M shares)
+                                    <span class="text-gray-600 ml-1">— 0 = off</span>
+                                </label>
+                                <input v-model.number="brownBotConfig.swing_max_float_m" type="number" step="10" min="0"
+                                       placeholder="0 = off"
+                                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
+                            </div>
+                        </div>
+
+                        <!-- Swing Entry Signals -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
+                            <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">
+                                <div class="w-1.5 h-4 rounded-full bg-violet-400"></div>
+                                <span class="text-xs font-bold text-violet-400 uppercase tracking-widest">Swing Entry Signals</span>
+                                <span class="text-gray-600 text-xs font-normal ml-auto">technical gates</span>
+                            </div>
+                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Each enabled filter must pass before a stock reaches AI ranking. All off by default — any combination is valid.</p>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.swing_check_above_sma20" type="checkbox" class="rounded border-gray-600 accent-violet-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">SMA20 — price above 20-day average</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires close > 20-day SMA (uptrend structure)</p>
+                                </div>
+                            </label>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.swing_check_ma_cross" type="checkbox" class="rounded border-gray-600 accent-violet-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">MA CROSS — SMA9 above SMA20</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires 9-day SMA > 20-day SMA (bullish crossover)</p>
+                                </div>
+                            </label>
+                            <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-2">
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.swing_check_rsi_range" type="checkbox" class="rounded border-gray-600 accent-violet-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">RSI14 — in momentum range</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Avoids overbought (&gt;70) and oversold (&lt;40) entries</p>
+                                    </div>
+                                </label>
+                                <div v-if="brownBotConfig.swing_check_rsi_range" class="grid grid-cols-2 gap-2 ml-6">
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">Min RSI</label>
+                                        <input v-model.number="brownBotConfig.swing_rsi_min" type="number" step="5" min="0" max="100"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-violet-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">Max RSI</label>
+                                        <input v-model.number="brownBotConfig.swing_rsi_max" type="number" step="5" min="0" max="100"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-violet-500">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-2">
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.swing_check_rel_vol" type="checkbox" class="rounded border-gray-600 accent-violet-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">REL VOL — relative volume surge</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Today's volume vs 20-day average — filters for unusual interest</p>
+                                    </div>
+                                </label>
+                                <div v-if="brownBotConfig.swing_check_rel_vol" class="flex items-center gap-2 ml-6">
+                                    <input v-model.number="brownBotConfig.swing_rel_vol_min" type="number" step="0.1" min="0.5" max="10"
+                                           class="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-violet-500">
+                                    <span class="text-xs text-gray-500">× minimum</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Portfolio Risk -->
                         <div class="bg-gray-900 rounded-xl border border-gray-700/60 p-4 flex flex-col gap-3">
                             <div class="flex items-center gap-2 pb-2 border-b border-gray-700/60">

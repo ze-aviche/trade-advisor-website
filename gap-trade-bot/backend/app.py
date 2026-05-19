@@ -3366,6 +3366,434 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     )
 
 
+# ── Swing scanner caches ──────────────────────────────────────────────────────
+_swing_candidates_cache = {'ts': 0.0, 'candidates': []}
+_swing_ai_picks_cache   = {'ts': 0.0, 'picks': [], 'fingerprint': ''}
+
+
+def _fetch_swing_universe(config):
+    """
+    Return (symbols: list[str], meta: dict) from Alpaca most-actives + movers.
+    meta[symbol] = {'volume': int, 'price': float, 'chg_pct': float,
+                    'high': float, 'low': float, 'close': float, 'prev_close': float}
+    """
+    import requests as _req
+    ak  = os.environ.get('ALPACA_API_KEY', '')
+    aks = os.environ.get('ALPACA_API_SECRET', '')
+    if not (ak and aks):
+        _add_brown_log('warning', 'Swing scanner: ALPACA_API_KEY/SECRET not set')
+        return [], {}
+
+    headers  = {'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': aks}
+    top_n    = int(config.get('swing_scan_top_n', 30))
+    source   = config.get('swing_scan_source', 'both')
+    meta     = {}
+
+    if source in ('actives', 'both'):
+        try:
+            resp = _req.get(
+                'https://data.alpaca.markets/v1beta1/screener/stocks/most-actives',
+                headers=headers,
+                params={'by': 'volume', 'top': top_n},
+                timeout=10,
+            ).json()
+            for item in (resp.get('most_actives') or []):
+                sym = (item.get('symbol') or '').upper()
+                if not sym:
+                    continue
+                prev = float(item.get('prev_close') or 0)
+                close = float(item.get('close') or 0)
+                meta[sym] = {
+                    'volume':     int(item.get('volume') or 0),
+                    'price':      close or float(item.get('open') or 0),
+                    'chg_pct':    round((close - prev) / prev * 100, 2) if prev > 0 else 0.0,
+                    'high':       float(item.get('high') or 0),
+                    'low':        float(item.get('low') or 0),
+                    'close':      close,
+                    'prev_close': prev,
+                }
+        except Exception as e:
+            app_logger.warning(f'Swing scanner: most-actives fetch failed: {e}')
+
+    if source in ('gainers', 'both'):
+        try:
+            resp = _req.get(
+                'https://data.alpaca.markets/v1beta1/screener/stocks/movers',
+                headers=headers,
+                params={'market_type': 'stocks', 'top': top_n},
+                timeout=10,
+            ).json()
+            for item in (resp.get('gainers') or []):
+                sym = (item.get('symbol') or '').upper()
+                if not sym:
+                    continue
+                m = meta.setdefault(sym, {})
+                m['price']   = m.get('price') or float(item.get('price') or 0)
+                m['chg_pct'] = float(item.get('percent_change') or m.get('chg_pct') or 0)
+                m['volume']  = m.get('volume') or int(item.get('volume') or 0)
+        except Exception as e:
+            app_logger.warning(f'Swing scanner: movers fetch failed: {e}')
+
+    return list(meta.keys()), meta
+
+
+def _fetch_swing_daily_bars(symbols, days=30):
+    """
+    Fetch daily OHLCV bars for up to 100 symbols at a time from Alpaca.
+    Returns {SYMBOL: [bar_dicts]} where bar_dict has keys o, h, l, c, v, t.
+    """
+    if not symbols:
+        return {}
+    import requests as _req
+    ak  = os.environ.get('ALPACA_API_KEY', '')
+    aks = os.environ.get('ALPACA_API_SECRET', '')
+    if not (ak and aks):
+        return {}
+
+    import datetime as _dt_mod
+    headers = {'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': aks}
+    start   = (_dt_mod.datetime.now(_dt_mod.timezone.utc) - _dt_mod.timedelta(days=days + 5)).strftime('%Y-%m-%d')
+    result  = {}
+
+    for i in range(0, len(symbols), 100):
+        batch = symbols[i:i + 100]
+        try:
+            resp = _req.get(
+                'https://data.alpaca.markets/v2/stocks/bars',
+                headers=headers,
+                params={
+                    'symbols':    ','.join(batch),
+                    'timeframe':  '1Day',
+                    'start':      start,
+                    'limit':      1000,
+                    'feed':       'sip',
+                    'adjustment': 'split',
+                },
+                timeout=15,
+            ).json()
+            for sym, bars in (resp.get('bars') or {}).items():
+                if bars:
+                    result[sym.upper()] = bars
+        except Exception as e:
+            app_logger.warning(f'Swing scanner: daily bars batch {i//100+1} failed: {e}')
+
+    return result
+
+
+def _compute_sma(closes, period):
+    """SMA of the last `period` closes. Returns None if insufficient data."""
+    if len(closes) < period:
+        return None
+    return sum(closes[-period:]) / period
+
+
+def _compute_rsi(closes, period=14):
+    """Wilder RSI from a list of closes. Returns None if insufficient data."""
+    if len(closes) < period + 1:
+        return None
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        d = closes[i] - closes[i - 1]
+        gains.append(max(d, 0.0))
+        losses.append(max(-d, 0.0))
+    avg_g = sum(gains[:period]) / period
+    avg_l = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_g = (avg_g * (period - 1) + gains[i]) / period
+        avg_l = (avg_l * (period - 1) + losses[i]) / period
+    if avg_l == 0:
+        return 100.0
+    return round(100 - 100 / (1 + avg_g / avg_l), 1)
+
+
+def _check_swing_entry_signal(symbol, tech, config):
+    """
+    Optional technical signal checks for swing candidates.
+    Returns (enter: bool, checks: list[dict], reason: str).
+    All checks are off by default; any enabled check must pass.
+    tech keys: price, sma9, sma20, rsi, rel_vol
+    """
+    above_sma20_on = bool(config.get('swing_check_above_sma20', False))
+    ma_cross_on    = bool(config.get('swing_check_ma_cross', False))
+    rsi_range_on   = bool(config.get('swing_check_rsi_range', False))
+    rel_vol_on     = bool(config.get('swing_check_rel_vol', False))
+
+    if not (above_sma20_on or ma_cross_on or rsi_range_on or rel_vol_on):
+        return True, [], 'No swing signals enabled'
+
+    price   = float(tech.get('price') or 0)
+    sma9    = tech.get('sma9')
+    sma20   = tech.get('sma20')
+    rsi     = tech.get('rsi')
+    rel_vol = tech.get('rel_vol')
+    checks  = []
+    all_pass = True
+
+    if above_sma20_on:
+        if sma20 is None:
+            passed, detail, value = False, 'SMA20 unavailable (need 20+ daily bars)', '—'
+        else:
+            passed = price > sma20
+            detail = f'${price:.2f} {">" if passed else "≤"} SMA20 ${sma20:.2f}'
+            value  = f'${sma20:.2f}'
+        checks.append({'name': 'above_sma20', 'label': 'Above SMA20',
+                       'passed': passed, 'detail': detail, 'value': value})
+        if not passed:
+            all_pass = False
+
+    if ma_cross_on:
+        if sma9 is None or sma20 is None:
+            passed, detail, value = False, 'SMA data unavailable', '—'
+        else:
+            passed = sma9 > sma20
+            spread = (sma9 - sma20) / sma20 * 100
+            detail = f'SMA9 ${sma9:.2f} {">" if passed else "≤"} SMA20 ${sma20:.2f} ({spread:+.1f}%)'
+            value  = f'{spread:+.1f}%'
+        checks.append({'name': 'ma_cross', 'label': 'SMA9 > SMA20',
+                       'passed': passed, 'detail': detail, 'value': value})
+        if not passed:
+            all_pass = False
+
+    if rsi_range_on:
+        rsi_min = float(config.get('swing_rsi_min', 40.0))
+        rsi_max = float(config.get('swing_rsi_max', 70.0))
+        if rsi is None:
+            passed, detail, value = False, 'RSI unavailable (need 15+ daily bars)', '—'
+        else:
+            passed = rsi_min <= rsi <= rsi_max
+            detail = f'RSI {rsi:.1f} (range {rsi_min:.0f}–{rsi_max:.0f})'
+            value  = f'{rsi:.1f}'
+        checks.append({'name': 'rsi', 'label': f'RSI {rsi_min:.0f}–{rsi_max:.0f}',
+                       'passed': passed, 'detail': detail, 'value': value})
+        if not passed:
+            all_pass = False
+
+    if rel_vol_on:
+        rv_min = float(config.get('swing_rel_vol_min', 1.2))
+        if rel_vol is None:
+            passed, detail, value = False, 'RelVol unavailable', '—'
+        else:
+            passed = rel_vol >= rv_min
+            detail = f'{rel_vol:.2f}× avg daily volume (min {rv_min:.1f}×)'
+            value  = f'{rel_vol:.2f}×'
+        checks.append({'name': 'rel_vol', 'label': f'RelVol ≥{rv_min:.1f}×',
+                       'passed': passed, 'detail': detail, 'value': value})
+        if not passed:
+            all_pass = False
+
+    parts = [f'{"✓" if c["passed"] else "✗"} {c["label"]}: {c["detail"]}' for c in checks]
+    return all_pass, checks, ' | '.join(parts)
+
+
+def _brown_scan_swing_candidates(config):
+    """
+    Broad-market swing candidate scan: Alpaca most-actives + gainers →
+    price/volume/market-cap/float filters → daily-bar technicals.
+    Results are cached for 5 minutes to avoid hammering the API every 30 s.
+    Returns list of candidate dicts, each suitable for _check_swing_entry_signal
+    and SwingPicksAgent.rank_candidates.
+    """
+    global _swing_candidates_cache
+
+    now = time.time()
+    if now - _swing_candidates_cache.get('ts', 0) < 300:
+        return _swing_candidates_cache.get('candidates', [])
+
+    _add_brown_log('info', 'Swing scanner: refreshing universe from Alpaca screener…')
+
+    symbols_list, meta = _fetch_swing_universe(config)
+    if not symbols_list:
+        _add_brown_log('warning', 'Swing scanner: screener returned no symbols')
+        _swing_candidates_cache = {'ts': now, 'candidates': []}
+        return []
+
+    _add_brown_log('info', f'Swing scanner: {len(symbols_list)} raw symbols from screener')
+
+    # Pre-price filter: the Alpaca most-actives endpoint does NOT return OHLC data,
+    # so many symbols will have price=0 in meta. Only exclude symbols whose price
+    # is KNOWN (>0) and definitively out of range — the rest pass through so we can
+    # fall back to the daily bar close and apply the real filter after bar fetch.
+    min_price = float(config.get('swing_min_price', 5.0))
+    max_price = float(config.get('swing_max_price', 500.0))
+    price_ok  = [
+        s for s in symbols_list
+        if not (float(meta.get(s, {}).get('price') or 0) > 0
+                and not (min_price <= float(meta.get(s, {}).get('price') or 0) <= max_price))
+    ]
+    if not price_ok:
+        _add_brown_log('info', 'Swing scanner: no symbols passed pre-price filter')
+        _swing_candidates_cache = {'ts': now, 'candidates': []}
+        return []
+
+    _add_brown_log('info',
+        f'Swing scanner: {len(price_ok)} symbols after pre-price filter, '
+        f'fetching 30-day daily bars…')
+
+    bars_by_sym = _fetch_swing_daily_bars(price_ok, days=30)
+
+    # Fundamentals from gap_up_detector enrichment cache
+    try:
+        from gap_up_detector import _fundamentals_cache as _funda_cache
+    except Exception:
+        _funda_cache = {}
+
+    min_vol_k   = float(config.get('swing_min_avg_vol_k', 500.0))
+    min_cap_m   = float(config.get('swing_min_market_cap_m', 200.0))
+    max_cap_m   = float(config.get('swing_max_market_cap_m', 0.0))
+    max_float_m = float(config.get('swing_max_float_m', 0.0))
+
+    candidates = []
+    skipped = {'no_bars': 0, 'volume': 0, 'market_cap': 0, 'float': 0}
+
+    for sym in price_ok:
+        bars = bars_by_sym.get(sym, [])
+        if not bars:
+            skipped['no_bars'] += 1
+            continue
+
+        closes  = [b['c'] for b in bars]
+        volumes = [b['v'] for b in bars]
+
+        # Average daily volume over last 20 days
+        vol_window = volumes[-20:] if len(volumes) >= 20 else volumes
+        avg_vol    = sum(vol_window) / len(vol_window) if vol_window else 0
+        avg_vol_k  = avg_vol / 1_000
+
+        if avg_vol_k < min_vol_k:
+            skipped['volume'] += 1
+            continue
+
+        # Technicals
+        sma9  = _compute_sma(closes, 9)
+        sma20 = _compute_sma(closes, 20)
+        rsi   = _compute_rsi(closes, 14)
+
+        # Today's / most-recent bar
+        last_bar   = bars[-1]
+        prev_close = bars[-2]['c'] if len(bars) >= 2 else last_bar['c']
+
+        # Prefer screener meta (intraday) for price; fall back to last bar close.
+        # Apply real price filter here — most-actives symbols had no price in meta.
+        m          = meta.get(sym, {})
+        price      = float(m.get('price') or last_bar['c'])
+        if not (min_price <= price <= max_price):
+            continue
+        today_high = float(m.get('high') or last_bar.get('h') or price)
+        today_low  = float(m.get('low') or last_bar.get('l') or price)
+        today_vol  = int(m.get('volume') or last_bar.get('v') or 0)
+        chg_pct    = float(m.get('chg_pct') or
+                           ((price - prev_close) / prev_close * 100 if prev_close else 0))
+        day_range  = round((today_high - today_low) / today_low * 100, 2) if today_low else 0
+        close_pos  = (
+            round((price - today_low) / (today_high - today_low), 2)
+            if today_high > today_low else 0.5
+        )
+        rel_vol    = round(today_vol / avg_vol, 2) if avg_vol > 0 and today_vol > 0 else None
+        vol_m      = round(today_vol / 1_000_000, 2)
+
+        # Fundamentals (may be empty for newly-listed or less-common tickers)
+        funda      = _funda_cache.get(sym, {})
+        cap_m      = (funda.get('market_cap') or 0) / 1_000_000
+        float_m    = (funda.get('float_shares') or 0) / 1_000_000
+        sector     = funda.get('sector', 'Unknown')
+
+        if min_cap_m > 0 and cap_m > 0 and cap_m < min_cap_m:
+            skipped['market_cap'] += 1
+            continue
+        if max_cap_m > 0 and cap_m > 0 and cap_m > max_cap_m:
+            skipped['market_cap'] += 1
+            continue
+        if max_float_m > 0 and float_m > 0 and float_m > max_float_m:
+            skipped['float'] += 1
+            continue
+
+        candidates.append({
+            # SwingPicksAgent-compatible fields
+            'ticker':     sym,
+            'price':      round(price, 2),
+            'chg_pct':    round(chg_pct, 2),
+            'volume_m':   vol_m,
+            'day_range':  day_range,
+            'direction':  'up' if chg_pct >= 0 else 'down',
+            'vol_ratio':  rel_vol,
+            'market_cap_m': round(cap_m, 0) if cap_m else None,
+            'sma10':      round(sma9, 2) if sma9 is not None else None,
+            'close_pos':  close_pos,
+            # Our signal-check fields
+            'symbol':     sym,
+            'sma9':       round(sma9, 2) if sma9 is not None else None,
+            'sma20':      round(sma20, 2) if sma20 is not None else None,
+            'rsi':        rsi,
+            'rel_vol':    rel_vol,
+            'avg_vol_k':  round(avg_vol_k, 1),
+            'float_m':    round(float_m, 1) if float_m else None,
+            'sector':     sector,
+        })
+
+    _add_brown_log('info',
+        f'Swing scanner: {len(candidates)} candidates after all filters '
+        f'(skipped no_bars={skipped["no_bars"]} vol={skipped["volume"]} '
+        f'cap={skipped["market_cap"]} float={skipped["float"]})')
+
+    _swing_candidates_cache = {'ts': now, 'candidates': candidates}
+    return candidates
+
+
+def _brown_rank_swing_ai(candidates):
+    """
+    Run SwingPicksAgent.rank_candidates on `candidates` and return the
+    AI-ranked picks list (grade A/B/C, bias Bullish/Bearish).
+    Results are cached for 15 minutes, or until the candidate symbol set changes.
+    Falls back to treating all candidates as Grade B / Bullish if AI unavailable.
+    """
+    global _swing_ai_picks_cache
+
+    fingerprint = ','.join(sorted(c['ticker'] for c in candidates))
+    now = time.time()
+    cached = _swing_ai_picks_cache
+    if (fingerprint == cached.get('fingerprint', '')
+            and now - cached.get('ts', 0) < 900):
+        return cached.get('picks', [])
+
+    if not (AI_AGENT_AVAILABLE and _swing_agent):
+        _add_brown_log('info',
+            'Swing scanner: AI not available — treating all filtered candidates as approved')
+        picks = [
+            {'ticker': c['ticker'], 'grade': 'B', 'bias': 'Bullish',
+             'reason': 'AI not configured', 'entry_zone': '', 'watch_for': '', 'risk': ''}
+            for c in candidates
+        ]
+        _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+        return picks
+
+    try:
+        import pytz as _pytz
+        _et    = _pytz.timezone('US/Eastern')
+        now_et = datetime.now(_et)
+        in_mkt = (now_et.weekday() < 5
+                  and now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+                  <= now_et
+                  <= now_et.replace(hour=16, minute=0, second=0, microsecond=0))
+        session_key = _last_trading_date()
+
+        _add_brown_log('info',
+            f'Swing AI ranking {len(candidates)} candidates via SwingPicksAgent…')
+        result = _swing_agent.rank_candidates(candidates, session_key, market_open=in_mkt)
+        picks  = result.get('picks', [])
+        market_note = result.get('market_note', '')
+        if market_note:
+            _add_brown_log('info', f'Swing AI market note: {market_note}')
+        _add_brown_log('info',
+            f'Swing AI ranked {len(picks)} picks — '
+            f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…')
+        _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+        return picks
+    except Exception as e:
+        app_logger.warning(f'BrownBot swing AI ranking failed: {e}', exc_info=True)
+        _add_brown_log('warning', f'Swing AI ranking failed: {e} — skipping swing entries this cycle')
+        return []
+
+
 def _brown_bot_scan_and_enter():
     """One iteration of the BrownBot entry loop: scan, filter, gate, order."""
     global _brown_bot_running, _brown_risk_manager
@@ -3573,28 +4001,47 @@ def _brown_bot_scan_and_enter():
             active_symbols.add(symbol)
             active_copy = dict(_brown_bot_active_positions)
 
-    # ── Process swing hot picks from the daily AI ranking ────────────────
+    # ── Process swing candidates from broad-market scan ──────────────────
     if not config.get('swing_trades_enabled', True):
         _add_brown_log('info', 'Swing trades disabled — skipping swing trade entries')
         return
 
-    # Source: today's Claude-ranked picks from the Swing tab (Grade A/B, Bullish).
-    # These are already fully vetted (SMA-10, intraday structure, market cap, AI rank)
-    # so _check_swing_signal() is skipped — avoid double AI cost.
-    # Only today's session picks are used; stale picks from prior days are ignored.
-    session_key   = _last_trading_date()
-    picks_payload = _daily_picks_cache.get(session_key)
-    if not picks_payload:
-        db_row = db_manager.get_swing_picks(session_key)
-        if db_row:
-            picks_payload = db_row
-            _daily_picks_cache[session_key] = db_row  # warm cache for next loop
+    # Step 1 — Universe scan: Alpaca most-actives + gainers, then
+    # price / avg-volume / market-cap / float filters + daily-bar technicals.
+    # Results are cached 5 min so the 30-s loop doesn't hammer the API.
+    swing_raw = _brown_scan_swing_candidates(config)
+    if not swing_raw:
+        _add_brown_log('info', 'Swing scanner: no candidates after filters — skipping swing entries')
+        return
 
+    # Step 2 — User-configured entry signal filters (optional, all off by default).
+    signal_passed = []
+    for cand in swing_raw:
+        sym = cand['symbol']
+        if sym in active_symbols or sym in _brown_attempted_symbols:
+            continue
+        sig_ok, _checks, sig_reason = _check_swing_entry_signal(sym, cand, config)
+        if sig_ok:
+            signal_passed.append(cand)
+        else:
+            _add_brown_log('info', f'SKIP swing {sym} [SIGNAL] {sig_reason}')
+
+    if not signal_passed:
+        _add_brown_log('info', 'Swing scanner: no candidates passed entry signal filters')
+        return
+
+    # Step 3 — AI ranking via SwingPicksAgent (Haiku, Grade A/B + Bullish only).
+    # Results cached 15 min; only re-runs when the candidate fingerprint changes.
+    ai_picks = _brown_rank_swing_ai(signal_passed)
     hot_swing_picks = [
-        p for p in (picks_payload or {}).get('picks', [])
+        p for p in ai_picks
         if p.get('grade') in ('A', 'B') and p.get('bias', '').lower() == 'bullish'
     ]
+    if not hot_swing_picks:
+        _add_brown_log('info', 'Swing AI: no Grade A/B Bullish picks — skipping swing entries')
+        return
 
+    # Step 4 — Risk gate + position entry
     for pick in hot_swing_picks:
         if not _brown_bot_running:
             return
@@ -3603,12 +4050,10 @@ def _brown_bot_scan_and_enter():
             continue
         if symbol in active_symbols:
             continue
-        # Already attempted this session (fill or rejection) — don't retry
         if symbol in _brown_attempted_symbols:
             continue
 
-        # Hard cap: re-read live swing count under lock so a stale active_copy or
-        # a concurrent order-monitor removal can never let us exceed the limit.
+        # Hard cap: re-read live swing count under lock
         max_swing = int(config.get('max_concurrent_swing', 5))
         with _brown_bot_lock:
             live_swing = sum(
@@ -3623,19 +4068,25 @@ def _brown_bot_scan_and_enter():
 
         if _brown_risk_manager:
             _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
+            _rs = _brown_risk_manager.status(active_copy, unrealized_pnl=_unrealized)
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'swing', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
-                _add_brown_log('warning', f'SKIP swing pick {symbol}: {reason}')
+                _add_brown_log('warning',
+                    f'SKIP swing {symbol} [RISK] {reason} '
+                    f'(total P&L ${_rs["daily_pnl"]:.0f}, '
+                    f'swing slots {_rs["open_swing"]}/{_rs["max_concurrent_swing"]})')
                 continue
+            _add_brown_log('info',
+                f'{symbol} risk OK — total P&L ${_rs["daily_pnl"]:.0f} '
+                f'(realized ${_rs["realized_pnl"]:.0f} + unrealized ${_rs["unrealized_pnl"]:.0f}), '
+                f'swing slots {_rs["open_swing"]}/{_rs["max_concurrent_swing"]}')
 
-        # Fetch live price so profit_target / stop_loss are set correctly at entry
-        live_price = _brown_get_current_price(symbol) or 0
-
-        grade      = pick.get('grade', '?')
+        live_price  = _brown_get_current_price(symbol) or 0
+        grade       = pick.get('grade', '?')
         pick_reason = pick.get('reason', '')
         entry_zone  = pick.get('entry_zone', '')
         _add_brown_log('info',
-            f'Entering SWING {symbol} [Grade {grade}] hot pick — {pick_reason}'
+            f'Entering SWING {symbol} [Grade {grade}] — {pick_reason}'
             + (f' · entry zone: {entry_zone}' if entry_zone else ''))
         _brown_enter_position(symbol, 'swing', config, live_price)
         with _brown_bot_lock:
@@ -4325,7 +4776,7 @@ def get_brown_bot_broker_activities():
 @require_auth
 def start_brown_bot():
     """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread, _swing_candidates_cache, _swing_ai_picks_cache
     if _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is already running'})
 
@@ -4353,6 +4804,9 @@ def start_brown_bot():
     _playbook_cache.clear()
     _playbook_pending.clear()
     _playbook_failed.clear()
+    # Invalidate swing caches so first scan uses current config
+    _swing_candidates_cache = {'ts': 0.0, 'candidates': []}
+    _swing_ai_picks_cache   = {'ts': 0.0, 'picks': [], 'fingerprint': ''}
     # Always start with a clean slate — positions will be rebuilt from DB + broker check.
     # Without this, in-memory ghosts from a previous stop/start cycle within the same
     # server process inflate the count until the exit loop cleans them up.
