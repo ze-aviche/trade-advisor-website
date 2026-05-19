@@ -4670,6 +4670,51 @@ def get_brown_bot_candidate_signals():
     return jsonify({'success': True, 'signals': results})
 
 
+def _alpaca_snapshots(tickers: list) -> dict:
+    """Fetch latest price + session VWAP for multiple tickers via Alpaca snapshots API."""
+    import requests as _req
+    key    = os.environ.get('ALPACA_API_KEY', '')
+    secret = os.environ.get('ALPACA_API_SECRET', '')
+    if not key or not secret or not tickers:
+        return {}
+    try:
+        resp = _req.get(
+            'https://data.alpaca.markets/v2/stocks/snapshots',
+            headers={'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret},
+            params={'symbols': ','.join(t.upper() for t in tickers), 'feed': 'sip'},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            app_logger.debug(f'Alpaca snapshots HTTP {resp.status_code}')
+            return {}
+        result = {}
+        for ticker, snap in resp.json().items():
+            latest_trade = snap.get('latestTrade') or {}
+            daily_bar    = snap.get('dailyBar') or {}
+            price = latest_trade.get('p') or daily_bar.get('c')
+            vwap  = daily_bar.get('vw')
+            result[ticker] = {
+                'price': round(float(price), 2) if price else None,
+                'vwap':  round(float(vwap),  2) if vwap  else None,
+            }
+        return result
+    except Exception as e:
+        app_logger.debug(f'Alpaca snapshots error: {e}')
+        return {}
+
+
+@app.route('/api/brown-bot/live-prices', methods=['GET'])
+@require_auth
+def get_brown_bot_live_prices():
+    """Return current price + session VWAP for a comma-separated list of tickers."""
+    symbols_param = request.args.get('symbols', '')
+    symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+    if not symbols:
+        return jsonify({'success': False, 'error': 'symbols param required'}), 400
+    prices = _alpaca_snapshots(symbols)
+    return jsonify({'success': True, 'prices': prices})
+
+
 @app.route('/api/brown-bot/watchlist', methods=['GET'])
 @require_auth
 def get_brown_bot_watchlist():

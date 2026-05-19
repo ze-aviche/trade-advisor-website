@@ -382,6 +382,8 @@ const app = createApp({
             keepaliveInterval: null,
             brownBotCandidates: { scanner: [], watchlist: [] },
             brownBotSignals: {},
+            brownBotLivePrices: {},
+            _brownPriceInterval: null,
             brownBotWatchlistForm: { symbol: '', trade_type: 'day', note: '' },
             brownBotRiskStatus: {
                 daily_pnl: 0,
@@ -5846,6 +5848,10 @@ const app = createApp({
                         scanner: response.data.scanner || [],
                         watchlist: response.data.watchlist || [],
                     };
+                    // Load live prices immediately then poll every 30 s
+                    this.loadBrownBotLivePrices();
+                    if (this._brownPriceInterval) clearInterval(this._brownPriceInterval);
+                    this._brownPriceInterval = setInterval(() => this.loadBrownBotLivePrices(), 30000);
                     // Auto-load signals whenever candidates refresh
                     this.loadCandidateSignals();
                 }
@@ -5853,6 +5859,25 @@ const app = createApp({
                 console.error('Error loading BrownBot candidates:', error);
             } finally {
                 this.loading.brownBotCandidates = false;
+            }
+        },
+
+        async loadBrownBotLivePrices() {
+            const tickers = [
+                ...this.brownBotCandidates.scanner.map(s => s.ticker),
+                ...this.brownBotCandidates.watchlist.map(s => s.symbol || s.ticker),
+            ].filter(Boolean);
+            if (!tickers.length) return;
+            try {
+                const response = await axios.get(
+                    `/api/brown-bot/live-prices?symbols=${tickers.join(',')}`,
+                    { headers: this.authHeaders() }
+                );
+                if (response.data.success) {
+                    this.brownBotLivePrices = response.data.prices || {};
+                }
+            } catch (error) {
+                console.error('Error loading live prices:', error);
             }
         },
 

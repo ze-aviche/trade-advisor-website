@@ -2453,6 +2453,7 @@
                                         <th class="px-4 py-2 text-left">Symbol</th>
                                         <th class="px-4 py-2 text-right">Gap %</th>
                                         <th class="px-4 py-2 text-right">Price</th>
+                                        <th class="px-4 py-2 text-right text-cyan-500">VWAP</th>
                                         <th class="px-4 py-2 text-right">Vol (M)</th>
                                         <th class="px-4 py-2 text-left text-cyan-500">Signal</th>
                                     </tr>
@@ -2462,7 +2463,19 @@
                                         class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
                                         <td class="px-4 py-2 font-mono font-bold text-white">{{ s.ticker }}</td>
                                         <td class="px-4 py-2 text-right font-semibold" :class="s.gap_percent >= 0 ? 'text-green-400' : 'text-red-400'">{{ s.gap_percent >= 0 ? '+' : '' }}{{ s.gap_percent?.toFixed(1) }}%</td>
-                                        <td class="px-4 py-2 text-right text-gray-300">${{ s.price?.toFixed(2) }}</td>
+                                        <td class="px-4 py-2 text-right">
+                                            <span :class="brownBotLivePrices[s.ticker]?.price ? 'text-white' : 'text-gray-400'">
+                                                ${{ (brownBotLivePrices[s.ticker]?.price ?? s.price)?.toFixed(2) ?? '—' }}
+                                            </span>
+                                            <span v-if="brownBotLivePrices[s.ticker]?.price" class="ml-1 text-[9px] text-green-500 font-mono">live</span>
+                                        </td>
+                                        <td class="px-4 py-2 text-right">
+                                            <span v-if="brownBotLivePrices[s.ticker]?.vwap != null"
+                                                  :class="(brownBotLivePrices[s.ticker]?.price ?? s.price) > brownBotLivePrices[s.ticker].vwap ? 'text-green-400' : 'text-red-400'">
+                                                ${{ brownBotLivePrices[s.ticker].vwap.toFixed(2) }}
+                                            </span>
+                                            <span v-else class="text-gray-600">—</span>
+                                        </td>
                                         <td class="px-4 py-2 text-right text-gray-400">{{ ((s.volume || 0) / 1e6).toFixed(2) }}</td>
                                         <td class="px-4 py-2">
                                             <template v-if="brownBotSignals[s.ticker]?.loading">
