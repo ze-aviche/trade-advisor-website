@@ -2485,9 +2485,11 @@
                                                 <div class="flex flex-wrap gap-1">
                                                     <span v-for="c in brownBotSignals[s.ticker].checks" :key="c.name"
                                                           :class="c.passed ? 'bg-green-900/40 text-green-300 border-green-700/50' : 'bg-red-900/40 text-red-300 border-red-700/50'"
-                                                          class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default"
-                                                          :title="(c.name === 'vwap' ? 'VWAP — close ≥ session average price' : c.name === 'candle' ? 'CANDLE — last 1-min bar closed green (bullish)' : c.name === 'extension' ? 'EXT — price not overextended above gap price' : 'VOL — entry bar volume ≥ 1.5× 10-bar average') + (c.detail ? '\n' + c.detail : '')">
-                                                        {{ c.passed ? '✓' : '✗' }}{{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : 'VOL' }}
+                                                          class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default whitespace-nowrap"
+                                                          :title="c.detail || ''">
+                                                        {{ c.passed ? '✓' : '✗' }}
+                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : 'VOL' }}
+                                                        <span v-if="c.value && c.value !== '—'" class="opacity-75 ml-0.5">{{ c.value }}</span>
                                                     </span>
                                                 </div>
                                             </template>

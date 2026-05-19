@@ -2860,20 +2860,53 @@ def update_swing_bot_config():
 # ── BrownBot core logic ────────────────────────────────────────────────────
 
 def _get_intraday_bars(symbol):
-    """Fetch 1-min bars from 09:30 ET to now. Returns list of {o,h,l,c,v} dicts."""
-    import os, requests as _req
+    """
+    Fetch 1-min bars from 09:30 ET to now for a symbol.
+    Uses Alpaca Data API directly via HTTP — no broker connection required.
+    Falls back to the broker SDK if direct HTTP fails.
+    Returns list of {o, h, l, c, v, vw} dicts, or [] if unavailable.
+    """
+    import requests as _req
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
-    today_str = now_et.strftime('%Y-%m-%d')
+    start_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
 
-    # Try Alpaca data client (already configured for price checks)
+    ak = os.environ.get('ALPACA_API_KEY', '')
+    as_ = os.environ.get('ALPACA_API_SECRET', '')
+
+    # Primary: direct HTTP — works even when broker is not connected
+    if ak and as_:
+        try:
+            resp = _req.get(
+                f'https://data.alpaca.markets/v2/stocks/{symbol.upper()}/bars',
+                headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': as_},
+                params={
+                    'timeframe':  '1Min',
+                    'start':      start_et.isoformat(),
+                    'end':        now_et.isoformat(),
+                    'limit':      1000,
+                    'adjustment': 'raw',
+                    'feed':       'sip',
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                raw = resp.json().get('bars') or []
+                if raw:
+                    return [{'o': float(b['o']), 'h': float(b['h']),
+                             'l': float(b['l']), 'c': float(b['c']),
+                             'v': float(b['v']), 'vw': b.get('vw')}
+                            for b in raw]
+        except Exception as e:
+            app_logger.debug(f'Alpaca intraday bars direct HTTP {symbol}: {e}')
+
+    # Fallback: broker SDK data client
     broker = _get_broker()
     if broker and hasattr(broker, '_data_client') and broker._data_client:
         try:
             from alpaca.data.requests import StockBarsRequest
             from alpaca.data.timeframe import TimeFrame
-            start_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
             req = StockBarsRequest(
                 symbol_or_symbols=symbol.upper(),
                 timeframe=TimeFrame.Minute,
@@ -2888,7 +2921,7 @@ def _get_intraday_bars(symbol):
                          'vw': float(b.vwap) if b.vwap else None}
                         for b in bars]
         except Exception as e:
-            app_logger.debug(f'Alpaca intraday bars {symbol}: {e}')
+            app_logger.debug(f'Alpaca intraday bars SDK {symbol}: {e}')
 
     return []
 
@@ -2922,52 +2955,59 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
 
     if vwap_on:
         if vwap is None:
-            passed, detail = False, 'No bar data for VWAP'
+            passed, detail, value = False, 'No bar data for VWAP', '—'
         else:
             passed = float(current_price) > vwap
             detail = f'${float(current_price):.2f} {">" if passed else "≤"} VWAP ${vwap:.2f}'
-        checks.append({'name': 'vwap', 'label': 'Above VWAP', 'passed': passed, 'detail': detail})
+            value  = f'${vwap:.2f}'
+        checks.append({'name': 'vwap', 'label': 'Above VWAP', 'passed': passed,
+                       'detail': detail, 'value': value})
         if not passed:
             all_pass = False
 
     # ── Last 1-min candle direction ──────────────────────────────────────
     if candle_on:
         if not bars:
-            passed, detail = False, 'No bar data'
+            passed, detail, value = False, 'No bar data', '—'
         else:
-            last   = bars[-1]
-            passed = last['c'] >= last['o']
-            direction = 'bullish' if passed else 'bearish'
-            detail = f'O:${last["o"]:.2f} C:${last["c"]:.2f} — {direction}'
-        checks.append({'name': 'candle', 'label': 'Bullish candle', 'passed': passed, 'detail': detail})
+            last      = bars[-1]
+            passed    = last['c'] >= last['o']
+            direction = 'green' if passed else 'red'
+            detail    = f'O:${last["o"]:.2f} C:${last["c"]:.2f} — {"bullish" if passed else "bearish"}'
+            value     = direction
+        checks.append({'name': 'candle', 'label': 'Bullish candle', 'passed': passed,
+                       'detail': detail, 'value': value})
         if not passed:
             all_pass = False
 
     # ── Extension from gap price ─────────────────────────────────────────
     if ext_pct > 0:
         if not gap_price:
-            passed, detail = True, 'No gap price reference'
+            passed, detail, value = True, 'No gap price reference', '—'
         else:
             ext    = round((float(current_price) - float(gap_price)) / float(gap_price) * 100, 1)
             passed = ext <= ext_pct
             detail = f'+{ext:.1f}% from gap (max +{ext_pct:.1f}%)'
+            value  = f'+{ext:.1f}%'
         checks.append({'name': 'extension', 'label': f'Not over-extended (≤{ext_pct:.0f}%)',
-                       'passed': passed, 'detail': detail})
+                       'passed': passed, 'detail': detail, 'value': value})
         if not passed:
             all_pass = False
 
     # ── Volume surge on latest bar ───────────────────────────────────────
     if vol_on:
         if len(bars) < 3:
-            passed, detail = False, 'Not enough bars'
+            passed, detail, value = False, 'Not enough bars', '—'
         else:
-            vols    = [b['v'] for b in bars]
-            avg_v   = sum(vols[:-1]) / (len(vols) - 1)
+            vols     = [b['v'] for b in bars]
+            avg_v    = sum(vols[:-1]) / (len(vols) - 1)
             latest_v = vols[-1]
-            passed  = avg_v > 0 and latest_v >= avg_v * 1.5
-            ratio   = (latest_v / avg_v) if avg_v > 0 else 0
-            detail  = f'{latest_v:,.0f} vs avg {avg_v:,.0f} ({ratio:.1f}×)'
-        checks.append({'name': 'vol_surge', 'label': 'Volume surge (≥1.5×)', 'passed': passed, 'detail': detail})
+            passed   = avg_v > 0 and latest_v >= avg_v * 1.5
+            ratio    = (latest_v / avg_v) if avg_v > 0 else 0
+            detail   = f'{latest_v:,.0f} vs avg {avg_v:,.0f} ({ratio:.1f}×)'
+            value    = f'{ratio:.1f}×'
+        checks.append({'name': 'vol_surge', 'label': 'Volume surge (≥1.5×)', 'passed': passed,
+                       'detail': detail, 'value': value})
         if not passed:
             all_pass = False
 
