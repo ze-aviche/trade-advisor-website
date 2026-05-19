@@ -3417,10 +3417,11 @@ def _fetch_swing_universe(config):
 
     if source in ('gainers', 'both'):
         try:
+            # Use top=50 (Alpaca API max) to capture the broadest % gainers universe.
             resp = _req.get(
                 'https://data.alpaca.markets/v1beta1/screener/stocks/movers',
                 headers=headers,
-                params={'market_type': 'stocks', 'top': top_n},
+                params={'market_type': 'stocks', 'top': 50},
                 timeout=10,
             ).json()
             for item in (resp.get('gainers') or []):
@@ -3787,14 +3788,23 @@ def _brown_rank_swing_ai(candidates):
             f'Swing AI ranked {len(picks)} picks — '
             f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…')
         _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
-        # Only save to DB when picks is non-empty — prevents overwriting good picks
-        # with the empty result from a follow-up scan that excluded already-entered symbols.
+        # Only save when picks is non-empty — prevents overwriting good picks with an
+        # empty result from a follow-up scan that excluded already-entered symbols.
         if picks:
             try:
                 db_manager.save_swing_picks(session_key, picks, market_note,
                                             candidates_scanned=len(candidates))
             except Exception as _db_err:
                 app_logger.warning(f'BrownBot swing picks DB save failed: {_db_err}')
+            # Also update the in-memory daily picks cache so swing_daily_picks_latest
+            # returns these picks immediately — without this, the stale cache entry
+            # from the old Swing-tab pipeline would be served instead.
+            _daily_picks_cache[session_key] = {
+                'success': True, 'date': session_key,
+                'picks': picks, 'market_note': market_note,
+                'candidates_scanned': len(candidates),
+                'source_counts': {}, 'sources_tickers': {},
+            }
         return picks
     except Exception as e:
         app_logger.warning(f'BrownBot swing AI ranking failed: {e}', exc_info=True)

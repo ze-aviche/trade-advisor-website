@@ -5114,11 +5114,10 @@ const app = createApp({
 
         async loadSwingDailyPicks(force = false) {
             const today = new Date().toISOString().slice(0, 10);
-            // Only skip if we already have real picks for today
-            const hasGoodData = this.swingDailyPicks?.picks?.length > 0;
-            if (!force && hasGoodData && this.swingDailyPicksDate === today) return;
 
             // Step 1: fast-path — always try the DB first (previous session or today)
+            // No early-exit guard here: the endpoint is a memory-cache read (~1 ms) and
+            // BrownBot may have written fresher picks since the last tab visit.
             try {
                 const snap = await fetch('/api/swing-daily-picks/latest');
                 const snapData = await snap.json();

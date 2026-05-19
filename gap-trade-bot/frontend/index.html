@@ -2406,19 +2406,19 @@
                                 <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Swing Scanner Filters</span>
                                 <span class="text-gray-600 text-xs font-normal ml-auto">universe &amp; thresholds</span>
                             </div>
-                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Scans the broad market (Alpaca most-actives + gainers) instead of gap-ups. Stocks not meeting these thresholds never reach AI ranking.</p>
+                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Pulls candidates from Alpaca's market screener (most-active by volume and/or top % gainers). Stocks not meeting the thresholds below never reach AI ranking.</p>
                             <!-- Universe source -->
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1">Universe Source</label>
+                                <label class="block text-xs text-gray-400 mb-1">Screener Source</label>
                                 <select v-model="brownBotConfig.swing_scan_source"
                                         class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
-                                    <option value="both">Most-Actives + Gainers (both)</option>
-                                    <option value="actives">Most-Actives by volume only</option>
-                                    <option value="gainers">Top Gainers only</option>
+                                    <option value="both">Both — most-active by volume + top-50 % gainers</option>
+                                    <option value="actives">Most-active by volume only (best for mega-caps)</option>
+                                    <option value="gainers">Top-50 % gainers only (high-momentum movers)</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1">Top N symbols to pull from screener</label>
+                                <label class="block text-xs text-gray-400 mb-1">Most-Actives count <span class="text-gray-600">(ignored for "Gainers only")</span></label>
                                 <input v-model.number="brownBotConfig.swing_scan_top_n" type="number" step="5" min="10" max="100"
                                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors">
                             </div>
