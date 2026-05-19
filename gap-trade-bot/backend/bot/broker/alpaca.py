@@ -271,30 +271,35 @@ class AlpacaBroker(BrokerBase):
     def get_quote(self, symbol: str) -> Quote:
         self._require_client()
         try:
-            from alpaca.data.requests import StockLatestQuoteRequest, StockLatestTradeRequest
+            from alpaca.data.requests import StockSnapshotRequest
             sym = symbol.upper()
 
-            quote_req  = StockLatestQuoteRequest(symbol_or_symbols=sym)
-            quote_data = self._data_client.get_stock_latest_quote(quote_req)
-            q          = quote_data[sym]
+            # Snapshot gives bid/ask, last trade, and daily cumulative volume in one call.
+            snap_req = StockSnapshotRequest(symbol_or_symbols=sym)
+            snaps    = self._data_client.get_stock_snapshot(snap_req)
+            snap     = snaps.get(sym)
 
-            # Use the actual last trade price, not ask_price, so exit condition
-            # checks reflect real executions rather than the (higher) ask.
-            try:
-                trade_req  = StockLatestTradeRequest(symbol_or_symbols=sym)
-                trade_data = self._data_client.get_stock_latest_trade(trade_req)
-                t          = trade_data[sym]
-                last_price = float(t.price) if t and t.price else float(q.bid_price or 0)
-            except Exception:
-                last_price = float(q.bid_price or q.ask_price or 0)
+            if snap is None:
+                raise BrokerError(f'No snapshot data returned for {sym}')
+
+            q     = snap.latest_quote
+            t     = snap.latest_trade
+            daily = snap.daily_bar
+
+            bid   = float(q.bid_price or 0) if q else 0.0
+            ask   = float(q.ask_price or 0) if q else 0.0
+            last_price = (float(t.price) if t and t.price else None) or bid or ask
+            volume     = int(daily.volume) if daily and daily.volume else 0
 
             return Quote(
                 symbol = sym,
-                bid    = float(q.bid_price or 0),
-                ask    = float(q.ask_price or 0),
+                bid    = bid,
+                ask    = ask,
                 last   = last_price,
-                volume = 0,
+                volume = volume,
             )
+        except BrokerError:
+            raise
         except Exception as e:
             raise BrokerError(f'Alpaca get_quote {symbol} failed: {e}') from e
 

@@ -369,6 +369,19 @@ class DatabaseManager:
                 )
             ''')
 
+            # Upgrade trades.trade_id to UNIQUE — deduplicate first, then swap index.
+            try:
+                # Remove duplicate rows, keeping the one with the lowest id per trade_id.
+                cursor.execute('''
+                    DELETE FROM trades WHERE id NOT IN (
+                        SELECT MIN(id) FROM trades GROUP BY trade_id
+                    )
+                ''')
+                cursor.execute('DROP INDEX IF EXISTS idx_trades_trade_id')
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_trade_id ON trades(trade_id)')
+            except Exception:
+                pass  # If it already exists as unique, or any other issue, leave as-is
+
             conn.commit()
 
     def _get_user_count(self):
@@ -847,7 +860,7 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO trades (
+                    INSERT OR IGNORE INTO trades (
                         trade_id, symbol, side, quantity, price, route,
                         trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
                         position_type, days_held, source, broker

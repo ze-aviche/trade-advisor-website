@@ -54,7 +54,7 @@ TOOLS = [
     },
     {
         "name": "get_market_data",
-        "description": "Get real-time quote snapshot for a stock from Polygon.io, including price, volume, and today's gap.",
+        "description": "Get real-time quote snapshot for a stock from Alpaca Data API, including price, volume, and today's gap.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -97,7 +97,8 @@ class ClaudeAIAgent:
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
         self.client = anthropic.Anthropic(api_key=self.api_key)
-        self.polygon_api_key = os.getenv('POLYGON_API_KEY')
+        self._alpaca_key    = os.getenv('ALPACA_API_KEY', '')
+        self._alpaca_secret = os.getenv('ALPACA_API_SECRET', '')
         self.model = "claude-haiku-4-5-20251001"
         logger.info("Claude AI Agent initialized")
 
@@ -135,75 +136,91 @@ class ClaudeAIAgent:
         return {"symbol": symbol, "news": result.get("results", []), "query": result.get("query")}
 
     def _get_market_data(self, symbol: str) -> Dict[str, Any]:
-        if not self.polygon_api_key:
-            return {"symbol": symbol, "error": "POLYGON_API_KEY not configured"}
+        if not self._alpaca_key or not self._alpaca_secret:
+            return {"symbol": symbol, "error": "ALPACA_API_KEY / ALPACA_API_SECRET not configured"}
         try:
-            url = f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/{symbol.upper()}"
-            resp = requests.get(url, params={"apiKey": self.polygon_api_key}, timeout=10)
+            sym = symbol.upper()
+            headers = {
+                'APCA-API-KEY-ID':     self._alpaca_key,
+                'APCA-API-SECRET-KEY': self._alpaca_secret,
+            }
+            resp = requests.get(
+                'https://data.alpaca.markets/v2/stocks/snapshots',
+                headers=headers,
+                params={'symbols': sym, 'feed': 'sip'},
+                timeout=10,
+            )
             resp.raise_for_status()
-            ticker = resp.json().get("ticker", {})
-            day = ticker.get("day", {})
-            prev_day = ticker.get("prevDay", {})
-            last_trade = ticker.get("lastTrade", {})
-            last_quote = ticker.get("lastQuote", {})
-            prev_close = prev_day.get("c")
-            today_open = day.get("o")
+            snap = resp.json().get(sym, {})
+            day      = snap.get('dailyBar') or {}
+            prev_day = snap.get('prevDailyBar') or {}
+            trade    = snap.get('latestTrade') or {}
+            prev_close = prev_day.get('c')
+            today_open = day.get('o')
             gap_pct = None
             if prev_close and today_open and prev_close != 0:
                 gap_pct = round(((today_open - prev_close) / prev_close) * 100, 2)
+            change_pct = None
+            if prev_close and day.get('c') and prev_close != 0:
+                change_pct = round(((day['c'] - prev_close) / prev_close) * 100, 2)
             return {
-                "symbol": symbol.upper(),
-                "current_price": last_trade.get("p") or last_quote.get("P"),
+                "symbol": sym,
+                "current_price": trade.get('p') or day.get('c'),
                 "today_open": today_open,
-                "today_high": day.get("h"),
-                "today_low": day.get("l"),
-                "today_close": day.get("c"),
-                "today_volume": day.get("v"),
+                "today_high": day.get('h'),
+                "today_low": day.get('l'),
+                "today_close": day.get('c'),
+                "today_volume": day.get('v'),
                 "prev_close": prev_close,
                 "gap_percent": gap_pct,
-                "change_percent": ticker.get("todaysChangePerc")
+                "change_percent": change_pct,
             }
         except Exception as e:
             return {"symbol": symbol, "error": str(e)}
 
     def _get_technical_analysis(self, symbol: str, days: int = 20) -> Dict[str, Any]:
-        if not self.polygon_api_key:
-            return {"symbol": symbol, "error": "POLYGON_API_KEY not configured"}
+        if not self._alpaca_key or not self._alpaca_secret:
+            return {"symbol": symbol, "error": "ALPACA_API_KEY / ALPACA_API_SECRET not configured"}
         try:
-            end = datetime.now().strftime("%Y-%m-%d")
+            sym   = symbol.upper()
+            end   = datetime.now().strftime("%Y-%m-%d")
             start = (datetime.now() - timedelta(days=days + 14)).strftime("%Y-%m-%d")
-            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/day/{start}/{end}"
+            headers = {
+                'APCA-API-KEY-ID':     self._alpaca_key,
+                'APCA-API-SECRET-KEY': self._alpaca_secret,
+            }
             resp = requests.get(
-                url,
-                params={"adjusted": "true", "sort": "asc", "limit": 50, "apiKey": self.polygon_api_key},
-                timeout=10
+                f'https://data.alpaca.markets/v2/stocks/{sym}/bars',
+                headers=headers,
+                params={'timeframe': '1Day', 'start': start, 'end': end,
+                        'limit': 50, 'adjustment': 'raw', 'feed': 'sip'},
+                timeout=10,
             )
             resp.raise_for_status()
-            bars = resp.json().get("results", [])
+            bars = resp.json().get('bars') or []
             if not bars:
-                return {"symbol": symbol, "error": "No price data returned from Polygon"}
-            closes = [b["c"] for b in bars]
+                return {"symbol": sym, "error": "No price data returned from Alpaca"}
+
+            def _bar_date(b):
+                return b['t'][:10]  # ISO string "2024-01-01T..." → "2024-01-01"
+
+            closes = [b['c'] for b in bars]
             sma10 = round(sum(closes[-10:]) / min(len(closes), 10), 2)
             sma20 = round(sum(closes[-20:]) / min(len(closes), 20), 2)
             gaps = []
             for i in range(1, len(bars)):
-                pc = bars[i - 1]["c"]
+                pc = bars[i - 1]['c']
                 if pc:
-                    gap = round(((bars[i]["o"] - pc) / pc) * 100, 2)
+                    gap = round(((bars[i]['o'] - pc) / pc) * 100, 2)
                     if abs(gap) >= 1:
-                        gaps.append({
-                            "date": datetime.fromtimestamp(bars[i]["t"] / 1000).strftime("%Y-%m-%d"),
-                            "gap_pct": gap
-                        })
+                        gaps.append({"date": _bar_date(bars[i]), "gap_pct": gap})
             recent = [
-                {
-                    "date": datetime.fromtimestamp(b["t"] / 1000).strftime("%Y-%m-%d"),
-                    "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b["v"]
-                }
+                {"date": _bar_date(b), "o": b['o'], "h": b['h'],
+                 "l": b['l'], "c": b['c'], "v": b['v']}
                 for b in bars[-5:]
             ]
             return {
-                "symbol": symbol.upper(),
+                "symbol": sym,
                 "bars_fetched": len(bars),
                 "sma10": sma10,
                 "sma20": sma20,
@@ -211,35 +228,29 @@ class ClaudeAIAgent:
                 "range_high": max(closes),
                 "range_low": min(closes),
                 "recent_gaps": gaps[-5:],
-                "recent_bars": recent
+                "recent_bars": recent,
             }
         except Exception as e:
             return {"symbol": symbol, "error": str(e)}
 
     def _get_earnings_calendar(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         if symbol:
-            # Specific ticker: try Polygon reference then fall back to web search
-            polygon_info = {}
-            if self.polygon_api_key:
-                try:
-                    resp = requests.get(
-                        f"https://api.polygon.io/v3/reference/tickers/{symbol.upper()}",
-                        params={"apiKey": self.polygon_api_key},
-                        timeout=10
-                    )
-                    if resp.status_code == 200:
-                        d = resp.json().get("results", {})
-                        polygon_info = {
-                            "company_name": d.get("name"),
-                            "market_cap": d.get("market_cap"),
-                            "description": (d.get("description") or "")[:200]
-                        }
-                except Exception:
-                    pass
+            # Specific ticker: get company info from yfinance, then web search for earnings dates
+            company_info = {}
+            try:
+                import yfinance as yf
+                info = yf.Ticker(symbol.upper()).info
+                company_info = {
+                    "company_name": info.get("longName"),
+                    "market_cap": info.get("marketCap"),
+                    "description": (info.get("longBusinessSummary") or "")[:200],
+                }
+            except Exception:
+                pass
             search = self._web_search(f"{symbol} earnings date estimate analyst forecast")
             return {
                 "symbol": symbol.upper(),
-                "polygon_reference": polygon_info,
+                "company_reference": company_info,
                 "web_results": search.get("results", [])
             }
 

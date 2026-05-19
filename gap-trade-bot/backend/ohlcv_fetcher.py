@@ -1,6 +1,9 @@
 """
 OHLCV 1-minute bar fetcher for gap-up stocks.
 
+Data source: Alpaca Data API v2 (replaces Polygon — same data, already included
+in the Algo Trader Plus subscription).
+
 Two jobs in one daemon thread:
   1. Backfill  — on startup, fetch bars for every (ticker, date) in gap_data
                  that isn't already in ohlcv_1m.
@@ -26,17 +29,15 @@ from logging_config import get_logger
 logger = get_logger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-POLYGON_KEY   = os.getenv('POLYGON_API_KEY', '')
-SLEEP_BETWEEN = 0.5          # seconds between Polygon calls (Starter = unlimited)
+ALPACA_KEY    = os.getenv('ALPACA_API_KEY', '')
+ALPACA_SECRET = os.getenv('ALPACA_API_SECRET', '')
+SLEEP_BETWEEN = 0.5          # seconds between API calls
 MAX_RETRIES   = 3
 EOD_HOUR_ET   = 16           # 4 PM ET — bars are complete after market close
 EOD_MIN_ET    = 30           # fire at 4:30 PM ET
 ET            = pytz.timezone('US/Eastern')
 
-POLYGON_URL = (
-    "https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/"
-    "{date}/{date}?adjusted=true&sort=asc&limit=50000&apiKey={key}"
-)
+ALPACA_BARS_URL = 'https://data.alpaca.markets/v2/stocks/{ticker}/bars'
 
 _lock = threading.Lock()
 
@@ -113,61 +114,92 @@ def _insert_bars(bars: list[dict]):
         conn.commit()
 
 
-# ── Polygon fetch ─────────────────────────────────────────────────────────────
+# ── Alpaca fetch ──────────────────────────────────────────────────────────────
 
 def fetch_bars(ticker: str, day: str) -> Optional[list[dict]]:
     """
-    Fetch 1-min bars for one (ticker, day) from Polygon.
+    Fetch 1-min bars for one (ticker, day) from Alpaca Data API v2.
     Returns list of bar dicts, or None on unrecoverable error.
     day must be 'YYYY-MM-DD'.
+    Handles Alpaca pagination automatically via next_page_token.
     """
-    if not POLYGON_KEY:
-        logger.warning('POLYGON_API_KEY not set — cannot fetch bars')
+    if not ALPACA_KEY or not ALPACA_SECRET:
+        logger.warning('ALPACA_API_KEY / ALPACA_API_SECRET not set — cannot fetch bars')
         return None
 
-    url = POLYGON_URL.format(ticker=ticker.upper(), date=day, key=POLYGON_KEY)
+    sym = ticker.upper()
+    url = ALPACA_BARS_URL.format(ticker=sym)
+    headers = {
+        'APCA-API-KEY-ID':     ALPACA_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET,
+    }
+    base_params = {
+        'timeframe':  '1Min',
+        'start':      f'{day}T00:00:00Z',
+        'end':        f'{day}T23:59:59Z',
+        'limit':      1000,
+        'adjustment': 'raw',
+        'feed':       'sip',
+    }
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.get(url, timeout=30)
-            if resp.status_code == 200:
-                results = resp.json().get('results', [])
-                if not results:
-                    return []   # market closed / no data for that day
-                bars = []
-                for r in results:
-                    ts_ms = r.get('t')
-                    if ts_ms is None:
-                        continue
-                    ts_str = datetime.utcfromtimestamp(ts_ms / 1000).strftime('%Y-%m-%d %H:%M:%S+00:00')
-                    bars.append({
-                        'ticker': ticker.upper(),
-                        'ts':     ts_str,
-                        'day':    day,
-                        'open':   r.get('o'),
-                        'high':   r.get('h'),
-                        'low':    r.get('l'),
-                        'close':  r.get('c'),
-                        'volume': int(r.get('v', 0)),
-                        'vwap':   r.get('vw'),
-                        'source': 'polygon',
-                    })
-                return bars
-            elif resp.status_code == 429:
-                retry_after = int(resp.headers.get('Retry-After', 60))
-                logger.warning(f'[OHLCV] Rate limited — sleeping {retry_after}s')
-                time.sleep(retry_after + 1)
-            elif resp.status_code == 403:
-                logger.error(f'[OHLCV] API key rejected for {ticker} {day}')
-                return None
-            else:
-                logger.warning(f'[OHLCV] HTTP {resp.status_code} for {ticker} {day} — retry {attempt+1}')
+    all_bars: list[dict] = []
+    page_token: Optional[str] = None
+
+    while True:
+        params = dict(base_params)
+        if page_token:
+            params['page_token'] = page_token
+
+        page_fetched = False
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = requests.get(url, headers=headers, params=params, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for r in (data.get('bars') or []):
+                        # Convert "2024-01-01T14:30:00Z" → "2024-01-01 14:30:00+00:00"
+                        ts_raw = r['t'].replace('T', ' ')
+                        ts = ts_raw[:-1] + '+00:00' if ts_raw.endswith('Z') else ts_raw
+                        all_bars.append({
+                            'ticker': sym,
+                            'ts':     ts,
+                            'day':    day,
+                            'open':   r.get('o'),
+                            'high':   r.get('h'),
+                            'low':    r.get('l'),
+                            'close':  r.get('c'),
+                            'volume': int(r.get('v', 0)),
+                            'vwap':   r.get('vw'),
+                            'source': 'alpaca',
+                        })
+                    page_token = data.get('next_page_token')
+                    page_fetched = True
+                    break
+                elif resp.status_code == 429:
+                    wait = int(resp.headers.get('Retry-After', 60))
+                    logger.warning(f'[OHLCV] Rate limited — sleeping {wait}s')
+                    time.sleep(wait + 1)
+                elif resp.status_code == 403:
+                    logger.error(f'[OHLCV] API key rejected for {ticker} {day}')
+                    return None
+                else:
+                    logger.warning(
+                        f'[OHLCV] HTTP {resp.status_code} for {ticker} {day} — retry {attempt+1}')
+                    time.sleep(2 ** attempt)
+            except Exception as e:
+                logger.warning(
+                    f'[OHLCV] Exception fetching {ticker} {day}: {e} — retry {attempt+1}')
                 time.sleep(2 ** attempt)
-        except Exception as e:
-            logger.warning(f'[OHLCV] Exception fetching {ticker} {day}: {e} — retry {attempt+1}')
-            time.sleep(2 ** attempt)
 
-    return None
+        if not page_fetched:
+            # All retries exhausted — return whatever we have (or None if nothing)
+            return None if not all_bars else all_bars
+
+        if not page_token:
+            break  # no more pages
+        time.sleep(SLEEP_BETWEEN)
+
+    return all_bars if all_bars else []  # [] = market closed / no data that day
 
 
 # ── Backfill ──────────────────────────────────────────────────────────────────

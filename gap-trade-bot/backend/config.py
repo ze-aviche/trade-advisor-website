@@ -14,7 +14,7 @@ class Config:
     # API Keys (for future use)
     GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
     ALPACA_API_KEY = os.environ.get('ALPACA_API_KEY')
-    ALPACA_SECRET_KEY = os.environ.get('ALPACA_SECRET_KEY')
+    ALPACA_API_SECRET = os.environ.get('ALPACA_API_SECRET')
     POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY')
     
     # Database

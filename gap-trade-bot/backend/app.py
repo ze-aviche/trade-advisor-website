@@ -270,6 +270,9 @@ _brown_bot_active_positions = {}  # position_id -> position dict
 _brown_entry_counts: dict = {}    # symbol -> successful entries this session (fills only)
 _brown_attempted_symbols: set = set()  # all symbols attempted this session (prevents retry)
 _brown_eod_flattened_symbols: set = set()  # day symbols EOD-flattened today — blocked from re-entry
+_brown_closing_positions: set = set()  # position_ids currently being closed — prevents double-exit race
+_brown_pending_orders: dict = {}       # order_id → metadata; monitor writes DB only after confirmed fill
+_brown_order_monitor_thread = None
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_broker = None        # BrokerBase instance held for the bot's lifetime
@@ -2200,9 +2203,9 @@ def _sic_to_sector_etf(sic_code, sic_desc=''):
     return ('Diversified', 'SPY')
 
 
-def _get_sector_context(ticker, polygon_api_key):
+def _get_sector_context(ticker):
     """
-    Fetch sector classification and recent sector ETF + SPY performance from Polygon.
+    Fetch sector classification (yfinance) and recent sector ETF + SPY performance (Alpaca).
     Returns (sector_info dict, perf dict).  Safe — never raises.
     """
     import requests as _req
@@ -2211,23 +2214,20 @@ def _get_sector_context(ticker, polygon_api_key):
                    'sic_code': '', 'sic_description': '', 'company_name': ticker}
     perf = {}
 
-    if not polygon_api_key:
-        return sector_info, perf
-
-    # Step 1: reference data → sector/SIC
+    # Step 1: company/sector info via yfinance
     try:
-        r = _req.get(
-            f"https://api.polygon.io/v3/reference/tickers/{ticker.upper()}",
-            params={"apiKey": polygon_api_key}, timeout=8
-        )
-        if r.status_code == 200:
-            d = r.json().get('results', {})
-            sic_code = str(d.get('sic_code', '') or '')
-            sic_desc = d.get('sic_description', '') or ''
-            sector, etf = _sic_to_sector_etf(sic_code, sic_desc)
-            sector_info = {'sector': sector, 'etf': etf,
-                           'sic_code': sic_code, 'sic_description': sic_desc,
-                           'company_name': d.get('name', ticker)}
+        import yfinance as yf
+        info = yf.Ticker(ticker.upper()).info
+        yf_sector = info.get('sector', '') or ''
+        # Map yfinance sector name → (sector, ETF) via keyword match using existing _sic_to_sector_etf
+        sector, etf = _sic_to_sector_etf('', yf_sector.upper())
+        sector_info = {
+            'sector':          sector,
+            'etf':             etf,
+            'sic_code':        '',
+            'sic_description': yf_sector,
+            'company_name':    info.get('longName', ticker),
+        }
     except Exception as e:
         app_logger.warning(f"Sector ref lookup failed for {ticker}: {e}")
 
@@ -2238,17 +2238,27 @@ def _get_sector_context(ticker, polygon_api_key):
         app_logger.info(f"Sector ETF cache HIT for {etf_sym}")
         return sector_info, cached_perf
 
-    end_dt = datetime.now().strftime('%Y-%m-%d')
+    end_dt   = datetime.now().strftime('%Y-%m-%d')
     start_dt = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
-    agg_params = {"adjusted": "true", "sort": "asc", "limit": 15, "apiKey": polygon_api_key}
+    _ak = os.getenv('ALPACA_API_KEY', '')
+    _as = os.getenv('ALPACA_API_SECRET', '')
+    if not _ak or not _as:
+        return sector_info, perf
+    _alpaca_hdrs = {
+        'APCA-API-KEY-ID':     _ak,
+        'APCA-API-SECRET-KEY': _as,
+    }
 
     def _bars(sym):
         try:
             r = _req.get(
-                f"https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/day/{start_dt}/{end_dt}",
-                params=agg_params, timeout=8
+                f'https://data.alpaca.markets/v2/stocks/{sym}/bars',
+                headers=_alpaca_hdrs,
+                params={'timeframe': '1Day', 'start': start_dt, 'end': end_dt,
+                        'limit': 15, 'adjustment': 'raw', 'feed': 'sip'},
+                timeout=8,
             )
-            return r.json().get('results', []) if r.status_code == 200 else []
+            return r.json().get('bars', []) if r.status_code == 200 else []
         except Exception:
             return []
 
@@ -2327,9 +2337,7 @@ def get_historical_analysis(ticker):
                 'retry_after': retry_after
             }), 429
 
-        # Fetch sector context from Polygon (best-effort)
-        polygon_key = os.getenv('POLYGON_API_KEY')
-        sector_info, sector_perf = _get_sector_context(ticker, polygon_key)
+        sector_info, sector_perf = _get_sector_context(ticker)
 
         analysis = _gap_up_agent.analyze(
             ticker     = ticker,
@@ -2374,28 +2382,22 @@ def get_stock_news_endpoint(ticker):
         return jsonify(cached)
 
     articles = []
-    polygon_key = os.getenv('POLYGON_API_KEY')
 
-    # Primary: Polygon news API
-    if polygon_key:
-        try:
-            r = _req.get(
-                'https://api.polygon.io/v2/reference/news',
-                params={'ticker': ticker, 'limit': 8, 'sort': 'published_utc',
-                        'order': 'desc', 'apiKey': polygon_key},
-                timeout=8
-            )
-            if r.status_code == 200:
-                for item in r.json().get('results', []):
-                    articles.append({
-                        'title':       item.get('title', ''),
-                        'url':         item.get('article_url', ''),
-                        'source':      (item.get('publisher') or {}).get('name', ''),
-                        'published':   item.get('published_utc', ''),
-                        'description': (item.get('description') or '')[:220],
-                    })
-        except Exception as e:
-            app_logger.warning(f"Polygon news failed for {ticker}: {e}")
+    # Primary: yfinance news
+    try:
+        import yfinance as yf
+        yf_news = yf.Ticker(ticker).news or []
+        for item in yf_news[:8]:
+            content = item.get('content') or {}
+            articles.append({
+                'title':       content.get('title') or item.get('title', ''),
+                'url':         (content.get('canonicalUrl') or {}).get('url') or item.get('link', ''),
+                'source':      (content.get('provider') or {}).get('displayName', ''),
+                'published':   content.get('pubDate', ''),
+                'description': (content.get('summary') or '')[:220],
+            })
+    except Exception as e:
+        app_logger.warning(f"yfinance news failed for {ticker}: {e}")
 
     # Fallback: AI agent web search
     if not articles and AI_AGENT_AVAILABLE and _ai_agent:
@@ -2887,20 +2889,6 @@ def _get_intraday_bars(symbol):
         except Exception as e:
             app_logger.debug(f'Alpaca intraday bars {symbol}: {e}')
 
-    # Polygon fallback
-    api_key = os.environ.get('POLYGON_API_KEY', '')
-    if not api_key:
-        return []
-    try:
-        url = (f'https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/minute/'
-               f'{today_str}/{today_str}?adjusted=true&sort=asc&limit=500&apiKey={api_key}')
-        resp = _req.get(url, timeout=6)
-        data = resp.json()
-        if data.get('results'):
-            return [{'o': b['o'], 'h': b['h'], 'l': b['l'], 'c': b['c'], 'v': b['v']}
-                    for b in data['results']]
-    except Exception as e:
-        app_logger.debug(f'Polygon intraday bars {symbol}: {e}')
     return []
 
 
@@ -3110,7 +3098,7 @@ def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict)
 
 def _brown_enter_position(symbol, position_type, config, approx_price, playbook_override=None):
     """Place a BUY order for BrownBot and record the position in memory."""
-    global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts, _brown_attempted_symbols
+    global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts, _brown_attempted_symbols, _brown_pending_orders
 
     # Mark as attempted BEFORE the order — any outcome (fill, rejection, or BP skip)
     # locks the symbol for this session so the scanner won't retry it.
@@ -3157,29 +3145,29 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         _add_brown_log('error', f'Order rejected for {symbol}: {_order_err}')
         return
 
-    # Alpaca market orders are async — filled_avg_price is None on the initial response.
-    # Poll up to 5×0.5s so entry_price, profit_target, and stop_loss use the real fill.
+    # Check immediately for fast fill or outright rejection.
+    # If still pending, the monitor thread will confirm the fill and write to DB.
+    _entry_confirmed = False
     if order_id:
-        for _attempt in range(5):
-            if _attempt > 0:
-                time.sleep(0.5)
-            try:
-                _filled = _brown_broker.get_order(str(order_id))
-                if _filled.filled_avg_price:
-                    _fill_price = float(_filled.filled_avg_price)
-                    quantity = int(_filled.filled_qty or quantity)
-                    if _fill_price != price:
-                        _add_brown_log('info',
-                            f'{symbol} fill confirmed ${_fill_price:.2f} '
-                            f'(scanner approx was ${price:.2f})')
-                    price = _fill_price
-                    break
-            except Exception as _fe:
-                app_logger.debug(f'BrownBot fill poll {symbol} attempt {_attempt+1}: {_fe}')
-                break
-        else:
-            _add_brown_log('info',
-                f'{symbol} fill not confirmed after 2.5s — using scanner approx ${price:.2f}')
+        try:
+            from bot.broker.base import OrderStatus as _OStatus
+            _filled = _brown_broker.get_order(str(order_id))
+            if _filled.status in (_OStatus.CANCELLED, _OStatus.REJECTED):
+                _add_brown_log('error',
+                    f'{symbol} order {str(order_id)[:8]}… rejected immediately — not entering')
+                return
+            if _filled.filled_avg_price:
+                _fill_price = float(_filled.filled_avg_price)
+                _fill_qty   = int(_filled.filled_qty or quantity)
+                if _fill_price != price:
+                    _add_brown_log('info',
+                        f'{symbol} fill confirmed ${_fill_price:.2f} '
+                        f'(scanner approx was ${price:.2f})')
+                price    = _fill_price
+                quantity = _fill_qty
+                _entry_confirmed = True
+        except Exception as _fe:
+            app_logger.debug(f'BrownBot fill check {symbol}: {_fe}')
 
     if position_type == 'day':
         cfg_tgt = float(config.get('day_profit_target_pct', 5.0))
@@ -3243,28 +3231,44 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     except Exception as _e:
         _add_brown_log('warning', f'DB position save failed for {symbol}: {_e}')
 
-    # Persist entry to DB so stats survive server restarts
-    try:
-        db_manager.add_trade({
-            'trade_id':      f'BROWN_ENTRY_{symbol}_{int(time.time())}',
-            'symbol':        symbol,
-            'side':          'B',
-            'quantity':      quantity,
-            'price':         price,
-            'route':         'SMAT',
-            'trade_time':    datetime.now().isoformat(),
-            'order_id':      str(order_id) if order_id else None,
-            'liquidity':     None,
-            'ecn_fee':       0.0,
-            'pnl':           0.0,
-            'trade_date':    _last_trading_date(),
-            'position_type': position_type,
-            'days_held':     None,
-            'source':        'brownbot',
-            'broker':        _brown_broker.name if _brown_broker else None,
-        })
-    except Exception as _e:
-        _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
+    # Write BUY trade to DB only after broker confirms the fill.
+    if _entry_confirmed:
+        # Fast path: fill already confirmed above — write immediately.
+        try:
+            db_manager.add_trade({
+                'trade_id':      f'BROWN_ENTRY_{symbol}_{order_id}',
+                'symbol':        symbol,
+                'side':          'B',
+                'quantity':      quantity,
+                'price':         price,
+                'route':         'SMAT',
+                'trade_time':    datetime.now().isoformat(),
+                'order_id':      str(order_id) if order_id else None,
+                'liquidity':     None,
+                'ecn_fee':       0.0,
+                'pnl':           0.0,
+                'trade_date':    _last_trading_date(),
+                'position_type': position_type,
+                'days_held':     None,
+                'source':        'brownbot',
+                'broker':        _brown_broker.name if _brown_broker else None,
+            })
+        except Exception as _e:
+            _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
+    elif order_id:
+        # Slow path: order still pending — monitor thread will write DB on confirmed fill.
+        with _brown_bot_lock:
+            _brown_pending_orders[str(order_id)] = {
+                'type':          'entry',
+                'symbol':        symbol,
+                'position_id':   position_id,
+                'order_id':      str(order_id),
+                'submitted_at':  time.time(),
+                'approx_price':  price,
+                'quantity':      quantity,
+                'position_type': position_type,
+            }
+        _add_brown_log('info', f'{symbol} BUY pending broker confirmation — DB write deferred')
 
     # Count only actual fills — not rejected/skipped attempts
     _brown_entry_counts[symbol] = _brown_entry_counts.get(symbol, 0) + 1
@@ -3546,9 +3550,208 @@ def _brown_get_current_price(symbol):
     return None
 
 
+# ── Broker-confirmed order monitor ────────────────────────────────────────────
+
+def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
+    """Write the confirmed BUY trade to DB and update the in-memory position."""
+    global _brown_bot_active_positions, _brown_pending_orders
+    symbol        = meta['symbol']
+    position_id   = meta['position_id']
+    position_type = meta['position_type']
+
+    with _brown_bot_lock:
+        pos = _brown_bot_active_positions.get(position_id)
+        if pos:
+            tgt_pct = pos.get('profit_target_pct', 5.0)
+            stp_pct = pos.get('stop_loss_pct', 2.5)
+            pos['entry_price']      = fill_price
+            pos['quantity']         = fill_qty
+            pos['profit_target']    = round(fill_price * (1 + tgt_pct / 100), 2)
+            pos['stop_loss']        = round(fill_price * (1 - stp_pct / 100), 2)
+            pos['_entry_confirmed'] = True
+        _brown_pending_orders.pop(oid, None)
+
+    try:
+        db_manager.save_brown_position(
+            position_id, _brown_bot_active_positions.get(position_id) or meta
+        )
+    except Exception:
+        pass
+
+    try:
+        db_manager.add_trade({
+            'trade_id':      f'BROWN_ENTRY_{symbol}_{oid}',
+            'symbol':        symbol,
+            'side':          'B',
+            'quantity':      fill_qty,
+            'price':         fill_price,
+            'route':         'SMAT',
+            'trade_time':    datetime.now().isoformat(),
+            'order_id':      oid,
+            'liquidity':     None,
+            'ecn_fee':       0.0,
+            'pnl':           0.0,
+            'trade_date':    _last_trading_date(),
+            'position_type': position_type,
+            'days_held':     None,
+            'source':        'brownbot',
+            'broker':        _brown_broker.name if _brown_broker else None,
+        })
+        _add_brown_log('info', f'{symbol} BUY confirmed by broker: {fill_qty} @ ${fill_price:.2f}')
+    except Exception as _e:
+        _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
+
+
+def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
+    """Write the confirmed SELL trade to DB and update exit stats."""
+    global _brown_bot_stats, _brown_pending_orders
+    symbol        = meta['symbol']
+    position_id   = meta['position_id']
+    position_type = meta['position_type']
+    exit_reason   = meta['exit_reason']
+    entry_price   = meta['entry_price']
+    entry_num     = meta.get('entry_num', 1)
+    days_held     = meta.get('days_held')
+
+    with _brown_bot_lock:
+        _brown_pending_orders.pop(oid, None)
+
+    realized_pnl = round((fill_price - entry_price) * fill_qty, 2) if entry_price else 0.0
+
+    try:
+        db_manager.add_trade({
+            'trade_id':      f'BROWN_EXIT_{symbol}_{oid}',
+            'symbol':        symbol,
+            'side':          'S',
+            'quantity':      fill_qty,
+            'price':         fill_price,
+            'route':         'SMAT',
+            'trade_time':    datetime.now().isoformat(),
+            'order_id':      oid,
+            'liquidity':     None,
+            'ecn_fee':       0.0,
+            'pnl':           realized_pnl,
+            'trade_date':    _last_trading_date(),
+            'position_type': position_type,
+            'days_held':     days_held,
+            'source':        'brownbot',
+            'broker':        _brown_broker.name if _brown_broker else None,
+        })
+    except Exception as _e:
+        _add_brown_log('warning', f'DB exit write failed for {symbol}: {_e}')
+
+    if position_type == 'day':
+        _brown_bot_stats['day_exited'] += 1
+    else:
+        _brown_bot_stats['swing_exited'] += 1
+
+    pnl_str  = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
+    exit_tag = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-exit ×{entry_num - 1})'
+    _add_brown_log(
+        'info',
+        f'EXITED {position_type.upper()} {symbol} {exit_tag} [{exit_reason}] '
+        f'entry ${entry_price:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}'
+    )
+
+
+def _brown_order_monitor_loop():
+    """
+    Background thread: polls _brown_pending_orders every 2 s and writes to DB
+    only after the broker confirms a fill.  Handles rejections and timeouts.
+    """
+    global _brown_bot_running, _brown_pending_orders, _brown_bot_active_positions
+    global _brown_closing_positions, _brown_entry_counts
+
+    ORDER_TIMEOUT = 60  # seconds before a stuck order is cancelled
+
+    while _brown_bot_running:
+        time.sleep(2)
+        if not _brown_pending_orders or not _brown_broker:
+            continue
+
+        with _brown_bot_lock:
+            pending_snapshot = list(_brown_pending_orders.items())
+
+        for oid, meta in pending_snapshot:
+            if not _brown_bot_running:
+                break
+            symbol     = meta['symbol']
+            order_type = meta['type']
+            age        = time.time() - meta['submitted_at']
+
+            try:
+                order = _brown_broker.get_order(oid)
+            except Exception as _e:
+                app_logger.debug(f'[BrownBot monitor] get_order {oid} failed: {_e}')
+                continue
+
+            from bot.broker.base import OrderStatus as _OStatus
+            fill_price = (float(order.filled_avg_price)
+                          if order.filled_avg_price else meta.get('approx_price', 0.0))
+            fill_qty   = int(order.filled_qty or meta.get('quantity', 0))
+
+            if order.status == _OStatus.FILLED:
+                if order_type == 'entry':
+                    _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
+                else:
+                    _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
+
+            elif order.status in (_OStatus.CANCELLED, _OStatus.REJECTED):
+                with _brown_bot_lock:
+                    _brown_pending_orders.pop(oid, None)
+                status_str = str(order.status).upper()
+                _add_brown_log('warning', f'{symbol} {order_type} order {oid[:8]}… {status_str} — no DB write')
+                if order_type == 'entry':
+                    position_id = meta['position_id']
+                    with _brown_bot_lock:
+                        _brown_bot_active_positions.pop(position_id, None)
+                        _brown_entry_counts.pop(symbol, None)
+                    try:
+                        db_manager.delete_brown_position(position_id)
+                    except Exception:
+                        pass
+                    _add_brown_log('warning', f'{symbol}: phantom entry removed — order was not filled')
+                else:
+                    # Exit order rejected — restore position so exit loop can retry
+                    saved_pos = meta.get('position')
+                    if saved_pos:
+                        with _brown_bot_lock:
+                            _brown_bot_active_positions[meta['position_id']] = saved_pos
+                        _add_brown_log('warning', f'{symbol}: exit order rejected — position restored for retry')
+
+            elif age > ORDER_TIMEOUT:
+                _add_brown_log('warning',
+                    f'{symbol} {order_type} order {oid[:8]}… stuck {age:.0f}s — cancelling')
+                try:
+                    _brown_broker.cancel_order(oid)
+                except Exception:
+                    pass
+                with _brown_bot_lock:
+                    _brown_pending_orders.pop(oid, None)
+                if order_type == 'entry':
+                    position_id = meta['position_id']
+                    with _brown_bot_lock:
+                        _brown_bot_active_positions.pop(position_id, None)
+                        _brown_entry_counts.pop(symbol, None)
+                    try:
+                        db_manager.delete_brown_position(position_id)
+                    except Exception:
+                        pass
+                    _add_brown_log('warning', f'{symbol}: entry timed out — position removed')
+                else:
+                    # Exit timed out — write DB with approx price so we have a record
+                    _add_brown_log('warning',
+                        f'{symbol}: exit timed out — writing DB with approx price')
+                    _brown_monitor_finalize_exit(
+                        oid, meta,
+                        fill_price or meta.get('approx_price', 0.0),
+                        fill_qty   or meta.get('quantity', 0),
+                    )
+
+
 def _brown_close_position(position_id, position, exit_reason):
     """Close a BrownBot position, record the trade, and remove from active positions."""
-    global _brown_bot_active_positions, _brown_bot_stats, _brown_eod_flattened_symbols
+    global _brown_bot_active_positions, _brown_bot_stats, _brown_eod_flattened_symbols, _brown_closing_positions, _brown_pending_orders
     symbol = position['symbol']
     quantity = int(position.get('quantity', 100))
     current_price = position.get('_current_price') or position.get('entry_price', 0)
@@ -3558,6 +3761,13 @@ def _brown_close_position(position_id, position, exit_reason):
     if not _brown_broker:
         _add_brown_log('error', f'No broker available to close {symbol}')
         return False
+
+    # Prevent double-exit race: if already being closed by another loop tick, skip.
+    with _brown_bot_lock:
+        if position_id in _brown_closing_positions:
+            app_logger.debug(f'[BrownBot] {symbol} ({position_id}) already closing — skipping duplicate exit')
+            return False
+        _brown_closing_positions.add(position_id)
 
     order_id = None
 
@@ -3583,21 +3793,7 @@ def _brown_close_position(position_id, position, exit_reason):
         _add_brown_log('error', f'SELL order failed for {symbol}: {e}')
         return False
 
-    # Poll for actual fill price — most brokers fill market orders within 1-3 s.
-    for _ in range(3):
-        time.sleep(1)
-        try:
-            filled = _brown_broker.get_order(str(order_id))
-            if filled.filled_avg_price:
-                current_price = float(filled.filled_avg_price)
-                quantity = int(filled.filled_qty or quantity)
-                break
-        except Exception:
-            break
-
-    realized_pnl = round((float(current_price) - entry_price) * quantity, 2) if entry_price else 0.0
-
-    # Calculate days held for swing trades
+    # Calculate days held (needed for DB record written by the monitor)
     days_held = None
     entry_time_str = position.get('entry_time', '')
     if entry_time_str:
@@ -3607,30 +3803,23 @@ def _brown_close_position(position_id, position, exit_reason):
         except Exception:
             pass
 
-    # Write the closing trade to DB
-    try:
-        import uuid as _uuid
-        trade_data = {
-            'trade_id': f'BROWN_EXIT_{symbol}_{int(time.time())}',
-            'symbol': symbol,
-            'side': 'S',
-            'quantity': quantity,
-            'price': float(current_price),
-            'route': 'SMAT',
-            'trade_time': datetime.now().isoformat(),
-            'order_id': str(order_id) if order_id else None,
-            'liquidity': None,
-            'ecn_fee': 0.0,
-            'pnl': realized_pnl,
-            'trade_date': _last_trading_date(),
+    # Queue the exit for the monitor thread — DB write happens after confirmed fill.
+    with _brown_bot_lock:
+        _brown_pending_orders[str(order_id)] = {
+            'type':          'exit',
+            'symbol':        symbol,
+            'position_id':   position_id,
+            'order_id':      str(order_id),
+            'submitted_at':  time.time(),
+            'approx_price':  float(current_price),
+            'quantity':      quantity,
+            'entry_price':   entry_price,
             'position_type': position_type,
-            'days_held': days_held,
-            'source': 'brownbot',
-            'broker': _brown_broker.name if _brown_broker else None,
+            'exit_reason':   exit_reason,
+            'days_held':     days_held,
+            'entry_num':     position.get('entry_num', 1),
+            'position':      dict(position),  # kept so monitor can restore on rejection
         }
-        db_manager.add_trade(trade_data)
-    except Exception as e:
-        _add_brown_log('warning', f'DB trade write failed for {symbol}: {e}')
 
     try:
         db_manager.delete_brown_position(position_id)
@@ -3639,22 +3828,16 @@ def _brown_close_position(position_id, position, exit_reason):
 
     with _brown_bot_lock:
         _brown_bot_active_positions.pop(position_id, None)
+        _brown_closing_positions.discard(position_id)
 
-    if position_type == 'day':
-        _brown_bot_stats['day_exited'] += 1
-        if 'EOD_FLATTEN' in exit_reason:
-            _brown_eod_flattened_symbols.add(symbol)
-    else:
-        _brown_bot_stats['swing_exited'] += 1
+    # EOD flatten tracking must happen immediately (blocks re-entry the same day)
+    if position_type == 'day' and 'EOD_FLATTEN' in exit_reason:
+        _brown_eod_flattened_symbols.add(symbol)
 
-    entry_num = position.get('entry_num', 1)
-    exit_tag  = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-exit ×{entry_num - 1})'
-    pnl_str   = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
     _add_brown_log(
         'info',
-        f'EXITED {position_type.upper()} {symbol} {exit_tag} [{exit_reason}] '
-        f'entry ${entry_price:.2f} → exit ${float(current_price):.2f} '
-        f'× {quantity} | P&L {pnl_str}'
+        f'SELL submitted {position_type.upper()} {symbol} [{exit_reason}] — '
+        f'awaiting fill confirmation (entry ${entry_price:.2f})'
     )
     return True
 
@@ -3978,7 +4161,7 @@ def get_brown_bot_broker_activities():
 @require_auth
 def start_brown_bot():
     """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread
     if _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is already running'})
 
@@ -4001,6 +4184,8 @@ def start_brown_bot():
     _brown_entry_counts.clear()
     _brown_attempted_symbols.clear()
     _brown_eod_flattened_symbols.clear()
+    _brown_closing_positions.clear()
+    _brown_pending_orders.clear()
     _playbook_cache.clear()
     _playbook_pending.clear()
     _playbook_failed.clear()
@@ -4125,7 +4310,11 @@ def start_brown_bot():
         target=_brown_bot_exit_loop, daemon=True, name='BrownBotExits'
     )
     _brown_exit_thread.start()
-    _add_brown_log('info', 'BrownBot scanner + exit loops launched')
+    _brown_order_monitor_thread = threading.Thread(
+        target=_brown_order_monitor_loop, daemon=True, name='BrownBotOrderMonitor'
+    )
+    _brown_order_monitor_thread.start()
+    _add_brown_log('info', 'BrownBot scanner + exit + order-monitor loops launched')
     return jsonify({'success': True, 'message': 'BrownBot started'})
 
 
@@ -4133,7 +4322,7 @@ def start_brown_bot():
 @require_auth
 def stop_brown_bot():
     """Stop BrownBot — clears the running flag and joins both threads."""
-    global _brown_bot_running, _brown_bot_thread, _brown_exit_thread, _brown_broker
+    global _brown_bot_running, _brown_bot_thread, _brown_exit_thread, _brown_broker, _brown_order_monitor_thread
     if not _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is not running'})
     _brown_bot_running = False
@@ -4141,8 +4330,11 @@ def stop_brown_bot():
         _brown_bot_thread.join(timeout=35)
     if _brown_exit_thread and _brown_exit_thread.is_alive():
         _brown_exit_thread.join(timeout=10)
+    if _brown_order_monitor_thread and _brown_order_monitor_thread.is_alive():
+        _brown_order_monitor_thread.join(timeout=10)
     _brown_bot_thread = None
     _brown_exit_thread = None
+    _brown_order_monitor_thread = None
     _brown_broker = None
     _add_brown_log('info', 'BrownBot stopped')
     return jsonify({'success': True, 'message': 'BrownBot stopped'})
@@ -6201,7 +6393,7 @@ def get_open_positions():
         if broker is None:
             import os as _os
             api_key    = _os.environ.get('ALPACA_API_KEY') or _os.environ.get('ALPACA_KEY')
-            api_secret = _os.environ.get('ALPACA_SECRET_KEY') or _os.environ.get('ALPACA_SECRET')
+            api_secret = _os.environ.get('ALPACA_API_SECRET')
             if api_key and api_secret:
                 from bot.broker.alpaca import AlpacaBroker
                 paper  = _os.environ.get('ALPACA_PAPER', 'true').lower() != 'false'
@@ -6405,41 +6597,68 @@ def _last_trading_date() -> str:
     return d.strftime('%Y-%m-%d')
 
 
-def _fetch_volume_surge_candidates(api_key, existing_tickers, min_surge=1.5, min_vol=300_000, limit=20):
+def _fetch_volume_surge_candidates(existing_tickers, min_surge=1.5, min_vol=300_000, limit=20):
     """
-    Pull the full Polygon market snapshot (one call, all US stocks) and return
-    stocks where today's volume >= min_surge × previous day's volume.
-    These are institutional accumulation/distribution setups not visible in
-    gainers/losers alone.
+    Use Alpaca most-actives + snapshot to find stocks with volume >= min_surge × prev-day volume.
+    These are institutional accumulation/distribution setups not visible in gainers/losers alone.
     """
     import requests as _req
+    alpaca_key    = os.getenv('ALPACA_API_KEY', '')
+    alpaca_secret = os.getenv('ALPACA_API_SECRET', '')
+    if not alpaca_key or not alpaca_secret:
+        return []
+
+    hdrs = {'APCA-API-KEY-ID': alpaca_key, 'APCA-API-SECRET-KEY': alpaca_secret}
+
+    # Step 1: top 100 most-active symbols by volume
     try:
-        url = f'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?apiKey={api_key}'
-        r = _req.get(url, timeout=15)
+        r = _req.get(
+            'https://data.alpaca.markets/v1beta1/screener/stocks/most-actives',
+            headers=hdrs, params={'top': 100, 'by': 'volume'}, timeout=12,
+        )
         r.raise_for_status()
-        tickers = r.json().get('tickers', [])
+        active_syms = [item['symbol'] for item in r.json().get('most_actives', [])]
     except Exception as e:
-        app_logger.debug(f'Full snapshot fetch failed: {e}')
+        app_logger.debug(f'Most-actives fetch failed: {e}')
+        return []
+
+    active_syms = [s for s in active_syms
+                   if s not in existing_tickers and _is_valid_swing_ticker(s)]
+    if not active_syms:
+        return []
+
+    # Step 2: batch snapshot for prev-day volume and intraday price details
+    try:
+        r2 = _req.get(
+            'https://data.alpaca.markets/v2/stocks/snapshots',
+            headers=hdrs,
+            params={'symbols': ','.join(active_syms[:200]), 'feed': 'sip'},
+            timeout=12,
+        )
+        r2.raise_for_status()
+        snaps = r2.json()
+    except Exception as e:
+        app_logger.debug(f'Snapshot batch fetch failed: {e}')
         return []
 
     surgers = []
-    for t in tickers:
-        sym  = t.get('ticker', '')
-        if sym in existing_tickers:
-            continue
-        if not _is_valid_swing_ticker(sym):
+    for sym in active_syms:
+        snap = snaps.get(sym, {})
+        if not snap:
             continue
 
-        day      = t.get('day', {})
-        prev     = t.get('prevDay', {})
-        close    = day.get('c', 0)
-        vwap     = day.get('vw', 0)
-        hi       = day.get('h', close)
-        lo       = day.get('l', close)
+        day_bar  = snap.get('dailyBar') or {}
+        prev_bar = snap.get('prevDailyBar') or {}
+
+        close    = day_bar.get('c', 0)
+        vwap     = day_bar.get('vw', 0)
+        hi       = day_bar.get('h', close)
+        lo       = day_bar.get('l', close)
         price    = close or vwap or 0
-        vol      = day.get('v', 0)
-        prev_vol = prev.get('v', 0)
-        chg      = t.get('todaysChangePerc', 0)
+        vol      = day_bar.get('v', 0)
+        prev_vol = prev_bar.get('v', 0)
+        prev_c   = prev_bar.get('c', 0)
+        chg      = ((price - prev_c) / prev_c * 100) if prev_c else 0
 
         if not (10 <= price <= 700):
             continue
@@ -6453,70 +6672,75 @@ def _fetch_volume_surge_candidates(api_key, existing_tickers, min_surge=1.5, min
         if abs(chg) > 22:
             continue
 
-        # ── Intraday trend quality filters ─────────────────────────────
-        # 1. Not a sell-off day: change must not be deeply negative
+        # ── Intraday trend quality filters ──────────────────────────────
         if chg < -3:
             continue
 
-        # 2. Close position in range: close must be in upper 40% of day range.
-        #    Close near the low = distribution candle, volume was selling pressure.
         range_size = hi - lo
         close_pos  = (close - lo) / range_size if range_size > 0 else 0.5
         if close_pos < 0.40:
             continue
 
-        # 3. Close >= VWAP: price held above the session average (accumulation bias).
-        #    Allow 1.5% below VWAP to accommodate end-of-day mean reversion.
         if vwap and close < vwap * 0.985:
             continue
 
         surgers.append({
-            'ticker':    sym,
-            'price':     round(price, 2),
-            'chg_pct':   round(chg, 2),
-            'volume_m':  round(vol / 1_000_000, 2),
+            'ticker':       sym,
+            'price':        round(price, 2),
+            'chg_pct':      round(chg, 2),
+            'volume_m':     round(vol / 1_000_000, 2),
             'dollar_vol_m': round(price * vol / 1_000_000, 1),
-            'day_range': round((hi - lo) / price * 100, 1) if price else 0,
-            'close_pos': round(close_pos, 2),
-            'direction': 'vol-surge',
-            'vol_ratio': round(ratio, 1),
+            'day_range':    round((hi - lo) / price * 100, 1) if price else 0,
+            'close_pos':    round(close_pos, 2),
+            'direction':    'vol-surge',
+            'vol_ratio':    round(ratio, 1),
         })
 
     surgers.sort(key=lambda x: x['vol_ratio'], reverse=True)
     return surgers[:limit]
 
 
-def _enrich_with_sma_trend(candidates, api_key, sma_period=10, max_workers=10):
+def _enrich_with_sma_trend(candidates, sma_period=10, max_workers=10):
     """
-    Fetch the last ~15 daily bars for each candidate (parallel Polygon calls),
+    Fetch the last ~15 daily bars for each candidate (parallel Alpaca calls),
     compute SMA-10, and drop stocks whose close is below SMA-10 by more than 3%.
     These are "broken pattern" stocks — multi-day downtrend, not safe for swing longs.
 
     Fail-open: if bars cannot be fetched for a ticker it stays in the list.
     Annotates each candidate with 'sma10' and 'above_sma10' for Claude context.
     """
-    if not api_key or not candidates:
+    if not candidates:
+        return candidates
+
+    alpaca_key    = os.getenv('ALPACA_API_KEY', '')
+    alpaca_secret = os.getenv('ALPACA_API_SECRET', '')
+    if not alpaca_key or not alpaca_secret:
         return candidates
 
     import requests as _req2
     import datetime
     from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
 
-    today    = datetime.date.today()
-    from_dt  = (today - datetime.timedelta(days=sma_period * 3)).strftime('%Y-%m-%d')
-    to_dt    = today.strftime('%Y-%m-%d')
+    today   = datetime.date.today()
+    from_dt = (today - datetime.timedelta(days=sma_period * 3)).strftime('%Y-%m-%d')
+    to_dt   = today.strftime('%Y-%m-%d')
+    _hdrs   = {'APCA-API-KEY-ID': alpaca_key, 'APCA-API-SECRET-KEY': alpaca_secret}
 
     def _fetch(sym):
         try:
-            url = (f'https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/day/'
-                   f'{from_dt}/{to_dt}?adjusted=true&sort=asc&limit=50&apiKey={api_key}')
-            r = _req2.get(url, timeout=8)
+            r = _req2.get(
+                f'https://data.alpaca.markets/v2/stocks/{sym}/bars',
+                headers=_hdrs,
+                params={'timeframe': '1Day', 'start': from_dt, 'end': to_dt,
+                        'limit': 50, 'adjustment': 'raw', 'feed': 'sip'},
+                timeout=8,
+            )
             if r.status_code != 200:
                 return sym, None, None
-            results = r.json().get('results', [])
-            if len(results) < 3:
+            bars = r.json().get('bars', [])
+            if len(bars) < 3:
                 return sym, None, None
-            closes = [b['c'] for b in results]
+            closes = [b['c'] for b in bars]
             sma = sum(closes[-sma_period:]) / min(sma_period, len(closes))
             return sym, round(closes[-1], 2), round(sma, 2)
         except Exception:
@@ -6671,7 +6895,7 @@ def swing_daily_picks_latest():
     })
 
 
-def _compute_and_save_swing_picks(session_date: str, polygon_key: str,
+def _compute_and_save_swing_picks(session_date: str,
                                    market_open: bool = None) -> dict:
     """
     Full swing picks pipeline: fetch candidates → filter → SMA/cap/trend checks →
@@ -6685,19 +6909,56 @@ def _compute_and_save_swing_picks(session_date: str, polygon_key: str,
     if market_open is None:
         market_open = _is_market_open()
 
-    # ── Step 1: fetch gainers + losers in parallel ────────────────────────
-    def _fetch_movers(direction):
-        url = (f'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/{direction}'
-               f'?apiKey={polygon_key}')
-        r = _req.get(url, timeout=12)
-        r.raise_for_status()
-        return r.json().get('tickers', [])
+    alpaca_key    = os.getenv('ALPACA_API_KEY', '')
+    alpaca_secret = os.getenv('ALPACA_API_SECRET', '')
+    if not alpaca_key or not alpaca_secret:
+        raise RuntimeError('ALPACA_API_KEY / ALPACA_API_SECRET not configured')
+    _hdrs = {'APCA-API-KEY-ID': alpaca_key, 'APCA-API-SECRET-KEY': alpaca_secret}
 
-    with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
-        gainers = _pool.submit(_fetch_movers, 'gainers').result()
-        losers  = _pool.submit(_fetch_movers, 'losers').result()
+    # ── Step 1: fetch gainers + losers from Alpaca movers ────────────────
+    r_movers = _req.get(
+        'https://data.alpaca.markets/v1beta1/screener/stocks/movers',
+        headers=_hdrs, params={'top': 50}, timeout=12,
+    )
+    r_movers.raise_for_status()
+    movers_data = r_movers.json()
+    gainers_raw = movers_data.get('gainers', [])
+    losers_raw  = movers_data.get('losers', [])
 
-    all_movers = gainers + losers
+    # Build Polygon-compatible ticker dicts via snapshot (get h/l/vwap/prevDay)
+    all_syms = list(dict.fromkeys(
+        [g['symbol'] for g in gainers_raw] + [l['symbol'] for l in losers_raw]
+    ))
+    chg_pct_map = {g['symbol']: g.get('change_percent', 0) for g in gainers_raw}
+    chg_pct_map.update({l['symbol']: l.get('change_percent', 0) for l in losers_raw})
+
+    all_movers = []
+    if all_syms:
+        try:
+            r_snap = _req.get(
+                'https://data.alpaca.markets/v2/stocks/snapshots',
+                headers=_hdrs,
+                params={'symbols': ','.join(all_syms[:200]), 'feed': 'sip'},
+                timeout=12,
+            )
+            if r_snap.status_code == 200:
+                snaps = r_snap.json()
+                for sym in all_syms:
+                    snap = snaps.get(sym, {})
+                    if not snap:
+                        continue
+                    db  = snap.get('dailyBar') or {}
+                    pb  = snap.get('prevDailyBar') or {}
+                    all_movers.append({
+                        'ticker': sym,
+                        'day':    {'c': db.get('c', 0), 'h': db.get('h', 0),
+                                   'l': db.get('l', 0), 'v': db.get('v', 0),
+                                   'vw': db.get('vw', 0)},
+                        'prevDay': {'c': pb.get('c', 0), 'v': pb.get('v', 0)},
+                        'todaysChangePerc': chg_pct_map.get(sym, 0),
+                    })
+        except Exception as e:
+            app_logger.warning(f'Swing picks snapshot batch failed: {e}')
 
     # ── Step 2: filter movers — strict first, relax if thin ──────────────
     candidates = _filter_candidates(all_movers, min_vol=500_000, min_chg=1.0)
@@ -6728,33 +6989,38 @@ def _compute_and_save_swing_picks(session_date: str, polygon_key: str,
 
     # ── Step 2c: volume-surge scan ────────────────────────────────────────
     candidates.extend(_fetch_volume_surge_candidates(
-        polygon_key, known_tickers, min_surge=1.5, min_vol=300_000, limit=20))
+        known_tickers, min_surge=1.5, min_vol=300_000, limit=20))
 
-    # ── Step 2d: market-cap enrichment + micro-cap filter ────────────────
-    if polygon_key and candidates:
+    # ── Step 2d: market-cap enrichment + micro-cap filter (yfinance) ─────
+    if candidates:
         try:
-            syms_param = '&'.join(f'ticker={c["ticker"]}' for c in candidates)
-            ref_r = _req.get(
-                f'https://api.polygon.io/v3/reference/tickers?{syms_param}&limit=250&apiKey={polygon_key}',
-                timeout=10)
-            if ref_r.status_code == 200:
-                cap_map = {item['ticker']: round(item['market_cap'] / 1_000_000, 0)
-                           for item in ref_r.json().get('results', [])
-                           if item.get('market_cap')}
-                filtered = []
-                for c in candidates:
-                    mc_m = cap_map.get(c['ticker'])
-                    if mc_m is not None:
-                        if mc_m < 300:
-                            continue
-                        c['market_cap_m'] = mc_m
-                    filtered.append(c)
-                candidates = filtered
+            import yfinance as yf
+
+            def _get_mktcap(sym):
+                try:
+                    return sym, yf.Ticker(sym).fast_info.market_cap
+                except Exception:
+                    return sym, None
+
+            with _cf.ThreadPoolExecutor(max_workers=10) as _p2:
+                cap_results = list(_p2.map(_get_mktcap, [c['ticker'] for c in candidates]))
+
+            cap_map = {sym: round(mc / 1_000_000, 0)
+                       for sym, mc in cap_results if mc and mc > 0}
+            filtered = []
+            for c in candidates:
+                mc_m = cap_map.get(c['ticker'])
+                if mc_m is not None:
+                    if mc_m < 300:
+                        continue
+                    c['market_cap_m'] = mc_m
+                filtered.append(c)
+            candidates = filtered
         except Exception:
             pass  # fail-open
 
     # ── Step 2e: SMA-10 trend filter ─────────────────────────────────────
-    candidates = _enrich_with_sma_trend(candidates, polygon_key)
+    candidates = _enrich_with_sma_trend(candidates)
 
     if not candidates:
         return {
@@ -6806,7 +7072,6 @@ def swing_daily_picks():
     Return cached swing picks for today's session (memory → DB → compute).
     Computation is also triggered automatically by the EOD scheduler at 8 PM ET.
     """
-    polygon_key  = os.environ.get('POLYGON_API_KEY', '')
     market_open  = _is_market_open()
     session_date = _last_trading_date()
     app_logger.info(f'swing-daily-picks: session_date={session_date} market_open={market_open} ai_available={AI_AGENT_AVAILABLE}')
@@ -6852,7 +7117,7 @@ def swing_daily_picks():
         return jsonify({'success': False, 'error': 'AI not available'}), 503
 
     try:
-        result = _compute_and_save_swing_picks(session_date, polygon_key, market_open)
+        result = _compute_and_save_swing_picks(session_date, market_open)
         return jsonify(result)
     except json.JSONDecodeError as jde:
         return jsonify({'success': False, 'error': f'AI parse error: {jde}'}), 500
@@ -6878,23 +7143,20 @@ def _swing_picks_eod_scheduler():
     _et = _pytz.timezone('US/Eastern')
     app_logger.info('[SwingPicksEOD] Thread started')
 
-    polygon_key = os.environ.get('POLYGON_API_KEY', '')
-
     # ── Startup catch-up ─────────────────────────────────────────────────
     # If server restarted after market close and today's picks are missing, fill in now.
     try:
         now_et       = datetime.now(_et)
         session_date = _last_trading_date()
         today_str    = now_et.strftime('%Y-%m-%d')
-        is_trading_day = (session_date == today_str)   # _last_trading_date returns prev weekday on weekends
+        is_trading_day = (session_date == today_str)
 
         if (is_trading_day
-                and now_et.hour >= 16              # market closed
-                and polygon_key
+                and now_et.hour >= 16
                 and AI_AGENT_AVAILABLE
                 and not db_manager.get_swing_picks(session_date)):
             app_logger.info(f'Swing picks scheduler: catch-up run for {session_date}')
-            _compute_and_save_swing_picks(session_date, polygon_key)
+            _compute_and_save_swing_picks(session_date)
             app_logger.info(f'Swing picks scheduler: catch-up saved for {session_date}')
     except Exception as _e:
         app_logger.error(f'[SwingPicksEOD] Catch-up run failed: {_e}', exc_info=True)
@@ -6910,8 +7172,6 @@ def _swing_picks_eod_scheduler():
         app_logger.debug(f'Swing picks scheduler: next EOD run in {wait_secs / 3600:.1f}h')
         time.sleep(wait_secs)
 
-        # Re-read env in case it changed (e.g. during testing)
-        polygon_key  = os.environ.get('POLYGON_API_KEY', '')
         now_et       = datetime.now(_et)
         session_date = _last_trading_date()
         today_str    = now_et.strftime('%Y-%m-%d')
@@ -6920,16 +7180,14 @@ def _swing_picks_eod_scheduler():
             app_logger.info(f'Swing picks scheduler: {today_str} is not a trading day — skip')
             continue
 
-        if not polygon_key or not AI_AGENT_AVAILABLE:
-            app_logger.warning('Swing picks scheduler: missing API keys — skip')
+        if not AI_AGENT_AVAILABLE:
+            app_logger.warning('Swing picks scheduler: AI not available — skip')
             continue
 
         try:
             app_logger.info(f'Swing picks scheduler: EOD run for {session_date}')
-            # Invalidate memory cache so we always fetch fresh EOD data
             _daily_picks_cache.pop(session_date, None)
-            result = _compute_and_save_swing_picks(session_date, polygon_key,
-                                                   market_open=False)
+            result = _compute_and_save_swing_picks(session_date, market_open=False)
             app_logger.info(
                 f'Swing picks scheduler: saved {len(result.get("picks", []))} picks '
                 f'for {session_date}')
@@ -7120,7 +7378,6 @@ def swing_technicals(ticker):
     Uses 2-hour in-memory cache.
     """
     ticker = ticker.upper().strip()
-    polygon_key = os.environ.get('POLYGON_API_KEY', '')
 
     # Cache check
     cached = _cache_get(_swing_cache, ticker, _SWING_TTL)
@@ -7131,18 +7388,24 @@ def swing_technicals(ticker):
     try:
         import requests as _req
 
-        # ── Fetch ~300 days of daily bars ────────────────────────────────────
+        # ── Fetch ~300 days of daily bars from Alpaca ─────────────────────────
         end_dt   = datetime.now()
-        start_dt = end_dt - timedelta(days=420)  # extra buffer for weekends/holidays
-        url = (
-            f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/"
-            f"{start_dt.strftime('%Y-%m-%d')}/{end_dt.strftime('%Y-%m-%d')}"
-            f"?adjusted=true&sort=asc&limit=300&apiKey={polygon_key}"
+        start_dt = end_dt - timedelta(days=420)
+        _hdrs = {
+            'APCA-API-KEY-ID':     os.getenv('ALPACA_API_KEY', ''),
+            'APCA-API-SECRET-KEY': os.getenv('ALPACA_API_SECRET', ''),
+        }
+        resp = _req.get(
+            f'https://data.alpaca.markets/v2/stocks/{ticker}/bars',
+            headers=_hdrs,
+            params={'timeframe': '1Day',
+                    'start': start_dt.strftime('%Y-%m-%d'),
+                    'end':   end_dt.strftime('%Y-%m-%d'),
+                    'limit': 500, 'adjustment': 'raw', 'feed': 'sip'},
+            timeout=10,
         )
-        resp = _req.get(url, timeout=10)
         resp.raise_for_status()
-        poly_data = resp.json()
-        bars = poly_data.get('results', [])
+        bars = resp.json().get('bars', [])
 
         if len(bars) < 30:
             return jsonify({'success': False, 'error': 'Not enough price history'}), 422
@@ -7153,7 +7416,7 @@ def swing_technicals(ticker):
 
         # ── Sector context ────────────────────────────────────────────────────
         try:
-            sector_info, sector_perf = _get_sector_context(ticker, polygon_key)
+            sector_info, sector_perf = _get_sector_context(ticker)
         except Exception:
             sector_info, sector_perf = None, None
 
