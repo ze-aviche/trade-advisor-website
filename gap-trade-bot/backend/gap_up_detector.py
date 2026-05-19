@@ -493,8 +493,8 @@ def _fetch_from_yfinance(min_price):
                 'gap_percent':    round(gap_percent, 2),
                 'volume':         int(q.get('regularMarketVolume') or 0),
                 'market_cap':     int(q.get('marketCap') or 0),
-                'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
-                'sector':         'Unknown',
+                'float_shares':   int(q.get('floatShares') or q.get('sharesOutstanding') or 0),
+                'sector':         q.get('sector') or 'Unknown',
                 'list_date':      None,
                 'data_source':    'yfinance',
             })
@@ -549,8 +549,8 @@ def _fetch_from_yfinance_extra(min_price):
                         'gap_percent':    round(gap_percent, 2),
                         'volume':         int(q.get('regularMarketVolume') or 0),
                         'market_cap':     int(q.get('marketCap') or 0),
-                        'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
-                        'sector':         'Unknown',
+                        'float_shares':   int(q.get('floatShares') or q.get('sharesOutstanding') or 0),
+                        'sector':         q.get('sector') or 'Unknown',
                         'list_date':      None,
                         'data_source':    'yfinance',
                     })
@@ -614,8 +614,8 @@ def _fetch_premarket_from_yfinance(min_price):
                     'gap_percent':    round(pm_gap_pct, 2),
                     'volume':         int(q.get('preMarketVolume') or q.get('regularMarketVolume') or 0),
                     'market_cap':     int(q.get('marketCap') or 0),
-                    'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
-                    'sector':         'Unknown',
+                    'float_shares':   int(q.get('floatShares') or q.get('sharesOutstanding') or 0),
+                    'sector':         q.get('sector') or 'Unknown',
                     'list_date':      None,
                     'data_source':    'yfinance_pm',
                 })
@@ -677,8 +677,8 @@ def _fetch_afterhours_from_yfinance(min_price):
                     'gap_percent':    round(ah_gap_pct, 2),
                     'volume':         int(q.get('regularMarketVolume') or 0),
                     'market_cap':     int(q.get('marketCap') or 0),
-                    'float_shares':   int(q.get('sharesOutstanding') or q.get('floatShares') or 0),
-                    'sector':         'Unknown',
+                    'float_shares':   int(q.get('floatShares') or q.get('sharesOutstanding') or 0),
+                    'sector':         q.get('sector') or 'Unknown',
                     'list_date':      None,
                     'data_source':    'yfinance_ah',
                 })
