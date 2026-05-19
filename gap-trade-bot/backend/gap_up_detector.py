@@ -379,11 +379,11 @@ def _fetch_from_alpaca_most_actives(min_price: float) -> list:
         resp = requests.get(
             'https://data.alpaca.markets/v1beta1/screener/stocks/most-actives',
             headers=headers,
-            params={'top': 100, 'by': 'shares'},
+            params={'top': 100, 'by': 'volume'},
             timeout=15,
         )
         if resp.status_code != 200:
-            logger.warning(f'Alpaca most-actives HTTP {resp.status_code}')
+            logger.warning(f'Alpaca most-actives HTTP {resp.status_code}: {resp.text[:200]}')
             return []
         actives = resp.json().get('most_actives') or []
     except Exception as e:
