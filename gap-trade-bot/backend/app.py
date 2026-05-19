@@ -3535,6 +3535,20 @@ def _brown_bot_scan_and_enter():
                 continue
             # else: playbook fetch previously failed → proceed with config defaults
 
+        # Hard cap: re-read live day count under lock so a stale active_copy or
+        # a concurrent order-monitor removal can never let us exceed the limit.
+        max_day = int(config.get('max_concurrent_day', 3))
+        with _brown_bot_lock:
+            live_day = sum(
+                1 for p in _brown_bot_active_positions.values()
+                if p.get('position_type') in ('day', 'brown_day')
+            )
+            active_copy = dict(_brown_bot_active_positions)
+        if live_day >= max_day:
+            _add_brown_log('info',
+                f'Day cap {max_day} reached ({live_day} open) — no more day entries this scan')
+            break
+
         if _brown_risk_manager:
             _rs = _brown_risk_manager.status(active_copy)
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
@@ -3588,6 +3602,20 @@ def _brown_bot_scan_and_enter():
         # Already attempted this session (fill or rejection) — don't retry
         if symbol in _brown_attempted_symbols:
             continue
+
+        # Hard cap: re-read live swing count under lock so a stale active_copy or
+        # a concurrent order-monitor removal can never let us exceed the limit.
+        max_swing = int(config.get('max_concurrent_swing', 5))
+        with _brown_bot_lock:
+            live_swing = sum(
+                1 for p in _brown_bot_active_positions.values()
+                if p.get('position_type') in ('swing', 'brown_swing')
+            )
+            active_copy = dict(_brown_bot_active_positions)
+        if live_swing >= max_swing:
+            _add_brown_log('info',
+                f'Swing cap {max_swing} reached ({live_swing} open) — no more swing entries this scan')
+            break
 
         if _brown_risk_manager:
             allowed, reason = _brown_risk_manager.can_enter(symbol, 'swing', active_copy)
