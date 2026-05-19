@@ -4013,6 +4013,45 @@ def run_backtest():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/seed-gap-data', methods=['POST'])
+@require_role('super_admin', 'dev_master')
+def seed_gap_data():
+    """One-time import of gap_data_export.sql into the main database."""
+    import sqlite3 as _sqlite3
+    sql_path = os.path.join(os.path.dirname(__file__), 'gap_data_export.sql')
+    if not os.path.exists(sql_path):
+        return jsonify({'success': False, 'error': 'gap_data_export.sql not found in container'}), 404
+    try:
+        db_path = os.getenv('DATABASE_PATH') or os.path.join(os.path.dirname(__file__), 'trading_advisor.db')
+        with open(sql_path, 'r', encoding='utf-8') as f:
+            sql = f.read()
+        conn = _sqlite3.connect(db_path)
+        try:
+            statements = [s.strip() for s in sql.split(';') if s.strip()]
+            inserted = 0
+            for stmt in statements:
+                upper = stmt.upper().lstrip()
+                if upper.startswith('CREATE TABLE'):
+                    try:
+                        conn.execute(stmt)
+                    except _sqlite3.OperationalError:
+                        pass  # table already exists
+                elif upper.startswith('INSERT'):
+                    try:
+                        conn.execute(stmt)
+                        inserted += 1
+                    except _sqlite3.IntegrityError:
+                        pass  # duplicate — already seeded
+            conn.commit()
+            total = conn.execute("SELECT COUNT(*) FROM gap_data").fetchone()[0]
+        finally:
+            conn.close()
+        return jsonify({'success': True, 'rows_inserted': inserted, 'total_rows': total})
+    except Exception as e:
+        app_logger.error(f'[seed-gap-data] {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ── BrownBot API endpoints ─────────────────────────────────────────────────
 
 @app.route('/api/brown-bot/status', methods=['GET'])
