@@ -684,6 +684,65 @@ def _fetch_afterhours_from_yfinance(min_price):
     return stocks
 
 
+def _enrich_missing_fundamentals(stocks: list, max_tickers: int = 40) -> None:
+    """
+    Fill market_cap, float_shares, company_name, and sector for any stock that still
+    has market_cap == 0 (Alpaca-sourced stocks not in yfinance screeners).
+    Uses yfinance Ticker.info concurrently — limited to top N by gap% to cap latency.
+    Modifies the list in-place.
+    """
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    missing = [s for s in stocks if not s.get('market_cap')]
+    # Only enrich the highest-% movers so latency stays bounded
+    missing.sort(key=lambda x: x.get('gap_percent', 0), reverse=True)
+    to_enrich = missing[:max_tickers]
+    if not to_enrich:
+        return
+
+    def _fetch(stock):
+        ticker = stock['ticker']
+        try:
+            info = yf.Ticker(ticker).info
+            return ticker, {
+                'market_cap':   int(info.get('marketCap') or 0),
+                'float_shares': int(info.get('floatShares') or info.get('sharesOutstanding') or 0),
+                'company_name': info.get('longName') or info.get('shortName') or ticker,
+                'sector':       info.get('sector') or 'Unknown',
+            }
+        except Exception:
+            return ticker, {}
+
+    info_map = {}
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        futures = {ex.submit(_fetch, s): s['ticker'] for s in to_enrich}
+        for future in as_completed(futures, timeout=20):
+            try:
+                ticker, data = future.result()
+                if data:
+                    info_map[ticker] = data
+            except Exception:
+                pass
+
+    enriched = 0
+    for s in to_enrich:
+        data = info_map.get(s['ticker'])
+        if not data:
+            continue
+        if data.get('market_cap'):
+            s['market_cap'] = data['market_cap']
+        if data.get('float_shares'):
+            s['float_shares'] = data['float_shares']
+        if data.get('company_name') and s.get('company_name') == s['ticker']:
+            s['company_name'] = data['company_name']
+        if data.get('sector') and s.get('sector') in (None, 'Unknown'):
+            s['sector'] = data['sector']
+        enriched += 1
+
+    logger.info(f'Fundamentals enrichment: filled {enriched}/{len(to_enrich)} stocks via yfinance')
+
+
 def get_gap_up_stocks_for_frontend():
     """
     Session-routed gap-up scanner. Primary source changes by market session:
@@ -825,6 +884,11 @@ def get_gap_up_stocks_for_frontend():
                 seen.add(s['ticker'])
 
     merged.sort(key=lambda x: x['gap_percent'], reverse=True)
+
+    # Enrich stocks that still have market_cap=0 (Alpaca-sourced) with yfinance fundamentals.
+    # Limited to top 40 by gap% so latency stays bounded (~3-5 s concurrent).
+    _enrich_missing_fundamentals(merged, max_tickers=40)
+
     _tag_with_session(merged)
 
     # Persist tagged stocks to DB — session column is never overwritten on conflict
