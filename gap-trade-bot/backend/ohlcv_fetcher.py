@@ -208,11 +208,16 @@ def _get_pending_pairs() -> list[tuple[str, str]]:
     """
     Return all (ticker, date) from gap_data that are not yet in ohlcv_1m.
     Ordered oldest-first so the most historical data is filled first.
+    Returns [] if gap_data table doesn't exist yet.
     """
-    with _main_conn() as main:
-        gap_rows = main.execute(
-            "SELECT DISTINCT ticker, date FROM gap_data ORDER BY date, ticker"
-        ).fetchall()
+    try:
+        with _main_conn() as main:
+            gap_rows = main.execute(
+                "SELECT DISTINCT ticker, date FROM gap_data ORDER BY date, ticker"
+            ).fetchall()
+    except Exception as e:
+        logger.warning(f'[OHLCV] _get_pending_pairs: {e} — gap_data not yet populated')
+        return []
 
     if not gap_rows:
         return []
@@ -315,11 +320,15 @@ def ohlcv_daemon():
     """
     _ensure_table()
 
-    # Phase 1 — backfill in background (may take a while for large gap_data)
-    try:
-        run_backfill()
-    except Exception as e:
-        logger.error(f'[OHLCV] Backfill crashed: {e}', exc_info=True)
+    # Phase 1 — backfill; retry every 10 min if gap_data isn't seeded yet
+    backfill_done = False
+    while not backfill_done:
+        try:
+            run_backfill()
+            backfill_done = True
+        except Exception as e:
+            logger.error(f'[OHLCV] Backfill failed: {e} — retrying in 10 min', exc_info=True)
+            time.sleep(600)
 
     # Phase 2 — daily EOD fetch
     last_eod_date: Optional[date] = None
