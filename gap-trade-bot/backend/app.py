@@ -3384,10 +3384,19 @@ def _brown_bot_scan_and_enter():
         f'(now {now_et.strftime("%H:%M")} ET, window {_gate_str})'
     )
 
+    # ── Hard market-hours guard (not user-configurable) ─────────────────────
+    _mkt_open  = now_et.replace(hour=9,  minute=30, second=0, microsecond=0)
+    _mkt_close = now_et.replace(hour=16, minute=0,  second=0, microsecond=0)
+    _in_market_hours = (_mkt_open <= now_et <= _mkt_close) and (now_et.weekday() < 5)
+    if not _in_market_hours:
+        _add_brown_log('info',
+            f'Outside market hours ({now_et.strftime("%H:%M ET %A")}) — skipping day trade entries')
+
     # ── Process auto-scanned gap-up candidates (day trade) ──
+    _day_trades_on = config.get('day_trades_enabled', True) and _in_market_hours
     if not config.get('day_trades_enabled', True):
         _add_brown_log('info', 'Day trades disabled — skipping day trade entries')
-    for symbol, s in (scanner_hits.items() if config.get('day_trades_enabled', True) else []):
+    for symbol, s in (scanner_hits.items() if _day_trades_on else []):
         if not _brown_bot_running:
             return
         if symbol in active_symbols:
