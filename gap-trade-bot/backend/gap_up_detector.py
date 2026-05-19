@@ -158,7 +158,7 @@ def _fetch_from_alpaca(min_price):
     resp = requests.get(
         'https://data.alpaca.markets/v1beta1/screener/stocks/movers',
         headers=headers,
-        params={'top': 50},
+        params={'top': 500},
         timeout=15,
     )
     resp.raise_for_status()
@@ -217,6 +217,100 @@ def _fetch_from_alpaca(min_price):
         f"(skipped: {skipped_non_cs} non-CS, {skipped_price} below ${min_price})"
     )
     return gap_up_stocks
+
+
+def _fetch_from_alpaca_most_actives(min_price: float) -> list:
+    """
+    Supplemental scan: pull top 100 most-active stocks by share volume from Alpaca,
+    then fetch their snapshots to compute the actual gap-% vs prev close.
+    Micro-cap runners like AMST/INM always show up here even if they're absent from
+    the movers endpoint's liquidity-filtered universe.
+    Returns only stocks with a positive gap (gainers).
+    """
+    if not ALPACA_KEY or not ALPACA_SECRET:
+        return []
+    headers = {
+        'APCA-API-KEY-ID': ALPACA_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET,
+    }
+    # Step 1: most-active stocks by share volume
+    try:
+        resp = requests.get(
+            'https://data.alpaca.markets/v1beta1/screener/stocks/most-actives',
+            headers=headers,
+            params={'top': 100, 'by': 'shares'},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.warning(f'Alpaca most-actives HTTP {resp.status_code}')
+            return []
+        actives = resp.json().get('most_actives') or []
+    except Exception as e:
+        logger.warning(f'Alpaca most-actives error: {e}')
+        return []
+
+    if not actives:
+        return []
+
+    symbols = [item['symbol'] for item in actives if item.get('symbol')]
+
+    # Step 2: snapshots to compute gap% (prev close → current price)
+    try:
+        snap_resp = requests.get(
+            'https://data.alpaca.markets/v2/stocks/snapshots',
+            headers=headers,
+            params={'symbols': ','.join(symbols), 'feed': 'sip'},
+            timeout=15,
+        )
+        snapshots = snap_resp.json() if snap_resp.status_code == 200 else {}
+    except Exception as e:
+        logger.warning(f'Alpaca most-actives snapshots error: {e}')
+        snapshots = {}
+
+    results = []
+    for item in actives:
+        ticker = item.get('symbol')
+        if not ticker or _ticker_looks_non_cs(ticker):
+            continue
+        try:
+            snap      = snapshots.get(ticker, {})
+            trade     = snap.get('latestTrade') or {}
+            daily_bar = snap.get('dailyBar') or {}
+            prev_bar  = snap.get('prevDailyBar') or {}
+
+            price      = float(trade.get('p') or daily_bar.get('c') or item.get('price') or 0)
+            prev_close = float(prev_bar.get('c') or 0)
+
+            if price <= 0 or prev_close <= 0 or price < min_price:
+                continue
+
+            gap_pct = ((price - prev_close) / prev_close) * 100
+            if gap_pct <= 0:
+                continue  # only gainers
+
+            volume = int(daily_bar.get('v') or item.get('volume') or 0)
+
+            results.append({
+                'ticker':         ticker,
+                'company_name':   ticker,
+                'price':          round(price, 2),
+                'previous_close': round(prev_close, 2),
+                'change':         round(price - prev_close, 2),
+                'change_percent': round(gap_pct, 2),
+                'gap_percent':    round(gap_pct, 2),
+                'volume':         volume,
+                'market_cap':     0,
+                'float_shares':   0,
+                'sector':         'Unknown',
+                'list_date':      None,
+                'data_source':    'alpaca_actives',
+            })
+        except Exception as e:
+            logger.debug(f'Alpaca most-actives item error {ticker}: {e}')
+
+    results.sort(key=lambda x: x['gap_percent'], reverse=True)
+    logger.info(f'Alpaca most-actives: {len(results)} gainers from top-100 active stocks')
+    return results
 
 
 def _fetch_from_yfinance(min_price):
@@ -281,7 +375,7 @@ def _fetch_from_yfinance_extra(min_price):
     """
     import yfinance as yf
 
-    extra_screeners = ['small_cap_gainers', 'aggressive_small_caps']
+    extra_screeners = ['small_cap_gainers', 'aggressive_small_caps', 'most_actives']
     seen = set()
     stocks = []
 
@@ -498,6 +592,22 @@ def get_gap_up_stocks_for_frontend():
         except Exception as e:
             primary_error = e
             logger.warning(f"Alpaca movers unavailable: {e}")
+
+        # Supplemental: most-actives by share volume catches micro-cap runners
+        # (e.g. 100%+ movers) that Alpaca's movers liquidity filter may exclude.
+        try:
+            actives_stocks = _fetch_from_alpaca_most_actives(GAP_UP_MIN_PRICE)
+            seen_primary = {s['ticker'] for s in primary_stocks}
+            added = 0
+            for s in actives_stocks:
+                if s['ticker'] not in seen_primary:
+                    primary_stocks.append(s)
+                    seen_primary.add(s['ticker'])
+                    added += 1
+            if added:
+                logger.info(f'Alpaca most-actives supplemental: added {added} tickers not in movers')
+        except Exception as e:
+            logger.warning(f"Alpaca most-actives supplemental failed: {e}")
 
     # after_hours: Alpaca still shows today's closing movers (not AH catalysts);
     # the dedicated AH scan below handles that session — primary_stocks stays empty.
