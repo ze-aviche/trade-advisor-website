@@ -2884,7 +2884,8 @@ def _get_intraday_bars(symbol):
             bars = data.get(symbol.upper(), [])
             if bars:
                 return [{'o': float(b.open), 'h': float(b.high),
-                         'l': float(b.low),  'c': float(b.close), 'v': float(b.volume)}
+                         'l': float(b.low),  'c': float(b.close), 'v': float(b.volume),
+                         'vw': float(b.vwap) if b.vwap else None}
                         for b in bars]
         except Exception as e:
             app_logger.debug(f'Alpaca intraday bars {symbol}: {e}')
@@ -2914,7 +2915,8 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     # ── VWAP (session VWAP from 09:30) ──────────────────────────────────
     vwap = None
     if bars:
-        tp_vol  = sum(((b['h'] + b['l'] + b['c']) / 3) * b['v'] for b in bars)
+        # Use Alpaca's per-bar vw (bar VWAP) when available; fall back to (h+l+c)/3
+        tp_vol  = sum((b.get('vw') or (b['h'] + b['l'] + b['c']) / 3) * b['v'] for b in bars)
         total_v = sum(b['v'] for b in bars)
         vwap    = round(tp_vol / total_v, 2) if total_v > 0 else None
 
@@ -2922,8 +2924,8 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         if vwap is None:
             passed, detail = False, 'No bar data for VWAP'
         else:
-            passed = float(current_price) >= vwap
-            detail = f'${float(current_price):.2f} {"≥" if passed else "<"} VWAP ${vwap:.2f}'
+            passed = float(current_price) > vwap
+            detail = f'${float(current_price):.2f} {">" if passed else "≤"} VWAP ${vwap:.2f}'
         checks.append({'name': 'vwap', 'label': 'Above VWAP', 'passed': passed, 'detail': detail})
         if not passed:
             all_pass = False
