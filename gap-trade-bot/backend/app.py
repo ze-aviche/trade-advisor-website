@@ -3550,17 +3550,19 @@ def _brown_bot_scan_and_enter():
             break
 
         if _brown_risk_manager:
-            _rs = _brown_risk_manager.status(active_copy)
-            allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy)
+            _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
+            _rs = _brown_risk_manager.status(active_copy, unrealized_pnl=_unrealized)
+            allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
                 _add_brown_log('warning',
                     f'SKIP {symbol} [RISK] {reason} '
-                    f'(daily P&L ${_rs["daily_pnl"]:.0f}, '
+                    f'(total P&L ${_rs["daily_pnl"]:.0f}, '
                     f'limit ${_rs["max_daily_loss"]:.0f}, '
                     f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]})')
                 continue
             _add_brown_log('info',
-                f'{symbol} risk OK — daily P&L ${_rs["daily_pnl"]:.0f}, '
+                f'{symbol} risk OK — total P&L ${_rs["daily_pnl"]:.0f} '
+                f'(realized ${_rs["realized_pnl"]:.0f} + unrealized ${_rs["unrealized_pnl"]:.0f}), '
                 f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}')
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
         _brown_enter_position(symbol, 'day', config, s.get('price', 0), playbook_override=playbook_override)
@@ -3618,7 +3620,8 @@ def _brown_bot_scan_and_enter():
             break
 
         if _brown_risk_manager:
-            allowed, reason = _brown_risk_manager.can_enter(symbol, 'swing', active_copy)
+            _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
+            allowed, reason = _brown_risk_manager.can_enter(symbol, 'swing', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
                 _add_brown_log('warning', f'SKIP swing pick {symbol}: {reason}')
                 continue
@@ -4601,8 +4604,9 @@ def get_brown_bot_risk_status():
     global _brown_risk_manager, _brown_bot_active_positions
     with _brown_bot_lock:
         positions = dict(_brown_bot_active_positions)
+    unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
     if _brown_risk_manager is not None:
-        snapshot = _brown_risk_manager.status(positions)
+        snapshot = _brown_risk_manager.status(positions, unrealized_pnl=unrealized_total)
     else:
         # Risk manager not started — return defaults from config
         try:
@@ -4613,18 +4617,21 @@ def get_brown_bot_risk_status():
         today = _dt.now().strftime('%Y-%m-%d')
         try:
             summary = db_manager.get_trade_summary(start_date=today, end_date=today)
-            daily_pnl = float(summary.get('total_pnl', 0.0)) if summary else 0.0
+            realized_pnl = float(summary.get('total_pnl', 0.0)) if summary else 0.0
         except Exception:
-            daily_pnl = 0.0
+            realized_pnl = 0.0
+        total_pnl = realized_pnl + unrealized_total
         max_loss = float(config.get('max_daily_loss', -500.0))
         snapshot = {
-            'daily_pnl': round(daily_pnl, 2),
-            'max_daily_loss': max_loss,
-            'open_day': 0,
+            'daily_pnl':          round(total_pnl, 2),
+            'realized_pnl':       round(realized_pnl, 2),
+            'unrealized_pnl':     round(unrealized_total, 2),
+            'max_daily_loss':     max_loss,
+            'open_day':           0,
             'max_concurrent_day': int(config.get('max_concurrent_day', 3)),
-            'open_swing': 0,
+            'open_swing':         0,
             'max_concurrent_swing': int(config.get('max_concurrent_swing', 5)),
-            'circuit_breaker_open': daily_pnl <= max_loss,
+            'circuit_breaker_open': total_pnl <= max_loss,
         }
     # Per-ticker P&L breakdown for today
     try:

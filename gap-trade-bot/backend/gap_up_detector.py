@@ -145,6 +145,12 @@ def _ticker_looks_non_cs(ticker):
 _UNIVERSE_CACHE: dict = {'symbols': [], 'ts': 0.0}
 _UNIVERSE_TTL = 86_400   # 24 h
 
+# ── Fundamentals cache ─────────────────────────────────────────────────────────
+# ticker → {market_cap, float_shares, company_name, sector}
+# Cached indefinitely within the process — fundamentals change slowly and
+# yfinance is rate-limited, so we never re-fetch a ticker we already have.
+_fundamentals_cache: dict = {}
+
 
 def _get_alpaca_equity_universe() -> list:
     """
@@ -684,27 +690,53 @@ def _fetch_afterhours_from_yfinance(min_price):
     return stocks
 
 
-def _enrich_missing_fundamentals(stocks: list, max_tickers: int = 40) -> None:
+def _enrich_missing_fundamentals(stocks: list) -> None:
     """
-    Fill market_cap, float_shares, company_name, and sector for any stock that still
-    has market_cap == 0 (Alpaca-sourced stocks not in yfinance screeners).
-    Uses yfinance Ticker.info concurrently — limited to top N by gap% to cap latency.
-    Modifies the list in-place.
+    Fill market_cap, float_shares, company_name, and sector for any stock that
+    still has market_cap == 0 (Alpaca-sourced stocks without fundamental data).
+
+    Strategy:
+    - Check _fundamentals_cache first — cache hits are free (no network call).
+    - Only call yfinance for tickers not yet in cache; store results in cache
+      so subsequent scans never re-fetch the same ticker.
+    - No hard cap on how many tickers are enriched — cache makes this safe.
+    - Concurrent fetch with ThreadPoolExecutor (max 15 workers, 20 s timeout).
+    - Modifies the list in-place.
     """
     import yfinance as yf
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     missing = [s for s in stocks if not s.get('market_cap')]
-    # Only enrich the highest-% movers so latency stays bounded
-    missing.sort(key=lambda x: x.get('gap_percent', 0), reverse=True)
-    to_enrich = missing[:max_tickers]
-    if not to_enrich:
+    if not missing:
+        return
+
+    # Split into cache hits and tickers that need a network fetch
+    cache_hits = [s for s in missing if s['ticker'] in _fundamentals_cache]
+    need_fetch  = [s for s in missing if s['ticker'] not in _fundamentals_cache]
+
+    # Apply cache hits immediately — no network call needed
+    for s in cache_hits:
+        data = _fundamentals_cache[s['ticker']]
+        if data.get('market_cap'):
+            s['market_cap'] = data['market_cap']
+        if data.get('float_shares'):
+            s['float_shares'] = data['float_shares']
+        if data.get('company_name') and s.get('company_name') == s['ticker']:
+            s['company_name'] = data['company_name']
+        if data.get('sector') and s.get('sector') in (None, 'Unknown'):
+            s['sector'] = data['sector']
+
+    if not need_fetch:
+        logger.info(f'Fundamentals enrichment: {len(cache_hits)} from cache, 0 fetched')
         return
 
     def _fetch(stock):
         ticker = stock['ticker']
         try:
             info = yf.Ticker(ticker).info
+            # yfinance returns a near-empty dict for unknown tickers
+            if not info or info.get('trailingPegRatio') is None and not info.get('marketCap'):
+                return ticker, {}
             return ticker, {
                 'market_cap':   int(info.get('marketCap') or 0),
                 'float_shares': int(info.get('floatShares') or info.get('sharesOutstanding') or 0),
@@ -716,31 +748,38 @@ def _enrich_missing_fundamentals(stocks: list, max_tickers: int = 40) -> None:
 
     info_map = {}
     with ThreadPoolExecutor(max_workers=15) as ex:
-        futures = {ex.submit(_fetch, s): s['ticker'] for s in to_enrich}
-        for future in as_completed(futures, timeout=20):
+        futures = {ex.submit(_fetch, s): s['ticker'] for s in need_fetch}
+        for future in as_completed(futures, timeout=25):
             try:
                 ticker, data = future.result()
-                if data:
-                    info_map[ticker] = data
+                info_map[ticker] = data  # store even if empty — prevents re-fetch
             except Exception:
                 pass
 
-    enriched = 0
-    for s in to_enrich:
-        data = info_map.get(s['ticker'])
+    fetched = enriched = 0
+    for s in need_fetch:
+        ticker = s['ticker']
+        data = info_map.get(ticker, {})
+        # Cache the result (empty dict = "yfinance has no data for this ticker")
+        _fundamentals_cache[ticker] = data
         if not data:
             continue
+        fetched += 1
         if data.get('market_cap'):
             s['market_cap'] = data['market_cap']
+            enriched += 1
         if data.get('float_shares'):
             s['float_shares'] = data['float_shares']
         if data.get('company_name') and s.get('company_name') == s['ticker']:
             s['company_name'] = data['company_name']
         if data.get('sector') and s.get('sector') in (None, 'Unknown'):
             s['sector'] = data['sector']
-        enriched += 1
 
-    logger.info(f'Fundamentals enrichment: filled {enriched}/{len(to_enrich)} stocks via yfinance')
+    logger.info(
+        f'Fundamentals enrichment: {len(cache_hits)} cache hits, '
+        f'{fetched}/{len(need_fetch)} fetched via yfinance, '
+        f'{enriched} enriched with market cap'
+    )
 
 
 def get_gap_up_stocks_for_frontend():
@@ -886,8 +925,8 @@ def get_gap_up_stocks_for_frontend():
     merged.sort(key=lambda x: x['gap_percent'], reverse=True)
 
     # Enrich stocks that still have market_cap=0 (Alpaca-sourced) with yfinance fundamentals.
-    # Limited to top 40 by gap% so latency stays bounded (~3-5 s concurrent).
-    _enrich_missing_fundamentals(merged, max_tickers=40)
+    # Cache means subsequent scans are instant; only new tickers hit the network.
+    _enrich_missing_fundamentals(merged)
 
     _tag_with_session(merged)
 
