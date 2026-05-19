@@ -3151,27 +3151,65 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     pct_key = 'day_position_pct' if position_type == 'day' else 'swing_position_pct'
     position_pct = float(config.get(pct_key, 5.0 if position_type == 'day' else 3.0))
 
+    # Hard safety cap: no single trade can exceed 10% (day) / 20% (swing) of equity,
+    # regardless of what the config says — guards against accidental large values.
+    MAX_PCT = 10.0 if position_type == 'day' else 20.0
+    if position_pct > MAX_PCT:
+        _add_brown_log('warning',
+            f'{symbol}: {pct_key} {position_pct:.1f}% exceeds safety cap {MAX_PCT:.0f}% '
+            f'— capped. Check your BrownBot config.')
+        position_pct = MAX_PCT
+
     if not _brown_broker:
         _add_brown_log('error', f'SKIP {symbol}: no broker available')
         return
 
+    # If approx_price is 0 or missing, try a direct Alpaca quote before giving up.
+    if price <= 0:
+        try:
+            import requests as _req
+            _ak = os.environ.get('ALPACA_API_KEY', '')
+            _as = os.environ.get('ALPACA_API_SECRET', '')
+            if _ak and _as:
+                _snap = _req.get(
+                    f'https://data.alpaca.markets/v2/stocks/snapshots',
+                    headers={'APCA-API-KEY-ID': _ak, 'APCA-API-SECRET-KEY': _as},
+                    params={'symbols': symbol, 'feed': 'sip'},
+                    timeout=5,
+                ).json()
+                _p = (_snap.get(symbol) or {}).get('latestTrade', {}).get('p')
+                if _p:
+                    price = float(_p)
+        except Exception:
+            pass
+        if price <= 0:
+            _add_brown_log('warning',
+                f'SKIP {symbol}: could not determine current price — cannot size position')
+            return
+
     # Fetch account equity to size the position and check buying power.
-    quantity = 100  # safe fallback if account fetch fails
     try:
         acct = _brown_broker.get_account()
-        if acct.equity > 0 and price > 0:
+        if acct.equity > 0:
             dollar_size = acct.equity * (position_pct / 100.0)
-            quantity = max(1, int(dollar_size / price))
-            required = price * quantity
+            quantity    = max(1, int(dollar_size / price))
+            required    = price * quantity
+            _add_brown_log('info',
+                f'{symbol}: sizing {position_pct:.1f}% of ${acct.equity:,.0f} equity '
+                f'= ${dollar_size:,.0f} → {quantity} shares @ ${price:.2f}')
             if acct.buying_power < required:
                 _add_brown_log('warning',
                     f'SKIP {symbol}: insufficient buying power '
-                    f'(need ${required:,.0f} = {position_pct}% of ${acct.equity:,.0f} equity, '
-                    f'have ${acct.buying_power:,.0f}) — will not retry this session')
+                    f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) '
+                    f'— will not retry this session')
                 return
+        else:
+            _add_brown_log('warning', f'{symbol}: equity is 0 — using fallback 1 share')
+            quantity = 1
     except Exception as _bp_err:
         app_logger.debug(f'BrownBot account fetch failed for {symbol}: {_bp_err}')
-        # Fail-open with fallback quantity; broker will reject if BP is insufficient
+        quantity = max(1, int(dollar_size / price)) if 'dollar_size' in dir() else 1
+        _add_brown_log('warning', f'{symbol}: account fetch failed — fallback {quantity} shares')
 
     try:
         from bot.broker.base import OrderSide, OrderType as OType
