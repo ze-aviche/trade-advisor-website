@@ -8,6 +8,7 @@ import time
 import datetime
 from datetime import datetime as dt, timedelta
 import pytz
+import requests
 from polygon import RESTClient
 from dotenv import load_dotenv
 from historical_cache import historical_cache
@@ -21,6 +22,58 @@ logger = get_logger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+_ET_TZ = pytz.timezone('America/New_York')
+
+def _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min'):
+    """Fetch bars from Alpaca Data API with pagination, returning list of raw dicts."""
+    key    = os.environ.get('ALPACA_API_KEY', '')
+    secret = os.environ.get('ALPACA_API_SECRET', '')
+    if not key or not secret:
+        return []
+    url     = f'https://data.alpaca.markets/v2/stocks/{ticker.upper()}/bars'
+    headers = {'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret}
+    params  = {'timeframe': timeframe, 'start': start_iso, 'end': end_iso,
+               'limit': 10000, 'adjustment': 'raw', 'feed': 'sip'}
+    all_bars = []
+    while True:
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+            if resp.status_code != 200:
+                logger.debug(f'_alpaca_bars_raw {ticker}: HTTP {resp.status_code}')
+                break
+            data = resp.json()
+            all_bars.extend(data.get('bars') or [])
+            token = data.get('next_page_token')
+            if not token:
+                break
+            params['page_token'] = token
+        except Exception as e:
+            logger.debug(f'_alpaca_bars_raw {ticker}: {e}')
+            break
+    return all_bars
+
+def _et_to_iso(date_str, time_str):
+    """Convert 'YYYY-MM-DD' + 'HH:MM' ET to a UTC ISO string (handles DST via pytz)."""
+    naive = dt.strptime(f'{date_str} {time_str}', '%Y-%m-%d %H:%M')
+    return _ET_TZ.localize(naive).astimezone(pytz.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+class _BarData:
+    """Wraps an Alpaca bar dict with attributes for backward compat with process_batch_data_to_gap_ups."""
+    __slots__ = ('timestamp', 'open', 'high', 'low', 'close', 'volume', 'vwap')
+    def __init__(self, bar_dict):
+        t = bar_dict.get('t', '')
+        try:
+            ts_dt = dt.fromisoformat(t.replace('Z', '+00:00'))
+            self.timestamp = int(ts_dt.timestamp() * 1000)
+        except Exception:
+            self.timestamp = 0
+        self.open   = float(bar_dict.get('o') or 0)
+        self.high   = float(bar_dict.get('h') or 0)
+        self.low    = float(bar_dict.get('l') or 0)
+        self.close  = float(bar_dict.get('c') or 0)
+        self.volume = int(bar_dict.get('v') or 0)
+        self.vwap   = bar_dict.get('vw')
 
 def get_polygon_client():
     """Get Polygon API client with API key and timeout configuration"""
@@ -108,60 +161,46 @@ def count_vwap_crosses(polygon_client, ticker, date):
 def get_premarket_high_low_data(ticker, polygon_client, date_str):
     """
     Fetches premarket high/low data for a given ticker and date (4:00 AM to 9:30 AM EST).
+    polygon_client is kept for backward compatibility but is not used.
     """
     try:
-        est_timezone = pytz.timezone('America/New_York')
-        start_datetime_est = est_timezone.localize(dt.strptime(f"{date_str} 04:00", '%Y-%m-%d %H:%M'))
-        end_datetime_est = est_timezone.localize(dt.strptime(f"{date_str} 9:30", '%Y-%m-%d %H:%M'))
-        
-        start_timestamp_utc_ms = int(start_datetime_est.timestamp() * 1000)
-        end_timestamp_utc_ms = int(end_datetime_est.timestamp() * 1000)
-        
         logger.debug(f"🔍 Fetching premarket data for {ticker} on {date_str} (4:00-9:30 AM EST)")
-        
-        aggs_data = polygon_client.list_aggs(
-            ticker=ticker,
-            multiplier=1,
-            timespan='minute',
-            from_=start_timestamp_utc_ms,
-            to=end_timestamp_utc_ms,
-            limit=50000
-        )
-        aggs_list = list(aggs_data)
-        
-        if not aggs_list:
+
+        start_iso = _et_to_iso(date_str, '04:00')
+        end_iso   = _et_to_iso(date_str, '09:30')
+        bars = _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min')
+
+        if not bars:
             logger.debug(f"⚠️ No premarket data found for {ticker} on {date_str}")
             return None, None, None, None, None
 
-        logger.debug(f"📊 Found {len(aggs_list)} premarket bars for {ticker} on {date_str}")
+        logger.debug(f"📊 Found {len(bars)} premarket bars for {ticker} on {date_str}")
 
-        # aggs_list is already in chronological order; first bar's open = premarket open price
-        first_bar_open = aggs_list[0].open
+        # bars are in chronological order; first bar's open = premarket open price
+        first_bar_open = float(bars[0].get('o') or 0)
 
         max_high = -1
-        high_timestamp = None
+        high_bar_t = None
         min_low = float('inf')
-        low_timestamp = None
+        low_bar_t = None
 
-        for bar in aggs_list:
-            if bar.high > max_high:
-                max_high = bar.high
-                high_timestamp = bar.timestamp
-            if bar.low < min_low:
-                min_low = bar.low
-                low_timestamp = bar.timestamp
+        for bar in bars:
+            h = float(bar.get('h') or 0)
+            l = float(bar.get('l') or 0)
+            if h > max_high:
+                max_high = h
+                high_bar_t = bar.get('t', '')
+            if l < min_low:
+                min_low = l
+                low_bar_t = bar.get('t', '')
 
         high_timestamp_est = None
-        if high_timestamp:
-            high_datetime_utc = dt.fromtimestamp(high_timestamp / 1000, tz=pytz.utc)
-            high_datetime_est = high_datetime_utc.astimezone(est_timezone)
-            high_timestamp_est = high_datetime_est.strftime('%H:%M')
+        if high_bar_t:
+            high_timestamp_est = dt.fromisoformat(high_bar_t.replace('Z', '+00:00')).astimezone(_ET_TZ).strftime('%H:%M')
 
         low_timestamp_est = None
-        if low_timestamp:
-            low_datetime_utc = dt.fromtimestamp(low_timestamp / 1000, tz=pytz.utc)
-            low_datetime_est = low_datetime_utc.astimezone(est_timezone)
-            low_timestamp_est = low_datetime_est.strftime('%H:%M')
+        if low_bar_t:
+            low_timestamp_est = dt.fromisoformat(low_bar_t.replace('Z', '+00:00')).astimezone(_ET_TZ).strftime('%H:%M')
 
         logger.debug(f"✅ Premarket data for {ticker} on {date_str}: High={max_high}@{high_timestamp_est}, Low={min_low}@{low_timestamp_est}, FirstOpen={first_bar_open}")
         return max_high, high_timestamp_est, min_low, low_timestamp_est, first_bar_open
@@ -173,144 +212,109 @@ def get_premarket_high_low_data(ticker, polygon_client, date_str):
 def get_daily_high_low_data(ticker, polygon_client, date_str):
     """
     Fetches daily high/low data for a given ticker and date (9:30 AM to 4:00 PM EST).
+    polygon_client is kept for backward compatibility but is not used.
     """
     try:
-        est_timezone = pytz.timezone('America/New_York')
-        start_datetime_est = est_timezone.localize(dt.strptime(f"{date_str} 09:30", '%Y-%m-%d %H:%M'))
-        end_datetime_est = est_timezone.localize(dt.strptime(f"{date_str} 16:00", '%Y-%m-%d %H:%M'))
-        
-        start_timestamp_utc_ms = int(start_datetime_est.timestamp() * 1000)
-        end_timestamp_utc_ms = int(end_datetime_est.timestamp() * 1000)
-        
-        aggs_data = polygon_client.list_aggs(
-            ticker=ticker,
-            multiplier=1,
-            timespan='minute',
-            from_=start_timestamp_utc_ms,
-            to=end_timestamp_utc_ms,
-            limit=50000
-        )
-        aggs_list = list(aggs_data)
-        
-        if not aggs_list:
+        start_iso = _et_to_iso(date_str, '09:30')
+        end_iso   = _et_to_iso(date_str, '16:00')
+        bars = _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min')
+
+        if not bars:
             return None, None, None, None
-        
+
         max_high = -1
-        high_timestamp = None
+        high_bar_t = None
         min_low = float('inf')
-        low_timestamp = None
-        
-        for bar in aggs_list:
-            if bar.high > max_high:
-                max_high = bar.high
-                high_timestamp = bar.timestamp
-            if bar.low < min_low:
-                min_low = bar.low
-                low_timestamp = bar.timestamp
-        
+        low_bar_t = None
+
+        for bar in bars:
+            h = float(bar.get('h') or 0)
+            l = float(bar.get('l') or 0)
+            if h > max_high:
+                max_high = h
+                high_bar_t = bar.get('t', '')
+            if l < min_low:
+                min_low = l
+                low_bar_t = bar.get('t', '')
+
         high_timestamp_est = None
-        if high_timestamp:
-            high_datetime_utc = dt.fromtimestamp(high_timestamp / 1000, tz=pytz.utc)
-            high_datetime_est = high_datetime_utc.astimezone(est_timezone)
-            high_timestamp_est = high_datetime_est.strftime('%H:%M')
-        
+        if high_bar_t:
+            high_timestamp_est = dt.fromisoformat(high_bar_t.replace('Z', '+00:00')).astimezone(_ET_TZ).strftime('%H:%M')
+
         low_timestamp_est = None
-        if low_timestamp:
-            low_datetime_utc = dt.fromtimestamp(low_timestamp / 1000, tz=pytz.utc)
-            low_datetime_est = low_datetime_utc.astimezone(est_timezone)
-            low_timestamp_est = low_datetime_est.strftime('%H:%M')
-        
+        if low_bar_t:
+            low_timestamp_est = dt.fromisoformat(low_bar_t.replace('Z', '+00:00')).astimezone(_ET_TZ).strftime('%H:%M')
+
         return max_high, high_timestamp_est, min_low, low_timestamp_est
-        
+
     except Exception as e:
-        print(f"Error fetching daily data for {ticker} on {date_str}: {e}")
+        logger.error(f"Error fetching daily data for {ticker} on {date_str}: {e}")
         return None, None, None, None
 
 def get_premarket_volume(polygon_client, ticker, date_str):
     """
     Fetches premarket volume for a given ticker and date (4:00 AM to 9:30 AM EST).
     Returns volume in millions.
+    polygon_client is kept for backward compatibility but is not used.
     """
     try:
-        est_timezone = pytz.timezone('America/New_York')
-        start_datetime_est = est_timezone.localize(dt.strptime(f"{date_str} 04:00", '%Y-%m-%d %H:%M'))
-        end_datetime_est = est_timezone.localize(dt.strptime(f"{date_str} 09:30", '%Y-%m-%d %H:%M'))
-        
-        start_timestamp_utc_ms = int(start_datetime_est.timestamp() * 1000)
-        end_timestamp_utc_ms = int(end_datetime_est.timestamp() * 1000)
-        
-        aggs_data = polygon_client.list_aggs(
-            ticker=ticker,
-            multiplier=1,
-            timespan='minute',
-            from_=start_timestamp_utc_ms,
-            to=end_timestamp_utc_ms,
-            limit=50000
-        )
-        aggs_list = list(aggs_data)
-        
-        if not aggs_list:
+        start_iso = _et_to_iso(date_str, '04:00')
+        end_iso   = _et_to_iso(date_str, '09:30')
+        bars = _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min')
+
+        if not bars:
             logger.debug(f"⚠️ No premarket volume data found for {ticker} on {date_str}")
             return 0.0
-        
-        premarket_total_volume_millions = sum(bar.volume for bar in aggs_list) / 1_000_000
+
+        premarket_total_volume_millions = sum(int(bar.get('v') or 0) for bar in bars) / 1_000_000
         logger.debug(f"📊 Premarket volume (millions) for {ticker} on {date_str}: {premarket_total_volume_millions}")
         return round(premarket_total_volume_millions, 2)
-        
+
     except Exception as e:
         logger.error(f"❌ Error fetching premarket volume for {ticker} on {date_str}: {e}")
         return 0.0
 
 def fetch_single_day_data(ticker, polygon_client, date_str):
     """
-    Fetch comprehensive data for a single day from Polygon API.
+    Fetch comprehensive data for a single day from Alpaca Data API.
     Returns a single data point dictionary.
+    polygon_client is kept for backward compatibility but is not used.
     """
     try:
-        # Get daily aggregates for this specific date
-        aggs_data = polygon_client.get_aggs(
-            ticker=ticker,
-            multiplier=1,
-            timespan="day",
-            from_=date_str,
-            to=date_str,
-            adjusted="true"
-        )
-        
-        if not aggs_data:
+        # Get daily bar for this specific date
+        day_bars = _alpaca_bars_raw(ticker, f'{date_str}T00:00:00Z', f'{date_str}T23:59:59Z', timeframe='1Day')
+
+        if not day_bars:
             return None
-        
-        # Get the single day data
-        agg = aggs_data[0] if aggs_data else None
-        if not agg:
-            return None
-        
-        # Get previous day data for gap calculation
-        prev_date = (dt.strptime(date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
-        prev_aggs = polygon_client.get_aggs(
-            ticker=ticker,
-            multiplier=1,
-            timespan="day",
-            from_=prev_date,
-            to=prev_date,
-            adjusted="true"
-        )
-        
+
+        bar = day_bars[0]
+        agg_open   = float(bar.get('o') or 0)
+        agg_high   = float(bar.get('h') or 0)
+        agg_low    = float(bar.get('l') or 0)
+        agg_close  = float(bar.get('c') or 0)
+        agg_volume = int(bar.get('v') or 0)
+
+        # Get previous day close for gap calculation (look back up to 7 days for weekends/holidays)
         previous_day_close = None
-        if prev_aggs and len(prev_aggs) > 0:
-            previous_day_close = prev_aggs[0].close
-        
+        for days_back in range(1, 8):
+            prev_date = (dt.strptime(date_str, '%Y-%m-%d') - timedelta(days=days_back)).strftime('%Y-%m-%d')
+            prev_bars = _alpaca_bars_raw(ticker, f'{prev_date}T00:00:00Z', f'{prev_date}T23:59:59Z', timeframe='1Day')
+            if prev_bars:
+                previous_day_close = float(prev_bars[-1].get('c') or 0) or None
+                if previous_day_close:
+                    break
+
         # Calculate gap percentage
         gap_percent = None
-        if previous_day_close and agg.open:
-            gap_percent = round(((agg.open - previous_day_close) / previous_day_close) * 100, 2)
-        
-        # Get premarket data
-        premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, polygon_client, date_str)
-        premarket_volume = get_premarket_volume(polygon_client, ticker, date_str)
+        if previous_day_close and agg_open:
+            gap_percent = round(((agg_open - previous_day_close) / previous_day_close) * 100, 2)
+
+        # Get premarket data (polygon_client=None is fine — it's ignored inside)
+        premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, None, date_str)
+        premarket_volume = get_premarket_volume(None, ticker, date_str)
 
         # Get daily high/low data
-        daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, date_str)
+        daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, None, date_str)
 
         # Calculate percentages
         percent_gap_high = None
@@ -318,29 +322,29 @@ def fetch_single_day_data(ticker, polygon_client, date_str):
         if previous_day_close:
             if daily_high:
                 percent_gap_high = round(((daily_high - previous_day_close) / previous_day_close) * 100, 2)
-            closing_percent = round(((agg.close - previous_day_close) / previous_day_close) * 100, 2)
+            closing_percent = round(((agg_close - previous_day_close) / previous_day_close) * 100, 2)
 
-        # Get daily summary for premarket open and afterhours close
+        # premarket open: use first premarket bar open
+        premarket_open = premarket_bar_open
+
+        # afterhours close: fetch 16:00–20:00 ET bars, take last bar's close
+        afterhours_close = None
         try:
-            daily_summary = polygon_client.get_daily_open_close_agg(
-                ticker=ticker,
-                date=date_str,
-                adjusted="true",
-            )
-            premarket_open = daily_summary.pre_market if daily_summary.pre_market else premarket_bar_open
-            afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
+            ah_start = _et_to_iso(date_str, '16:00')
+            ah_end   = _et_to_iso(date_str, '20:00')
+            ah_bars  = _alpaca_bars_raw(ticker, ah_start, ah_end, timeframe='1Min')
+            if ah_bars:
+                afterhours_close = float(ah_bars[-1].get('c') or 0) or None
         except Exception as e:
-            print(f"Error fetching daily summary for {ticker} on {date_str}: {e}")
-            premarket_open = premarket_bar_open
-            afterhours_close = None
-        
+            logger.debug(f"afterhours fetch error for {ticker} on {date_str}: {e}")
+
         # Determine Runner/Fader
-        runner_fader = "Runner" if agg.close > agg.open else (
-            "Fader" if agg.close < agg.open else "Neutral")
-        
+        runner_fader = "Runner" if agg_close > agg_open else (
+            "Fader" if agg_close < agg_open else "Neutral")
+
         # VWAP crosses removed for performance optimization
         vwap_crosses = None
-        
+
         data_point = {
             'date': date_str,
             'pd close': round(previous_day_close, 2) if previous_day_close else None,
@@ -348,55 +352,50 @@ def fetch_single_day_data(ticker, polygon_client, date_str):
             'premarket high': round(premarket_high, 2) if premarket_high else None,
             'premarket high time': premarket_high_time,
             'premarket volume': premarket_volume,
-            'open': round(agg.open, 2),
+            'open': round(agg_open, 2),
             'gap up % at open': gap_percent,
-            'day high': round(daily_high, 2) if daily_high else round(agg.high, 2),
+            'day high': round(daily_high, 2) if daily_high else round(agg_high, 2),
             'day high time': daily_high_time,
             'day high %': percent_gap_high,
-            'close price': round(agg.close, 2),
+            'close price': round(agg_close, 2),
             'closing percent': closing_percent,
             'afterhours close': round(afterhours_close, 2) if afterhours_close else None,
-            'total volume': agg.volume,
+            'total volume': agg_volume,
             'VWAP Crosses': None,  # Removed for performance
             'Runner/Fader': runner_fader,
-            'high': round(agg.high, 2),
-            'low': round(agg.low, 2),
-            'volume_millions': round(agg.volume / 1000000, 2),
-            'dollar_volume_millions': round((agg.volume * agg.high) / 1000000, 2)
+            'high': round(agg_high, 2),
+            'low': round(agg_low, 2),
+            'volume_millions': round(agg_volume / 1000000, 2),
+            'dollar_volume_millions': round((agg_volume * agg_high) / 1000000, 2)
         }
-        
+
         return data_point
-        
+
     except Exception as e:
         logger.error(f"Error fetching single day data for {ticker} on {date_str}: {e}")
         return None
 
 def get_batch_daily_data(ticker, start_date, end_date):
     """
-    Fetch all daily data for a ticker in a single batch API call.
-    This is much faster than fetching day by day.
+    Fetch all daily data for a ticker in a single batch API call using Alpaca.
+    Returns a list of _BarData objects for backward compat with process_batch_data_to_gap_ups.
     """
     start_time = time.time()
     try:
-        polygon_client = get_polygon_client()
-        
-        # Single batch call for all daily data
-        aggs_data = polygon_client.get_aggs(
-            ticker=ticker,
-            multiplier=1,
-            timespan="day",
-            from_=start_date,
-            to=end_date,
-            adjusted="true"
+        raw_bars = _alpaca_bars_raw(
+            ticker,
+            f'{start_date}T00:00:00Z',
+            f'{end_date}T23:59:59Z',
+            timeframe='1Day'
         )
-        
-        if not aggs_data:
+
+        if not raw_bars:
             return []
-        
-        # Convert to list and sort by date
-        daily_data = list(aggs_data)
+
+        # Wrap in _BarData objects (provides .timestamp, .open, .high, .low, .close, .volume, .vwap)
+        daily_data = [_BarData(b) for b in raw_bars]
         daily_data.sort(key=lambda x: x.timestamp)
-        
+
         duration = time.time() - start_time
         log_performance('batch_daily_data', duration, {
             'ticker': ticker,
@@ -404,10 +403,10 @@ def get_batch_daily_data(ticker, start_date, end_date):
             'end_date': end_date,
             'data_points': len(daily_data)
         })
-        
+
         logger.info(f"📊 Retrieved {len(daily_data)} days of batch data for {ticker}")
         return daily_data
-        
+
     except Exception as e:
         logger.error(f"❌ Error fetching batch daily data for {ticker}: {e}")
         return []
@@ -423,13 +422,11 @@ def process_batch_data_to_gap_ups(ticker, daily_data, min_gap_percent=5):
         # Create a dictionary for quick lookup of previous trading days
         daily_data_dict = {}
         for agg in daily_data:
-            # Fix Polygon API date offset by adding 1 day to get correct trading date
-            date_str = (dt.fromtimestamp(agg.timestamp / 1000) + timedelta(days=1)).strftime('%Y-%m-%d')
+            date_str = dt.utcfromtimestamp(agg.timestamp / 1000).strftime('%Y-%m-%d')
             daily_data_dict[date_str] = agg
-        
+
         for i, agg in enumerate(daily_data):
-            # Fix Polygon API date offset by adding 1 day to get correct trading date
-            date_str = (dt.fromtimestamp(agg.timestamp / 1000) + timedelta(days=1)).strftime('%Y-%m-%d')
+            date_str = dt.utcfromtimestamp(agg.timestamp / 1000).strftime('%Y-%m-%d')
             
             # Get previous trading day close for gap calculation
             previous_day_close = None
@@ -467,31 +464,26 @@ def process_batch_data_to_gap_ups(ticker, daily_data, min_gap_percent=5):
                     "Fader" if agg.close < agg.open else "Neutral")
                 
                 # Get premarket data for gap-up days only (efficient approach)
-                polygon_client = get_polygon_client()
-                premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, polygon_client, date_str)
-                premarket_volume = get_premarket_volume(polygon_client, ticker, date_str)
+                premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, None, date_str)
+                premarket_volume = get_premarket_volume(None, ticker, date_str)
 
                 # Get daily high/low data for gap-up days
-                daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, date_str)
+                daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, None, date_str)
 
                 # Get VWAP crosses for gap-up days
-                vwap_crosses = count_vwap_crosses(polygon_client, ticker, date_str)
+                vwap_crosses = count_vwap_crosses(None, ticker, date_str)
 
-                # Get daily summary for premarket open and afterhours close
+                # premarket open from first premarket bar; afterhours close from 16:00–20:00 ET bars
+                premarket_open = premarket_bar_open
+                afterhours_close = None
                 try:
-                    logger.debug(f"🔍 Fetching daily summary for {ticker} on {date_str}")
-                    daily_summary = polygon_client.get_daily_open_close_agg(
-                        ticker=ticker,
-                        date=date_str,
-                        adjusted="true",
-                    )
-                    premarket_open = daily_summary.pre_market if daily_summary.pre_market else premarket_bar_open
-                    afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
-                    logger.debug(f"📊 Daily summary for {ticker} on {date_str}: Pre-market={premarket_open}, After-hours={afterhours_close}")
+                    ah_start = _et_to_iso(date_str, '16:00')
+                    ah_end   = _et_to_iso(date_str, '20:00')
+                    ah_bars  = _alpaca_bars_raw(ticker, ah_start, ah_end, timeframe='1Min')
+                    if ah_bars:
+                        afterhours_close = float(ah_bars[-1].get('c') or 0) or None
                 except Exception as e:
-                    logger.warning(f"❌ Error fetching daily summary for {ticker} on {date_str}: {e}")
-                    premarket_open = premarket_bar_open
-                    afterhours_close = None
+                    logger.debug(f"afterhours fetch error for {ticker} on {date_str}: {e}")
                 
                 data_point = {
                     'date': date_str,
@@ -746,11 +738,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True, min_gap_percent=
 
                         if missing_dates:
                             logger.info(f"🔄 Fetching delta data for {ticker}: {len(missing_dates)} missing dates")
-                            polygon_client = get_polygon_client()
 
                             delta_data = []
                             for missing_date in missing_dates:
-                                data_point = fetch_single_day_data(ticker, polygon_client, missing_date)
+                                data_point = fetch_single_day_data(ticker, None, missing_date)
                                 gap_percent = data_point.get('gap up % at open') if data_point else None
                                 if data_point and gap_percent is not None and gap_percent >= 5:
                                     delta_data.append(data_point)
@@ -772,10 +763,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True, min_gap_percent=
                             logger.info(f"✅ No missing dates to fetch for requested range")
                             return []
             else:
-                logger.info(f"DEBUG: No cached data found for {ticker}, will fetch from Polygon")
-        
-        # If no cache or insufficient cached data, fetch from Polygon using batch processing
-        logger.info(f"🔄 Fetching fresh batch data from Polygon for {ticker}")
+                logger.info(f"DEBUG: No cached data found for {ticker}, will fetch from Alpaca")
+
+        # If no cache or insufficient cached data, fetch from Alpaca using batch processing
+        logger.info(f"🔄 Fetching batch data from Alpaca for {ticker}")
         
         # Add timeout protection for API calls
         try:
@@ -884,19 +875,18 @@ def get_batch_delta_data(ticker, missing_dates, min_gap_percent=5):
         end_date = missing_dates[-1]
         
         # Get batch data for the entire missing range
-        polygon_client = get_polygon_client()
         daily_data = get_batch_daily_data(ticker, start_date, end_date)
-        
+
         if not daily_data:
             return []
-        
+
         # Process only the missing dates from the batch data
         delta_data = []
         daily_data_dict = {}
-        
+
         # Create lookup dictionary for quick access
         for agg in daily_data:
-            date_str = (dt.fromtimestamp(agg.timestamp / 1000) + timedelta(days=1)).strftime('%Y-%m-%d')
+            date_str = dt.utcfromtimestamp(agg.timestamp / 1000).strftime('%Y-%m-%d')
             daily_data_dict[date_str] = agg
         
         # Process only the missing dates
@@ -918,24 +908,23 @@ def get_batch_delta_data(ticker, missing_dates, min_gap_percent=5):
                         logger.debug(f"📊 Found previous trading day for {missing_date}: {prev_date_str} (close: {previous_day_close})")
                         break
                 
-                # Fallback: if not found in batch data, fetch individually.
+                # Fallback: if not found in batch data, fetch individually via Alpaca.
                 # Walk back up to 10 days to correctly skip weekends/holidays.
                 if previous_day_close is None:
                     for fb in range(1, 10):
                         prev_date_str = (current_date - timedelta(days=fb)).strftime('%Y-%m-%d')
                         try:
-                            prev_aggs = polygon_client.get_aggs(
-                                ticker=ticker,
-                                multiplier=1,
-                                timespan="day",
-                                from_=prev_date_str,
-                                to=prev_date_str,
-                                adjusted="true"
+                            prev_bars = _alpaca_bars_raw(
+                                ticker,
+                                f'{prev_date_str}T00:00:00Z',
+                                f'{prev_date_str}T23:59:59Z',
+                                timeframe='1Day'
                             )
-                            if prev_aggs and len(prev_aggs) > 0:
-                                previous_day_close = prev_aggs[0].close
-                                logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
-                                break
+                            if prev_bars:
+                                previous_day_close = float(prev_bars[-1].get('c') or 0) or None
+                                if previous_day_close:
+                                    logger.debug(f"📊 Fetched previous day individually for {missing_date}: {prev_date_str} (close: {previous_day_close})")
+                                    break
                         except Exception as e:
                             logger.warning(f"Could not fetch previous day data for {ticker} on {prev_date_str}: {e}")
                 
@@ -947,30 +936,26 @@ def get_batch_delta_data(ticker, missing_dates, min_gap_percent=5):
                 # Only process if the gap meets the minimum threshold
                 if gap_percent and gap_percent >= min_gap_percent:
                     # Get premarket data for gap-up days only
-                    premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, polygon_client, missing_date)
-                    premarket_volume = get_premarket_volume(polygon_client, ticker, missing_date)
+                    premarket_high, premarket_high_time, _, _, premarket_bar_open = get_premarket_high_low_data(ticker, None, missing_date)
+                    premarket_volume = get_premarket_volume(None, ticker, missing_date)
 
                     # Get daily high/low data for gap-up days
-                    daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, polygon_client, missing_date)
+                    daily_high, daily_high_time, _, _ = get_daily_high_low_data(ticker, None, missing_date)
 
                     # Get VWAP crosses for gap-up days
-                    vwap_crosses = count_vwap_crosses(polygon_client, ticker, missing_date)
+                    vwap_crosses = count_vwap_crosses(None, ticker, missing_date)
 
-                    # Get daily summary for premarket open and afterhours close
+                    # premarket open from first premarket bar; afterhours close from 16:00–20:00 ET bars
+                    premarket_open = premarket_bar_open
+                    afterhours_close = None
                     try:
-                        logger.debug(f"🔍 Fetching daily summary for {ticker} on {missing_date}")
-                        daily_summary = polygon_client.get_daily_open_close_agg(
-                            ticker=ticker,
-                            date=missing_date,
-                            adjusted="true",
-                        )
-                        premarket_open = daily_summary.pre_market if daily_summary.pre_market else premarket_bar_open
-                        afterhours_close = daily_summary.after_hours if daily_summary.after_hours else None
-                        logger.debug(f"📊 Daily summary for {ticker} on {missing_date}: Pre-market={premarket_open}, After-hours={afterhours_close}")
+                        ah_start = _et_to_iso(missing_date, '16:00')
+                        ah_end   = _et_to_iso(missing_date, '20:00')
+                        ah_bars  = _alpaca_bars_raw(ticker, ah_start, ah_end, timeframe='1Min')
+                        if ah_bars:
+                            afterhours_close = float(ah_bars[-1].get('c') or 0) or None
                     except Exception as e:
-                        logger.warning(f"❌ Error fetching daily summary for {ticker} on {missing_date}: {e}")
-                        premarket_open = premarket_bar_open
-                        afterhours_close = None
+                        logger.debug(f"afterhours fetch error for {ticker} on {missing_date}: {e}")
                     
                     # Calculate percentages
                     percent_gap_high = None
@@ -1022,7 +1007,6 @@ def cache_gap_up_day_for_tickers(date_str, gap_up_stocks, delay_seconds=0.5):
     Called from update_real_time_gap_ups() in a background thread after the snapshot is saved.
     """
     try:
-        polygon_client = get_polygon_client()
         cached_count = 0
         skipped_count = 0
 
@@ -1038,7 +1022,7 @@ def cache_gap_up_day_for_tickers(date_str, gap_up_stocks, delay_seconds=0.5):
                 continue
 
             try:
-                data_point = fetch_single_day_data(ticker, polygon_client, date_str)
+                data_point = fetch_single_day_data(ticker, None, date_str)
                 if data_point:
                     historical_cache.store_historical_data(ticker, [data_point], date_str, date_str)
                     cached_count += 1
