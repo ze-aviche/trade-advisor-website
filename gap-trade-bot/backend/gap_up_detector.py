@@ -5,6 +5,7 @@ Alpaca Algo Trader Plus provides real-time data (replaces Polygon).
 """
 
 import os
+import time
 import requests
 from datetime import datetime as dt
 import pytz
@@ -137,6 +138,140 @@ _NON_CS_SUFFIXES = ('W', 'WS', 'R', 'U', 'Z')
 def _ticker_looks_non_cs(ticker):
     t = ticker.upper().replace('.', '')
     return any(t.endswith(s) for s in _NON_CS_SUFFIXES)
+
+
+# ── Full universe cache ────────────────────────────────────────────────────────
+# Populated once per day by _get_alpaca_equity_universe().
+_UNIVERSE_CACHE: dict = {'symbols': [], 'ts': 0.0}
+_UNIVERSE_TTL = 86_400   # 24 h
+
+
+def _get_alpaca_equity_universe() -> list:
+    """
+    Return all active tradable US equity symbols from the Alpaca broker API.
+    Tries live API first, then paper API.  Cached for 24 h in memory so the
+    expensive assets call only runs once per server start.
+    """
+    global _UNIVERSE_CACHE
+    if time.time() - _UNIVERSE_CACHE['ts'] < _UNIVERSE_TTL and _UNIVERSE_CACHE['symbols']:
+        return _UNIVERSE_CACHE['symbols']
+
+    if not ALPACA_KEY or not ALPACA_SECRET:
+        return []
+
+    headers = {
+        'APCA-API-KEY-ID':     ALPACA_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET,
+    }
+    for base_url in ('https://api.alpaca.markets', 'https://paper-api.alpaca.markets'):
+        try:
+            resp = requests.get(
+                f'{base_url}/v2/assets',
+                headers=headers,
+                params={'asset_class': 'us_equity', 'status': 'active'},
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                symbols = [
+                    a['symbol'] for a in resp.json()
+                    if a.get('tradable') and not _ticker_looks_non_cs(a.get('symbol', ''))
+                ]
+                _UNIVERSE_CACHE = {'symbols': symbols, 'ts': time.time()}
+                logger.info(f'Universe cache: loaded {len(symbols)} US equity symbols from {base_url}')
+                return symbols
+            logger.debug(f'Alpaca assets {base_url}: HTTP {resp.status_code}')
+        except Exception as e:
+            logger.debug(f'Alpaca assets {base_url}: {e}')
+
+    return _UNIVERSE_CACHE['symbols']   # return stale on complete failure
+
+
+def _fetch_from_alpaca_universe_scan(min_price: float, min_gap_pct: float = 2.0) -> list:
+    """
+    Comprehensive gap scanner: snapshot the FULL Alpaca US equity universe and
+    filter by gap% vs previous close.  This catches any mover (including micro-cap
+    runners like AMST/INM) that Alpaca's movers or yfinance screeners exclude due
+    to their implicit liquidity/market-cap filters.
+
+    Runs batches of 500 symbols concurrently — typically 10–20 s for 10 k symbols.
+    Results are merged as a supplemental source (duplicates deduped by the caller).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    symbols = _get_alpaca_equity_universe()
+    if not symbols:
+        logger.warning('Universe scan: symbol cache empty — skipping')
+        return []
+
+    headers = {
+        'APCA-API-KEY-ID':     ALPACA_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET,
+    }
+    batch_size = 500
+    batches = [symbols[i:i + batch_size] for i in range(0, len(symbols), batch_size)]
+
+    def _snap_batch(batch):
+        try:
+            resp = requests.get(
+                'https://data.alpaca.markets/v2/stocks/snapshots',
+                headers=headers,
+                params={'symbols': ','.join(batch), 'feed': 'sip'},
+                timeout=20,
+            )
+            if resp.status_code != 200:
+                return []
+            hits = []
+            for ticker, snap in resp.json().items():
+                try:
+                    if _ticker_looks_non_cs(ticker):
+                        continue
+                    daily = snap.get('dailyBar') or {}
+                    prev  = snap.get('prevDailyBar') or {}
+                    trade = snap.get('latestTrade') or {}
+
+                    price      = float(trade.get('p') or daily.get('c') or 0)
+                    prev_close = float(prev.get('c') or 0)
+                    if price <= 0 or prev_close <= 0 or price < min_price:
+                        continue
+
+                    gap_pct = ((price - prev_close) / prev_close) * 100
+                    if gap_pct < min_gap_pct:
+                        continue
+
+                    hits.append({
+                        'ticker':         ticker,
+                        'company_name':   ticker,
+                        'price':          round(price, 2),
+                        'previous_close': round(prev_close, 2),
+                        'change':         round(price - prev_close, 2),
+                        'change_percent': round(gap_pct, 2),
+                        'gap_percent':    round(gap_pct, 2),
+                        'volume':         int(daily.get('v') or 0),
+                        'market_cap':     0,
+                        'float_shares':   0,
+                        'sector':         'Unknown',
+                        'list_date':      None,
+                        'data_source':    'alpaca_universe',
+                    })
+                except Exception:
+                    pass
+            return hits
+        except Exception as e:
+            logger.debug(f'Universe scan batch error: {e}')
+            return []
+
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = [ex.submit(_snap_batch, b) for b in batches]
+        for f in as_completed(futures):
+            results.extend(f.result())
+
+    results.sort(key=lambda x: x['gap_percent'], reverse=True)
+    logger.info(
+        f'Universe scan: {len(results)} gainers ≥{min_gap_pct}% '
+        f'from {len(symbols)} symbols ({len(batches)} batches)'
+    )
+    return results
 
 
 def _fetch_from_alpaca(min_price):
@@ -608,6 +743,29 @@ def get_gap_up_stocks_for_frontend():
                 logger.info(f'Alpaca most-actives supplemental: added {added} tickers not in movers')
         except Exception as e:
             logger.warning(f"Alpaca most-actives supplemental failed: {e}")
+
+        # Full-universe scan: snapshot every active US equity and filter by gap%.
+        # This is the only source that guarantees catching any mover regardless of
+        # market cap or liquidity.  Runs every 5 min (own cache key) so it doesn't
+        # add latency to the fast 30-60 s refresh cycle.
+        try:
+            universe_cached = gap_up_cache.get('gap_up_universe_scan', 'default')
+            if universe_cached is None:
+                universe_stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
+                gap_up_cache.set('gap_up_universe_scan', universe_stocks, 'default')  # 5-min TTL
+            else:
+                universe_stocks = universe_cached
+            seen_primary = {s['ticker'] for s in primary_stocks}
+            added_u = 0
+            for s in universe_stocks:
+                if s['ticker'] not in seen_primary:
+                    primary_stocks.append(s)
+                    seen_primary.add(s['ticker'])
+                    added_u += 1
+            if added_u:
+                logger.info(f'Universe scan supplemental: added {added_u} tickers')
+        except Exception as e:
+            logger.warning(f"Universe scan supplemental failed: {e}")
 
     # after_hours: Alpaca still shows today's closing movers (not AH catalysts);
     # the dedicated AH scan below handles that session — primary_stocks stays empty.
