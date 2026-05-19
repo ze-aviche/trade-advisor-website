@@ -48,40 +48,64 @@ def get_polygon_client():
 def count_vwap_crosses(polygon_client, ticker, date):
     """
     Fetches 2-minute bar data for a given ticker and date and counts VWAP crosses.
+    Uses Alpaca Data API (2-min bars included in Algo Trader Plus plan).
+    polygon_client parameter is kept for backward compatibility but is not used.
     """
-    try:
-        aggs_data = polygon_client.list_aggs(
-            ticker=ticker,
-            multiplier=2,
-            timespan='minute',
-            from_=date,
-            to=date,
-            limit=50000
-        )
-        aggs_list = list(aggs_data)
-    except Exception as e:
-        print(f"Error fetching 2-minute bar data for {ticker} on {date}: {e}")
+    import requests as _req
+    alpaca_key    = os.environ.get('ALPACA_API_KEY', '')
+    alpaca_secret = os.environ.get('ALPACA_API_SECRET', '')
+    if not alpaca_key or not alpaca_secret:
+        logger.debug(f'count_vwap_crosses: Alpaca keys not configured — skipping for {ticker} {date}')
         return None
 
-    if not aggs_list:
+    # date may be a datetime.date or a string 'YYYY-MM-DD'
+    date_str = date.isoformat() if hasattr(date, 'isoformat') else str(date)
+    url = f'https://data.alpaca.markets/v2/stocks/{ticker.upper()}/bars'
+    params = {
+        'timeframe': '2Min',
+        'start':     f'{date_str}T00:00:00Z',
+        'end':       f'{date_str}T23:59:59Z',
+        'limit':     10000,
+        'adjustment': 'raw',
+        'feed':      'sip',
+    }
+    headers = {
+        'APCA-API-KEY-ID':     alpaca_key,
+        'APCA-API-SECRET-KEY': alpaca_secret,
+    }
+    try:
+        resp = _req.get(url, headers=headers, params=params, timeout=15)
+        if resp.status_code != 200:
+            logger.debug(f'count_vwap_crosses: Alpaca HTTP {resp.status_code} for {ticker} {date_str}')
+            return None
+        bars = resp.json().get('bars') or []
+    except Exception as e:
+        logger.debug(f'count_vwap_crosses: fetch error for {ticker} {date_str}: {e}')
+        return None
+
+    if not bars:
         return 0
 
+    # Compute session VWAP incrementally, then count crosses
+    vwap_num = vwap_den = 0.0
+    vwaps = []
+    closes = []
+    for b in bars:
+        h, l, c, v = b.get('h', 0), b.get('l', 0), b.get('c', 0), b.get('v', 0)
+        tp = (h + l + c) / 3
+        vwap_num += tp * v
+        vwap_den += v
+        vwaps.append(vwap_num / vwap_den if vwap_den else None)
+        closes.append(c)
+
     cross_count = 0
-    previous_close = aggs_list[0].close
-    previous_vwap = aggs_list[0].vwap
-
-    for i in range(1, len(aggs_list)):
-        current_bar = aggs_list[i]
-        current_close = current_bar.close
-        current_vwap = current_bar.vwap
-
-        if previous_close is not None and current_close is not None and previous_vwap is not None and current_vwap is not None:
-            if (previous_close < previous_vwap and current_close > current_vwap) or \
-                    (previous_close > previous_vwap and current_close < previous_vwap):
-                cross_count += 1
-
-        previous_close = current_close
-        previous_vwap = current_vwap
+    for i in range(1, len(closes)):
+        pv, cv = vwaps[i - 1], vwaps[i]
+        pc, cc = closes[i - 1], closes[i]
+        if None in (pv, cv, pc, cc):
+            continue
+        if (pc < pv and cc > cv) or (pc > pv and cc < pv):
+            cross_count += 1
 
     return cross_count
 
