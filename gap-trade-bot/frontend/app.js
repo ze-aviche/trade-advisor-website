@@ -395,10 +395,12 @@ const app = createApp({
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,
+            brownSwingCandInterval: null,
             sessionExpiresAt: null,
             sessionWarningDismissed: false,
             keepaliveInterval: null,
             brownBotCandidates: { scanner: [], watchlist: [] },
+            brownBotSwingCandidates: [],
             brownBotSignals: {},
             brownBotLivePrices: {},
             _brownPriceInterval: null,
@@ -857,7 +859,9 @@ const app = createApp({
                 return classes[this.user.subscription_tier] || classes.basic;
             },
             swingBotCandidates() {
-                const picks = this.swingDailyPicks?.picks || [];
+                const picks = this.brownBotSwingCandidates.length
+                    ? this.brownBotSwingCandidates
+                    : (this.swingDailyPicks?.picks || []);
                 const activeSymbols = new Set(
                     (this.brownBotStatus.active_positions || [])
                         .filter(p => p.position_type === 'swing')
@@ -881,7 +885,6 @@ const app = createApp({
                     .map(tag);
                 if (eligible.length) return eligible;
                 // No A/B Bullish picks — show all available picks for review
-                // (informational only; BrownBot only enters Grade A/B Bullish in its own Python logic)
                 return picks.map(p => ({ ...p, status: 'review' }));
             },
 
@@ -1128,7 +1131,7 @@ const app = createApp({
                     this.fetchBrownBotLogs();
                     this.loadBrownBotCandidates();
                     this.loadBrownBotRiskStatus();
-                    this.loadSwingDailyPicks();
+                    this.loadBrownBotSwingCandidates();
                     this.loadBrownBotBrokerOrders();
                     this.startBrownBotPolling();
                 }
@@ -5882,6 +5885,17 @@ const app = createApp({
             }
         },
 
+        async loadBrownBotSwingCandidates() {
+            try {
+                const response = await axios.get('/api/brown-bot/swing-candidates', { headers: this.authHeaders() });
+                if (response.data.success) {
+                    this.brownBotSwingCandidates = response.data.picks || [];
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot swing candidates:', error);
+            }
+        },
+
         async loadBrownBotCandidates() {
             try {
                 this.loading.brownBotCandidates = true;
@@ -6023,12 +6037,22 @@ const app = createApp({
                     this.stopBrownBotPolling();
                 }
             }, 2000);
+            // Swing candidates are cached for 15 min on the backend — refresh every 60 s
+            this.brownSwingCandInterval = setInterval(() => {
+                if (this.activeTab === 'brown-bot') {
+                    this.loadBrownBotSwingCandidates();
+                }
+            }, 60000);
         },
 
         stopBrownBotPolling() {
             if (this.brownBotPollingInterval) {
                 clearInterval(this.brownBotPollingInterval);
                 this.brownBotPollingInterval = null;
+            }
+            if (this.brownSwingCandInterval) {
+                clearInterval(this.brownSwingCandInterval);
+                this.brownSwingCandInterval = null;
             }
         },
 

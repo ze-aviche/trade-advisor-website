@@ -3787,6 +3787,12 @@ def _brown_rank_swing_ai(candidates):
             f'Swing AI ranked {len(picks)} picks — '
             f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…')
         _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+        # Persist to DB so the Swing tab picks them up via /api/swing-daily-picks/latest
+        try:
+            db_manager.save_swing_picks(session_key, picks, market_note,
+                                        candidates_scanned=len(candidates))
+        except Exception as _db_err:
+            app_logger.warning(f'BrownBot swing picks DB save failed: {_db_err}')
         return picks
     except Exception as e:
         app_logger.warning(f'BrownBot swing AI ranking failed: {e}', exc_info=True)
@@ -5279,6 +5285,45 @@ def get_brown_bot_candidates():
         return jsonify({'success': True, 'scanner': scanner_hits, 'watchlist': wl_entries})
     except Exception as e:
         app_logger.error(f'Error fetching BrownBot candidates: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/brown-bot/swing-candidates', methods=['GET'])
+@require_auth
+def get_brown_bot_swing_candidates():
+    """Return the latest BrownBot swing scanner AI picks, enriched with technicals."""
+    try:
+        picks = list(_swing_ai_picks_cache.get('picks', []))
+        cands_by_ticker = {c['ticker']: c for c in _swing_candidates_cache.get('candidates', [])}
+        result = []
+        for p in picks:
+            ticker = p.get('ticker', '')
+            tech = cands_by_ticker.get(ticker, {})
+            result.append({
+                'ticker':       ticker,
+                'grade':        p.get('grade', ''),
+                'bias':         p.get('bias', ''),
+                'reason':       p.get('reason', ''),
+                'entry_zone':   p.get('entry_zone', ''),
+                'watch_for':    p.get('watch_for', ''),
+                'risk':         p.get('risk', ''),
+                'price':        tech.get('price') or p.get('price'),
+                'chg_pct':      tech.get('chg_pct'),
+                'volume_m':     tech.get('volume_m'),
+                'market_cap_m': tech.get('market_cap_m'),
+                'sma20':        tech.get('sma20'),
+                'rsi14':        tech.get('rsi'),   # candidate dict uses 'rsi', not 'rsi14'
+                'rel_vol':      tech.get('rel_vol'),
+            })
+        cache_ts = _swing_ai_picks_cache.get('ts', 0)
+        return jsonify({
+            'success': True,
+            'picks': result,
+            'cached_at': cache_ts,
+            'count': len(result),
+        })
+    except Exception as e:
+        app_logger.error(f'Error fetching BrownBot swing candidates: {e}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
