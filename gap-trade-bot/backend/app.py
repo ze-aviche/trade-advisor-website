@@ -4014,7 +4014,7 @@ def run_backtest():
 
 
 @app.route('/api/admin/seed-gap-data', methods=['POST'])
-@require_role('super_admin', 'dev_master')
+@require_role('super_admin', 'dev_master', 'bot_admin')
 def seed_gap_data():
     """One-time import of gap_data_export.sql into the main database."""
     import sqlite3 as _sqlite3
