@@ -3902,6 +3902,7 @@ def _brown_close_position(position_id, position, exit_reason):
             f'No open position for {symbol} in broker — removing from tracking (no sell placed)')
         with _brown_bot_lock:
             _brown_bot_active_positions.pop(position_id, None)
+            _brown_closing_positions.discard(position_id)
         return False
 
     # Use broker's close_position so we can never accidentally short.
@@ -3911,6 +3912,8 @@ def _brown_close_position(position_id, position, exit_reason):
         app_logger.info(f'[BrownBot:{_brown_broker.name}] SELL {symbol} → order_id={order_id}')
     except Exception as e:
         _add_brown_log('error', f'SELL order failed for {symbol}: {e}')
+        with _brown_bot_lock:
+            _brown_closing_positions.discard(position_id)  # allow exit loop to retry
         return False
 
     # Calculate days held (needed for DB record written by the monitor)
@@ -4613,8 +4616,7 @@ def get_brown_bot_risk_status():
             config = db_manager.get_brown_bot_config()
         except Exception:
             config = {}
-        from datetime import datetime as _dt
-        today = _dt.now().strftime('%Y-%m-%d')
+        today = _last_trading_date()
         try:
             summary = db_manager.get_trade_summary(start_date=today, end_date=today)
             realized_pnl = float(summary.get('total_pnl', 0.0)) if summary else 0.0
@@ -4635,8 +4637,7 @@ def get_brown_bot_risk_status():
         }
     # Per-ticker P&L breakdown for today
     try:
-        from datetime import datetime as _dt2
-        _today = _dt2.now().strftime('%Y-%m-%d')
+        _today = _last_trading_date()
         with db_manager.get_connection() as _conn:
             _rows = _conn.execute(
                 '''SELECT symbol,

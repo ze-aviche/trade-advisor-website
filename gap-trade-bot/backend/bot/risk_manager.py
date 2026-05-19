@@ -1,5 +1,5 @@
 """BrownBot portfolio-level risk gate."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class RiskManager:
@@ -70,8 +70,13 @@ class RiskManager:
 
     def _get_daily_pnl(self) -> float:
         try:
+            import pytz
             from database import db_manager
-            today = datetime.now().strftime('%Y-%m-%d')
+            et_tz = pytz.timezone('US/Eastern')
+            d = datetime.now(et_tz)
+            while d.weekday() >= 5:  # roll back to last trading day (ET)
+                d -= timedelta(days=1)
+            today = d.strftime('%Y-%m-%d')
             summary = db_manager.get_trade_summary(start_date=today, end_date=today)
             return float(summary.get('total_pnl', 0.0)) if summary else 0.0
         except Exception:
