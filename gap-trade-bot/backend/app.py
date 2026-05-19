@@ -4496,6 +4496,70 @@ def stop_brown_bot():
     return jsonify({'success': True, 'message': 'BrownBot stopped'})
 
 
+@app.route('/api/brown-bot/close-all', methods=['POST'])
+@require_auth
+def brown_bot_close_all():
+    """Close every position in the Alpaca account using the bulk endpoint.
+    Clears _brown_bot_active_positions and writes exit trades to DB."""
+    global _brown_bot_active_positions
+
+    broker = _brown_broker or _get_broker()
+    if not broker:
+        return jsonify({'success': False, 'error': 'No broker available'})
+
+    try:
+        closed = broker.close_all_positions()
+    except Exception as e:
+        _add_brown_log('error', f'Close-all failed: {e}')
+        return jsonify({'success': False, 'error': str(e)})
+
+    closed_symbols = [c['symbol'] for c in closed]
+    _add_brown_log('warning',
+        f'CLOSE ALL: {len(closed)} position(s) submitted — {", ".join(closed_symbols) or "none"}')
+
+    # Write exit trades and purge in-memory positions
+    now_str = datetime.now().isoformat()
+    with _brown_bot_lock:
+        snapshot = dict(_brown_bot_active_positions)
+
+    for pid, pos in snapshot.items():
+        sym = pos.get('symbol', '').upper()
+        try:
+            db_manager.add_trade({
+                'trade_id':      f'BROWN_CLOSEALL_{sym}_{int(time.time())}',
+                'symbol':        sym,
+                'side':          'S',
+                'quantity':      int(pos.get('quantity', 0)),
+                'price':         pos.get('_current_price') or pos.get('entry_price', 0),
+                'route':         'SMAT',
+                'trade_time':    now_str,
+                'order_id':      None,
+                'liquidity':     None,
+                'ecn_fee':       0.0,
+                'pnl':           round(pos.get('unrealized_pnl', 0), 2),
+                'trade_date':    _last_trading_date(),
+                'position_type': pos.get('position_type', 'day'),
+                'days_held':     None,
+                'source':        'brownbot',
+                'broker':        broker.name if broker else None,
+            })
+        except Exception as _e:
+            app_logger.debug(f'close-all DB write failed for {sym}: {_e}')
+        try:
+            db_manager.delete_brown_position(pid)
+        except Exception:
+            pass
+
+    with _brown_bot_lock:
+        _brown_bot_active_positions.clear()
+
+    return jsonify({
+        'success': True,
+        'closed':  len(closed),
+        'symbols': closed_symbols,
+    })
+
+
 @app.route('/api/brown-bot/config', methods=['GET'])
 @require_auth
 def get_brown_bot_config_endpoint():

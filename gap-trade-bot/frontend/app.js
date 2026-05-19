@@ -88,6 +88,7 @@ const app = createApp({
                     brownBotCandidates: false,
                     brownBotSignals: false,
                     brownBotOrders: false,
+                    brownBotCloseAll: false,
                     // Broker loading states
                     brokerSave: false,
                     brokerTest: false,
@@ -396,6 +397,7 @@ const app = createApp({
             },
             brownBotConfigCollapsed: false,
             brownBotOrdersCollapsed: false,
+            brownBotCloseAllConfirm: false,
             brownBotBrokerOrders: [],
             brownBotOrdersAfter: '',
             brownBotOrdersUntil: '',
@@ -5808,6 +5810,28 @@ const app = createApp({
                 console.error('Error toggling BrownBot:', error);
             } finally {
                 this.loading.brownBotToggle = false;
+            }
+        },
+
+        async brownBotCloseAll() {
+            try {
+                this.loading.brownBotCloseAll = true;
+                this.brownBotCloseAllConfirm = false;
+                const response = await axios.post('/api/brown-bot/close-all', {}, { headers: this.authHeaders() });
+                if (response.data.success) {
+                    const n = response.data.closed || 0;
+                    const syms = (response.data.symbols || []).join(', ');
+                    this.showNotification(`Sold ${n} position(s)${syms ? ': ' + syms : ''}`, 'success');
+                    await this.loadBrownBotStatus();
+                    await this.fetchBrownBotLogs();
+                } else {
+                    this.showNotification(response.data.error || 'Close all failed', 'error');
+                }
+            } catch (error) {
+                console.error('Error closing all positions:', error);
+                this.showNotification('Error closing all positions', 'error');
+            } finally {
+                this.loading.brownBotCloseAll = false;
             }
         },
 

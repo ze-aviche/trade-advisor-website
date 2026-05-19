@@ -249,6 +249,23 @@ class AlpacaBroker(BrokerBase):
                     raise BrokerError(f'Alpaca close_position {sym} failed: {retry_err}') from retry_err
             raise BrokerError(f'Alpaca close_position {sym} failed: {first_err}') from first_err
 
+    def close_all_positions(self) -> list[dict]:
+        """Close every open position via Alpaca's bulk endpoint.
+        Returns a list of {symbol, order_id, qty} for each position closed."""
+        self._require_client()
+        try:
+            orders = self._client.close_all_positions(cancel_orders=True)
+            result = []
+            for o in (orders or []):
+                result.append({
+                    'symbol':   str(o.symbol).upper(),
+                    'order_id': str(o.id),
+                    'qty':      float(o.qty or 0),
+                })
+            return result
+        except Exception as e:
+            raise BrokerError(f'Alpaca close_all_positions failed: {e}') from e
+
     def _cancel_open_orders_for(self, symbol: str) -> int:
         """Cancel all open orders for *symbol*. Returns the number cancelled."""
         sym = symbol.upper()

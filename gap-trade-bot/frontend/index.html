@@ -2734,9 +2734,52 @@
                                 {{ brownBotStatus.active_positions_count || 0 }}
                             </span>
                         </div>
-                        <button @click="loadBrownBotStatus" title="Refresh" class="text-xs text-gray-400 hover:text-white transition-colors">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
+                        <div class="flex items-center gap-3">
+                            <button v-if="brownBotStatus.active_positions?.length"
+                                    @click="brownBotCloseAllConfirm = true"
+                                    :disabled="loading.brownBotCloseAll"
+                                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-700 hover:bg-red-600 text-white transition-all disabled:opacity-50">
+                                <i v-if="loading.brownBotCloseAll" class="fas fa-spinner fa-spin"></i>
+                                <i v-else class="fas fa-times-circle"></i>
+                                Sell All
+                            </button>
+                            <button @click="loadBrownBotStatus" title="Refresh" class="text-xs text-gray-400 hover:text-white transition-colors">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Sell All confirmation modal -->
+                    <div v-if="brownBotCloseAllConfirm"
+                         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                        <div class="bg-gray-800 border border-red-700/60 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 rounded-full bg-red-700/30 flex items-center justify-center">
+                                    <i class="fas fa-exclamation-triangle text-red-400 text-lg"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-white font-bold text-base">Sell All Positions</h3>
+                                    <p class="text-gray-400 text-xs">This cannot be undone</p>
+                                </div>
+                            </div>
+                            <p class="text-gray-300 text-sm mb-5">
+                                This will send market sell orders for all
+                                <span class="text-white font-semibold">{{ brownBotStatus.active_positions_count || 0 }}</span>
+                                active position(s) via Alpaca. Are you sure?
+                            </p>
+                            <div class="flex gap-3">
+                                <button @click="brownBotCloseAllConfirm = false"
+                                        class="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white transition-all">
+                                    Cancel
+                                </button>
+                                <button @click="brownBotCloseAll"
+                                        :disabled="loading.brownBotCloseAll"
+                                        class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-all disabled:opacity-50">
+                                    <i v-if="loading.brownBotCloseAll" class="fas fa-spinner fa-spin mr-1"></i>
+                                    Yes, Sell All
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <div v-if="!brownBotStatus.active_positions?.length" class="px-5 py-8 text-center text-gray-500 text-sm">
                         <i class="fas fa-inbox text-2xl mb-2 block"></i>
