@@ -332,7 +332,9 @@ def _fetch_from_alpaca(min_price):
         try:
             price      = float(item.get('price') or 0)
             change     = float(item.get('change') or 0)
-            change_pct = float(item.get('change_percent') or 0)
+            # Alpaca movers API returns "percent_change", not "change_percent"
+            change_pct = float(item.get('percent_change') or item.get('change_percent') or 0)
+            # Volume is not in the movers endpoint response; enriched later via snapshots
             volume     = int(item.get('volume') or 0)
 
             if price <= 0 or price < min_price:
