@@ -4749,46 +4749,67 @@ def get_brown_bot_status():
     das_ok = DAS_ENABLED and _das_direct is not None
     broker = _brown_broker or _get_broker()
     broker_info = broker.to_dict() if broker else None
+
+    # Snapshot in-memory BrownBot state under lock.
+    # Used as metadata overlay (targets, stops, type, entry time) on top of
+    # broker positions — not as the row source.
     with _brown_bot_lock:
-        positions_list = list(_brown_bot_active_positions.values())
-        # Include positions whose exit order is in-flight — they're still open in the broker
-        # and should count toward active positions until the fill/rejection is confirmed.
-        pending_exit_positions = []
-        for meta in _brown_pending_orders.values():
-            if meta.get('type') == 'exit' and meta.get('position'):
-                pos = dict(meta['position'])
-                pos['_exit_pending'] = True  # UI hint: close order submitted
-                pending_exit_positions.append(pos)
-        positions_list = positions_list + pending_exit_positions
-        active_count = len(positions_list)
+        bb_by_symbol = {
+            (pos.get('symbol') or '').upper(): pos
+            for pos in _brown_bot_active_positions.values()
+        }
+        pending_exit_syms = {
+            (meta.get('symbol') or '').upper()
+            for meta in _brown_pending_orders.values()
+            if meta.get('type') == 'exit'
+        }
         entry_counts = dict(_brown_entry_counts)
-        # Symbols attempted but not filled (rejected or insufficient BP)
         skipped_symbols = list(_brown_attempted_symbols - set(_brown_entry_counts.keys()))
 
-    # Enrich positions with live broker data — use Alpaca as source of truth
-    # for current_price, unrealized_pnl, and market_value.  When the bot is
-    # running the exit loop refreshes these every 2 s anyway; when stopped,
-    # this call ensures the UI still shows live numbers.
-    if broker and positions_list:
+    # Use broker.get_positions() as the row source so the table always matches
+    # what actually exists at the broker — no stale ghosts, no missing orphans.
+    # BrownBot metadata (targets, stops, type, entry time, BE flag) is merged in
+    # from the in-memory dict keyed by symbol.
+    positions_list = []
+    if broker:
         try:
-            live_pos_map = {p.symbol.upper(): p for p in broker.get_positions()}
-            enriched = []
-            for pos in positions_list:
-                sym = pos.get('symbol', '').upper()
-                lp  = live_pos_map.get(sym)
-                if lp:
-                    pos = {
-                        **pos,
-                        '_current_price': lp.current_price,
-                        'unrealized_pnl': lp.unrealized_pnl,
-                        'market_value':   lp.market_value,
-                        'quantity':       int(abs(lp.qty)),
-                        '_broker_synced': True,
-                    }
-                enriched.append(pos)
-            positions_list = enriched
+            for lp in broker.get_positions():
+                sym = lp.symbol.upper()
+                bb  = bb_by_symbol.get(sym, {})
+                positions_list.append({
+                    'position_id':       bb.get('position_id', f'BROKER_{sym}'),
+                    'symbol':            sym,
+                    'position_type':     bb.get('position_type'),
+                    'avg_entry':         round(lp.avg_entry_price, 4),
+                    'entry_price':       bb.get('entry_price') or round(lp.avg_entry_price, 4),
+                    'quantity':          int(abs(lp.qty)),
+                    'profit_target':     bb.get('profit_target'),
+                    'profit_target_pct': bb.get('profit_target_pct'),
+                    'stop_loss':         bb.get('stop_loss'),
+                    'stop_loss_pct':     bb.get('stop_loss_pct'),
+                    'entry_time':        bb.get('entry_time'),
+                    'entry_time_epoch':  bb.get('entry_time_epoch'),
+                    '_current_price':    lp.current_price,
+                    'unrealized_pnl':    lp.unrealized_pnl,
+                    'market_value':      lp.market_value,
+                    '_broker_synced':    True,
+                    '_at_breakeven':     bb.get('_at_breakeven', False),
+                    '_exit_pending':     sym in pending_exit_syms,
+                })
+            positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
-            app_logger.debug(f'BrownBot status: broker enrichment skipped: {_be}')
+            app_logger.debug(f'BrownBot status: broker fetch failed, falling back to in-memory: {_be}')
+            # Fallback: serve in-memory so the UI is never completely empty
+            with _brown_bot_lock:
+                positions_list = list(_brown_bot_active_positions.values())
+            for meta in _brown_pending_orders.values():
+                if meta.get('type') == 'exit' and meta.get('position'):
+                    pos = dict(meta['position'])
+                    pos['_exit_pending'] = True
+                    positions_list.append(pos)
+            positions_list.sort(key=lambda p: p.get('symbol', ''))
+
+    active_count = len(positions_list)
 
     # Pull today's entry/exit counts from DB so stats survive restarts.
     # Use last_trading_date (ET) so trades entered during US market hours
