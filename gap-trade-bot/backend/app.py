@@ -126,7 +126,8 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gap-up-detection-web-2024')
 
-_cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:5000').split(',')
+_cors_origins_raw = os.environ.get('CORS_ORIGINS', '*')
+_cors_origins = '*' if _cors_origins_raw == '*' else _cors_origins_raw.split(',')
 CORS(app, origins=_cors_origins)
 # eventlet doesn't support Python 3.13 — fall back to threading for local dev
 _async_mode = 'eventlet'
@@ -4037,6 +4038,7 @@ def _brown_bot_scan_and_enter():
             live_day = sum(
                 1 for p in _brown_bot_active_positions.values()
                 if p.get('position_type') in ('day', 'brown_day')
+                and not p.get('_exit_pending')
             )
             active_copy = dict(_brown_bot_active_positions)
         if live_day >= max_day:
@@ -4133,6 +4135,7 @@ def _brown_bot_scan_and_enter():
             live_swing = sum(
                 1 for p in _brown_bot_active_positions.values()
                 if p.get('position_type') in ('swing', 'brown_swing')
+                and not p.get('_exit_pending')
             )
             active_copy = dict(_brown_bot_active_positions)
         if live_swing >= max_swing:
@@ -4571,6 +4574,9 @@ def _brown_bot_check_exits(check_swing_specific=False):
     for position_id, position in positions_snapshot.items():
         if not _brown_bot_running:
             return
+        # Skip positions already being closed (close-all or individual exit in-flight)
+        if position.get('_exit_pending'):
+            continue
         symbol = position['symbol']
         position_type = position.get('position_type', 'day')
 
@@ -5180,7 +5186,8 @@ def stop_brown_bot():
 @require_auth
 def brown_bot_close_all():
     """Close every position in the Alpaca account using the bulk endpoint.
-    Clears _brown_bot_active_positions and writes exit trades to DB."""
+    Marks positions _exit_pending and writes exit trades to DB.
+    Memory cleanup is deferred to get_brown_bot_status once broker confirms fills."""
     global _brown_bot_active_positions
 
     broker = _brown_broker or _get_broker()
@@ -5197,10 +5204,14 @@ def brown_bot_close_all():
     _add_brown_log('warning',
         f'CLOSE ALL: {len(closed)} position(s) submitted — {", ".join(closed_symbols) or "none"}')
 
-    # Write exit trades and purge in-memory positions
+    # Write exit trades for every active position not already being closed.
+    # Skip _exit_pending positions — a previous close-all already wrote their SELL.
     now_str = datetime.now().isoformat()
     with _brown_bot_lock:
-        snapshot = dict(_brown_bot_active_positions)
+        snapshot = {
+            pid: pos for pid, pos in _brown_bot_active_positions.items()
+            if not pos.get('_exit_pending')
+        }
 
     for pid, pos in snapshot.items():
         sym = pos.get('symbol', '').upper()

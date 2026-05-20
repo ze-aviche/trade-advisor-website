@@ -21,10 +21,12 @@ class RiskManager:
         day_count = sum(
             1 for p in active_positions.values()
             if p.get('position_type') in ('day', 'brown_day')
+            and not p.get('_exit_pending')
         )
         swing_count = sum(
             1 for p in active_positions.values()
             if p.get('position_type') in ('swing', 'brown_swing')
+            and not p.get('_exit_pending')
         )
         daily_pnl = self._get_daily_pnl() + unrealized_pnl
 
@@ -50,10 +52,12 @@ class RiskManager:
         day_count = sum(
             1 for p in active_positions.values()
             if p.get('position_type') in ('day', 'brown_day')
+            and not p.get('_exit_pending')
         )
         swing_count = sum(
             1 for p in active_positions.values()
             if p.get('position_type') in ('swing', 'brown_swing')
+            and not p.get('_exit_pending')
         )
         circuit_open = total_pnl <= self.max_daily_loss
         return {
