@@ -726,6 +726,7 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
         return (
             not s.get('market_cap') or
             not s.get('float_shares') or
+            not s.get('volume') or
             s.get('sector') in (None, 'Unknown', '')
         )
 
@@ -735,6 +736,8 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
             stock['market_cap'] = data['market_cap']
         if data.get('float_shares'):
             stock['float_shares'] = data['float_shares']
+        if data.get('volume'):
+            stock['volume'] = data['volume']
         if data.get('sector') and data['sector'] != 'Unknown':
             stock['sector'] = data['sector']
         # Only overwrite company_name when it's still the raw ticker symbol
@@ -764,6 +767,8 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
                 'market_cap':   int(info.get('marketCap') or 0),
                 'float_shares': int(info.get('floatShares') or
                                     info.get('sharesOutstanding') or 0),
+                'volume':       int(info.get('regularMarketVolume') or
+                                    info.get('volume') or 0),
                 'company_name': (info.get('longName') or
                                  info.get('shortName') or ticker),
                 'sector':       info.get('sector') or 'Unknown',

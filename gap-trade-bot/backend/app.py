@@ -2898,31 +2898,41 @@ def _get_intraday_bars(symbol):
     ak = os.environ.get('ALPACA_API_KEY', '')
     as_ = os.environ.get('ALPACA_API_SECRET', '')
 
-    # Primary: direct HTTP — works even when broker is not connected
+    # Primary: direct HTTP — works even when broker is not connected.
+    # Try SIP feed first (paid plan); fall back to IEX (free plan) on 403.
     if ak and as_:
-        try:
-            resp = _req.get(
-                f'https://data.alpaca.markets/v2/stocks/{symbol.upper()}/bars',
-                headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': as_},
-                params={
-                    'timeframe':  '1Min',
-                    'start':      start_et.isoformat(),
-                    'end':        now_et.isoformat(),
-                    'limit':      1000,
-                    'adjustment': 'raw',
-                    'feed':       'sip',
-                },
-                timeout=10,
-            )
-            if resp.status_code == 200:
+        for feed in ('sip', 'iex'):
+            try:
+                resp = _req.get(
+                    f'https://data.alpaca.markets/v2/stocks/{symbol.upper()}/bars',
+                    headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': as_},
+                    params={
+                        'timeframe':  '1Min',
+                        'start':      start_et.isoformat(),
+                        'end':        now_et.isoformat(),
+                        'limit':      1000,
+                        'adjustment': 'raw',
+                        'feed':       feed,
+                    },
+                    timeout=10,
+                )
+                if resp.status_code == 403:
+                    app_logger.debug(f'Alpaca bars {symbol}: {feed} feed not on plan, trying fallback')
+                    continue
+                if resp.status_code != 200:
+                    app_logger.warning(f'Alpaca bars {symbol} ({feed}): HTTP {resp.status_code} — {resp.text[:200]}')
+                    break
                 raw = resp.json().get('bars') or []
                 if raw:
                     return [{'o': float(b['o']), 'h': float(b['h']),
                              'l': float(b['l']), 'c': float(b['c']),
                              'v': float(b['v']), 'vw': b.get('vw')}
                             for b in raw]
-        except Exception as e:
-            app_logger.debug(f'Alpaca intraday bars direct HTTP {symbol}: {e}')
+                app_logger.debug(f'Alpaca bars {symbol} ({feed}): 200 OK but empty bars')
+                break
+            except Exception as e:
+                app_logger.warning(f'Alpaca intraday bars {symbol} ({feed}): {e}')
+                break
 
     # Fallback: broker SDK data client
     broker = _get_broker()
