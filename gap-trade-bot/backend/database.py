@@ -1735,7 +1735,8 @@ class DatabaseManager:
                        COALESCE(position_type, 'day') AS position_type,
                        COALESCE(source, 'brownbot')   AS source,
                        COALESCE(days_held, 0)          AS days_held,
-                       broker
+                       broker,
+                       order_id
                 FROM trades
                 WHERE side IN ('B', 'S', 'SS')
             '''
@@ -1781,6 +1782,7 @@ class DatabaseManager:
                 exit_time  = row['trade_time'] or ''
                 src        = row['source']
                 broker     = row['broker']
+                order_id   = row['order_id'] or ''
 
                 # Consume buys FIFO to compute weighted avg entry
                 remaining    = sell_qty
@@ -1827,13 +1829,23 @@ class DatabaseManager:
                     'exit_date':     exit_date,
                     'exit_time':     exit_time,
                     'duration_days': duration_days,
+                    '_order_id':     order_id,  # used for consolidation key, not exposed to frontend
                 })
 
-        # Consolidate multiple sells for the same (symbol, exit_date, position_type)
+        # Consolidate partial fills: multiple SELL records for the same exit order
+        # (same order_id) are merged into one row. Separate exits for the same symbol
+        # on the same day (different order_ids) stay as distinct rows — each BrownBot
+        # round-trip must appear separately in the positions list.
         from collections import OrderedDict
         consolidated = OrderedDict()
         for r in raw_results:
-            ck = (r['symbol'], r['exit_date'], r['position_type'])
+            oid = r.get('_order_id') or ''
+            # If we have a broker order_id, use it to distinguish exits precisely.
+            # Fall back to exit_time (second granularity) so that two exits within the
+            # same second (near-impossible) still consolidate, while different-minute
+            # exits for the same symbol on the same day remain separate rows.
+            exit_discriminator = oid if oid else r['exit_time'][:8]  # HH:MM:SS
+            ck = (r['symbol'], r['exit_date'], r['position_type'], exit_discriminator)
             if ck not in consolidated:
                 consolidated[ck] = dict(r)
             else:
@@ -1854,6 +1866,10 @@ class DatabaseManager:
                 ex['duration_days']  = max(ex['duration_days'], r['duration_days'])
 
         results = list(consolidated.values())
+
+        # Strip internal bookkeeping field before returning
+        for r in results:
+            r.pop('_order_id', None)
 
         # Apply start_date on exit_date (couldn't do it in SQL or FIFO would miss earlier buys)
         if start_date:

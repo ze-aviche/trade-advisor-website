@@ -4393,14 +4393,25 @@ def _brown_order_monitor_loop():
                         pass
                     _add_brown_log('warning', f'{symbol}: entry timed out — position removed')
                 else:
-                    # Exit timed out — write DB with approx price so we have a record
-                    _add_brown_log('warning',
-                        f'{symbol}: exit timed out — writing DB with approx price')
-                    _brown_monitor_finalize_exit(
-                        oid, meta,
-                        fill_price or meta.get('approx_price', 0.0),
-                        fill_qty   or meta.get('quantity', 0),
-                    )
+                    # Exit order timed out (cancelled above). Restore the position to
+                    # active tracking so the exit loop can place a fresh order next tick.
+                    # This keeps BrownBot's count in sync with the broker — the position
+                    # is still open there and must not vanish from our tracking.
+                    saved_pos = meta.get('position')
+                    if saved_pos:
+                        position_id = meta.get('position_id')
+                        with _brown_bot_lock:
+                            _brown_bot_active_positions[position_id] = saved_pos
+                            _brown_closing_positions.discard(position_id)
+                        try:
+                            db_manager.save_brown_position(position_id, saved_pos)
+                        except Exception:
+                            pass
+                        _add_brown_log('warning',
+                            f'{symbol}: exit order timed out — position restored, exit loop will retry')
+                    else:
+                        _add_brown_log('warning',
+                            f'{symbol}: exit timed out but no saved position — position may be orphaned')
 
 
 def _brown_close_position(position_id, position, exit_reason):
