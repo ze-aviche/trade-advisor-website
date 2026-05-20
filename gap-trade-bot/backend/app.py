@@ -126,8 +126,8 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gap-up-detection-web-2024')
 
-_cors_origins_raw = os.environ.get('CORS_ORIGINS', '*')
-_cors_origins = '*' if _cors_origins_raw == '*' else _cors_origins_raw.split(',')
+_cors_origins_raw = os.environ.get('CORS_ORIGINS', '*').strip()
+_cors_origins = '*' if _cors_origins_raw == '*' else [o.strip() for o in _cors_origins_raw.split(',')]
 CORS(app, origins=_cors_origins)
 # eventlet doesn't support Python 3.13 — fall back to threading for local dev
 _async_mode = 'eventlet'
