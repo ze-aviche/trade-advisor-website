@@ -897,16 +897,22 @@ def get_gap_up_stocks_for_frontend():
             logger.warning(f'[GapScanner] most-actives supplemental FAILED: {e}')
 
         # Full-universe scan: snapshot every active US equity and filter by gap%.
-        # This is the only source that guarantees catching any mover regardless of
-        # market cap or liquidity.  Runs every 5 min (own cache key) so it doesn't
-        # add latency to the fast 30-60 s refresh cycle.
+        # Cache miss → fire a background thread to pre-warm and skip for this request
+        # so a cold scan (10-20 s) never blocks the API response path.
         try:
             universe_cached = gap_up_cache.get('gap_up_universe_scan', 'default')
             if universe_cached is None:
-                logger.info('[GapScanner] Universe scan cache MISS — running full snapshot scan...')
-                universe_stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
-                gap_up_cache.set('gap_up_universe_scan', universe_stocks, 'default')
-                logger.info(f'[GapScanner] Universe scan: {len(universe_stocks)} stocks found, cached')
+                logger.info('[GapScanner] Universe scan cache MISS — scheduling background pre-warm (skipping for this request)')
+                import threading as _th
+                def _prewarm_universe():
+                    try:
+                        stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
+                        gap_up_cache.set('gap_up_universe_scan', stocks, 'default')
+                        logger.info(f'[GapScanner] Universe pre-warm done: {len(stocks)} stocks cached')
+                    except Exception as _e:
+                        logger.warning(f'[GapScanner] Universe pre-warm failed: {_e}')
+                _th.Thread(target=_prewarm_universe, daemon=True, name='UniversePrewarm').start()
+                universe_stocks = []
             else:
                 universe_stocks = universe_cached
                 logger.info(f'[GapScanner] Universe scan cache HIT: {len(universe_stocks)} stocks')
@@ -941,11 +947,21 @@ def get_gap_up_stocks_for_frontend():
 
         # Supplemental: Alpaca full-universe scan — during AH latestTrade.p is the
         # AH price, so this catches big AH movers not yet in the intraday DB.
+        # Cache miss → fire background pre-warm, skip for this request (same as open branch).
         try:
             universe_cached = gap_up_cache.get('gap_up_universe_scan', 'default')
             if universe_cached is None:
-                universe_stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
-                gap_up_cache.set('gap_up_universe_scan', universe_stocks, 'default')
+                logger.info('[GapScanner] AH universe scan cache MISS — scheduling background pre-warm')
+                import threading as _th_ah
+                def _prewarm_universe_ah():
+                    try:
+                        stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
+                        gap_up_cache.set('gap_up_universe_scan', stocks, 'default')
+                        logger.info(f'[GapScanner] AH universe pre-warm done: {len(stocks)} stocks cached')
+                    except Exception as _e:
+                        logger.warning(f'[GapScanner] AH universe pre-warm failed: {_e}')
+                _th_ah.Thread(target=_prewarm_universe_ah, daemon=True, name='UniversePrewarmAH').start()
+                universe_stocks = []
             else:
                 universe_stocks = universe_cached
             seen_primary = {s['ticker'] for s in primary_stocks}

@@ -991,6 +991,42 @@ const app = createApp({
             // Load swing bot config on startup
             this.loadSwingBotConfig();
 
+            // Initialize Socket.IO — receives real-time gap_ups_update push from the backend
+            // monitor loop (every 2 min during market hours) so the tab stays live without polling.
+            try {
+                this.socket = io();
+                this.socket.on('connect', () => {
+                    this.socketConnected = true;
+                    console.log('[Socket] Connected to server');
+                });
+                this.socket.on('disconnect', () => {
+                    this.socketConnected = false;
+                    console.log('[Socket] Disconnected');
+                });
+                this.socket.on('gap_ups_update', (payload) => {
+                    const incoming = payload && payload.data;
+                    if (!incoming || incoming.length === 0) return;
+                    // In-place merge so the table doesn't flash
+                    const incomingMap = Object.fromEntries(incoming.map(s => [s.ticker, s]));
+                    const existingTickers = new Set(this.gapUps.map(s => s.ticker));
+                    for (let i = 0; i < this.gapUps.length; i++) {
+                        const updated = incomingMap[this.gapUps[i].ticker];
+                        if (updated) Object.assign(this.gapUps[i], updated);
+                    }
+                    for (const s of incoming) {
+                        if (!existingTickers.has(s.ticker)) this.gapUps.push(s);
+                    }
+                    const newSet = new Set(incoming.map(s => s.ticker));
+                    this.gapUps = this.gapUps.filter(s => newSet.has(s.ticker));
+                    this.prevGapUpTickers = incoming.map(s => s.ticker);
+                    this.dashboardStats.gapUps = this.gapUps.length;
+                    this._saveGapUpsCache(incoming);
+                    console.log(`[Socket] gap_ups_update: ${incoming.length} stocks`);
+                });
+            } catch (e) {
+                console.warn('[Socket] init failed:', e.message);
+            }
+
             // Auto-refresh gap-ups every 2 minutes — silent so the table doesn't flash
             this.gapUpRefreshInterval = setInterval(() => {
                 if (this.activeTab === 'gap-ups') this.loadGapUps(true);
@@ -1016,6 +1052,12 @@ const app = createApp({
             if (this.gapUpRefreshInterval) {
                 clearInterval(this.gapUpRefreshInterval);
                 this.gapUpRefreshInterval = null;
+            }
+
+            // Disconnect Socket.IO
+            if (this.socket) {
+                this.socket.disconnect();
+                this.socket = null;
             }
 
             // Stop real-time updates
@@ -2496,22 +2538,32 @@ const app = createApp({
             },
             
             async forceRefreshGapUps() {
-                // Clears ALL backend gap-up caches and pre-warms with fresh data,
-                // then calls loadGapUps() which reads the hot cache immediately.
+                // Clears ALL backend gap-up caches, fetches fresh data, and applies
+                // the response body directly to this.gapUps — no stale-while-revalidate delay.
                 this.loading.gapUps = true;
                 try {
-                    const res = await fetch('/api/gap-ups/force-refresh', { method: 'POST' });
+                    const res = await fetch('/api/gap-ups/force-refresh', {
+                        method: 'POST',
+                        signal: AbortSignal.timeout(45000)
+                    });
                     const data = await res.json();
-                    if (!data.success) {
-                        this.showNotification('Cache clear failed: ' + (data.error || 'unknown'), 'error');
+                    if (data.success && data.data && data.data.length > 0) {
+                        this.gapUps = data.data;
+                        this.prevGapUpTickers = data.data.map(s => s.ticker);
+                        this.dashboardStats.gapUps = this.gapUps.length;
+                        this._saveGapUpsCache(data.data);
+                    } else {
+                        if (!data.success) {
+                            this.showNotification('Force refresh failed: ' + (data.error || 'unknown'), 'error');
+                        }
+                        await this.loadGapUps(true);
                     }
                 } catch (e) {
                     this.showNotification('Force refresh error: ' + e.message, 'error');
+                    await this.loadGapUps(true);
                 } finally {
                     this.loading.gapUps = false;
                 }
-                // Cache is now warm — loadGapUps picks up fresh data in one hit
-                await this.loadGapUps();
             },
 
             async loadGapUps(silent = false) {
@@ -2535,7 +2587,7 @@ const app = createApp({
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         const response = await fetch('/api/gap-ups', {
-                            signal: AbortSignal.timeout(10000)
+                            signal: AbortSignal.timeout(30000)
                         });
                         const data = await response.json();
 

@@ -167,6 +167,74 @@ For each position in `_brown_bot_active_positions`:
 | GET/POST | `/watchlist` | ✓ | List / add watchlist symbols |
 | DELETE | `/watchlist/<symbol>` | ✓ | Remove watchlist symbol |
 
+## Gap-up data pipeline
+
+### Single source of truth
+`gap_up_detector.py → get_gap_up_stocks_for_frontend()` is the **only** function that fetches gap-up data. Everything else reads from it — never add a second fetching path.
+
+### Call chain
+```
+get_gap_up_stocks_for_frontend()
+  │
+  ├── GET /api/gap-ups ──────────────────────────────────────► Gap-Ups tab (frontend)
+  │
+  ├── POST /api/gap-ups/force-refresh ──┬────────────────────► Gap-Ups tab (cache-busted)
+  │                                     └────────────────────► real_time_gap_ups global
+  │
+  └── gap_up_monitor_loop() (background thread, app.py)
+        intervals: open=120s · pre_market=300s · after_hours=300s · closed=900s
+        → real_time_gap_ups (module-level global, app.py line ~188)
+                  │
+                  └── _brown_bot_scan_and_enter() (every 30s)
+                        reads real_time_gap_ups; falls back to DB snapshot if empty
+```
+
+### Session routing inside get_gap_up_stocks_for_frontend
+| Effective session | Primary source | Trigger |
+|---|---|---|
+| `pre_market` / `closed` | `_fetch_premarket_from_yfinance()` | before 09:32 ET |
+| `open` | `_fetch_from_alpaca()` (movers) + most-actives + universe scan | ≥ 09:32 ET |
+| `after_hours` | Today's DB snapshot + universe scan | after 16:00 ET |
+
+yfinance `day_gainers` always runs as a supplemental on every path for metadata enrichment.
+
+### Stale-window guard (critical — do not remove)
+Alpaca's movers endpoint resets ~60 s after market open. From 09:30:00 to 09:31:59 ET it still returns the **previous day's** top gainers. The guard in `get_gap_up_stocks_for_frontend()` overrides `market_status` to `pre_market` during this window, keeping yfinance as the source until 09:32 ET.
+
+```python
+if market_status == 'open' and now_et.hour == 9 and now_et.minute < 32:
+    market_status = 'pre_market'  # stay on yfinance until Alpaca is definitely fresh
+```
+
+### Cache (gap_up_cache.py — GapUpCache)
+Cache keys are **session-aware**: `gap_up_frontend_{session}` (e.g. `gap_up_frontend_open`). This forces a cache miss whenever the effective session changes, so stale pre-market data is never served after 09:32 ET.
+
+| Session | Cache type | TTL |
+|---|---|---|
+| `open` (09:00–11:59 ET) | `real_time` | **30 s** |
+| `open` (other hours) | `real_time` | 60 s |
+| Outside market hours | `real_time` | 300 s |
+
+Universe-scan results use a separate `gap_up_universe_scan` key with `default` type (120 s during peak hours).
+
+**Universe scan is non-blocking on cache miss**: `_fetch_from_alpaca_universe_scan` takes 10–20 s for ~10 k symbols. On a cache miss, a background `UniversePrewarm` daemon thread is started and the current request continues without universe data. The next call (≥30 s later) gets a cache hit. Do not revert this to inline execution — it would block the API request and trip the 30 s frontend timeout.
+
+`invalidate_gap_up_cache()` clears **all** `gap_up_frontend_*` and `gap_up_universe_*` keys — always call this before `get_gap_up_stocks_for_frontend()` when a forced refresh is needed.
+
+### Force-refresh (POST /api/gap-ups/force-refresh)
+1. Calls `invalidate_gap_up_cache()` — wipes all session + universe cache keys.
+2. Calls `get_gap_up_stocks_for_frontend()` immediately — fetches from Alpaca/yfinance.
+3. Assigns result to `real_time_gap_ups` global so BrownBot also sees fresh data without waiting for the next monitor cycle.
+4. Response body contains the fresh stocks array — the frontend applies it directly to `this.gapUps` without a second API round-trip.
+
+The Gap-Ups tab refresh button calls this endpoint (not the plain GET), so one click guarantees fresh data end-to-end.
+
+### Real-time push (Socket.IO)
+The backend monitor loop (`update_real_time_gap_ups`) broadcasts `gap_ups_update` via `socketio.emit()` every 2 min during market hours. The frontend establishes a `io()` connection on mount and listens for this event — when it fires, the gap-up table is updated in-place without any user interaction. The `websocket_connected` global must be `True` (set by the `connect` SocketIO handler) for broadcasts to fire.
+
+### Adding new data sources
+Any new gap-up data source must be added **inside** `get_gap_up_stocks_for_frontend()` as a supplemental — do not create parallel fetch paths in `app.py` or BrownBot. The monitor loop and BrownBot will pick it up automatically.
+
 ## Key constraints
 
 - **Eventlet + single worker**: Do not add CPU-bound blocking work to request handlers. Use daemon threads for background polling (pattern already established in `app.py`).

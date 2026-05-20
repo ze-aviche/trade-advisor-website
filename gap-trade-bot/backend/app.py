@@ -7467,27 +7467,31 @@ def get_open_positions():
 
 
 # WebSocket events
+_ws_client_count = 0  # tracks connected client count; websocket_connected = count > 0
+
 @socketio.on('connect')
 def handle_connect():
-    """Handle WebSocket connection"""
-    global websocket_connected
+    global websocket_connected, _ws_client_count
+    _ws_client_count += 1
     websocket_connected = True
-    app_logger.info("WebSocket client connected")
+    app_logger.info(f"WebSocket client connected ({_ws_client_count} total)")
     emit('status', {'message': 'Connected to gap-up detection server'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle WebSocket disconnection"""
-    global websocket_connected
-    websocket_connected = False
-    app_logger.info("WebSocket client disconnected")
+    global websocket_connected, _ws_client_count
+    _ws_client_count = max(0, _ws_client_count - 1)
+    websocket_connected = _ws_client_count > 0
+    app_logger.info(f"WebSocket client disconnected ({_ws_client_count} remaining)")
 
 # Note: Stock subscriptions are handled by DAS integration, not WebSocket
 # WebSocket is only used for gap-up data broadcasts
 
 def broadcast_gap_ups():
-    """Broadcast real-time gap-up data to connected clients"""
-    if websocket_connected and real_time_gap_ups:
+    """Broadcast real-time gap-up data to connected clients.
+    socketio.emit() is a no-op when no clients are connected, so no guard needed.
+    """
+    if real_time_gap_ups:
         socketio.emit('gap_ups_update', {
             'data': real_time_gap_ups,
             'timestamp': datetime.now().isoformat()
