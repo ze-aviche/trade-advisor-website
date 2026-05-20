@@ -347,8 +347,15 @@ class DatabaseManager:
                 ('swing_check_rsi_range',  'INTEGER DEFAULT 0'),
                 ('swing_rsi_min',          'REAL DEFAULT 40.0'),
                 ('swing_rsi_max',          'REAL DEFAULT 70.0'),
-                ('swing_check_rel_vol',    'INTEGER DEFAULT 0'),
-                ('swing_rel_vol_min',      'REAL DEFAULT 1.2'),
+                ('swing_check_rel_vol',         'INTEGER DEFAULT 0'),
+                ('swing_rel_vol_min',           'REAL DEFAULT 1.2'),
+                # Swing trailing stop
+                ('swing_trailing_stop_enabled', 'INTEGER DEFAULT 0'),
+                ('swing_trailing_stop_pct',     'REAL DEFAULT 5.0'),
+                # Swing entry time gate
+                ('swing_time_gate_enabled',     'INTEGER DEFAULT 0'),
+                ('swing_time_gate_start',       "TEXT DEFAULT '09:30'"),
+                ('swing_time_gate_end',         "TEXT DEFAULT '15:00'"),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -1844,7 +1851,7 @@ class DatabaseManager:
             # Fall back to exit_time (second granularity) so that two exits within the
             # same second (near-impossible) still consolidate, while different-minute
             # exits for the same symbol on the same day remain separate rows.
-            exit_discriminator = oid if oid else r['exit_time'][:8]  # HH:MM:SS
+            exit_discriminator = oid if oid else r['exit_time'][11:19]  # HH:MM:SS (ISO: YYYY-MM-DDTHH:MM:SS)
             ck = (r['symbol'], r['exit_date'], r['position_type'], exit_discriminator)
             if ck not in consolidated:
                 consolidated[ck] = dict(r)
@@ -2438,6 +2445,10 @@ class DatabaseManager:
             'swing_check_above_sma20': False, 'swing_check_ma_cross': False,
             'swing_check_rsi_range': False, 'swing_rsi_min': 40.0, 'swing_rsi_max': 70.0,
             'swing_check_rel_vol': False, 'swing_rel_vol_min': 1.2,
+            # Swing trailing stop
+            'swing_trailing_stop_enabled': False, 'swing_trailing_stop_pct': 5.0,
+            # Swing entry time gate
+            'swing_time_gate_enabled': False, 'swing_time_gate_start': '09:30', 'swing_time_gate_end': '15:00',
         }
         try:
             with self.get_connection() as conn:
@@ -2460,10 +2471,12 @@ class DatabaseManager:
                     cfg['day_ai_playbook']        = bool(cfg.get('day_ai_playbook', 1))
                     cfg['day_trades_enabled']       = bool(cfg.get('day_trades_enabled', 1))
                     cfg['swing_trades_enabled']     = bool(cfg.get('swing_trades_enabled', 1))
-                    cfg['swing_check_above_sma20']  = bool(cfg.get('swing_check_above_sma20', 0))
-                    cfg['swing_check_ma_cross']     = bool(cfg.get('swing_check_ma_cross', 0))
-                    cfg['swing_check_rsi_range']    = bool(cfg.get('swing_check_rsi_range', 0))
-                    cfg['swing_check_rel_vol']      = bool(cfg.get('swing_check_rel_vol', 0))
+                    cfg['swing_check_above_sma20']      = bool(cfg.get('swing_check_above_sma20', 0))
+                    cfg['swing_check_ma_cross']         = bool(cfg.get('swing_check_ma_cross', 0))
+                    cfg['swing_check_rsi_range']        = bool(cfg.get('swing_check_rsi_range', 0))
+                    cfg['swing_check_rel_vol']          = bool(cfg.get('swing_check_rel_vol', 0))
+                    cfg['swing_trailing_stop_enabled']  = bool(cfg.get('swing_trailing_stop_enabled', 0))
+                    cfg['swing_time_gate_enabled']      = bool(cfg.get('swing_time_gate_enabled', 0))
                     return cfg
         except Exception as e:
             print(f"Database error fetching brown_bot_config: {e}")
@@ -2488,6 +2501,8 @@ class DatabaseManager:
             'swing_check_above_sma20', 'swing_check_ma_cross',
             'swing_check_rsi_range', 'swing_rsi_min', 'swing_rsi_max',
             'swing_check_rel_vol', 'swing_rel_vol_min',
+            'swing_trailing_stop_enabled', 'swing_trailing_stop_pct',
+            'swing_time_gate_enabled', 'swing_time_gate_start', 'swing_time_gate_end',
         ]
         try:
             with self.get_connection() as conn:

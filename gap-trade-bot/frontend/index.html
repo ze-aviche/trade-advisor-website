@@ -2397,6 +2397,40 @@
                                     <p class="text-[10px] text-gray-600 mt-0.5">Auto-exit before confirmed upcoming earnings date</p>
                                 </div>
                             </label>
+                            <!-- Swing Trailing Stop -->
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Trailing Stop</span>
+                                <label class="flex items-center gap-2 cursor-pointer select-none mb-2">
+                                    <input v-model="brownBotConfig.swing_trailing_stop_enabled" type="checkbox" id="bb-swing-trail" class="rounded border-gray-600 accent-purple-400">
+                                    <span class="text-xs text-gray-300">Enable trailing stop</span>
+                                </label>
+                                <div v-if="brownBotConfig.swing_trailing_stop_enabled" class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.swing_trailing_stop_pct" type="number" step="0.5" min="1" max="30"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">% trail</span>
+                                </div>
+                                <p class="text-[10px] text-gray-600 mt-1">Ratchets stop up as price rises — never lowers it</p>
+                            </div>
+                            <!-- Entry Time Gate -->
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Entry Time Gate</span>
+                                <label class="flex items-center gap-2 cursor-pointer select-none mb-2">
+                                    <input v-model="brownBotConfig.swing_time_gate_enabled" type="checkbox" id="bb-swing-gate" class="rounded border-gray-600 accent-purple-400">
+                                    <span class="text-xs text-gray-300">Restrict entry to time window</span>
+                                </label>
+                                <div v-if="brownBotConfig.swing_time_gate_enabled" class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-gray-500 mb-1">Open (ET)</label>
+                                        <input v-model="brownBotConfig.swing_time_gate_start" type="time"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-purple-500 [color-scheme:dark]">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-gray-500 mb-1">Close (ET)</label>
+                                        <input v-model="brownBotConfig.swing_time_gate_end" type="time"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-purple-500 [color-scheme:dark]">
+                                    </div>
+                                </div>
+                            </div>
                             <!-- Position limit -->
                             <div class="border-t border-gray-700/60 pt-3">
                                 <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Position Limit</span>

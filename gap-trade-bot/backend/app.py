@@ -4075,6 +4075,20 @@ def _brown_bot_scan_and_enter():
     _swing_entry_allowed = _in_market_hours and config.get('swing_trades_enabled', True)
     if not config.get('swing_trades_enabled', True):
         _add_brown_log('info', 'Swing trades disabled — will scan but not enter')
+    elif _swing_entry_allowed and config.get('swing_time_gate_enabled'):
+        _sg_start = config.get('swing_time_gate_start', '09:30')
+        _sg_end   = config.get('swing_time_gate_end', '15:00')
+        try:
+            _sg_sh, _sg_sm = map(int, _sg_start.split(':'))
+            _sg_eh, _sg_em = map(int, _sg_end.split(':'))
+            _swing_entry_allowed = (
+                (now_et.hour, now_et.minute) >= (_sg_sh, _sg_sm) and
+                (now_et.hour, now_et.minute) <  (_sg_eh, _sg_em)
+            )
+        except Exception:
+            pass
+        if not _swing_entry_allowed:
+            _add_brown_log('info', f'Swing entry gate closed ({_sg_start}–{_sg_end} ET) — scanning but not entering')
 
     # Step 1 — Universe scan: Alpaca most-actives + gainers, then
     # price / avg-volume / market-cap / float filters + daily-bar technicals.
@@ -4627,6 +4641,25 @@ def _brown_bot_check_exits(check_swing_specific=False):
                         _brown_bot_active_positions[position_id]['_at_breakeven'] = True
                 stop_loss = entry_price
                 _add_brown_log('info', f'{symbol}: stop moved to breakeven ${entry_price:.2f} ({progress:.0f}% to target)')
+
+        # ── Trailing stop: ratchet stop_loss up as price rises ──
+        trail_key = f'{position_type}_trailing_stop_enabled'
+        trail_pct_key = f'{position_type}_trailing_stop_pct'
+        if config.get(trail_key) and entry_price:
+            trail_pct = float(config.get(trail_pct_key, 5.0))
+            # Initialise the high-water mark on first tick
+            with _brown_bot_lock:
+                if position_id in _brown_bot_active_positions:
+                    if not _brown_bot_active_positions[position_id].get('_trail_high'):
+                        _brown_bot_active_positions[position_id]['_trail_high'] = entry_price
+                    if current_price > _brown_bot_active_positions[position_id]['_trail_high']:
+                        _brown_bot_active_positions[position_id]['_trail_high'] = current_price
+                    trail_high = _brown_bot_active_positions[position_id]['_trail_high']
+                    new_stop = round(trail_high * (1 - trail_pct / 100), 4)
+                    cur_stop = _brown_bot_active_positions[position_id].get('stop_loss') or 0
+                    if new_stop > cur_stop:
+                        _brown_bot_active_positions[position_id]['stop_loss'] = new_stop
+                        stop_loss = new_stop
 
         # ── Exit condition checks ──
         exit_reason = None
