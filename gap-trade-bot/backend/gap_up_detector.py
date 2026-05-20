@@ -289,8 +289,9 @@ def _fetch_from_alpaca(min_price):
     if not ALPACA_KEY or not ALPACA_SECRET:
         raise ValueError("ALPACA_API_KEY / ALPACA_API_SECRET not set")
 
-    market_status = check_market_timing()
-    logger.info(f"Fetching market gainers via Alpaca movers (status: {market_status})")
+    import pytz as _pytz
+    _now_et = dt.now(_pytz.timezone('US/Eastern'))
+    logger.info(f'[AlpacaMovers] Calling movers endpoint at {_now_et.strftime("%H:%M:%S")} ET')
 
     headers = {
         'APCA-API-KEY-ID':     ALPACA_KEY,
@@ -302,9 +303,18 @@ def _fetch_from_alpaca(min_price):
         params={'top': 50},
         timeout=15,
     )
+    if not resp.ok:
+        logger.error(
+            f'[AlpacaMovers] HTTP {resp.status_code} from movers endpoint '
+            f'at {_now_et.strftime("%H:%M:%S")} ET: {resp.text[:200]}'
+        )
     resp.raise_for_status()
-    gainers = resp.json().get('gainers') or []
-    logger.info(f"Processing {len(gainers)} gainers from Alpaca movers")
+    raw_json = resp.json()
+    gainers = raw_json.get('gainers') or []
+    logger.info(
+        f'[AlpacaMovers] {len(gainers)} raw gainers received at {_now_et.strftime("%H:%M:%S")} ET '
+        f'(top ticker: {gainers[0].get("symbol","?") if gainers else "none"})'
+    )
 
     gap_up_stocks = []
     skipped_non_cs = 0
@@ -797,21 +807,48 @@ def get_gap_up_stocks_for_frontend():
     """
     Session-routed gap-up scanner. Primary source changes by market session:
       pre_market / closed  → yfinance preMarketPrice  (Alpaca movers is stale before open)
-      open                 → Alpaca movers             (real-time SIP, most accurate intraday)
-      after_hours          → yfinance postMarketPrice  (Alpaca movers shows today's close %, not AH)
+      open (≥09:32 ET)     → Alpaca movers + universe  (real-time SIP, most accurate intraday)
+      after_hours          → DB snapshot + universe    (Alpaca movers shows today's close %, not AH)
     yfinance day_gainers always runs as supplemental for metadata enrichment + missed tickers.
     Raises only if all sources fail.
     """
     GAP_UP_MIN_PRICE = 0.0
 
-    cache_key = "gap_up_frontend_all"
+    # Compute ET time once; used for stale-window guard and logging throughout.
+    et_tz  = pytz.timezone('US/Eastern')
+    now_et = dt.now(et_tz)
+    market_status = check_market_timing()
+
+    # ── Stale-window guard ────────────────────────────────────────────────────
+    # Alpaca movers resets ~60 s after open (≈09:31 ET).  Switching at exactly
+    # 09:30:00 means we fetch and cache *yesterday's* gainers for the first
+    # 1–2 minutes.  Hold the pre_market path until 09:32 ET so Alpaca data is
+    # guaranteed fresh before we touch it.
+    if market_status == 'open' and now_et.hour == 9 and now_et.minute < 32:
+        logger.warning(
+            f'[GapScanner] Alpaca movers stale window — holding yfinance PM source '
+            f'(09:30–09:31 ET). Current time: {now_et.strftime("%H:%M:%S")} ET. '
+            f'Will switch to Alpaca at 09:32 ET.'
+        )
+        market_status = 'pre_market'
+
+    # Session-aware cache key forces a cache miss whenever the effective session
+    # changes (pre_market → open), ensuring fresh Alpaca data is fetched immediately
+    # on the transition instead of serving stale pre-market results.
+    cache_key = f"gap_up_frontend_{market_status}"
 
     cached_result = gap_up_cache.get(cache_key, "real_time")
     if cached_result is not None:
-        logger.info(f"Cache HIT: returning {len(cached_result)} gap-up stocks")
+        logger.info(
+            f'[GapScanner] Cache HIT [{market_status}]: {len(cached_result)} stocks '
+            f'(time {now_et.strftime("%H:%M:%S")} ET)'
+        )
         return cached_result
 
-    market_status = check_market_timing()
+    logger.info(
+        f'[GapScanner] Cache MISS — fetching fresh data '
+        f'[session={market_status}, time={now_et.strftime("%H:%M:%S")} ET]'
+    )
 
     # ── Session-specific primary source ──────────────────────────────────────
     primary_stocks = []
@@ -822,20 +859,27 @@ def get_gap_up_stocks_for_frontend():
         # Alpaca movers resets at market open and shows yesterday's data until then.
         # yfinance preMarketPrice is the only reliable source for today's gap-ups.
         primary_label = 'yfinance_pm'
+        logger.info(f'[GapScanner] [{market_status}] Fetching yfinance pre-market gainers...')
         try:
             primary_stocks = _fetch_premarket_from_yfinance(GAP_UP_MIN_PRICE)
+            logger.info(f'[GapScanner] yfinance PM: {len(primary_stocks)} pre-market gainers returned')
         except Exception as e:
             primary_error = e
-            logger.warning(f"yfinance pre-market scan unavailable: {e}")
+            logger.warning(f'[GapScanner] yfinance pre-market scan FAILED: {e}')
 
     elif market_status == 'open':
         # Alpaca movers uses real-time SIP data during market hours — best available source.
+        # Stale-window guard above ensures this branch is only reached at 09:32 ET or later.
         primary_label = 'alpaca'
+        logger.info(f'[GapScanner] [open] Fetching Alpaca movers (time {now_et.strftime("%H:%M:%S")} ET)...')
         try:
             primary_stocks = _fetch_from_alpaca(GAP_UP_MIN_PRICE)
+            logger.info(f'[GapScanner] Alpaca movers: {len(primary_stocks)} gainers returned')
+            if not primary_stocks:
+                logger.warning('[GapScanner] Alpaca movers returned 0 gainers — API may still be warming up')
         except Exception as e:
             primary_error = e
-            logger.warning(f"Alpaca movers unavailable: {e}")
+            logger.warning(f'[GapScanner] Alpaca movers FAILED: {e}')
 
         # Supplemental: most-actives by share volume catches micro-cap runners
         # (e.g. 100%+ movers) that Alpaca's movers liquidity filter may exclude.
@@ -848,10 +892,9 @@ def get_gap_up_stocks_for_frontend():
                     primary_stocks.append(s)
                     seen_primary.add(s['ticker'])
                     added += 1
-            if added:
-                logger.info(f'Alpaca most-actives supplemental: added {added} tickers not in movers')
+            logger.info(f'[GapScanner] most-actives supplemental: {added} new tickers added')
         except Exception as e:
-            logger.warning(f"Alpaca most-actives supplemental failed: {e}")
+            logger.warning(f'[GapScanner] most-actives supplemental FAILED: {e}')
 
         # Full-universe scan: snapshot every active US equity and filter by gap%.
         # This is the only source that guarantees catching any mover regardless of
@@ -860,10 +903,13 @@ def get_gap_up_stocks_for_frontend():
         try:
             universe_cached = gap_up_cache.get('gap_up_universe_scan', 'default')
             if universe_cached is None:
+                logger.info('[GapScanner] Universe scan cache MISS — running full snapshot scan...')
                 universe_stocks = _fetch_from_alpaca_universe_scan(GAP_UP_MIN_PRICE, min_gap_pct=2.0)
-                gap_up_cache.set('gap_up_universe_scan', universe_stocks, 'default')  # 5-min TTL
+                gap_up_cache.set('gap_up_universe_scan', universe_stocks, 'default')
+                logger.info(f'[GapScanner] Universe scan: {len(universe_stocks)} stocks found, cached')
             else:
                 universe_stocks = universe_cached
+                logger.info(f'[GapScanner] Universe scan cache HIT: {len(universe_stocks)} stocks')
             seen_primary = {s['ticker'] for s in primary_stocks}
             added_u = 0
             for s in universe_stocks:
@@ -872,23 +918,26 @@ def get_gap_up_stocks_for_frontend():
                     seen_primary.add(s['ticker'])
                     added_u += 1
             if added_u:
-                logger.info(f'Universe scan supplemental: added {added_u} tickers')
+                logger.info(f'[GapScanner] Universe supplemental: {added_u} new tickers added')
         except Exception as e:
-            logger.warning(f"Universe scan supplemental failed: {e}")
+            logger.warning(f'[GapScanner] Universe scan supplemental FAILED: {e}')
 
     elif market_status == 'after_hours':
         # Load today's full intraday DB snapshot as primary so all 700 intraday
         # stocks are preserved in the display — the live AH fetch only returns ~50-100.
         primary_label = 'db_snapshot'
+        logger.info('[GapScanner] [after_hours] Loading today\'s DB snapshot as primary...')
         try:
             from database import db_manager as _db_inner
-            _today_ah = dt.now(pytz.timezone('US/Eastern')).date().isoformat()
+            _today_ah = now_et.date().isoformat()
             db_snapshot = _db_inner.get_gap_up_snapshot(_today_ah)
             if db_snapshot:
                 primary_stocks = db_snapshot
-                logger.info(f'AH mode: loaded {len(primary_stocks)} stocks from today\'s DB snapshot')
+                logger.info(f'[GapScanner] AH DB snapshot: {len(primary_stocks)} stocks loaded')
+            else:
+                logger.warning('[GapScanner] AH DB snapshot: no stocks found for today')
         except Exception as e:
-            logger.warning(f'AH mode: DB snapshot load failed: {e}')
+            logger.warning(f'[GapScanner] AH DB snapshot load FAILED: {e}')
 
         # Supplemental: Alpaca full-universe scan — during AH latestTrade.p is the
         # AH price, so this catches big AH movers not yet in the intraday DB.
@@ -1005,17 +1054,18 @@ def get_gap_up_stocks_for_frontend():
     # so pre-market tags survive subsequent intraday re-fetches.
     try:
         from database import db_manager
-        et_tz = pytz.timezone('US/Eastern')
-        today = dt.now(et_tz).date().isoformat()
+        today = now_et.date().isoformat()
         db_manager.upsert_gap_up_stocks(today, merged)
+        logger.info(f'[GapScanner] DB upsert: {len(merged)} stocks written for {today}')
     except Exception as e:
-        logger.warning(f"Could not persist gap-up stocks to DB: {e}")
+        logger.warning(f'[GapScanner] DB upsert FAILED: {e}')
 
     yf_added = sum(1 for s in yf_stocks if s['ticker'] not in {p['ticker'] for p in primary_stocks})
     logger.info(
-        f"[{market_status}] Merged {len(merged)} gap-up stocks "
-        f"({len(primary_stocks)} {primary_label}, {yf_added} yfinance day_gainers, "
-        f"{len(yf_extra)} small-cap extra, {len(yf_ah)} AH)"
+        f'[GapScanner] DONE [{market_status}] — {len(merged)} total stocks '
+        f'({len(primary_stocks)} {primary_label}, {yf_added} yf-day-gainers, '
+        f'{len(yf_extra)} small-cap, {len(yf_ah)} AH) '
+        f'| time {now_et.strftime("%H:%M:%S")} ET'
     )
 
     gap_up_cache.set(cache_key, merged, "real_time")
