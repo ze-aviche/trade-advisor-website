@@ -3973,6 +3973,11 @@
                         class="px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
                         <i class="fas fa-chart-line"></i> Swing Trade
                     </button>
+                    <button @click="backtestTradeType = 'universe_swing'"
+                        :class="backtestTradeType === 'universe_swing' ? 'bg-violet-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
+                        class="px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+                        <i class="fas fa-globe"></i> Universe Stocks Swing
+                    </button>
                 </div>
 
                 <!-- ── DAY TRADE CONFIG ──────────────────────────────────────────── -->
@@ -4113,7 +4118,7 @@
                 </div>
 
                 <!-- Running state -->
-                <div v-if="loading.runBacktest" class="bg-gray-800 rounded-xl p-10 text-center">
+                <div v-if="loading.runBacktest && backtestTradeType !== 'universe_swing'" class="bg-gray-800 rounded-xl p-10 text-center">
                     <i class="fas fa-spinner fa-spin text-3xl text-blue-400 mb-3"></i>
                     <p class="text-gray-300 font-medium">Running simulation…</p>
                     <p v-if="backtestTradeType === 'swing'" class="text-gray-500 text-sm mt-1">
@@ -4123,7 +4128,7 @@
                 </div>
 
                 <!-- ── RESULTS (shared layout, type-aware content) ─────────────── -->
-                <template v-if="backtestResults && !loading.runBacktest">
+                <template v-if="backtestResults && !loading.runBacktest && backtestTradeType !== 'universe_swing'">
 
                     <!-- Result type badge -->
                     <div class="flex items-center gap-2">
@@ -4271,11 +4276,187 @@
 
                 </template>
 
-                <!-- Empty state -->
-                <div v-if="!backtestResults && !loading.runBacktest" class="bg-gray-800 rounded-xl p-12 text-center">
+                <!-- Empty state (gap-up / swing tabs only) -->
+                <div v-if="!backtestResults && !loading.runBacktest && backtestTradeType !== 'universe_swing'"
+                     class="bg-gray-800 rounded-xl p-12 text-center">
                     <i class="fas fa-flask text-4xl text-gray-600 mb-4"></i>
                     <h4 class="text-lg font-semibold text-white mb-2">No Results Yet</h4>
                     <p class="text-gray-400 text-sm">Configure parameters above and click Run {{ backtestTradeType === 'swing' ? 'Swing' : 'Day' }} Backtest</p>
+                </div>
+
+                <!-- ── Universe Stocks Swing Backtest ──────────────────────────── -->
+                <div v-if="backtestTradeType === 'universe_swing'" class="space-y-4">
+                    <!-- Controls row -->
+                    <div class="bg-gray-800 rounded-xl p-5 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fas fa-globe text-violet-400"></i> Universe Stocks Swing Configuration
+                        </h4>
+                        <p class="text-xs text-gray-500 -mt-2">Simulates trades from BrownBot's live screener history (Alpaca most-actives + gainers). Data collection starts automatically when BrownBot runs — results grow daily.</p>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Start Date</label>
+                                <input v-model="swingBt.startDate" type="date"
+                                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">End Date</label>
+                                <input v-model="swingBt.endDate" type="date"
+                                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Grade Filter</label>
+                                <select v-model="swingBt.gradeFilter"
+                                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                                    <option value="A">Grade A only</option>
+                                    <option value="AB">A + B</option>
+                                    <option value="ABC">A + B + C</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Bias</label>
+                                <select v-model="swingBt.biasFilter"
+                                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                                    <option value="Bullish">Bullish only</option>
+                                    <option value="Any">Any bias</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Profit Target %</label>
+                                <input v-model.number="swingBt.profitTarget" type="number" step="1" min="1"
+                                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Stop Loss %</label>
+                                <input v-model.number="swingBt.stopLoss" type="number" step="1" min="1"
+                                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                            </div>
+                        </div>
+                        <div class="flex items-end gap-3">
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Max Hold (trading days)</label>
+                                <input v-model.number="swingBt.maxHold" type="number" step="1" min="1" max="90"
+                                       class="w-40 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                            </div>
+                            <button @click="runSwingBacktest" :disabled="loading.swingBacktest"
+                                    class="px-6 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2">
+                                <i v-if="!loading.swingBacktest" class="fas fa-play text-xs"></i>
+                                <i v-else class="fas fa-spinner fa-spin text-xs"></i>
+                                {{ loading.swingBacktest ? 'Running…' : 'Run Backtest' }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- No history notice -->
+                    <div v-if="swingBt.message && !swingBt.stats" class="text-sm text-amber-400 bg-amber-900/20 border border-amber-800/40 rounded-xl px-5 py-4">
+                        <i class="fas fa-info-circle mr-2"></i>{{ swingBt.message }}
+                    </div>
+
+                    <!-- Stats cards -->
+                    <div v-if="swingBt.stats" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Trades</div>
+                            <div class="text-2xl font-bold text-white">{{ swingBt.stats.total_trades }}</div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Win Rate</div>
+                            <div class="text-2xl font-bold" :class="swingBt.stats.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                                {{ swingBt.stats.win_rate_pct }}%
+                            </div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Avg P&L</div>
+                            <div class="text-2xl font-bold" :class="swingBt.stats.avg_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ swingBt.stats.avg_pnl_pct >= 0 ? '+' : '' }}{{ swingBt.stats.avg_pnl_pct }}%
+                            </div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Total P&L</div>
+                            <div class="text-2xl font-bold" :class="swingBt.stats.total_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ swingBt.stats.total_pnl_pct >= 0 ? '+' : '' }}{{ swingBt.stats.total_pnl_pct }}%
+                            </div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Avg Win</div>
+                            <div class="text-2xl font-bold text-green-400">+{{ swingBt.stats.avg_win_pct }}%</div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Avg Loss</div>
+                            <div class="text-2xl font-bold text-red-400">{{ swingBt.stats.avg_loss_pct }}%</div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Hit Target</div>
+                            <div class="text-2xl font-bold text-blue-400">{{ swingBt.stats.exit_breakdown?.target || 0 }}</div>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">
+                            <div class="text-xs text-gray-500 mb-1">Stopped Out</div>
+                            <div class="text-2xl font-bold text-amber-400">{{ swingBt.stats.exit_breakdown?.stop || 0 }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Trades table -->
+                    <div v-if="swingBt.trades && swingBt.trades.length" class="bg-gray-800 rounded-xl overflow-hidden">
+                        <div class="px-5 py-3 border-b border-gray-700 text-xs text-gray-500">
+                            {{ swingBt.stats?.date_range }} · Grade {{ swingBt.stats?.grade_filter }} · {{ swingBt.stats?.bias_filter }}
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="text-gray-500 border-b border-gray-700 bg-gray-900/50">
+                                        <th class="px-3 py-2 text-left">Date</th>
+                                        <th class="px-3 py-2 text-left">Ticker</th>
+                                        <th class="px-3 py-2 text-left">Grade</th>
+                                        <th class="px-3 py-2 text-left">Sector</th>
+                                        <th class="px-3 py-2 text-right">Entry</th>
+                                        <th class="px-3 py-2 text-right">Exit</th>
+                                        <th class="px-3 py-2 text-right">P&L %</th>
+                                        <th class="px-3 py-2 text-right">Days</th>
+                                        <th class="px-3 py-2 text-left">Exit</th>
+                                        <th class="px-3 py-2 text-center">Live</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-700/50">
+                                    <tr v-for="t in swingBt.trades" :key="t.date + t.ticker"
+                                        :class="t.pnl_pct > 0 ? 'hover:bg-green-950/20' : 'hover:bg-red-950/20'"
+                                        class="transition-colors">
+                                        <td class="px-3 py-2 text-gray-400 whitespace-nowrap">{{ t.date }}</td>
+                                        <td class="px-3 py-2 font-mono font-bold text-white">{{ t.ticker }}</td>
+                                        <td class="px-3 py-2">
+                                            <span :class="t.grade === 'A' ? 'text-green-400' : t.grade === 'B' ? 'text-blue-400' : 'text-yellow-400'"
+                                                  class="font-bold">{{ t.grade }}</span>
+                                            <span class="text-gray-500 ml-1 text-[10px]">{{ t.bias?.charAt(0) }}</span>
+                                        </td>
+                                        <td class="px-3 py-2 text-gray-400">{{ t.sector || '—' }}</td>
+                                        <td class="px-3 py-2 text-right font-mono">${{ t.entry_price }}</td>
+                                        <td class="px-3 py-2 text-right font-mono">${{ t.exit_price }}</td>
+                                        <td class="px-3 py-2 text-right font-bold font-mono"
+                                            :class="t.pnl_pct > 0 ? 'text-green-400' : 'text-red-400'">
+                                            {{ t.pnl_pct > 0 ? '+' : '' }}{{ t.pnl_pct }}%
+                                        </td>
+                                        <td class="px-3 py-2 text-right text-gray-400">{{ t.days_held }}d</td>
+                                        <td class="px-3 py-2">
+                                            <span :class="{
+                                                'text-green-400': t.exit_reason === 'target',
+                                                'text-red-400':   t.exit_reason === 'stop',
+                                                'text-gray-400':  t.exit_reason === 'max_hold'
+                                            }">{{ t.exit_reason }}</span>
+                                        </td>
+                                        <td class="px-3 py-2 text-center">
+                                            <i v-if="t.was_entered" class="fas fa-check-circle text-green-400" title="BrownBot actually entered this trade"></i>
+                                            <span v-else class="text-gray-700 text-[10px]">sim</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Empty state -->
+                    <div v-if="!swingBt.trades?.length && !swingBt.message && !loading.swingBacktest"
+                         class="bg-gray-800 rounded-xl p-12 text-center">
+                        <i class="fas fa-globe text-4xl text-gray-600 mb-4"></i>
+                        <h4 class="text-lg font-semibold text-white mb-2">Universe Stocks Swing Backtest</h4>
+                        <p class="text-gray-400 text-sm">Configure the parameters above and click Run Backtest.<br>Data is collected automatically each time BrownBot's swing scanner runs.</p>
+                    </div>
                 </div>
 
             </div>

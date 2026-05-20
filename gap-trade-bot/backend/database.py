@@ -368,6 +368,52 @@ class DatabaseManager:
                 )
             ''')
 
+            # swing_screener_history: one row per (date, ticker) from BrownBot swing scans.
+            # Powers Option-B swing backtest — forward returns calculated at query time.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_screener_history (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date         TEXT    NOT NULL,
+                    screened_at  TEXT,
+                    ticker       TEXT    NOT NULL,
+                    price        REAL,
+                    chg_pct      REAL,
+                    volume_m     REAL,
+                    avg_vol_k    REAL,
+                    market_cap_m REAL,
+                    float_m      REAL,
+                    sector       TEXT,
+                    rsi14        REAL,
+                    sma9         REAL,
+                    sma20        REAL,
+                    above_sma20  INTEGER,
+                    rel_vol      REAL,
+                    ai_grade     TEXT,
+                    ai_bias      TEXT,
+                    ai_summary   TEXT,
+                    was_entered  INTEGER DEFAULT 0,
+                    entry_price  REAL,
+                    UNIQUE(date, ticker)
+                )
+            ''')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_ssh_date ON swing_screener_history(date)')
+
+            # swing_daily_bars: daily OHLCV cache used by the swing backtest to compute
+            # forward returns without hitting Alpaca on every backtest run.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_daily_bars (
+                    ticker TEXT    NOT NULL,
+                    date   TEXT    NOT NULL,
+                    open   REAL,
+                    high   REAL,
+                    low    REAL,
+                    close  REAL,
+                    volume INTEGER,
+                    PRIMARY KEY (ticker, date)
+                )
+            ''')
+
             # brown_positions: active BrownBot positions persisted across server restarts
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS brown_positions (
@@ -2579,6 +2625,142 @@ class DatabaseManager:
         except Exception as e:
             _db_logger.error(f'Database error fetching swing_daily_picks date={date}: {e}', exc_info=True)
             return None
+
+    # ------------------------------------------------------------------
+    # Swing screener history (Option-B backtest data collection)
+    # ------------------------------------------------------------------
+
+    def save_swing_screener_snapshot(self, date: str, candidates: list, picks: list,
+                                     screened_at: str = None) -> int:
+        """
+        Upsert one row per candidate into swing_screener_history for *date*.
+        picks is the AI-ranked list from SwingPicksAgent; merged by ticker.
+        Returns number of rows inserted/replaced.
+        """
+        if not candidates:
+            return 0
+        from datetime import datetime as _dt
+        screened_at = screened_at or _dt.utcnow().isoformat()
+        grades = {p['ticker']: p for p in (picks or [])}
+        rows = []
+        for c in candidates:
+            t = c.get('ticker') or c.get('symbol', '')
+            if not t:
+                continue
+            p = grades.get(t, {})
+            sma20 = c.get('sma20')
+            price = c.get('price') or 0
+            rows.append((
+                date, screened_at, t.upper(),
+                price,
+                c.get('chg_pct'),
+                c.get('volume_m'),
+                c.get('avg_vol_k'),
+                c.get('market_cap_m'),
+                c.get('float_m'),
+                c.get('sector'),
+                c.get('rsi'),
+                c.get('sma9'),
+                sma20,
+                1 if (sma20 and price and price > sma20) else 0,
+                c.get('rel_vol'),
+                p.get('grade'),
+                p.get('bias'),
+                p.get('reason') or p.get('summary', ''),
+            ))
+        if not rows:
+            return 0
+        try:
+            with self.get_connection() as conn:
+                # Insert first-time rows; ignore duplicates to preserve was_entered flag.
+                conn.executemany('''
+                    INSERT OR IGNORE INTO swing_screener_history
+                    (date, screened_at, ticker, price, chg_pct, volume_m, avg_vol_k,
+                     market_cap_m, float_m, sector, rsi14, sma9, sma20, above_sma20,
+                     rel_vol, ai_grade, ai_bias, ai_summary)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ''', rows)
+                # Update AI grade/bias on existing rows when they were previously NULL
+                # (first scan may save before AI ranking completes).
+                conn.executemany('''
+                    UPDATE swing_screener_history
+                    SET ai_grade=?, ai_bias=?, ai_summary=?
+                    WHERE date=? AND ticker=? AND ai_grade IS NULL
+                ''', [
+                    (r[15], r[16], r[17], r[0], r[2])
+                    for r in rows if r[15] is not None
+                ])
+                conn.commit()
+            return len(rows)
+        except Exception as e:
+            _db_logger.error(f'save_swing_screener_snapshot error: {e}')
+            return 0
+
+    def mark_swing_screener_entered(self, date: str, ticker: str,
+                                    entry_price: float) -> None:
+        """Mark a screener-history row as actually entered by BrownBot."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''UPDATE swing_screener_history
+                       SET was_entered=1, entry_price=?
+                       WHERE date=? AND ticker=?''',
+                    (entry_price, date, ticker.upper()),
+                )
+                conn.commit()
+        except Exception as e:
+            _db_logger.warning(f'mark_swing_screener_entered error: {e}')
+
+    def get_swing_screener_history(self, start_date: str, end_date: str) -> list:
+        """Return all screener-history rows between start_date and end_date (inclusive)."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT * FROM swing_screener_history
+                    WHERE date BETWEEN ? AND ?
+                    ORDER BY date, ticker
+                ''', (start_date, end_date))
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            _db_logger.error(f'get_swing_screener_history error: {e}')
+            return []
+
+    def cache_swing_daily_bars(self, ticker: str, bars: list) -> None:
+        """Upsert daily OHLCV bars into swing_daily_bars cache."""
+        if not bars:
+            return
+        try:
+            with self.get_connection() as conn:
+                conn.executemany('''
+                    INSERT OR IGNORE INTO swing_daily_bars
+                    (ticker, date, open, high, low, close, volume)
+                    VALUES (?,?,?,?,?,?,?)
+                ''', [
+                    (ticker.upper(), b['date'], b.get('open'), b.get('high'),
+                     b.get('low'), b.get('close'), b.get('volume'))
+                    for b in bars
+                ])
+                conn.commit()
+        except Exception as e:
+            _db_logger.warning(f'cache_swing_daily_bars error: {e}')
+
+    def get_swing_daily_bars(self, ticker: str, start_date: str,
+                             end_date: str) -> list:
+        """Return cached daily bars for ticker between start and end dates."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT date, open, high, low, close, volume
+                    FROM swing_daily_bars
+                    WHERE ticker=? AND date BETWEEN ? AND ?
+                    ORDER BY date
+                ''', (ticker.upper(), start_date, end_date))
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            _db_logger.warning(f'get_swing_daily_bars error: {e}')
+            return []
 
     # ------------------------------------------------------------------
     # Broker config CRUD

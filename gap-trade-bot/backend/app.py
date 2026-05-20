@@ -3765,6 +3765,10 @@ def _brown_rank_swing_ai(candidates):
             for c in candidates
         ]
         _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+        try:
+            db_manager.save_swing_screener_snapshot(_last_trading_date(), candidates, picks)
+        except Exception as _ssh_err:
+            app_logger.warning(f'BrownBot swing screener snapshot save failed (no-AI path): {_ssh_err}')
         return picks
 
     try:
@@ -3788,6 +3792,13 @@ def _brown_rank_swing_ai(candidates):
             f'Swing AI ranked {len(picks)} picks — '
             f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…')
         _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+        # Save screener snapshot for Option-B backtest data collection (always — even
+        # if picks is empty, candidates are worth recording for forward-return analysis).
+        try:
+            db_manager.save_swing_screener_snapshot(session_key, candidates, picks)
+        except Exception as _ssh_err:
+            app_logger.warning(f'BrownBot swing screener snapshot save failed: {_ssh_err}')
+
         # Only save when picks is non-empty — prevents overwriting good picks with an
         # empty result from a follow-up scan that excluded already-entered symbols.
         if picks:
@@ -4116,6 +4127,13 @@ def _brown_bot_scan_and_enter():
             f'Entering SWING {symbol} [Grade {grade}] — {pick_reason}'
             + (f' · entry zone: {entry_zone}' if entry_zone else ''))
         _brown_enter_position(symbol, 'swing', config, live_price)
+        # Record actual entry in screener history for backtest accuracy
+        try:
+            import pytz as _ptz
+            _hist_date = datetime.now(_ptz.timezone('US/Eastern')).date().isoformat()
+            db_manager.mark_swing_screener_entered(_hist_date, symbol, live_price or 0)
+        except Exception:
+            pass
         with _brown_bot_lock:
             active_symbols.add(symbol)
             active_copy = dict(_brown_bot_active_positions)
@@ -5247,6 +5265,178 @@ def test_broker_connection(broker_name):
 def get_broker_candidates():
     """Alias kept for future use — see /api/broker/supported."""
     return get_supported_brokers()
+
+
+@app.route('/api/brown-bot/swing-backtest', methods=['POST'])
+@require_auth
+def swing_backtest():
+    """
+    Run a swing trade backtest over collected screener history (Option B).
+
+    Body params:
+      start_date        YYYY-MM-DD
+      end_date          YYYY-MM-DD
+      grade_filter      'A' | 'AB' | 'ABC'  (default 'AB')
+      bias_filter       'Bullish' | 'Any'   (default 'Bullish')
+      profit_target_pct float  (default 15)
+      stop_loss_pct     float  (default 7)
+      max_hold_days     int    (default 20)
+    """
+    import requests as _req
+    try:
+        body = request.get_json(force=True) or {}
+        start_date = body.get('start_date', '')
+        end_date   = body.get('end_date', '')
+        if not (start_date and end_date):
+            return jsonify({'success': False, 'error': 'start_date and end_date required'}), 400
+
+        grade_filter      = body.get('grade_filter', 'AB')
+        bias_filter       = body.get('bias_filter', 'Bullish')
+        profit_target_pct = float(body.get('profit_target_pct', 15.0))
+        stop_loss_pct     = float(body.get('stop_loss_pct', 7.0))
+        max_hold_days     = int(body.get('max_hold_days', 20))
+
+        rows = db_manager.get_swing_screener_history(start_date, end_date)
+        if not rows:
+            return jsonify({'success': True, 'trades': [], 'stats': {},
+                            'message': 'No screener history in this date range yet — '
+                                       'data collection starts automatically when BrownBot runs.'})
+
+        # Filter by grade and bias
+        valid_grades = list(grade_filter.upper())  # 'AB' → ['A','B']
+        candidates = [
+            r for r in rows
+            if r.get('ai_grade') in valid_grades
+            and (bias_filter == 'Any' or r.get('ai_bias') == bias_filter)
+        ]
+
+        if not candidates:
+            return jsonify({'success': True, 'trades': [], 'stats': {},
+                            'message': f'No candidates match grade={grade_filter} bias={bias_filter} in this period.'})
+
+        # Fetch forward daily bars — check cache first, then Alpaca
+        ak  = os.environ.get('ALPACA_API_KEY', '')
+        aks = os.environ.get('ALPACA_API_SECRET', '')
+        alpaca_hdrs = {'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': aks}
+
+        def _get_forward_bars(ticker, from_date, n_days):
+            """Return sorted daily bars from from_date + 1 trading day onward."""
+            from datetime import date as _date, timedelta as _td
+            import datetime as _dtmod
+            end = (_dtmod.datetime.strptime(from_date, '%Y-%m-%d').date()
+                   + _td(days=n_days * 2)).isoformat()  # buffer for weekends/holidays
+            cached = db_manager.get_swing_daily_bars(ticker, from_date, end)
+            forward = [b for b in cached if b['date'] > from_date]
+            if forward:
+                return forward
+
+            if not (ak and aks):
+                return []
+            try:
+                resp = _req.get(
+                    f'https://data.alpaca.markets/v2/stocks/{ticker}/bars',
+                    headers=alpaca_hdrs,
+                    params={'timeframe': '1Day', 'start': from_date, 'end': end,
+                            'limit': 60, 'adjustment': 'raw', 'feed': 'iex'},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                raw_bars = resp.json().get('bars') or []
+                bars = [{'date': b['t'][:10], 'open': b['o'], 'high': b['h'],
+                         'low': b['l'], 'close': b['c'], 'volume': b['v']}
+                        for b in raw_bars]
+                db_manager.cache_swing_daily_bars(ticker, bars)
+                return [b for b in bars if b['date'] > from_date]
+            except Exception as _e:
+                app_logger.debug(f'swing_backtest: bar fetch failed {ticker}: {_e}')
+                return []
+
+        def _simulate_trade(entry_price, bars, profit_pct, stop_pct, max_hold):
+            target = entry_price * (1 + profit_pct / 100)
+            stop   = entry_price * (1 - stop_pct / 100)
+            for i, bar in enumerate(bars[:max_hold]):
+                if bar['low'] <= stop:
+                    exit_price = stop
+                    return exit_price, i + 1, 'stop'
+                if bar['high'] >= target:
+                    exit_price = target
+                    return exit_price, i + 1, 'target'
+            # max hold reached — exit at last bar close
+            if bars[:max_hold]:
+                last = bars[:max_hold][-1]
+                return last['close'], min(len(bars), max_hold), 'max_hold'
+            return None, 0, 'no_data'
+
+        trades = []
+        # Deduplicate: one entry per (date, ticker)
+        seen = set()
+        for row in candidates:
+            key = (row['date'], row['ticker'])
+            if key in seen:
+                continue
+            seen.add(key)
+
+            entry_price = row.get('entry_price') or row.get('price')
+            if not entry_price:
+                continue
+
+            bars = _get_forward_bars(row['ticker'], row['date'], max_hold_days + 10)
+            exit_price, days_held, exit_reason = _simulate_trade(
+                entry_price, bars, profit_target_pct, stop_loss_pct, max_hold_days)
+
+            if exit_price is None:
+                continue
+
+            pnl_pct = round((exit_price - entry_price) / entry_price * 100, 2)
+            trades.append({
+                'date':        row['date'],
+                'ticker':      row['ticker'],
+                'grade':       row.get('ai_grade'),
+                'bias':        row.get('ai_bias'),
+                'sector':      row.get('sector'),
+                'entry_price': round(entry_price, 2),
+                'exit_price':  round(exit_price, 2),
+                'pnl_pct':     pnl_pct,
+                'days_held':   days_held,
+                'exit_reason': exit_reason,
+                'was_entered': bool(row.get('was_entered')),
+                'rsi14':       row.get('rsi14'),
+                'above_sma20': row.get('above_sma20'),
+            })
+
+        # Aggregate stats
+        total   = len(trades)
+        wins    = [t for t in trades if t['pnl_pct'] > 0]
+        losses  = [t for t in trades if t['pnl_pct'] <= 0]
+        win_rate = round(len(wins) / total * 100, 1) if total else 0
+        avg_pnl  = round(sum(t['pnl_pct'] for t in trades) / total, 2) if total else 0
+        avg_win  = round(sum(t['pnl_pct'] for t in wins) / len(wins), 2) if wins else 0
+        avg_loss = round(sum(t['pnl_pct'] for t in losses) / len(losses), 2) if losses else 0
+        by_reason = {}
+        for t in trades:
+            r = t['exit_reason']
+            by_reason[r] = by_reason.get(r, 0) + 1
+
+        stats = {
+            'total_trades':   total,
+            'wins':           len(wins),
+            'losses':         len(losses),
+            'win_rate_pct':   win_rate,
+            'avg_pnl_pct':    avg_pnl,
+            'avg_win_pct':    avg_win,
+            'avg_loss_pct':   avg_loss,
+            'total_pnl_pct':  round(sum(t['pnl_pct'] for t in trades), 2),
+            'exit_breakdown': by_reason,
+            'date_range':     f'{start_date} → {end_date}',
+            'grade_filter':   grade_filter,
+            'bias_filter':    bias_filter,
+        }
+
+        return jsonify({'success': True, 'trades': trades, 'stats': stats})
+
+    except Exception as e:
+        app_logger.error(f'swing_backtest error: {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/brown-bot/candidates', methods=['GET'])

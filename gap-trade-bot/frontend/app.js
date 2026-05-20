@@ -82,6 +82,7 @@ const app = createApp({
                     swingRecommendation: false,
                     swingNews: false,
                     swingDailyPicks: false,
+                    swingBacktest: false,
                     // BrownBot loading states
                     brownBotToggle: false,
                     brownBotConfig: false,
@@ -371,6 +372,7 @@ const app = createApp({
                 day_check_candle: false,
                 day_max_extension_pct: 0.0,
                 day_check_volume_surge: false,
+                day_ai_playbook: true,
                 day_position_pct: 5.0,
                 swing_position_pct: 3.0,
                 day_trades_enabled: true,
@@ -401,6 +403,19 @@ const app = createApp({
             keepaliveInterval: null,
             brownBotCandidates: { scanner: [], watchlist: [] },
             brownBotSwingCandidates: [],
+            swingBacktestExpanded: false,
+            swingBt: {
+                startDate: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
+                endDate:   new Date().toISOString().slice(0, 10),
+                gradeFilter:   'AB',
+                biasFilter:    'Bullish',
+                profitTarget:  15,
+                stopLoss:      7,
+                maxHold:       20,
+                stats:         null,
+                trades:        [],
+                message:       '',
+            },
             brownBotSignals: {},
             brownBotLivePrices: {},
             _brownPriceInterval: null,
@@ -513,7 +528,7 @@ const app = createApp({
                 pieChartSymbolLimit: 10, // Number of symbols to show in pie chart
 
                 // Backtest data
-                backtestTradeType: 'day',   // 'day' | 'swing'
+                backtestTradeType: 'day',   // 'day' | 'swing' | 'universe_swing'
                 backtestConfig: {
                     // ── Shared ──────────────────────────────
                     startDate: '',
@@ -3510,36 +3525,17 @@ const app = createApp({
         },
         
         initializeDateRanges() {
-            // Check if we should use 2025 dates (since trades are from 2025)
-            const use2025Dates = true; // Set to true since trades are from 2025
-            
-            if (use2025Dates) {
-                // Set dates to 2025 to match the database
-                this.dashboardPnLFromDate = '2025-01-01';
-                this.dashboardPnLToDate = '2025-12-31';
-                this.dashboardTradeFromDate = '2025-01-01';
-                this.dashboardTradeToDate = '2025-12-31';
-                
-                console.log('📅 Date ranges initialized for 2025:', {
-                    pnl: `${this.dashboardPnLFromDate} to ${this.dashboardPnLToDate}`,
-                    trades: `${this.dashboardTradeFromDate} to ${this.dashboardTradeToDate}`
-                });
-            } else {
-                // Use current year dates
-                const today = new Date();
-                const sevenDaysAgo = new Date();
-                sevenDaysAgo.setDate(today.getDate() - 7);
-                
-                this.dashboardPnLFromDate = sevenDaysAgo.toISOString().split('T')[0];
-                this.dashboardPnLToDate = today.toISOString().split('T')[0];
-                this.dashboardTradeFromDate = sevenDaysAgo.toISOString().split('T')[0];
-                this.dashboardTradeToDate = today.toISOString().split('T')[0];
-                
-                console.log('📅 Date ranges initialized for current year:', {
-                    pnl: `${this.dashboardPnLFromDate} to ${this.dashboardPnLToDate}`,
-                    trades: `${this.dashboardTradeFromDate} to ${this.dashboardTradeToDate}`
-                });
-            }
+            const today = new Date();
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(today.getDate() - 7);
+
+            const todayStr = today.toISOString().split('T')[0];
+            const fromStr  = sevenDaysAgo.toISOString().split('T')[0];
+
+            this.dashboardPnLFromDate    = fromStr;
+            this.dashboardPnLToDate      = todayStr;
+            this.dashboardTradeFromDate  = fromStr;
+            this.dashboardTradeToDate    = todayStr;
         },
             
         // Chart methods
@@ -5052,6 +5048,40 @@ const app = createApp({
                 this.showNotification(`AI error: ${e.message}`, 'error');
             } finally {
                 this.loading.swingRecommendation = false;
+            }
+        },
+
+        async runSwingBacktest() {
+            this.loading.swingBacktest = true;
+            this.swingBt.stats = null;
+            this.swingBt.trades = [];
+            this.swingBt.message = '';
+            try {
+                const res = await fetch('/api/brown-bot/swing-backtest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('session_token')}` },
+                    body: JSON.stringify({
+                        start_date:        this.swingBt.startDate,
+                        end_date:          this.swingBt.endDate,
+                        grade_filter:      this.swingBt.gradeFilter,
+                        bias_filter:       this.swingBt.biasFilter,
+                        profit_target_pct: this.swingBt.profitTarget,
+                        stop_loss_pct:     this.swingBt.stopLoss,
+                        max_hold_days:     this.swingBt.maxHold,
+                    }),
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Backtest failed');
+                this.swingBt.stats  = (data.stats && 'total_trades' in data.stats) ? data.stats : null;
+                this.swingBt.trades = data.trades || [];
+                this.swingBt.message = data.message || '';
+                if (!data.trades?.length && data.message) {
+                    this.showNotification(data.message, 'info');
+                }
+            } catch (e) {
+                this.showNotification(`Backtest error: ${e.message}`, 'error');
+            } finally {
+                this.loading.swingBacktest = false;
             }
         },
 
