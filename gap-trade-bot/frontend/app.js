@@ -2495,6 +2495,25 @@ const app = createApp({
                 }
             },
             
+            async forceRefreshGapUps() {
+                // Clears ALL backend gap-up caches and pre-warms with fresh data,
+                // then calls loadGapUps() which reads the hot cache immediately.
+                this.loading.gapUps = true;
+                try {
+                    const res = await fetch('/api/gap-ups/force-refresh', { method: 'POST' });
+                    const data = await res.json();
+                    if (!data.success) {
+                        this.showNotification('Cache clear failed: ' + (data.error || 'unknown'), 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('Force refresh error: ' + e.message, 'error');
+                } finally {
+                    this.loading.gapUps = false;
+                }
+                // Cache is now warm — loadGapUps picks up fresh data in one hit
+                await this.loadGapUps();
+            },
+
             async loadGapUps(silent = false) {
                 // Stale-while-revalidate: paint cached data instantly so the tab is never blank.
                 // The real fetch still runs — it updates via the silent in-place merge path.

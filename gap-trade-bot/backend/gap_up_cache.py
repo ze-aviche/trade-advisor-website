@@ -236,27 +236,25 @@ def set_cached_real_time_gap_ups(data: List[Dict[str, Any]]) -> None:
     gap_up_cache.set(gap_up_cache.REAL_TIME_GAP_UPS_KEY, data, "real_time")
 
 def invalidate_gap_up_cache() -> None:
-    """Invalidate all gap-up related cache entries"""
+    """Invalidate all gap-up related cache entries (legacy + session-aware keys)."""
+    # Legacy named keys
     gap_up_cache.invalidate(gap_up_cache.GAP_UP_STOCKS_KEY)
     gap_up_cache.invalidate(gap_up_cache.GAP_UP_FRONTEND_KEY)
     gap_up_cache.invalidate(gap_up_cache.REAL_TIME_GAP_UPS_KEY)
-    
-    # Also invalidate threshold-specific cache keys
-    import config as config_module
-    current_threshold = getattr(config_module, 'GAP_UP_MIN_PERCENTAGE', 15.0)
-    threshold_cache_key = f"gap_up_frontend_threshold_{current_threshold}"
-    gap_up_cache.invalidate(threshold_cache_key)
-    
-    # Invalidate all threshold-specific keys (in case there are multiple)
-    keys_to_remove = []
-    for key in list(gap_up_cache.cache.keys()):
-        if key.startswith("gap_up_frontend_threshold_"):
-            keys_to_remove.append(key)
-    
+
+    # Clear ALL keys that start with gap_up_frontend_ or gap_up_universe_
+    # (covers session-aware keys added in 2026: gap_up_frontend_pre_market,
+    #  gap_up_frontend_open, gap_up_frontend_after_hours, gap_up_universe_scan)
+    keys_to_remove = [
+        k for k in list(gap_up_cache.cache.keys())
+        if k.startswith('gap_up_frontend_') or k.startswith('gap_up_universe_')
+    ]
     for key in keys_to_remove:
         gap_up_cache.invalidate(key)
-    
-    logger.info("🗑️ Gap-up cache invalidated (including threshold-specific keys)")
+
+    logger.info(
+        f'Gap-up cache invalidated — cleared {len(keys_to_remove)} session/universe keys'
+    )
 
 def get_cache_stats() -> Dict[str, Any]:
     """Get cache performance statistics"""

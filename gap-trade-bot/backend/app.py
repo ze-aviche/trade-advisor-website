@@ -1887,6 +1887,29 @@ def get_gap_ups():
             'error': str(e)
         }), 500
 
+@app.route('/api/gap-ups/force-refresh', methods=['POST'])
+def force_refresh_gap_ups():
+    """
+    Nuke ALL gap-up caches (session-aware + legacy) and immediately re-fetch.
+    Updates both the frontend cache AND the real_time_gap_ups global that
+    BrownBot's day scanner reads every 30 seconds.
+    """
+    global real_time_gap_ups
+    try:
+        from gap_up_cache import invalidate_gap_up_cache
+        invalidate_gap_up_cache()
+        app_logger.info('[ForceRefresh] All gap-up caches cleared — fetching fresh data...')
+        fresh = get_gap_up_stocks_for_frontend()
+        # Update the global that BrownBot reads so it also sees fresh data immediately.
+        real_time_gap_ups = fresh
+        app_logger.info(f'[ForceRefresh] Done — {len(fresh)} stocks returned, real_time_gap_ups updated')
+        return jsonify({'success': True, 'data': fresh, 'count': len(fresh),
+                        'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        app_logger.error(f'[ForceRefresh] Error: {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/gap-ups/<ticker>')
 def get_gap_up_details(ticker):
     """Get detailed gap-up information for a specific ticker"""
