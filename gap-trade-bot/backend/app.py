@@ -3952,7 +3952,7 @@ def _brown_bot_scan_and_enter():
         # Short/High-confidence bias means it historically gaps and reverses — skip.
         # If the playbook isn't ready yet, defer to the next scan cycle.
         playbook_override = None
-        if AI_AGENT_AVAILABLE and _gap_up_agent:
+        if config.get('day_ai_playbook', True) and AI_AGENT_AVAILABLE and _gap_up_agent:
             if symbol in _playbook_cache:
                 pb       = _playbook_cache[symbol]
                 pb_bias  = pb.get('bias', '')

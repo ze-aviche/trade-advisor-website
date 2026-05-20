@@ -327,6 +327,7 @@ class DatabaseManager:
                 ('day_check_candle',       'INTEGER DEFAULT 0'),
                 ('day_max_extension_pct',  'REAL DEFAULT 0.0'),
                 ('day_check_volume_surge', 'INTEGER DEFAULT 0'),
+                ('day_ai_playbook',        'INTEGER DEFAULT 1'),
                 ('day_position_pct',        'REAL DEFAULT 5.0'),
                 ('swing_position_pct',     'REAL DEFAULT 3.0'),
                 ('day_trades_enabled',     'INTEGER DEFAULT 1'),
@@ -2362,7 +2363,7 @@ class DatabaseManager:
             'min_gap_pct': 10.0, 'min_price': 5.0, 'max_price': 500.0, 'min_volume_m': 0.5,
             'max_float_m': 0.0, 'float_operator': '<=',
             'day_check_vwap': False, 'day_check_candle': False,
-            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False,
+            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': True,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
             # Swing scanner filters
@@ -2394,6 +2395,7 @@ class DatabaseManager:
                     cfg['day_check_vwap'] = bool(cfg.get('day_check_vwap', 0))
                     cfg['day_check_candle'] = bool(cfg.get('day_check_candle', 0))
                     cfg['day_check_volume_surge'] = bool(cfg.get('day_check_volume_surge', 0))
+                    cfg['day_ai_playbook']        = bool(cfg.get('day_ai_playbook', 1))
                     cfg['day_trades_enabled']       = bool(cfg.get('day_trades_enabled', 1))
                     cfg['swing_trades_enabled']     = bool(cfg.get('swing_trades_enabled', 1))
                     cfg['swing_check_above_sma20']  = bool(cfg.get('swing_check_above_sma20', 0))
@@ -2415,7 +2417,7 @@ class DatabaseManager:
             'swing_breakeven_trigger_pct', 'max_daily_loss', 'max_concurrent_day',
             'max_concurrent_swing', 'min_gap_pct', 'min_price', 'max_price', 'min_volume_m',
             'max_float_m', 'float_operator',
-            'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge',
+            'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge', 'day_ai_playbook',
             'day_position_pct', 'swing_position_pct',
             'day_trades_enabled', 'swing_trades_enabled',
             'swing_scan_source', 'swing_scan_top_n',

@@ -2248,6 +2248,13 @@
                                     <p class="text-[10px] text-gray-600 mt-0.5">Requires entry bar ≥ 1.5× the 10-bar average</p>
                                 </div>
                             </label>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.day_ai_playbook" type="checkbox" class="rounded border-gray-600 accent-purple-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">AI PLAYBOOK — skip historically bearish gaps</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Uses Claude AI to analyze 5-yr gap history. Blocks entry if the symbol has a Short/High-confidence bias. First-time symbols are deferred one scan cycle while the analysis runs.</p>
+                                </div>
+                            </label>
                             <div class="border-t border-gray-700/60 pt-3">
                                 <label class="block text-xs text-gray-400 mb-0.5">
                                     EXT — max extension from gap price
