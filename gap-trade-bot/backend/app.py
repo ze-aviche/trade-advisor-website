@@ -4794,7 +4794,7 @@ def get_brown_bot_status():
                     'market_value':      lp.market_value,
                     '_broker_synced':    True,
                     '_at_breakeven':     bb.get('_at_breakeven', False),
-                    '_exit_pending':     sym in pending_exit_syms,
+                    '_exit_pending':     sym in pending_exit_syms or bb.get('_exit_pending', False),
                 })
             positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
@@ -4810,6 +4810,25 @@ def get_brown_bot_status():
             positions_list.sort(key=lambda p: p.get('symbol', ''))
 
     active_count = len(positions_list)
+
+    # Clean up _exit_pending positions that are no longer held at the broker
+    # (close-all fills confirmed). This is the deferred clear that replaces the
+    # immediate _brown_bot_active_positions.clear() in brown_bot_close_all.
+    if broker:
+        broker_syms = {p.get('symbol', '').upper() for p in positions_list}
+        with _brown_bot_lock:
+            gone_pids = [
+                pid for pid, pos in _brown_bot_active_positions.items()
+                if pos.get('_exit_pending') and
+                   pos.get('symbol', '').upper() not in broker_syms
+            ]
+            for pid in gone_pids:
+                _brown_bot_active_positions.pop(pid, None)
+        for pid in gone_pids:
+            try:
+                db_manager.delete_brown_position(pid)
+            except Exception:
+                pass
 
     # Pull today's entry/exit counts from DB so stats survive restarts.
     # Use last_trading_date (ET) so trades entered during US market hours
@@ -5139,12 +5158,16 @@ def stop_brown_bot():
     if not _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is not running'})
     _brown_bot_running = False
+    # Short joins only — long joins block the eventlet greenlet and starve
+    # Socket.IO keep-alive polls, causing session IDs to expire (400 errors).
+    # Threads poll _brown_bot_running every 2 s (exit/monitor) or 30 s (scanner),
+    # so they will exit on their own; we don't need to wait for them here.
     if _brown_bot_thread and _brown_bot_thread.is_alive():
-        _brown_bot_thread.join(timeout=35)
+        _brown_bot_thread.join(timeout=3)
     if _brown_exit_thread and _brown_exit_thread.is_alive():
-        _brown_exit_thread.join(timeout=10)
+        _brown_exit_thread.join(timeout=3)
     if _brown_order_monitor_thread and _brown_order_monitor_thread.is_alive():
-        _brown_order_monitor_thread.join(timeout=10)
+        _brown_order_monitor_thread.join(timeout=3)
     _brown_bot_thread = None
     _brown_exit_thread = None
     _brown_order_monitor_thread = None
@@ -5207,8 +5230,14 @@ def brown_bot_close_all():
         except Exception:
             pass
 
+    # Mark positions as pending-close rather than clearing immediately.
+    # The status endpoint builds bb_by_symbol from _brown_bot_active_positions;
+    # clearing here would cause the next poll to show positions with no
+    # metadata (Day type, no targets/stops) until Alpaca confirms the fills.
+    # Once broker confirms positions are gone, get_brown_bot_status cleans them up.
     with _brown_bot_lock:
-        _brown_bot_active_positions.clear()
+        for pos in _brown_bot_active_positions.values():
+            pos['_exit_pending'] = True
 
     return jsonify({
         'success': True,
