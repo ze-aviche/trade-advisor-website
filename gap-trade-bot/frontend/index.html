@@ -2949,7 +2949,8 @@
                                               class="text-xs px-2 py-0.5 rounded-full border">
                                             {{ pos.position_type === 'swing' ? 'Swing' : 'Day' }}
                                         </span>
-                                        <span v-if="pos._at_breakeven" class="ml-1 text-xs text-amber-400" title="Stop at breakeven">BE</span>
+                                        <span v-if="pos._exit_pending" class="ml-1 text-xs text-orange-400 animate-pulse" title="Close order submitted, awaiting fill">CLOSING</span>
+                                        <span v-else-if="pos._at_breakeven" class="ml-1 text-xs text-amber-400" title="Stop at breakeven">BE</span>
                                     </td>
                                     <td class="px-4 py-3 text-right font-mono text-gray-300">{{ pos.quantity ?? '—' }}</td>
                                     <td class="px-4 py-3 text-right font-mono text-gray-200">${{ pos.entry_price?.toFixed(2) }}</td>

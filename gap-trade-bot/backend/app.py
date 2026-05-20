@@ -3217,12 +3217,10 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 f'SKIP {symbol}: could not determine current price — will retry next scan')
             return
 
-    # Mark as attempted now that we have a price and will proceed toward placing an order.
-    # Fills, broker rejections, and insufficient-BP skips all lock the symbol for this
-    # session; a transient price failure (above) does not — it was returned early.
-    _brown_attempted_symbols.add(symbol)
-
     # Fetch account equity to size the position and check buying power.
+    # BP is checked BEFORE marking attempted — it's a transient condition that
+    # restores as positions close intraday, so insufficient-BP should not block
+    # the symbol for the full session.
     try:
         acct = _brown_broker.get_account()
         if acct.equity > 0:
@@ -3236,8 +3234,8 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 _add_brown_log('warning',
                     f'SKIP {symbol}: insufficient buying power '
                     f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) '
-                    f'— will not retry this session')
-                return
+                    f'— will retry when BP frees up')
+                return  # NOT added to attempted — will retry on next scan
         else:
             _add_brown_log('warning', f'{symbol}: equity is 0 — using fallback 1 share')
             quantity = 1
@@ -3245,6 +3243,11 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         app_logger.debug(f'BrownBot account fetch failed for {symbol}: {_bp_err}')
         quantity = max(1, int(dollar_size / price)) if 'dollar_size' in dir() else 1
         _add_brown_log('warning', f'{symbol}: account fetch failed — fallback {quantity} shares')
+
+    # Mark as attempted now that BP is confirmed and we are about to place an order.
+    # Fills, broker rejections, and order errors all lock the symbol for this session.
+    # Transient failures (price unavailable, insufficient BP) return early above.
+    _brown_attempted_symbols.add(symbol)
 
     try:
         from bot.broker.base import OrderSide, OrderType as OType
@@ -4716,8 +4719,17 @@ def get_brown_bot_status():
     broker = _brown_broker or _get_broker()
     broker_info = broker.to_dict() if broker else None
     with _brown_bot_lock:
-        active_count = len(_brown_bot_active_positions)
         positions_list = list(_brown_bot_active_positions.values())
+        # Include positions whose exit order is in-flight — they're still open in the broker
+        # and should count toward active positions until the fill/rejection is confirmed.
+        pending_exit_positions = []
+        for meta in _brown_pending_orders.values():
+            if meta.get('type') == 'exit' and meta.get('position'):
+                pos = dict(meta['position'])
+                pos['_exit_pending'] = True  # UI hint: close order submitted
+                pending_exit_positions.append(pos)
+        positions_list = positions_list + pending_exit_positions
+        active_count = len(positions_list)
         entry_counts = dict(_brown_entry_counts)
         # Symbols attempted but not filled (rejected or insufficient BP)
         skipped_symbols = list(_brown_attempted_symbols - set(_brown_entry_counts.keys()))
@@ -7438,12 +7450,18 @@ def get_open_positions():
 
         # Build symbol → position_type map.
         # Priority 1: in-memory BrownBot positions (bot running)
-        # Priority 2: brown_positions DB table (bot stopped but positions still open in broker)
+        # Priority 2: pending exit orders — position removed from memory but close not yet confirmed
+        # Priority 3: brown_positions DB table (bot stopped but positions still open in broker)
         type_map = {}
         for bp in _brown_bot_active_positions.values():
             sym = (bp.get('symbol') or '').upper()
             if sym:
                 type_map[sym] = bp.get('position_type')  # 'day' or 'swing'
+        for meta in _brown_pending_orders.values():
+            if meta.get('type') == 'exit':
+                sym = (meta.get('symbol') or '').upper()
+                if sym and sym not in type_map:
+                    type_map[sym] = meta.get('position_type')
         try:
             for bp in db_manager.get_brown_positions():
                 sym = (bp.get('symbol') or '').upper()
