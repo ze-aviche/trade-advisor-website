@@ -4375,7 +4375,27 @@ def _brown_order_monitor_loop():
 
             elif age > ORDER_TIMEOUT:
                 _add_brown_log('warning',
-                    f'{symbol} {order_type} order {oid[:8]}… stuck {age:.0f}s — cancelling')
+                    f'{symbol} {order_type} order {oid[:8]}… stuck {age:.0f}s — checking fill before cancel')
+                # Re-fetch order status immediately before cancelling.
+                # The order may have filled between our last poll and now (paper trading lag,
+                # slow Alpaca API). Cancelling a filled order silently fails, and we would
+                # then wipe a genuine open position from tracking.
+                try:
+                    order = _brown_broker.get_order(oid)
+                    fill_price = (float(order.filled_avg_price)
+                                  if order.filled_avg_price else meta.get('approx_price', 0.0))
+                    fill_qty   = int(order.filled_qty or meta.get('quantity', 0))
+                    if order.status == _OStatus.FILLED:
+                        _add_brown_log('info',
+                            f'{symbol}: order filled just before timeout — finalising instead of cancelling')
+                        if order_type == 'entry':
+                            _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
+                        else:
+                            _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
+                        continue  # handled — skip the cancel/wipe block below
+                except Exception as _pre_cancel_e:
+                    app_logger.debug(f'[BrownBot monitor] pre-cancel status check {oid} failed: {_pre_cancel_e}')
+
                 try:
                     _brown_broker.cancel_order(oid)
                 except Exception:
@@ -4391,7 +4411,7 @@ def _brown_order_monitor_loop():
                         db_manager.delete_brown_position(position_id)
                     except Exception:
                         pass
-                    _add_brown_log('warning', f'{symbol}: entry timed out — position removed')
+                    _add_brown_log('warning', f'{symbol}: entry timed out and not filled — position removed')
                 else:
                     # Exit order timed out (cancelled above). Restore the position to
                     # active tracking so the exit loop can place a fresh order next tick.
@@ -4982,24 +5002,77 @@ def start_brown_bot():
                         f'({", ".join(s for _, s in [(p, sym) for p, sym, _ in stale])})')
 
                 # 2 — adopt orphans (in broker but not tracked)
+                # These positions already exist at the broker so we MUST track them for exit,
+                # regardless of the slot cap. New entries remain blocked by the cap check in
+                # _brown_bot_scan_and_enter; orphan adoption is recovery only, not new entry.
                 config = db_manager.get_brown_bot_config()
-                tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
-                stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
+                swing_tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
+                swing_stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
+                day_tgt_pct   = float(config.get('day_profit_target_pct', 5.0))
+                day_stp_pct   = float(config.get('day_stop_loss_pct', 2.5))
+                max_swing     = int(config.get('max_concurrent_swing', 5))
+                max_day       = int(config.get('max_concurrent_day', 3))
+                import pytz as _pytz_o
+                _today_str_o = datetime.now(_pytz_o.timezone('US/Eastern')).strftime('%Y-%m-%d')
                 adopted = 0
                 for sym_up, bp in broker_pos_map.items():
                     if sym_up not in tracked_syms:
                         entry_price = float(bp.avg_entry_price or bp.current_price or 0)
                         pid = f'BROWN_{sym_up}_{int(time.time())}_{adopted}'
+
+                        # Determine position_type from today's BUY trade in DB.
+                        # Falls back to 'swing' when no record exists (e.g. the entry
+                        # timed out before the fill was confirmed and written to DB).
+                        position_type = 'swing'
+                        try:
+                            recent_t = db_manager.get_trades(
+                                symbol=sym_up, start_date=_today_str_o,
+                                end_date=_today_str_o, limit=5)
+                            buy_rec = next(
+                                (t for t in recent_t
+                                 if t.get('side') == 'B' and t.get('source') == 'brownbot'),
+                                None)
+                            if buy_rec:
+                                pt = buy_rec.get('position_type', 'swing')
+                                position_type = 'day' if pt in ('day', 'brown_day') else 'swing'
+                        except Exception:
+                            pass
+
+                        use_tgt_pct = day_tgt_pct if position_type == 'day' else swing_tgt_pct
+                        use_stp_pct = day_stp_pct if position_type == 'day' else swing_stp_pct
+
+                        # Warn when adopting this position would exceed the configured cap.
+                        with _brown_bot_lock:
+                            cur_swing = sum(
+                                1 for p in _brown_bot_active_positions.values()
+                                if p.get('position_type') in ('swing', 'brown_swing')
+                            )
+                            cur_day = sum(
+                                1 for p in _brown_bot_active_positions.values()
+                                if p.get('position_type') in ('day', 'brown_day')
+                            )
+                        cap_exceeded = (
+                            (position_type == 'swing' and cur_swing >= max_swing) or
+                            (position_type == 'day'   and cur_day   >= max_day)
+                        )
+                        if cap_exceeded:
+                            cap_val = max_swing if position_type == 'swing' else max_day
+                            cur_val = cur_swing  if position_type == 'swing' else cur_day
+                            _add_brown_log('warning',
+                                f'{position_type.upper()} cap {cap_val} exceeded by orphan {sym_up} '
+                                f'({cur_val + 1} {position_type} positions) — tracking for exit only, '
+                                f'no new {position_type} entries until a slot frees up')
+
                         pos = {
                             'position_id':       pid,
                             'symbol':            sym_up,
-                            'position_type':     'swing',  # safest assumption for recovered positions
+                            'position_type':     position_type,
                             'entry_price':       entry_price,
                             'quantity':          int(abs(float(bp.qty or 0))),
-                            'profit_target':     round(entry_price * (1 + tgt_pct / 100), 2) if entry_price else None,
-                            'profit_target_pct': tgt_pct,
-                            'stop_loss':         round(entry_price * (1 - stp_pct / 100), 2) if entry_price else None,
-                            'stop_loss_pct':     stp_pct,
+                            'profit_target':     round(entry_price * (1 + use_tgt_pct / 100), 2) if entry_price else None,
+                            'profit_target_pct': use_tgt_pct,
+                            'stop_loss':         round(entry_price * (1 - use_stp_pct / 100), 2) if entry_price else None,
+                            'stop_loss_pct':     use_stp_pct,
                             'entry_time':        datetime.now().isoformat(),
                             'entry_time_epoch':  time.time(),
                             'unrealized_pnl':    float(bp.unrealized_pnl or 0),
@@ -5011,8 +5084,8 @@ def start_brown_bot():
                         db_manager.save_brown_position(pid, pos)
                         adopted += 1
                         _add_brown_log('warning',
-                            f'Adopted orphan position: {sym_up} @ ${entry_price:.2f} '
-                            f'(was in broker but not in DB — targets set from current config)')
+                            f'Adopted orphan {position_type} position: {sym_up} @ ${entry_price:.2f} '
+                            f'(was in broker but not tracked — targets set from current config)')
                 if not stale and not adopted:
                     _add_brown_log('info', 'Startup check: all positions confirmed in sync with broker')
             except Exception as _ve:
