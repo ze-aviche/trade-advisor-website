@@ -81,7 +81,6 @@ class RiskManager:
             while d.weekday() >= 5:  # roll back to last trading day (ET)
                 d -= timedelta(days=1)
             today = d.strftime('%Y-%m-%d')
-            summary = db_manager.get_trade_summary(start_date=today, end_date=today)
-            return float(summary.get('total_pnl', 0.0)) if summary else 0.0
+            return db_manager.get_brown_daily_realized_pnl(today)
         except Exception:
             return 0.0

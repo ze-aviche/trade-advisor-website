@@ -3373,11 +3373,13 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     stop_loss = round(price * (1 - stp_pct / 100), 2) if price else None
     position_id = f"BROWN_{symbol}_{int(time.time())}"
 
+    _trade_date = _last_trading_date()
     position = {
         'position_id':         position_id,
         'symbol':              symbol,
         'position_type':       position_type,
         'entry_price':         price,
+        'avg_entry_price':     price if _entry_confirmed else None,
         'quantity':            quantity,
         'profit_target':       profit_target,
         'profit_target_pct':   tgt_pct,
@@ -3386,7 +3388,10 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         'entry_time':          datetime.now().isoformat(),
         'entry_time_epoch':    time.time(),
         'unrealized_pnl':      0.0,
+        'unrealized_pnl_pct':  0.0,
         'entry_order_id':      str(order_id) if order_id else None,
+        'trade_date':          _trade_date,
+        'status':              'open',
         'playbook_bias':       playbook_bias,
         'playbook_stop_pct':   stp_pct if playbook_override else None,
         'playbook_target_pct': tgt_pct if playbook_override else None,
@@ -3400,6 +3405,28 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         db_manager.save_brown_position(position_id, position)
     except Exception as _e:
         _add_brown_log('warning', f'DB position save failed for {symbol}: {_e}')
+
+    # Log the order to the immutable orders table
+    if order_id:
+        try:
+            db_manager.add_brown_order({
+                'order_id':       str(order_id),
+                'position_id':    position_id,
+                'symbol':         symbol,
+                'side':           'B',
+                'order_type':     'entry',
+                'position_type':  position_type,
+                'submitted_qty':  quantity,
+                'submitted_price': price,
+                'status':         'filled' if _entry_confirmed else 'pending',
+                'submitted_at':   datetime.now().isoformat(),
+                'trade_date':     _trade_date,
+            })
+            if _entry_confirmed:
+                db_manager.update_brown_order_fill(str(order_id), price, quantity)
+                db_manager.update_brown_position_entry(position_id, price, quantity)
+        except Exception as _e:
+            _add_brown_log('warning', f'DB order log failed for {symbol}: {_e}')
 
     # Write BUY trade to DB only after broker confirms the fill.
     if _entry_confirmed:
@@ -3417,7 +3444,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 'liquidity':     None,
                 'ecn_fee':       0.0,
                 'pnl':           0.0,
-                'trade_date':    _last_trading_date(),
+                'trade_date':    _trade_date,
                 'position_type': position_type,
                 'days_held':     None,
                 'source':        'brownbot',
@@ -4287,11 +4314,24 @@ def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
             tgt_pct = pos.get('profit_target_pct', 5.0)
             stp_pct = pos.get('stop_loss_pct', 2.5)
             pos['entry_price']      = fill_price
+            pos['avg_entry_price']  = fill_price
             pos['quantity']         = fill_qty
             pos['profit_target']    = round(fill_price * (1 + tgt_pct / 100), 2)
             pos['stop_loss']        = round(fill_price * (1 - stp_pct / 100), 2)
             pos['_entry_confirmed'] = True
         _brown_pending_orders.pop(oid, None)
+
+    # Update the orders table with actual fill data
+    try:
+        db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
+    except Exception:
+        pass
+
+    # Update position with confirmed avg entry price
+    try:
+        db_manager.update_brown_position_entry(position_id, fill_price, fill_qty)
+    except Exception:
+        pass
 
     try:
         db_manager.save_brown_position(
@@ -4332,13 +4372,30 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
     position_type = meta['position_type']
     exit_reason   = meta['exit_reason']
     entry_price   = meta['entry_price']
+    avg_entry     = meta.get('avg_entry_price') or entry_price
     entry_num     = meta.get('entry_num', 1)
     days_held     = meta.get('days_held')
 
     with _brown_bot_lock:
         _brown_pending_orders.pop(oid, None)
 
-    realized_pnl = round((fill_price - entry_price) * fill_qty, 2) if entry_price else 0.0
+    realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry else 0.0
+    realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+
+    # Update orders table with actual fill data
+    try:
+        db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
+    except Exception:
+        pass
+
+    # Mark position as closed with realized P&L
+    try:
+        db_manager.close_brown_position(
+            position_id, fill_price, oid, exit_reason,
+            realized_pnl, realized_pnl_pct
+        )
+    except Exception as _e:
+        _add_brown_log('warning', f'DB position close failed for {symbol}: {_e}')
 
     try:
         db_manager.add_trade({
@@ -4372,7 +4429,7 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
     _add_brown_log(
         'info',
         f'EXITED {position_type.upper()} {symbol} {exit_tag} [{exit_reason}] '
-        f'entry ${entry_price:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}'
+        f'entry ${avg_entry:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}'
     )
 
 
@@ -4559,29 +4616,49 @@ def _brown_close_position(position_id, position, exit_reason):
         except Exception:
             pass
 
+    _trade_date = _last_trading_date()
+
+    # Log exit order to the immutable orders table
+    try:
+        db_manager.add_brown_order({
+            'order_id':       str(order_id),
+            'position_id':    position_id,
+            'symbol':         symbol,
+            'side':           'S',
+            'order_type':     'exit',
+            'position_type':  position_type,
+            'submitted_qty':  quantity,
+            'submitted_price': float(current_price),
+            'status':         'pending',
+            'exit_reason':    exit_reason,
+            'submitted_at':   datetime.now().isoformat(),
+            'trade_date':     _trade_date,
+        })
+    except Exception as _e:
+        _add_brown_log('warning', f'DB exit order log failed for {symbol}: {_e}')
+
     # Queue the exit for the monitor thread — DB write happens after confirmed fill.
     with _brown_bot_lock:
         _brown_pending_orders[str(order_id)] = {
-            'type':          'exit',
-            'symbol':        symbol,
-            'position_id':   position_id,
-            'order_id':      str(order_id),
-            'submitted_at':  time.time(),
-            'approx_price':  float(current_price),
-            'quantity':      quantity,
-            'entry_price':   entry_price,
-            'position_type': position_type,
-            'exit_reason':   exit_reason,
-            'days_held':     days_held,
-            'entry_num':     position.get('entry_num', 1),
-            'position':      dict(position),  # kept so monitor can restore on rejection
+            'type':            'exit',
+            'symbol':          symbol,
+            'position_id':     position_id,
+            'order_id':        str(order_id),
+            'submitted_at':    time.time(),
+            'approx_price':    float(current_price),
+            'quantity':        quantity,
+            'entry_price':     entry_price,
+            'avg_entry_price': position.get('avg_entry_price') or entry_price,
+            'position_type':   position_type,
+            'exit_reason':     exit_reason,
+            'days_held':       days_held,
+            'entry_num':       position.get('entry_num', 1),
+            'position':        dict(position),  # kept so monitor can restore on rejection
         }
 
-    try:
-        db_manager.delete_brown_position(position_id)
-    except Exception as _e:
-        _add_brown_log('warning', f'DB position delete failed for {symbol}: {_e}')
-
+    # Don't delete from DB — close_brown_position (called after fill confirmation)
+    # marks it as 'closed' with realized P&L. Keeping the row until fill ensures
+    # correct recovery if the server restarts while the exit order is in-flight.
     with _brown_bot_lock:
         _brown_bot_active_positions.pop(position_id, None)
         _brown_closing_positions.discard(position_id)
@@ -4666,15 +4743,27 @@ def _brown_bot_check_exits(check_swing_specific=False):
             app_logger.warning(f'[BrownBot] {symbol}: price unavailable, skipping exit check this tick')
             continue
 
-        entry_price = float(position.get('entry_price', 0))
+        entry_price = float(position.get('avg_entry_price') or position.get('entry_price', 0))
         quantity = int(position.get('quantity', 0))
         unrealized_pnl = round((current_price - entry_price) * quantity, 2) if entry_price else 0.0
+        unrealized_pnl_pct = round(
+            (current_price - entry_price) / entry_price * 100, 2
+        ) if entry_price else 0.0
 
         # Update unrealized P&L and current price in shared state
         with _brown_bot_lock:
             if position_id in _brown_bot_active_positions:
-                _brown_bot_active_positions[position_id]['unrealized_pnl'] = unrealized_pnl
-                _brown_bot_active_positions[position_id]['_current_price'] = current_price
+                _brown_bot_active_positions[position_id]['unrealized_pnl']     = unrealized_pnl
+                _brown_bot_active_positions[position_id]['unrealized_pnl_pct'] = unrealized_pnl_pct
+                _brown_bot_active_positions[position_id]['_current_price']     = current_price
+
+        # Persist unrealized P&L to DB so it survives between polls
+        try:
+            db_manager.update_brown_position_unrealized(
+                position_id, current_price, unrealized_pnl, unrealized_pnl_pct
+            )
+        except Exception:
+            pass
 
         profit_target = position.get('profit_target')
         stop_loss = position.get('stop_loss')
@@ -4866,25 +4955,33 @@ def get_brown_bot_status():
             for lp in broker.get_positions():
                 sym = lp.symbol.upper()
                 bb  = bb_by_symbol.get(sym, {})
+                _avg_entry   = round(lp.avg_entry_price, 4)
+                _unr_pnl     = lp.unrealized_pnl
+                _unr_pnl_pct = (
+                    round((_unr_pnl / (_avg_entry * abs(lp.qty))) * 100, 2)
+                    if _avg_entry and lp.qty else 0.0
+                )
                 positions_list.append({
-                    'position_id':       bb.get('position_id', f'BROKER_{sym}'),
-                    'symbol':            sym,
-                    'position_type':     bb.get('position_type'),
-                    'avg_entry':         round(lp.avg_entry_price, 4),
-                    'entry_price':       bb.get('entry_price') or round(lp.avg_entry_price, 4),
-                    'quantity':          int(abs(lp.qty)),
-                    'profit_target':     bb.get('profit_target'),
-                    'profit_target_pct': bb.get('profit_target_pct'),
-                    'stop_loss':         bb.get('stop_loss'),
-                    'stop_loss_pct':     bb.get('stop_loss_pct'),
-                    'entry_time':        bb.get('entry_time'),
-                    'entry_time_epoch':  bb.get('entry_time_epoch'),
-                    '_current_price':    lp.current_price,
-                    'unrealized_pnl':    lp.unrealized_pnl,
-                    'market_value':      lp.market_value,
-                    '_broker_synced':    True,
-                    '_at_breakeven':     bb.get('_at_breakeven', False),
-                    '_exit_pending':     sym in pending_exit_syms or bb.get('_exit_pending', False),
+                    'position_id':        bb.get('position_id', f'BROKER_{sym}'),
+                    'symbol':             sym,
+                    'position_type':      bb.get('position_type'),
+                    'avg_entry':          _avg_entry,
+                    'avg_entry_price':    _avg_entry,
+                    'entry_price':        bb.get('entry_price') or _avg_entry,
+                    'quantity':           int(abs(lp.qty)),
+                    'profit_target':      bb.get('profit_target'),
+                    'profit_target_pct':  bb.get('profit_target_pct'),
+                    'stop_loss':          bb.get('stop_loss'),
+                    'stop_loss_pct':      bb.get('stop_loss_pct'),
+                    'entry_time':         bb.get('entry_time'),
+                    'entry_time_epoch':   bb.get('entry_time_epoch'),
+                    '_current_price':     lp.current_price,
+                    'unrealized_pnl':     _unr_pnl,
+                    'unrealized_pnl_pct': _unr_pnl_pct,
+                    'market_value':       lp.market_value,
+                    '_broker_synced':     True,
+                    '_at_breakeven':      bb.get('_at_breakeven', False),
+                    '_exit_pending':      sym in pending_exit_syms or bb.get('_exit_pending', False),
                 })
             positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
@@ -4904,6 +5001,9 @@ def get_brown_bot_status():
     # Clean up _exit_pending positions that are no longer held at the broker
     # (close-all fills confirmed). This is the deferred clear that replaces the
     # immediate _brown_bot_active_positions.clear() in brown_bot_close_all.
+    # We only remove from memory — the brown_positions row stays as a 'closed'
+    # historical record for P&L tracking. close_brown_position was already called
+    # in brown_bot_close_all, so deleting would erase realized P&L data.
     if broker:
         broker_syms = {p.get('symbol', '').upper() for p in positions_list}
         with _brown_bot_lock:
@@ -4914,11 +5014,6 @@ def get_brown_bot_status():
             ]
             for pid in gone_pids:
                 _brown_bot_active_positions.pop(pid, None)
-        for pid in gone_pids:
-            try:
-                db_manager.delete_brown_position(pid)
-            except Exception:
-                pass
 
     # Pull today's entry/exit counts from DB so stats survive restarts.
     # Use last_trading_date (ET) so trades entered during US market hours
@@ -5113,23 +5208,146 @@ def start_brown_bot():
 
                 # 1 — drop stale (in DB but not in broker)
                 stale = [
-                    (pid, pos.get('symbol', ''), pos.get('entry_order_id'))
+                    (pid, pos.get('symbol', '').upper(), pos.get('entry_order_id'), dict(pos))
                     for pid, pos in list(_brown_bot_active_positions.items())
                     if pos.get('symbol', '').upper() not in broker_pos_map
                 ]
                 with _brown_bot_lock:
-                    for pid, sym, entry_oid in stale:
+                    for pid, sym, entry_oid, _sp in stale:
                         _brown_bot_active_positions.pop(pid, None)
                         _brown_entry_counts.pop(sym, None)
                         _brown_attempted_symbols.discard(sym)
+                        # Don't delete from brown_positions yet — recovery loop below
+                        # will either close_brown_position (if exit found) or delete.
+
+                # 1b — for positions confirmed at broker but with avg_entry_price=None
+                # in DB (narrow crash window between _brown_enter_position saving and
+                # finalize_entry writing the confirmed fill), patch from broker now.
+                with _brown_bot_lock:
+                    for _pid, _pos in list(_brown_bot_active_positions.items()):
+                        _sym = _pos.get('symbol', '').upper()
+                        _bp  = broker_pos_map.get(_sym)
+                        if not _bp or _pos.get('avg_entry_price'):
+                            continue
+                        _fp = float(_bp.avg_entry_price or _bp.current_price or 0)
+                        if not _fp:
+                            continue
+                        _tgt = float(_pos.get('profit_target_pct', 5.0))
+                        _stp = float(_pos.get('stop_loss_pct', 2.5))
+                        _pos['avg_entry_price'] = _fp
+                        _pos['entry_price']     = _fp
+                        _pos['profit_target']   = round(_fp * (1 + _tgt / 100), 2)
+                        _pos['stop_loss']       = round(_fp * (1 - _stp / 100), 2)
+                        try:
+                            db_manager.update_brown_position_entry(
+                                _pid, _fp, int(abs(float(_bp.qty or 0))))
+                        except Exception:
+                            pass
+                        _add_brown_log('info',
+                            f'{_sym}: avg_entry_price confirmed from broker on restart'
+                            f' = ${_fp:.2f}')
+
+                # Outside the lock: for each stale position, try to recover the
+                # exit trade from broker order history before deleting the buy.
+                # Scenario: server crashed after placing the sell but before the
+                # monitor confirmed the fill → broker filled the sell, wrote
+                # nothing to DB, buy trade still exists. Without recovery, we
+                # delete the buy and lose the P&L entirely.
+                for pid, sym, entry_oid, stale_pos in stale:
+                    entry_price  = float(stale_pos.get('entry_price', 0) or 0)
+                    pos_type     = stale_pos.get('position_type', 'day')
+                    entry_date   = (stale_pos.get('entry_time', '') or '')[:10] or _last_trading_date()
+                    exit_written = False
+
+                    # Check if a sell trade already exists in our DB (normal close
+                    # that completed before the restart). If so, nothing to recover.
+                    try:
+                        existing_sells = db_manager.get_trades(
+                            symbol=sym, start_date=entry_date, limit=20)
+                        has_db_sell = any(
+                            t.get('side') in ('S', 'SS') and t.get('source') == 'brownbot'
+                            for t in (existing_sells or [])
+                        )
+                    except Exception:
+                        has_db_sell = False
+
+                    if not has_db_sell and entry_oid and _brown_broker:
+                        # No sell in DB — ask the broker for filled sell orders
+                        # for this symbol placed on or after the entry date.
+                        try:
+                            filled = _brown_broker.get_orders_history(
+                                status='filled', symbols=[sym], limit=50)
+                            sell_order = next((
+                                o for o in (filled or [])
+                                if o.get('side', '').lower() in ('sell', 'sell_short')
+                                and o.get('filled_avg_price')
+                                and str(o.get('filled_at', '') or '')[:10] >= entry_date
+                            ), None)
+                            if sell_order:
+                                fill_price       = float(sell_order['filled_avg_price'])
+                                fill_qty         = int(sell_order.get('filled_qty') or sell_order.get('qty') or 0)
+                                fill_date        = str(sell_order.get('filled_at', '') or '')[:10] or entry_date
+                                avg_entry        = float(stale_pos.get('avg_entry_price') or entry_price or 0)
+                                realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry else 0.0
+                                realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+                                fill_time_str    = str(sell_order.get('filled_at') or datetime.now().isoformat())
+                                db_manager.add_trade({
+                                    'trade_id':      f'BROWN_EXIT_{sym}_{sell_order["order_id"]}',
+                                    'symbol':        sym,
+                                    'side':          'S',
+                                    'quantity':      fill_qty,
+                                    'price':         fill_price,
+                                    'route':         'SMAT',
+                                    'trade_time':    fill_time_str,
+                                    'order_id':      str(sell_order['order_id']),
+                                    'liquidity':     None,
+                                    'ecn_fee':       0.0,
+                                    'pnl':           realized_pnl,
+                                    'trade_date':    fill_date or _last_trading_date(),
+                                    'position_type': pos_type,
+                                    'days_held':     None,
+                                    'source':        'brownbot',
+                                    'broker':        _brown_broker.name,
+                                })
+                                # Mark position as closed with recovered P&L
+                                db_manager.close_brown_position(
+                                    pid, fill_price, str(sell_order['order_id']),
+                                    'RECOVERED_ON_RESTART', realized_pnl, realized_pnl_pct,
+                                    fill_time_str
+                                )
+                                exit_written = True
+                                _add_brown_log('info',
+                                    f'{sym}: recovered exit trade on restart — '
+                                    f'{fill_qty} @ ${fill_price:.2f}, P&L {"+$" if realized_pnl >= 0 else "-$"}{abs(realized_pnl):.2f}')
+                        except Exception as _rec_err:
+                            app_logger.debug(f'BrownBot startup recovery check {sym}: {_rec_err}')
+
+                    # Only delete the buy trade + position when entry was phantom
+                    # (no sell found anywhere). If we recovered an exit, keep the
+                    # buy and the brown_positions row (now marked 'closed').
+                    if entry_oid and not has_db_sell and not exit_written:
+                        # Cancel the pending buy order at broker before cleanup so
+                        # a delayed fill doesn't create an untracked broker position.
+                        try:
+                            if _brown_broker:
+                                _brown_broker.cancel_order(entry_oid)
+                        except Exception:
+                            pass  # already filled, rejected, or not found — ignore
+                        db_manager.delete_buy_trade_by_order_id(entry_oid)
                         db_manager.delete_brown_position(pid)
-                        # Remove the phantom buy trade so it doesn't pollute FIFO matching
-                        if entry_oid:
-                            db_manager.delete_buy_trade_by_order_id(entry_oid)
+                        try:
+                            db_manager.update_brown_order_fill(
+                                entry_oid, 0, 0, status='cancelled')
+                        except Exception:
+                            pass
+                        app_logger.info(f'BrownBot startup: deleted phantom entry {sym} (entry_oid={entry_oid})')
+                    elif has_db_sell or exit_written:
+                        app_logger.info(f'BrownBot startup: kept buy trade {sym} — exit {"already in DB" if has_db_sell else "recovered from broker"}')
+
                 if stale:
                     _add_brown_log('info',
                         f'Startup: removed {len(stale)} position(s) not in broker '
-                        f'({", ".join(s for _, s in [(p, sym) for p, sym, _ in stale])})')
+                        f'({", ".join(sym for _, sym, _, _ in stale)})')
 
                 # 2 — adopt orphans (in broker but not tracked)
                 # These positions already exist at the broker so we MUST track them for exit,
@@ -5288,9 +5506,13 @@ def brown_bot_close_all():
     _add_brown_log('warning',
         f'CLOSE ALL: {len(closed)} position(s) submitted — {", ".join(closed_symbols) or "none"}')
 
-    # Write exit trades for every active position not already being closed.
-    # Skip _exit_pending positions — a previous close-all already wrote their SELL.
+    # Build a symbol→order_id map from the broker response for order logging
+    closeall_order_map = {c['symbol']: c.get('order_id') for c in closed}
+
+    # Write exit trades and close position records for every active position
+    # not already being closed. Skip _exit_pending — previous close-all handled them.
     now_str = datetime.now().isoformat()
+    _trade_date = _last_trading_date()
     with _brown_bot_lock:
         snapshot = {
             pid: pos for pid, pos in _brown_bot_active_positions.items()
@@ -5298,32 +5520,65 @@ def brown_bot_close_all():
         }
 
     for pid, pos in snapshot.items():
-        sym = pos.get('symbol', '').upper()
+        sym         = pos.get('symbol', '').upper()
+        exit_price  = float(pos.get('_current_price') or pos.get('entry_price', 0))
+        avg_entry   = float(pos.get('avg_entry_price') or pos.get('entry_price', 0))
+        quantity    = int(pos.get('quantity', 0))
+        pos_type    = pos.get('position_type', 'day')
+        order_id    = closeall_order_map.get(sym)
+        realized    = round((exit_price - avg_entry) * quantity, 2) if avg_entry else round(pos.get('unrealized_pnl', 0), 2)
+        realized_pct = round((exit_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+
+        # Log exit order in the immutable orders table
+        if order_id:
+            try:
+                db_manager.add_brown_order({
+                    'order_id':       str(order_id),
+                    'position_id':    pid,
+                    'symbol':         sym,
+                    'side':           'S',
+                    'order_type':     'exit',
+                    'position_type':  pos_type,
+                    'submitted_qty':  quantity,
+                    'submitted_price': exit_price,
+                    'status':         'pending',
+                    'exit_reason':    'CLOSE_ALL',
+                    'submitted_at':   now_str,
+                    'trade_date':     _trade_date,
+                })
+            except Exception:
+                pass
+
         try:
             db_manager.add_trade({
                 'trade_id':      f'BROWN_CLOSEALL_{sym}_{int(time.time())}',
                 'symbol':        sym,
                 'side':          'S',
-                'quantity':      int(pos.get('quantity', 0)),
-                'price':         pos.get('_current_price') or pos.get('entry_price', 0),
+                'quantity':      quantity,
+                'price':         exit_price,
                 'route':         'SMAT',
                 'trade_time':    now_str,
-                'order_id':      None,
+                'order_id':      order_id,
                 'liquidity':     None,
                 'ecn_fee':       0.0,
-                'pnl':           round(pos.get('unrealized_pnl', 0), 2),
-                'trade_date':    _last_trading_date(),
-                'position_type': pos.get('position_type', 'day'),
+                'pnl':           realized,
+                'trade_date':    _trade_date,
+                'position_type': pos_type,
                 'days_held':     None,
                 'source':        'brownbot',
                 'broker':        broker.name if broker else None,
             })
         except Exception as _e:
-            app_logger.debug(f'close-all DB write failed for {sym}: {_e}')
+            app_logger.debug(f'close-all DB trade write failed for {sym}: {_e}')
+
+        # Mark position as closed (preserves P&L history) instead of deleting
         try:
-            db_manager.delete_brown_position(pid)
-        except Exception:
-            pass
+            db_manager.close_brown_position(
+                pid, exit_price, order_id, 'CLOSE_ALL',
+                realized, realized_pct, now_str
+            )
+        except Exception as _e:
+            app_logger.debug(f'close-all position close failed for {sym}: {_e}')
 
     # Mark positions as pending-close rather than clearing immediately.
     # The status endpoint builds bb_by_symbol from _brown_bot_active_positions;
@@ -5393,8 +5648,7 @@ def get_brown_bot_risk_status():
             config = {}
         today = _last_trading_date()
         try:
-            summary = db_manager.get_trade_summary(start_date=today, end_date=today)
-            realized_pnl = float(summary.get('total_pnl', 0.0)) if summary else 0.0
+            realized_pnl = db_manager.get_brown_daily_realized_pnl(today)
         except Exception:
             realized_pnl = 0.0
         total_pnl = realized_pnl + unrealized_total
@@ -5410,23 +5664,10 @@ def get_brown_bot_risk_status():
             'max_concurrent_swing': int(config.get('max_concurrent_swing', 5)),
             'circuit_breaker_open': total_pnl <= max_loss,
         }
-    # Per-ticker P&L breakdown for today
+    # Per-ticker P&L breakdown for today — sourced from brown_positions table
     try:
         _today = _last_trading_date()
-        with db_manager.get_connection() as _conn:
-            _rows = _conn.execute(
-                '''SELECT symbol,
-                          ROUND(SUM(pnl), 2)   AS pnl,
-                          COUNT(*)              AS trades,
-                          SUM(quantity)         AS shares
-                   FROM trades
-                   WHERE trade_date = ?
-                     AND side IN ('S', 'SS')
-                   GROUP BY symbol
-                   ORDER BY SUM(pnl) DESC''',
-                (_today,)
-            ).fetchall()
-        snapshot['pnl_by_ticker'] = [dict(r) for r in _rows]
+        snapshot['pnl_by_ticker'] = db_manager.get_brown_positions_pnl_by_ticker(_today)
     except Exception:
         snapshot['pnl_by_ticker'] = []
 

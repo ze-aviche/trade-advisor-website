@@ -406,6 +406,27 @@ class DatabaseManager:
             cursor.execute(
                 'CREATE INDEX IF NOT EXISTS idx_ssh_date ON swing_screener_history(date)')
 
+            # brown_positions: additive P&L tracking columns
+            for col, defn in [
+                ('status',             "TEXT DEFAULT 'open'"),
+                ('trade_date',         'TEXT'),
+                ('entry_order_id',     'TEXT'),
+                ('avg_entry_price',    'REAL'),
+                ('current_price',      'REAL'),
+                ('unrealized_pnl',     'REAL DEFAULT 0'),
+                ('unrealized_pnl_pct', 'REAL DEFAULT 0'),
+                ('realized_pnl',       'REAL DEFAULT 0'),
+                ('realized_pnl_pct',   'REAL DEFAULT 0'),
+                ('exit_order_id',      'TEXT'),
+                ('exit_price',         'REAL'),
+                ('exit_reason',        'TEXT'),
+                ('exit_time',          'TEXT'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE brown_positions ADD COLUMN {col} {defn}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
             # swing_daily_bars: daily OHLCV cache used by the swing backtest to compute
             # forward returns without hitting Alpaca on every backtest run.
             cursor.execute('''
@@ -439,6 +460,32 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+
+            # brown_orders: immutable per-order log (one row per BUY or SELL order placed by BrownBot)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_orders (
+                    order_id      TEXT PRIMARY KEY,
+                    position_id   TEXT,
+                    symbol        TEXT NOT NULL,
+                    side          TEXT NOT NULL,
+                    order_type    TEXT NOT NULL,
+                    position_type TEXT,
+                    submitted_qty INTEGER,
+                    submitted_price REAL,
+                    filled_qty    INTEGER,
+                    filled_price  REAL,
+                    status        TEXT DEFAULT 'pending',
+                    exit_reason   TEXT,
+                    submitted_at  TEXT,
+                    filled_at     TEXT,
+                    trade_date    TEXT,
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_brown_orders_position_id ON brown_orders(position_id)')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_brown_orders_trade_date ON brown_orders(trade_date)')
 
             # Upgrade trades.trade_id to UNIQUE — deduplicate first, then swap index.
             try:
@@ -2975,8 +3022,10 @@ class DatabaseManager:
                     '''INSERT OR REPLACE INTO brown_positions
                        (position_id, symbol, position_type, entry_price, quantity,
                         profit_target, profit_target_pct, stop_loss, stop_loss_pct,
-                        entry_time, entry_time_epoch, data_json)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        entry_time, entry_time_epoch, data_json,
+                        status, trade_date, entry_order_id, avg_entry_price,
+                        current_price, unrealized_pnl, unrealized_pnl_pct)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     (position_id,
                      position.get('symbol'),
                      position.get('position_type', 'day'),
@@ -2988,7 +3037,15 @@ class DatabaseManager:
                      position.get('stop_loss_pct'),
                      position.get('entry_time'),
                      position.get('entry_time_epoch'),
-                     json.dumps({k: v for k, v in position.items() if k != 'unrealized_pnl'}))
+                     json.dumps({k: v for k, v in position.items()
+                                 if k not in ('unrealized_pnl', 'realized_pnl')}),
+                     position.get('status', 'open'),
+                     position.get('trade_date'),
+                     position.get('entry_order_id'),
+                     position.get('avg_entry_price') or position.get('entry_price'),
+                     position.get('_current_price'),
+                     float(position.get('unrealized_pnl', 0) or 0),
+                     float(position.get('unrealized_pnl_pct', 0) or 0))
                 )
                 conn.commit()
                 return True
@@ -3008,24 +3065,183 @@ class DatabaseManager:
             return False
 
     def get_brown_positions(self) -> list:
-        """Return all persisted BrownBot positions, ordered by entry time."""
+        """Return active BrownBot positions (status open or legacy NULL), ordered by entry time.
+
+        DB columns for avg_entry_price and trade_date are overlaid on the data_json blob
+        so that targeted UPDATE calls (update_brown_position_entry) survive a crash that
+        occurs before the subsequent save_brown_position call refreshes data_json.
+        """
         try:
             with self.get_connection() as conn:
                 rows = conn.execute(
-                    'SELECT data_json FROM brown_positions ORDER BY entry_time_epoch ASC'
+                    "SELECT data_json, avg_entry_price, trade_date, stop_loss, profit_target "
+                    "FROM brown_positions "
+                    "WHERE status IS NULL OR status = 'open' "
+                    "ORDER BY entry_time_epoch ASC"
                 ).fetchall()
                 positions = []
                 for row in rows:
                     try:
                         pos = json.loads(row['data_json'] or '{}')
-                        if pos:
-                            positions.append(pos)
+                        if not pos:
+                            continue
+                        # Overlay DB columns so confirmed fill prices survive partial updates
+                        if row['avg_entry_price'] is not None:
+                            pos['avg_entry_price'] = row['avg_entry_price']
+                        if row['trade_date'] is not None:
+                            pos['trade_date'] = row['trade_date']
+                        positions.append(pos)
                     except Exception:
                         pass
                 return positions
         except Exception as e:
             print(f'Database error fetching brown_positions: {e}')
             return []
+
+    def add_brown_order(self, order_data: dict) -> bool:
+        """Insert a new BrownBot order record (immutable log entry)."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''INSERT OR IGNORE INTO brown_orders
+                       (order_id, position_id, symbol, side, order_type, position_type,
+                        submitted_qty, submitted_price, status, exit_reason,
+                        submitted_at, trade_date)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (str(order_data.get('order_id', '')),
+                     order_data.get('position_id'),
+                     order_data.get('symbol'),
+                     order_data.get('side'),
+                     order_data.get('order_type'),
+                     order_data.get('position_type'),
+                     order_data.get('submitted_qty'),
+                     order_data.get('submitted_price'),
+                     order_data.get('status', 'pending'),
+                     order_data.get('exit_reason'),
+                     order_data.get('submitted_at'),
+                     order_data.get('trade_date'))
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error adding brown_order: {e}')
+            return False
+
+    def update_brown_order_fill(self, order_id: str, fill_price: float, fill_qty: int,
+                                status: str = 'filled', filled_at: str = None) -> bool:
+        """Update a BrownBot order with actual broker fill data."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''UPDATE brown_orders
+                       SET filled_price = ?, filled_qty = ?, status = ?, filled_at = ?
+                       WHERE order_id = ?''',
+                    (fill_price, fill_qty, status,
+                     filled_at or datetime.now().isoformat(), str(order_id))
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error updating brown_order fill: {e}')
+            return False
+
+    def update_brown_position_entry(self, position_id: str, avg_entry_price: float,
+                                    quantity: int) -> bool:
+        """Update position with confirmed fill price after broker confirms entry."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''UPDATE brown_positions
+                       SET avg_entry_price = ?, quantity = ?
+                       WHERE position_id = ?''',
+                    (avg_entry_price, quantity, position_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error updating brown_position entry: {e}')
+            return False
+
+    def update_brown_position_unrealized(self, position_id: str, current_price: float,
+                                         unrealized_pnl: float,
+                                         unrealized_pnl_pct: float) -> bool:
+        """Persist the latest unrealized P&L for an active position."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''UPDATE brown_positions
+                       SET current_price = ?, unrealized_pnl = ?, unrealized_pnl_pct = ?
+                       WHERE position_id = ? AND (status IS NULL OR status = 'open')''',
+                    (current_price, unrealized_pnl, unrealized_pnl_pct, position_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error updating brown_position unrealized: {e}')
+            return False
+
+    def close_brown_position(self, position_id: str, exit_price: float,
+                             exit_order_id: str, exit_reason: str,
+                             realized_pnl: float, realized_pnl_pct: float,
+                             exit_time: str = None) -> bool:
+        """Mark a BrownBot position as closed and record realized P&L."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''UPDATE brown_positions
+                       SET status = 'closed', exit_price = ?, exit_order_id = ?,
+                           exit_reason = ?, realized_pnl = ?, realized_pnl_pct = ?,
+                           exit_time = ?, unrealized_pnl = 0, unrealized_pnl_pct = 0
+                       WHERE position_id = ?''',
+                    (exit_price,
+                     str(exit_order_id) if exit_order_id else None,
+                     exit_reason, realized_pnl, realized_pnl_pct,
+                     exit_time or datetime.now().isoformat(), position_id)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error closing brown_position: {e}')
+            return False
+
+    def get_brown_positions_pnl_by_ticker(self, trade_date: str = None) -> list:
+        """Return per-ticker realized and unrealized P&L from brown_positions."""
+        try:
+            with self.get_connection() as conn:
+                params = (trade_date,) if trade_date else ()
+                where  = 'WHERE trade_date = ?' if trade_date else ''
+                rows = conn.execute(
+                    f'''SELECT symbol,
+                               ROUND(SUM(realized_pnl), 2)                                      AS realized_pnl,
+                               ROUND(SUM(CASE WHEN status IS NULL OR status = 'open'
+                                              THEN unrealized_pnl ELSE 0 END), 2)               AS unrealized_pnl,
+                               COUNT(*)                                                          AS trades
+                        FROM brown_positions
+                        {where}
+                        GROUP BY symbol
+                        ORDER BY SUM(realized_pnl) DESC''',
+                    params
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            print(f'Database error fetching brown_positions_pnl_by_ticker: {e}')
+            return []
+
+    def get_brown_daily_realized_pnl(self, trade_date: str = None) -> float:
+        """Return total realized P&L for closed BrownBot positions on a given trading date."""
+        try:
+            with self.get_connection() as conn:
+                params = (trade_date,) if trade_date else ()
+                where  = "AND trade_date = ?" if trade_date else ''
+                row = conn.execute(
+                    f"SELECT COALESCE(SUM(realized_pnl), 0) AS total "
+                    f"FROM brown_positions WHERE status = 'closed' {where}",
+                    params
+                ).fetchone()
+                return float(row['total']) if row else 0.0
+        except Exception as e:
+            print(f'Database error fetching brown_daily_realized_pnl: {e}')
+            return 0.0
 
 
 # Global database manager instance
