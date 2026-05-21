@@ -3322,6 +3322,10 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         try:
             from bot.broker.base import OrderStatus as _OStatus
             _filled = _brown_broker.get_order(str(order_id))
+            app_logger.debug(
+                f'[BrownBot entry] immediate status check {symbol} '
+                f'order={str(order_id)[:8]}… status={_filled.status} '
+                f'filled_avg_price={_filled.filled_avg_price} filled_qty={_filled.filled_qty}')
             if _filled.status in (_OStatus.CANCELLED, _OStatus.REJECTED):
                 _add_brown_log('error',
                     f'{symbol} order {str(order_id)[:8]}… rejected immediately — not entering')
@@ -3336,6 +3340,10 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 price    = _fill_price
                 quantity = _fill_qty
                 _entry_confirmed = True
+            else:
+                app_logger.debug(
+                    f'[BrownBot entry] {symbol} order {str(order_id)[:8]}… '
+                    f'not yet filled — deferring to monitor loop')
         except Exception as _fe:
             app_logger.debug(f'BrownBot fill check {symbol}: {_fe}')
 
@@ -3400,14 +3408,22 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     with _brown_bot_lock:
         _brown_bot_active_positions[position_id] = position
 
+    app_logger.debug(
+        f'[BrownBot entry] {symbol} position_id={position_id} '
+        f'entry_confirmed={_entry_confirmed} avg_entry_price={position.get("avg_entry_price")} '
+        f'target={position.get("profit_target")} stop={position.get("stop_loss")} '
+        f'order_id={str(order_id)[:8] if order_id else None}…')
+
     # Persist position to DB so it survives a server restart
     try:
         db_manager.save_brown_position(position_id, position)
+        app_logger.debug(f'[BrownBot entry] {symbol} position saved to DB (status=open)')
     except Exception as _e:
         _add_brown_log('warning', f'DB position save failed for {symbol}: {_e}')
 
     # Log the order to the immutable orders table
     if order_id:
+        _order_status_str = 'filled' if _entry_confirmed else 'pending'
         try:
             db_manager.add_brown_order({
                 'order_id':       str(order_id),
@@ -3418,15 +3434,27 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 'position_type':  position_type,
                 'submitted_qty':  quantity,
                 'submitted_price': price,
-                'status':         'filled' if _entry_confirmed else 'pending',
+                'status':         _order_status_str,
                 'submitted_at':   datetime.now().isoformat(),
                 'trade_date':     _trade_date,
             })
+            app_logger.debug(
+                f'[BrownBot entry] {symbol} brown_orders row written '
+                f'order={str(order_id)[:8]}… status={_order_status_str}')
             if _entry_confirmed:
                 db_manager.update_brown_order_fill(str(order_id), price, quantity)
                 db_manager.update_brown_position_entry(position_id, price, quantity)
+                app_logger.debug(
+                    f'[BrownBot entry] {symbol} fast-path: '
+                    f'update_brown_order_fill + update_brown_position_entry done '
+                    f'fill_price={price} fill_qty={quantity}')
         except Exception as _e:
             _add_brown_log('warning', f'DB order log failed for {symbol}: {_e}')
+
+    if not _entry_confirmed and order_id:
+        _add_brown_log('info',
+            f'{symbol} BUY submitted order={str(order_id)[:8]}… — '
+            f'waiting for broker fill confirmation')
 
     # Write BUY trade to DB only after broker confirms the fill.
     if _entry_confirmed:
@@ -4308,6 +4336,10 @@ def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
     position_id   = meta['position_id']
     position_type = meta['position_type']
 
+    app_logger.debug(
+        f'[BrownBot finalize_entry] {symbol} order={oid[:8]}… '
+        f'fill_price={fill_price} fill_qty={fill_qty}')
+
     with _brown_bot_lock:
         pos = _brown_bot_active_positions.get(position_id)
         if pos:
@@ -4319,26 +4351,40 @@ def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
             pos['profit_target']    = round(fill_price * (1 + tgt_pct / 100), 2)
             pos['stop_loss']        = round(fill_price * (1 - stp_pct / 100), 2)
             pos['_entry_confirmed'] = True
+            app_logger.debug(
+                f'[BrownBot finalize_entry] {symbol} memory updated — '
+                f'avg_entry={fill_price} target={pos["profit_target"]} stop={pos["stop_loss"]}')
+        else:
+            app_logger.debug(
+                f'[BrownBot finalize_entry] {symbol} position_id={position_id} '
+                f'NOT found in active_positions (may have been removed already)')
         _brown_pending_orders.pop(oid, None)
 
     # Update the orders table with actual fill data
     try:
         db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
-    except Exception:
-        pass
+        app_logger.debug(
+            f'[BrownBot finalize_entry] {symbol} brown_orders updated '
+            f'order={oid[:8]}… fill_price={fill_price} fill_qty={fill_qty} status=filled')
+    except Exception as _uoe:
+        app_logger.debug(f'[BrownBot finalize_entry] {symbol} update_brown_order_fill failed: {_uoe}')
 
     # Update position with confirmed avg entry price
     try:
         db_manager.update_brown_position_entry(position_id, fill_price, fill_qty)
-    except Exception:
-        pass
+        app_logger.debug(
+            f'[BrownBot finalize_entry] {symbol} brown_positions.avg_entry_price '
+            f'updated → {fill_price}')
+    except Exception as _upe:
+        app_logger.debug(f'[BrownBot finalize_entry] {symbol} update_brown_position_entry failed: {_upe}')
 
     try:
         db_manager.save_brown_position(
             position_id, _brown_bot_active_positions.get(position_id) or meta
         )
-    except Exception:
-        pass
+        app_logger.debug(f'[BrownBot finalize_entry] {symbol} save_brown_position done')
+    except Exception as _spe:
+        app_logger.debug(f'[BrownBot finalize_entry] {symbol} save_brown_position failed: {_spe}')
 
     try:
         db_manager.add_trade({
@@ -4376,17 +4422,30 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
     entry_num     = meta.get('entry_num', 1)
     days_held     = meta.get('days_held')
 
+    app_logger.debug(
+        f'[BrownBot finalize_exit] {symbol} order={oid[:8]}… '
+        f'fill_price={fill_price} fill_qty={fill_qty} reason={exit_reason} '
+        f'avg_entry={avg_entry} entry_price_in_meta={entry_price}')
+
     with _brown_bot_lock:
         _brown_pending_orders.pop(oid, None)
 
     realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry else 0.0
     realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
 
+    app_logger.debug(
+        f'[BrownBot finalize_exit] {symbol} P&L calc: '
+        f'({fill_price} - {avg_entry}) × {fill_qty} = {realized_pnl} '
+        f'({realized_pnl_pct:.2f}%)')
+
     # Update orders table with actual fill data
     try:
         db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
-    except Exception:
-        pass
+        app_logger.debug(
+            f'[BrownBot finalize_exit] {symbol} brown_orders updated '
+            f'order={oid[:8]}… fill_price={fill_price} fill_qty={fill_qty} status=filled')
+    except Exception as _uoe:
+        app_logger.debug(f'[BrownBot finalize_exit] {symbol} update_brown_order_fill failed: {_uoe}')
 
     # Mark position as closed with realized P&L
     try:
@@ -4394,6 +4453,9 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
             position_id, fill_price, oid, exit_reason,
             realized_pnl, realized_pnl_pct
         )
+        app_logger.debug(
+            f'[BrownBot finalize_exit] {symbol} brown_positions status → closed '
+            f'realized_pnl={realized_pnl} realized_pnl_pct={realized_pnl_pct}')
     except Exception as _e:
         _add_brown_log('warning', f'DB position close failed for {symbol}: {_e}')
 
@@ -4416,6 +4478,7 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
             'source':        'brownbot',
             'broker':        _brown_broker.name if _brown_broker else None,
         })
+        app_logger.debug(f'[BrownBot finalize_exit] {symbol} trades row written pnl={realized_pnl}')
     except Exception as _e:
         _add_brown_log('warning', f'DB exit write failed for {symbol}: {_e}')
 
@@ -4451,6 +4514,11 @@ def _brown_order_monitor_loop():
         with _brown_bot_lock:
             pending_snapshot = list(_brown_pending_orders.items())
 
+        if pending_snapshot:
+            app_logger.debug(
+                f'[BrownBot monitor] polling {len(pending_snapshot)} pending order(s): '
+                f'{[m["symbol"]+"/"+m["type"] for _, m in pending_snapshot]}')
+
         for oid, meta in pending_snapshot:
             if not _brown_bot_running:
                 break
@@ -4469,7 +4537,15 @@ def _brown_order_monitor_loop():
                           if order.filled_avg_price else meta.get('approx_price', 0.0))
             fill_qty   = int(order.filled_qty or meta.get('quantity', 0))
 
+            app_logger.debug(
+                f'[BrownBot monitor] {symbol} {order_type} order={oid[:8]}… '
+                f'status={order.status} age={age:.0f}s '
+                f'filled_avg_price={order.filled_avg_price} filled_qty={order.filled_qty}')
+
             if order.status == _OStatus.FILLED:
+                app_logger.debug(
+                    f'[BrownBot monitor] {symbol} FILLED → calling '
+                    f'finalize_{"entry" if order_type == "entry" else "exit"}')
                 if order_type == 'entry':
                     _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
                 else:
@@ -4496,7 +4572,14 @@ def _brown_order_monitor_loop():
                     if saved_pos:
                         with _brown_bot_lock:
                             _brown_bot_active_positions[meta['position_id']] = saved_pos
+                        app_logger.debug(
+                            f'[BrownBot monitor] {symbol} exit {status_str} — '
+                            f'position restored to active_positions for retry')
                         _add_brown_log('warning', f'{symbol}: exit order rejected — position restored for retry')
+                    else:
+                        app_logger.debug(
+                            f'[BrownBot monitor] {symbol} exit {status_str} — '
+                            f'no saved_pos in meta, position cannot be restored')
 
             elif age > ORDER_TIMEOUT:
                 _add_brown_log('warning',
@@ -4581,11 +4664,17 @@ def _brown_close_position(position_id, position, exit_reason):
 
     order_id = None
 
+    app_logger.debug(
+        f'[BrownBot close_position] {symbol} position_id={position_id} '
+        f'reason={exit_reason} qty={quantity} current_price={current_price} '
+        f'avg_entry_price={position.get("avg_entry_price")}')
+
     # Verify the broker actually holds this position before selling.
     # If it doesn't exist (e.g. BUY never filled), abort cleanly.
     try:
         bp = _brown_broker.get_position(symbol)
-    except Exception:
+    except Exception as _gpe:
+        app_logger.debug(f'[BrownBot close_position] {symbol} get_position raised: {_gpe}')
         bp = None
     if not bp:
         _add_brown_log('warning',
@@ -4594,6 +4683,10 @@ def _brown_close_position(position_id, position, exit_reason):
             _brown_bot_active_positions.pop(position_id, None)
             _brown_closing_positions.discard(position_id)
         return False
+
+    app_logger.debug(
+        f'[BrownBot close_position] {symbol} broker confirms position: '
+        f'qty={bp.qty} avg_entry={bp.avg_entry_price} unrealized={bp.unrealized_pnl}')
 
     # Use broker's close_position so we can never accidentally short.
     try:
@@ -4634,10 +4727,14 @@ def _brown_close_position(position_id, position, exit_reason):
             'submitted_at':   datetime.now().isoformat(),
             'trade_date':     _trade_date,
         })
+        app_logger.debug(
+            f'[BrownBot close_position] {symbol} exit brown_orders row written '
+            f'order={str(order_id)[:8]}… status=pending reason={exit_reason}')
     except Exception as _e:
         _add_brown_log('warning', f'DB exit order log failed for {symbol}: {_e}')
 
     # Queue the exit for the monitor thread — DB write happens after confirmed fill.
+    _avg_entry_for_meta = position.get('avg_entry_price') or entry_price
     with _brown_bot_lock:
         _brown_pending_orders[str(order_id)] = {
             'type':            'exit',
@@ -4648,7 +4745,7 @@ def _brown_close_position(position_id, position, exit_reason):
             'approx_price':    float(current_price),
             'quantity':        quantity,
             'entry_price':     entry_price,
-            'avg_entry_price': position.get('avg_entry_price') or entry_price,
+            'avg_entry_price': _avg_entry_for_meta,
             'position_type':   position_type,
             'exit_reason':     exit_reason,
             'days_held':       days_held,
@@ -4656,12 +4753,20 @@ def _brown_close_position(position_id, position, exit_reason):
             'position':        dict(position),  # kept so monitor can restore on rejection
         }
 
+    app_logger.debug(
+        f'[BrownBot close_position] {symbol} queued to pending_orders '
+        f'order={str(order_id)[:8]}… avg_entry_in_meta={_avg_entry_for_meta} '
+        f'approx_exit={current_price}')
+
     # Don't delete from DB — close_brown_position (called after fill confirmation)
     # marks it as 'closed' with realized P&L. Keeping the row until fill ensures
     # correct recovery if the server restarts while the exit order is in-flight.
     with _brown_bot_lock:
         _brown_bot_active_positions.pop(position_id, None)
         _brown_closing_positions.discard(position_id)
+    app_logger.debug(
+        f'[BrownBot close_position] {symbol} removed from active_positions, '
+        f'monitor will call finalize_exit on fill')
 
     # EOD flatten tracking must happen immediately (blocks re-entry the same day)
     if position_type == 'day' and 'EOD_FLATTEN' in exit_reason:
