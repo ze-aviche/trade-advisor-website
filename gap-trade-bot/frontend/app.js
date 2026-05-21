@@ -417,6 +417,16 @@ const app = createApp({
                 message:       '',
                 dataSource:    '',
             },
+            dbQuery: {
+                sql:      '',
+                columns:  [],
+                rows:     [],
+                rowCount: 0,
+                elapsed:  0,
+                truncated: false,
+                loading:  false,
+                error:    '',
+            },
             brownBotSignals: {},
             brownBotLivePrices: {},
             _brownPriceInterval: null,
@@ -1556,6 +1566,34 @@ const app = createApp({
                         alert(data.error || 'Failed to reset password');
                     }
                 } catch (e) { console.error(e); }
+            },
+
+            async runDbQuery() {
+                const sql = (this.dbQuery.sql || '').trim();
+                if (!sql) return;
+                this.dbQuery.loading = true;
+                this.dbQuery.error = '';
+                this.dbQuery.columns = [];
+                this.dbQuery.rows = [];
+                try {
+                    const res = await fetch('/api/admin/db-query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json',
+                                   'Authorization': `Bearer ${localStorage.getItem('session_token')}` },
+                        body: JSON.stringify({ sql }),
+                    });
+                    const data = await res.json();
+                    if (!data.success) { this.dbQuery.error = data.error || 'Query failed'; return; }
+                    this.dbQuery.columns  = data.columns;
+                    this.dbQuery.rows     = data.rows;
+                    this.dbQuery.rowCount = data.row_count;
+                    this.dbQuery.elapsed  = data.elapsed_ms;
+                    this.dbQuery.truncated = data.truncated;
+                } catch (e) {
+                    this.dbQuery.error = e.message;
+                } finally {
+                    this.dbQuery.loading = false;
+                }
             },
 
             async loadAdminUsers() {

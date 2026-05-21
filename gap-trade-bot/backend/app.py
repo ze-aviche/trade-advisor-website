@@ -1487,6 +1487,57 @@ def admin_reset_user_password(user_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/db-query', methods=['POST'])
+@require_role('super_admin', 'dev_master')
+def admin_db_query():
+    """Execute a read-only SQL query against the SQLite database.
+    Only SELECT and PRAGMA are permitted; writes are also blocked at the
+    connection level via PRAGMA query_only = ON."""
+    import time as _time
+    import re as _re
+    try:
+        body = request.get_json(force=True) or {}
+        sql = (body.get('sql') or '').strip()
+        if not sql:
+            return jsonify({'success': False, 'error': 'No SQL provided'}), 400
+
+        # Strip single-line and block comments, then check first token
+        sql_clean = _re.sub(r'--[^\n]*', '', sql)
+        sql_clean = _re.sub(r'/\*.*?\*/', '', sql_clean, flags=_re.S).strip()
+        first_token = (_re.split(r'\s+', sql_clean)[0] or '').upper()
+        if first_token not in ('SELECT', 'PRAGMA'):
+            return jsonify({'success': False,
+                            'error': 'Only SELECT and PRAGMA queries are permitted.'}), 400
+
+        # Prevent multi-statement injection (semicolon not at the very end)
+        if ';' in sql_clean.rstrip('; \t\n'):
+            return jsonify({'success': False,
+                            'error': 'Multi-statement queries are not allowed.'}), 400
+
+        user = getattr(request, 'user', {})
+        app_logger.info(f"[admin-db-query] {user.get('username','?')}: {sql[:300]}")
+
+        t0 = _time.time()
+        with db_manager.get_connection() as conn:
+            conn.execute('PRAGMA query_only = ON')
+            cursor = conn.execute(sql)
+            columns = [d[0] for d in (cursor.description or [])]
+            rows = [list(r) for r in cursor.fetchmany(500)]
+        elapsed_ms = round((_time.time() - t0) * 1000)
+
+        return jsonify({
+            'success':    True,
+            'columns':    columns,
+            'rows':       rows,
+            'row_count':  len(rows),
+            'elapsed_ms': elapsed_ms,
+            'truncated':  len(rows) == 500,
+        })
+    except Exception as e:
+        app_logger.warning(f'admin_db_query error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
 @app.route('/api/auth/profile', methods=['PUT'])
 @require_auth
 def update_auth_profile():
