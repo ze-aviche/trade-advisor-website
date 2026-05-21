@@ -415,6 +415,7 @@ const app = createApp({
                 stats:         null,
                 trades:        [],
                 message:       '',
+                dataSource:    '',
             },
             brownBotSignals: {},
             brownBotLivePrices: {},
@@ -5146,6 +5147,7 @@ const app = createApp({
                 this.swingBt.stats  = (data.stats && 'total_trades' in data.stats) ? data.stats : null;
                 this.swingBt.trades = data.trades || [];
                 this.swingBt.message = data.message || '';
+                this.swingBt.dataSource = data.stats?.data_source || '';
                 if (!data.trades?.length && data.message) {
                     this.showNotification(data.message, 'info');
                 }

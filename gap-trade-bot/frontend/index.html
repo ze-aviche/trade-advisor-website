@@ -4388,6 +4388,12 @@
                         <i class="fas fa-info-circle mr-2"></i>{{ swingBt.message }}
                     </div>
 
+                    <!-- Daily-picks fallback notice -->
+                    <div v-if="swingBt.stats && swingBt.dataSource === 'daily_picks'" class="text-xs text-sky-300 bg-sky-900/20 border border-sky-800/40 rounded-xl px-4 py-3">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Using Swing tab AI picks as data source (BrownBot screener history not yet collected). Entry prices are next-day market open.
+                    </div>
+
                     <!-- Stats cards -->
                     <div v-if="swingBt.stats" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                         <div class="bg-gray-800 rounded-xl px-3 py-4 text-center">

@@ -2657,6 +2657,24 @@ class DatabaseManager:
             _db_logger.error(f'Database error fetching swing_daily_picks date={date}: {e}', exc_info=True)
             return None
 
+    def get_swing_picks_range(self, start_date: str, end_date: str) -> list:
+        """Return all swing_daily_picks rows between start_date and end_date (inclusive).
+        Each item: {'date': str, 'picks': list[dict]}."""
+        try:
+            with self.get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT date, picks_json FROM swing_daily_picks "
+                    "WHERE date BETWEEN ? AND ? ORDER BY date",
+                    (start_date, end_date)
+                ).fetchall()
+                return [
+                    {'date': r['date'], 'picks': json.loads(r['picks_json'] or '[]')}
+                    for r in rows
+                ]
+        except Exception as e:
+            _db_logger.error(f'get_swing_picks_range error: {e}')
+            return []
+
     # ------------------------------------------------------------------
     # Swing screener history (Option-B backtest data collection)
     # ------------------------------------------------------------------

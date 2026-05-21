@@ -5520,10 +5520,33 @@ def swing_backtest():
         max_hold_days     = int(body.get('max_hold_days', 20))
 
         rows = db_manager.get_swing_screener_history(start_date, end_date)
+        _data_source = 'screener_history'
         if not rows:
-            return jsonify({'success': True, 'trades': [], 'stats': {},
-                            'message': 'No screener history in this date range yet — '
-                                       'data collection starts automatically when BrownBot runs.'})
+            # Fall back to swing_daily_picks (populated by Swing tab AI pipeline).
+            # Picks have grade/bias but no price — the simulation will use next-day open.
+            daily_picks = db_manager.get_swing_picks_range(start_date, end_date)
+            if not daily_picks:
+                return jsonify({'success': True, 'trades': [], 'stats': {},
+                                'message': 'No screener history in this date range yet — '
+                                           'data collection starts automatically when BrownBot runs.'})
+            _data_source = 'daily_picks'
+            for day_row in daily_picks:
+                for pick in day_row.get('picks', []):
+                    if not pick.get('ticker'):
+                        continue
+                    rows.append({
+                        'date':        day_row['date'],
+                        'ticker':      pick['ticker'],
+                        'ai_grade':    pick.get('grade'),
+                        'ai_bias':     pick.get('bias'),
+                        'ai_summary':  pick.get('reason'),
+                        'price':       None,
+                        'entry_price': None,
+                        'sector':      None,
+                        'rsi14':       None,
+                        'above_sma20': None,
+                        'was_entered': False,
+                    })
 
         # Filter by grade and bias
         valid_grades = list(grade_filter.upper())  # 'AB' → ['A','B']
@@ -5599,11 +5622,15 @@ def swing_backtest():
                 continue
             seen.add(key)
 
-            entry_price = row.get('entry_price') or row.get('price')
+            entry_price = row.get('entry_price') or row.get('price') or None
+            bars = _get_forward_bars(row['ticker'], row['date'], max_hold_days + 10)
+            if not bars:
+                continue
+            if not entry_price:
+                # daily_picks fallback: no intraday price stored — use next-day open
+                entry_price = bars[0].get('open')
             if not entry_price:
                 continue
-
-            bars = _get_forward_bars(row['ticker'], row['date'], max_hold_days + 10)
             exit_price, days_held, exit_reason = _simulate_trade(
                 entry_price, bars, profit_target_pct, stop_loss_pct, max_hold_days)
 
@@ -5653,6 +5680,7 @@ def swing_backtest():
             'date_range':     f'{start_date} → {end_date}',
             'grade_filter':   grade_filter,
             'bias_filter':    bias_filter,
+            'data_source':    _data_source,
         }
 
         return jsonify({'success': True, 'trades': trades, 'stats': stats})
