@@ -69,7 +69,7 @@ try:
     from scheduled_das_sync import start_scheduled_sync, stop_scheduled_sync, get_sync_status, manual_sync
     SCHEDULED_SYNC_AVAILABLE = True
 except ImportError as e:
-    app_logger.warning(f"Warning: Could not import scheduled_das_sync: {e}")
+    pass  # app_logger.warning(f"Warning: Could not import scheduled_das_sync: {e}")
     SCHEDULED_SYNC_AVAILABLE = False
 
 # Import trading bot
@@ -119,7 +119,7 @@ if not DAS_ENABLED:
     BOT_AVAILABLE = False
     SCHEDULED_SYNC_AVAILABLE = False
 
-app_logger.info(f"[STARTUP] DAS_ENABLED={DAS_ENABLED}  BOT_AVAILABLE={BOT_AVAILABLE}  SCHEDULED_SYNC={SCHEDULED_SYNC_AVAILABLE}")
+# app_logger.info(f"[STARTUP] DAS_ENABLED={DAS_ENABLED}  BOT_AVAILABLE={BOT_AVAILABLE}  SCHEDULED_SYNC={SCHEDULED_SYNC_AVAILABLE}")
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 
@@ -277,6 +277,7 @@ _brown_order_monitor_thread = None
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_broker = None        # BrokerBase instance held for the bot's lifetime
+_brown_bot_user_id: int = 1  # user who started the bot — used by background threads for DB reads
 _brown_exit_thread = None
 # Playbook cache — keyed by symbol, populated by background threads, cleared on bot start
 _playbook_cache:   dict = {}   # symbol → GapUpTradeAgent playbook dict
@@ -327,7 +328,7 @@ class _DasDirectSocket:
                         pass
                     return data.decode('ascii', errors='replace')
                 except Exception as e:
-                    app_logger.warning(f"DAS direct socket error (attempt {attempt + 1}): {e}")
+                    pass  # app_logger.warning(f"DAS direct socket error (attempt {attempt + 1}): {e}")
                     try:
                         self._sock.close()
                     except Exception:
@@ -432,9 +433,9 @@ def get_das_connection():
                 from cmdapi.CMDAPI_PYTHON import Connection
                 _das_connection = Connection()
                 _das_connection.ConnectToServer()
-                app_logger.info("✅ DAS connection established")
+                pass  # app_logger.info("✅ DAS connection established")
             except Exception as e:
-                app_logger.error(f"❌ Failed to establish DAS connection: {e}")
+                pass  # app_logger.error(f"❌ Failed to establish DAS connection: {e}")
                 _das_connection = None
                 return None
         
@@ -448,9 +449,9 @@ def close_das_connection():
         if _das_connection is not None:
             try:
                 _das_connection.Disconnect()
-                app_logger.info("🛑 DAS connection closed")
+                pass  # app_logger.info("🛑 DAS connection closed")
             except Exception as e:
-                app_logger.error(f"❌ Error closing DAS connection: {e}")
+                pass  # app_logger.error(f"❌ Error closing DAS connection: {e}")
             finally:
                 _das_connection = None
 
@@ -485,7 +486,7 @@ def _send_das_script(script: str) -> str:
         if result:
             return result
     except Exception as e:
-        app_logger.error(f"_das_direct failed for script '{script.strip()}': {e}")
+        pass  # app_logger.error(f"_das_direct failed for script '{script.strip()}': {e}")
 
     return ""
 
@@ -514,7 +515,7 @@ def get_real_stock_data(symbol, user_id: int = 1):
                 'dollar_volume':  dollar_vol,
             }
         except Exception as e:
-            app_logger.warning(f'[Broker] get_quote {sym} failed: {e}')
+            pass  # app_logger.warning(f'[Broker] get_quote {sym} failed: {e}')
 
     # ── Path 2: legacy DAS Level 1 ───────────────────────────────────
     if not DAS_ENABLED:
@@ -524,13 +525,13 @@ def get_real_stock_data(symbol, user_id: int = 1):
     if result:
         quote_data = _parse_das_level1_response(result, sym)
         if quote_data:
-            app_logger.info(
-                f"Level 1 {sym}: ${quote_data['current_price']} "
-                f"Vol={quote_data['volume']}M DolVol=${quote_data['dollar_volume']}M"
-            )
+            # app_logger.info(
+            #     f"Level 1 {sym}: ${quote_data['current_price']} "
+            #     f"Vol={quote_data['volume']}M DolVol=${quote_data['dollar_volume']}M"
+            # )
             return quote_data
 
-    app_logger.warning(f"No quote data available for {sym}")
+    # app_logger.warning(f"No quote data available for {sym}")
     return None
 
 def _parse_das_level1_response(response: str, symbol: str):
@@ -542,7 +543,7 @@ def _parse_das_level1_response(response: str, symbol: str):
             # Look for the $Quote line format: $Quote symbol A:askprice Asz:asksize B:bidprice Bsz:bidsize V:volume L:lastprice Hi:highprice Lo:lowprice op:openprice ycl:yesterdayclose tcl:todayclose PE:primExchange VWAP:vwapValue T:QuoteTime(HHMMSS)
             if line.startswith('$Quote') and symbol in line:
                 parts = line.split()
-                app_logger.debug(f"Parsing DAS Level 1 line: {line}")
+                pass  # app_logger.debug(f"Parsing DAS Level 1 line: {line}")
                 
                 # Initialize variables
                 current_price = None
@@ -588,14 +589,14 @@ def _parse_das_level1_response(response: str, symbol: str):
                 elif bid_price and bid_price > 0:
                     current_price = bid_price
                 else:
-                    app_logger.warning(f"No valid price found in DAS Level 1 data for {symbol}")
+                    pass  # app_logger.warning(f"No valid price found in DAS Level 1 data for {symbol}")
                     return None
                 
                 # Convert volume from shares to millions
                 if volume and volume > 0:
                     volume_millions = volume / 1_000_000
                 else:
-                    app_logger.warning(f"No valid volume found in DAS Level 1 data for {symbol}")
+                    pass  # app_logger.warning(f"No valid volume found in DAS Level 1 data for {symbol}")
                     return None
                 
                 # Calculate dollar volume (volume * current price)
@@ -610,11 +611,11 @@ def _parse_das_level1_response(response: str, symbol: str):
                     'data_source': 'DAS Level 1'
                 }
         
-        app_logger.warning(f"No valid Level 1 line found for {symbol} in response")
+        pass  # app_logger.warning(f"No valid Level 1 line found for {symbol} in response")
         return None
         
     except Exception as e:
-        app_logger.error(f"Error parsing DAS Level 1 response for {symbol}: {e}")
+        pass  # app_logger.error(f"Error parsing DAS Level 1 response for {symbol}: {e}")
         return None
 
 def check_entry_conditions(symbol_data, entry_params):
@@ -688,10 +689,10 @@ def place_das_order(symbol, order_side, route, quantity, order_type, limit_price
     else:
         return False, None, f"Unsupported order type: {order_type}"
 
-    add_entry_bot_log('info', f"Sending DAS order: {script.strip()}")
+    # add_entry_bot_log('info', f"Sending DAS order: {script.strip()}")
 
     result = _send_das_script(script)
-    add_entry_bot_log('info', f"DAS order result: {result.strip() if result else '(no response)'}")
+    # add_entry_bot_log('info', f"DAS order result: {result.strip() if result else '(no response)'}")
 
     if result and ("SUCCESS" in result.upper() or "ACCEPTED" in result.upper()):
         return True, unID, result
@@ -2825,7 +2826,7 @@ def start_bot():
     """Start the trading bot"""
     try:
         if not BOT_AVAILABLE:
-            app_logger.warning("start_bot called but BOT_AVAILABLE=False (DAS_ENABLED may be False or bot import failed)")
+            pass  # app_logger.warning("start_bot called but BOT_AVAILABLE=False (DAS_ENABLED may be False or bot import failed)")
             return jsonify({
                 'success': False,
                 'error': 'Bot not available'
@@ -3978,7 +3979,7 @@ def _brown_bot_scan_and_enter():
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
-    config = db_manager.get_brown_bot_config()
+    config = db_manager.get_brown_bot_config(_brown_bot_user_id)
 
     # Rebuild RiskManager from fresh config each iteration so UI config changes
     # (slot caps, loss limit) take effect immediately without restarting the bot.
@@ -4088,6 +4089,8 @@ def _brown_bot_scan_and_enter():
         if symbol in active_symbols:
             _add_brown_log('info', f'SKIP {symbol}: already in active positions')
             continue
+        if symbol in _brown_attempted_symbols:
+            continue  # already attempted this session (filled, rejected, or timed out)
         if symbol in _brown_eod_flattened_symbols:
             _add_brown_log('info', f'SKIP {symbol}: EOD-flattened earlier today — no re-entry')
             continue
@@ -4327,8 +4330,31 @@ def _brown_get_current_price(symbol):
     try:
         return _brown_broker.get_current_price(symbol)
     except Exception as e:
-        app_logger.debug(f'BrownBot broker price fetch failed for {symbol}: {e}')
+        app_logger.warning(f'[BrownBot] price fetch failed for {symbol}: {e}')
     return None
+
+
+def _brown_get_prices_batch(symbols):
+    """
+    Fetch prices for multiple symbols in ONE Alpaca snapshot call.
+    Returns dict {symbol: price}.  Falls back to per-symbol on error.
+    Used by the exit loop to avoid N individual API calls per tick.
+    """
+    if not _brown_broker or not symbols:
+        return {}
+    # Use batch snapshot if the broker supports it
+    if hasattr(_brown_broker, 'get_quotes_batch'):
+        try:
+            return _brown_broker.get_quotes_batch(symbols)
+        except Exception as e:
+            app_logger.warning(f'[BrownBot] batch price fetch failed: {e} — falling back to per-symbol')
+    # Fallback: individual calls (original behaviour)
+    prices = {}
+    for sym in symbols:
+        p = _brown_get_current_price(sym)
+        if p:
+            prices[sym] = p
+    return prices
 
 
 # ── Broker-confirmed order monitor ────────────────────────────────────────────
@@ -4416,7 +4442,7 @@ def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
 
 def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
     """Write the confirmed SELL trade to DB and update exit stats."""
-    global _brown_bot_stats, _brown_pending_orders
+    global _brown_bot_stats, _brown_pending_orders, _brown_attempted_symbols
     symbol        = meta['symbol']
     position_id   = meta['position_id']
     position_type = meta['position_type']
@@ -4499,6 +4525,13 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
         f'entry ${avg_entry:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}'
     )
 
+    # Unlock the symbol for re-entry on the next scanner cycle.
+    # EOD-flattened symbols are still blocked by _brown_eod_flattened_symbols;
+    # failed/timed-out orders never reach this path so they stay locked.
+    with _brown_bot_lock:
+        _brown_attempted_symbols.discard(symbol)
+    _add_brown_log('info', f'{symbol}: unlocked for re-entry (exit confirmed)')
+
 
 def _brown_order_monitor_loop():
     """
@@ -4509,6 +4542,7 @@ def _brown_order_monitor_loop():
     global _brown_closing_positions, _brown_entry_counts
 
     ORDER_TIMEOUT = 60  # seconds before a stuck order is cancelled
+    _last_status_log: dict[str, str] = {}  # oid → last logged status string
 
     while _brown_bot_running:
         time.sleep(2)
@@ -4541,10 +4575,13 @@ def _brown_order_monitor_loop():
                           if order.filled_avg_price else meta.get('approx_price', 0.0))
             fill_qty   = int(order.filled_qty or meta.get('quantity', 0))
 
-            app_logger.debug(
-                f'[BrownBot monitor] {symbol} {order_type} order={oid[:8]}… '
-                f'status={order.status} age={age:.0f}s '
-                f'filled_avg_price={order.filled_avg_price} filled_qty={order.filled_qty}')
+            _cur_status_str = str(order.status)
+            if _last_status_log.get(oid) != _cur_status_str:
+                app_logger.debug(
+                    f'[BrownBot monitor] {symbol} {order_type} order={oid[:8]}… '
+                    f'status={_cur_status_str} age={age:.0f}s '
+                    f'filled_avg_price={order.filled_avg_price} filled_qty={order.filled_qty}')
+                _last_status_log[oid] = _cur_status_str
 
             if order.status == _OStatus.FILLED:
                 app_logger.debug(
@@ -4821,13 +4858,13 @@ def _brown_close_position(position_id, position, exit_reason):
     return True
 
 
-def _brown_bot_check_exits(check_swing_specific=False):
+def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
     """Evaluate all open BrownBot positions for exit conditions."""
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
-    config = db_manager.get_brown_bot_config()
+    config = db_manager.get_brown_bot_config(_brown_bot_user_id)
 
     # Parse EOD time from config (e.g. '15:45')
     eod_str = config.get('day_eod_exit_time', '15:45')
@@ -4856,8 +4893,66 @@ def _brown_bot_check_exits(check_swing_specific=False):
         except Exception as e:
             app_logger.debug(f'Earnings calendar fetch failed: {e}')
 
+    # Sync profit_target and stop_loss for every active position from the latest config.
+    # This makes target/stop % changes effective within 2 s without restarting the bot.
+    # Skip rules (do NOT overwrite when any of these apply):
+    #   profit_target: skip if position has a playbook-derived target (playbook_target_pct
+    #                  is not None) — the AI set a specific % different from config.
+    #   stop_loss:     skip if position has a playbook-derived stop  (playbook_stop_pct
+    #                  is not None), OR breakeven has locked the stop at entry price, OR
+    #                  the trailing stop is already tracking a high-water mark.
+    _day_tgt_pct   = float(config.get('day_profit_target_pct', 5.0))
+    _day_stp_pct   = float(config.get('day_stop_loss_pct', 2.5))
+    _swing_tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
+    _swing_stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
     with _brown_bot_lock:
+        for _pid, _pos in _brown_bot_active_positions.items():
+            _ptype  = _pos.get('position_type', 'day')
+            _entry  = float(_pos.get('avg_entry_price') or _pos.get('entry_price') or 0)
+            if not _entry:
+                continue
+            _tgt_pct = _day_tgt_pct if _ptype == 'day' else _swing_tgt_pct
+            _stp_pct = _day_stp_pct if _ptype == 'day' else _swing_stp_pct
+            # Profit target: only sync if no playbook override
+            if _pos.get('playbook_target_pct') is None:
+                _pos['profit_target']     = round(_entry * (1 + _tgt_pct / 100), 2)
+                _pos['profit_target_pct'] = _tgt_pct
+            # Stop loss: only sync if no playbook override AND stop hasn't been
+            # moved to a more-favourable level by breakeven or trailing
+            if (_pos.get('playbook_stop_pct') is None
+                    and not _pos.get('_at_breakeven')
+                    and not _pos.get('_trail_high')):
+                _pos['stop_loss']     = round(_entry * (1 - _stp_pct / 100), 2)
+                _pos['stop_loss_pct'] = _stp_pct
         positions_snapshot = dict(_brown_bot_active_positions)
+
+    # Batch-fetch all prices in ONE API call to avoid per-symbol rate limiting.
+    _active_symbols = [p['symbol'] for p in positions_snapshot.values()
+                       if not p.get('_exit_pending')]
+    _price_cache = _brown_get_prices_batch(_active_symbols) if _active_symbols else {}
+    if _active_symbols and verbose:
+        app_logger.info(
+            f'[BrownBot exits] monitoring {len(_active_symbols)} position(s): '
+            f'{_active_symbols} | prices resolved: {len(_price_cache)}/{len(_active_symbols)}')
+        for _pid, _pos in positions_snapshot.items():
+            _psym = _pos.get('symbol', '?')
+            _pprice = _price_cache.get(_psym)
+            _pentry = float(_pos.get('avg_entry_price') or _pos.get('entry_price', 0) or 0)
+            _pqty = int(_pos.get('quantity', 0))
+            _ppnl = round((_pprice - _pentry) * _pqty, 2) if (_pprice and _pentry) else None
+            _pstop = _pos.get('stop_loss')
+            _ptgt  = _pos.get('profit_target')
+            _pbe   = ' [BE]' if _pos.get('_at_breakeven') else ''
+            _stop_str = f'${_pstop:.2f}' if _pstop else 'N/A'
+            _tgt_str  = f'${_ptgt:.2f}' if _ptgt else 'N/A'
+            _price_str = f'${_pprice:.2f}' if _pprice is not None else 'N/A'
+            _pnl_str   = f'${_ppnl:+.2f}' if _ppnl is not None else 'N/A'
+            app_logger.info(
+                f'[BrownBot exits]   {_psym}{_pbe}: '
+                f'entry=${_pentry:.2f} current={_price_str} '
+                f'stop={_stop_str} target={_tgt_str} '
+                f'pnl={_pnl_str} qty={_pqty} '
+                f'type={_pos.get("position_type","?")} pending_exit={_pos.get("_exit_pending",False)}')
 
     for position_id, position in positions_snapshot.items():
         if not _brown_bot_running:
@@ -4873,7 +4968,7 @@ def _brown_bot_check_exits(check_swing_specific=False):
         if time.time() - position.get('entry_time_epoch', 0) < 15:
             continue
 
-        current_price = _brown_get_current_price(symbol)
+        current_price = _price_cache.get(symbol)
 
         # EOD force-flatten: time-based — must fire even if price fetch failed.
         # _brown_close_position falls back to entry_price when _current_price is None.
@@ -4982,8 +5077,10 @@ def _brown_bot_exit_loop():
     tick = 0
     while _brown_bot_running:
         try:
-            # Check swing-specific conditions (hold days, earnings) every 30 ticks (60 s)
-            _brown_bot_check_exits(check_swing_specific=(tick % 30 == 0))
+            # Verbose summary every 30 ticks (60 s) — logs all monitored positions with P&L.
+            # Swing-specific checks (hold days, earnings) also run on the same cadence.
+            _verbose = (tick % 30 == 0)
+            _brown_bot_check_exits(check_swing_specific=_verbose, verbose=_verbose)
             tick += 1
         except Exception as e:
             app_logger.error(f'BrownBot exit loop error: {e}', exc_info=True)
@@ -5068,11 +5165,33 @@ def seed_gap_data():
 # ── BrownBot API endpoints ─────────────────────────────────────────────────
 
 @app.route('/api/brown-bot/status', methods=['GET'])
+@require_auth
 def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
     global _brown_bot_running, _brown_bot_active_positions
+
+    current_user_id = request.user.get('id', 1)
+    is_owner = (not _brown_bot_running) or (_brown_bot_user_id == current_user_id)
+
+    # Non-owners see the bot as idle — their actions don't affect another user's session
+    if not is_owner:
+        own_broker = _get_broker(current_user_id)
+        return jsonify({
+            'success': True,
+            'running': False,
+            'in_use_by_other': True,
+            'das_enabled': DAS_ENABLED,
+            'das_connected': False,
+            'broker': own_broker.to_dict() if own_broker else None,
+            'stats': {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0},
+            'active_positions_count': 0,
+            'active_positions': [],
+            'entry_counts': {},
+            'skipped_symbols': [],
+        })
+
     das_ok = DAS_ENABLED and _das_direct is not None
-    broker = _brown_broker or _get_broker()
+    broker = _brown_broker or _get_broker(current_user_id)
     broker_info = broker.to_dict() if broker else None
 
     # Snapshot in-memory BrownBot state under lock.
@@ -5212,7 +5331,7 @@ def get_brown_bot_broker_orders():
         until   – ISO date YYYY-MM-DD upper bound
         symbols – comma-separated ticker filter, e.g. NVDA,TSLA
     """
-    broker = _brown_broker or _get_broker()
+    broker = _brown_broker or _get_broker(request.user.get('id', 1))
     if not broker:
         return jsonify({'success': False, 'error': 'No broker configured'})
     if not hasattr(broker, 'get_orders_history'):
@@ -5246,7 +5365,7 @@ def get_brown_bot_broker_activities():
         date  – ISO date YYYY-MM-DD (Alpaca UTC day boundary)
         limit – max results (default 50, max 100)
     """
-    broker = _brown_broker or _get_broker()
+    broker = _brown_broker or _get_broker(request.user.get('id', 1))
     if not broker:
         return jsonify({'success': False, 'error': 'No broker configured'})
     if not hasattr(broker, 'get_activities'):
@@ -5268,12 +5387,24 @@ def get_brown_bot_broker_activities():
 @require_auth
 def start_brown_bot():
     """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread, _swing_candidates_cache, _swing_ai_picks_cache
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread, _swing_candidates_cache, _swing_ai_picks_cache, _brown_bot_user_id
     if _brown_bot_running:
+        if _brown_bot_user_id != request.user.get('id', 1):
+            return jsonify({'success': False, 'error': 'BrownBot is currently running for another user. Only one session can run at a time.'})
         return jsonify({'success': False, 'error': 'BrownBot is already running'})
 
+    _brown_bot_user_id = request.user.get('id', 1)
+
     # Require a configured broker — BrownBot is broker-agnostic, not DAS-only
-    _brown_broker = _get_broker()
+    _brown_broker = _get_broker(_brown_bot_user_id)
+    if not _brown_broker and _brown_bot_user_id != 1:
+        # Migration fallback: configs saved before the multi-user fix were stored under user_id=1.
+        # If the user has no personal config yet, try the admin slot so the bot can still start.
+        _brown_broker = _get_broker(1)
+        if _brown_broker:
+            _add_brown_log('warning',
+                'Using broker config from admin account (migration fallback). '
+                'Re-save your broker credentials in Account Settings to assign them to your account.')
     if not _brown_broker:
         return jsonify({'success': False, 'error': 'No broker configured. Set up a broker in Account Settings before starting BrownBot.'})
     _add_brown_log('info', f'Broker ready: {_brown_broker.name}')
@@ -5281,7 +5412,7 @@ def start_brown_bot():
     # Instantiate risk manager from saved config
     if RISK_MANAGER_AVAILABLE:
         try:
-            config = db_manager.get_brown_bot_config()
+            config = db_manager.get_brown_bot_config(_brown_bot_user_id)
             _brown_risk_manager = RiskManager(config)
             _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
                                    f'day limit {config.get("max_concurrent_day", 3)}, '
@@ -5499,7 +5630,7 @@ def start_brown_bot():
                 # These positions already exist at the broker so we MUST track them for exit,
                 # regardless of the slot cap. New entries remain blocked by the cap check in
                 # _brown_bot_scan_and_enter; orphan adoption is recovery only, not new entry.
-                config = db_manager.get_brown_bot_config()
+                config = db_manager.get_brown_bot_config(_brown_bot_user_id)
                 swing_tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
                 swing_stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
                 day_tgt_pct   = float(config.get('day_profit_target_pct', 5.0))
@@ -5611,6 +5742,10 @@ def stop_brown_bot():
     global _brown_bot_running, _brown_bot_thread, _brown_exit_thread, _brown_broker, _brown_order_monitor_thread
     if not _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is not running'})
+    current_user_id = request.user.get('id', 1)
+    is_super = request.user.get('system_role') in ('super_admin', 'dev_master')
+    if _brown_bot_user_id != current_user_id and not is_super:
+        return jsonify({'success': False, 'error': 'Only the user who started BrownBot (or a super admin) can stop it.'})
     _brown_bot_running = False
     # Short joins only — long joins block the eventlet greenlet and starve
     # Socket.IO keep-alive polls, causing session IDs to expire (400 errors).
@@ -5637,8 +5772,12 @@ def brown_bot_close_all():
     Marks positions _exit_pending and writes exit trades to DB.
     Memory cleanup is deferred to get_brown_bot_status once broker confirms fills."""
     global _brown_bot_active_positions
+    current_user_id = request.user.get('id', 1)
+    is_super = request.user.get('system_role') in ('super_admin', 'dev_master')
+    if _brown_bot_running and _brown_bot_user_id != current_user_id and not is_super:
+        return jsonify({'success': False, 'error': 'Cannot close positions — bot session belongs to another user.'})
 
-    broker = _brown_broker or _get_broker()
+    broker = (_brown_broker if _brown_bot_user_id == current_user_id else None) or _get_broker(current_user_id)
     if not broker:
         return jsonify({'success': False, 'error': 'No broker available'})
 
@@ -5747,7 +5886,7 @@ def brown_bot_close_all():
 def get_brown_bot_config_endpoint():
     """Return current BrownBot config."""
     try:
-        cfg = db_manager.get_brown_bot_config()
+        cfg = db_manager.get_brown_bot_config(request.user.get('id', 1))
         return jsonify({'success': True, 'config': cfg})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -5761,7 +5900,7 @@ def update_brown_bot_config_endpoint():
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
-        ok, msg = db_manager.update_brown_bot_config(data)
+        ok, msg = db_manager.update_brown_bot_config(data, request.user.get('id', 1))
         if not ok:
             return jsonify({'success': False, 'error': msg}), 500
         return jsonify({'success': True, 'message': msg})
@@ -5772,7 +5911,9 @@ def update_brown_bot_config_endpoint():
 @app.route('/api/brown-bot/logs', methods=['GET'])
 @require_auth
 def get_brown_bot_logs():
-    """Return recent BrownBot activity logs."""
+    """Return recent BrownBot activity logs — only for the user who started the bot."""
+    if _brown_bot_running and _brown_bot_user_id != request.user.get('id', 1):
+        return jsonify({'success': True, 'logs': []})
     return jsonify({'success': True, 'logs': list(reversed(_brown_bot_logs[-100:]))})
 
 
@@ -5781,15 +5922,19 @@ def get_brown_bot_logs():
 def get_brown_bot_risk_status():
     """Return live risk snapshot: daily P&L, open positions, circuit breaker state."""
     global _brown_risk_manager, _brown_bot_active_positions
-    with _brown_bot_lock:
-        positions = dict(_brown_bot_active_positions)
-    unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
-    if _brown_risk_manager is not None:
+    current_user_id = request.user.get('id', 1)
+    is_owner = (not _brown_bot_running) or (_brown_bot_user_id == current_user_id)
+
+    # Only expose the live risk manager snapshot to the user who started the bot
+    if is_owner and _brown_risk_manager is not None:
+        with _brown_bot_lock:
+            positions = dict(_brown_bot_active_positions)
+        unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
         snapshot = _brown_risk_manager.status(positions, unrealized_pnl=unrealized_total)
     else:
-        # Risk manager not started — return defaults from config
+        # Risk manager not started or belongs to another user — return defaults from caller's config
         try:
-            config = db_manager.get_brown_bot_config()
+            config = db_manager.get_brown_bot_config(current_user_id)
         except Exception:
             config = {}
         today = _last_trading_date()
@@ -5797,6 +5942,7 @@ def get_brown_bot_risk_status():
             realized_pnl = db_manager.get_brown_daily_realized_pnl(today)
         except Exception:
             realized_pnl = 0.0
+        unrealized_total = 0.0
         total_pnl = realized_pnl + unrealized_total
         max_loss = float(config.get('max_daily_loss', -500.0))
         snapshot = {
@@ -5838,7 +5984,7 @@ def get_supported_brokers():
 @require_auth
 def list_broker_configs():
     """Return all saved broker configs for the current user (no secrets in response)."""
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     configs = db_manager.get_broker_configs(user_id)
     return jsonify({'success': True, 'configs': configs})
 
@@ -5850,7 +5996,7 @@ def save_broker_config(broker_name):
     Save (upsert) a broker config.  Pass api_key / api_secret only when the user
     explicitly updates them — omitting them preserves the stored values.
     """
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     data = request.get_json() or {}
     ok, msg = db_manager.upsert_broker_config(broker_name, data, user_id)
     if ok:
@@ -5863,7 +6009,7 @@ def save_broker_config(broker_name):
 @require_auth
 def activate_broker(broker_name):
     """Switch the active broker without touching credentials."""
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     ok, msg = db_manager.activate_broker(broker_name, user_id)
     if ok:
         _invalidate_broker_cache(user_id)
@@ -5875,7 +6021,7 @@ def activate_broker(broker_name):
 @require_auth
 def delete_broker_config(broker_name):
     """Remove a broker config (revoke access)."""
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     ok, msg = db_manager.delete_broker_config(broker_name, user_id)
     if ok:
         return jsonify({'success': True, 'message': msg})
@@ -5889,7 +6035,7 @@ def test_broker_connection(broker_name):
     Attempt to connect with the stored credentials and return live account info.
     Used by the UI "Test Connection" button.
     """
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     row = db_manager.get_broker_config(broker_name, user_id)
     if not row:
         return jsonify({'success': False,
@@ -6133,7 +6279,7 @@ def swing_backtest():
 def get_brown_bot_candidates():
     """Return gap-up scanner results filtered by config thresholds, merged with watchlist."""
     try:
-        config = db_manager.get_brown_bot_config()
+        config = db_manager.get_brown_bot_config(request.user.get('id', 1))
         min_gap = config.get('min_gap_pct', 10.0)
         min_price = config.get('min_price', 5.0)
         max_price = config.get('max_price', 500.0)
@@ -6154,7 +6300,7 @@ def get_brown_bot_candidates():
                 continue
             scanner_hits.append({**s, 'source': 'scanner', 'trade_type': 'day', 'note': ''})
 
-        watchlist = db_manager.get_brown_watchlist()
+        watchlist = db_manager.get_brown_watchlist(request.user.get('id', 1))
         wl_symbols = {w['symbol'] for w in watchlist}
         scanner_symbols = {s['ticker'] for s in scanner_hits}
 
@@ -6236,12 +6382,25 @@ def get_brown_bot_candidate_signals():
     if not symbols:
         return jsonify({'success': False, 'error': 'symbols param required'}), 400
 
-    config = db_manager.get_brown_bot_config()
+    config = db_manager.get_brown_bot_config(request.user.get('id', 1))
+
+    # Batch-fetch prices for all symbols in one Alpaca snapshot call.
+    # Per-symbol get_real_stock_data would fire N snapshot requests concurrently and hit 429.
+    batch_prices = {}
+    try:
+        batch_prices = _alpaca_snapshots(symbols)
+    except Exception:
+        pass  # fall back to 0.0 per-symbol below
+
     results = {}
-    for sym in symbols:
+    for i, sym in enumerate(symbols):
+        if i > 0:
+            time.sleep(0.15)  # 150 ms between intraday-bar fetches to stay under rate limit
         try:
-            quote = get_real_stock_data(sym)
-            price = float(quote['current_price']) if quote else 0.0
+            price = float((batch_prices.get(sym) or {}).get('price') or 0.0)
+            if not price:
+                quote = get_real_stock_data(sym)
+                price = float(quote['current_price']) if quote else 0.0
             ok, checks, reason = _check_day_entry_signal(sym, price, price, config)
             results[sym] = {'ok': ok, 'checks': checks, 'reason': reason, 'price': price}
         except Exception as e:
@@ -6299,7 +6458,7 @@ def get_brown_bot_live_prices():
 def get_brown_bot_watchlist():
     """Return current BrownBot watchlist."""
     try:
-        return jsonify({'success': True, 'watchlist': db_manager.get_brown_watchlist()})
+        return jsonify({'success': True, 'watchlist': db_manager.get_brown_watchlist(request.user.get('id', 1))})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -6317,7 +6476,7 @@ def add_brown_bot_watchlist():
     if trade_type not in ('day', 'swing', 'auto'):
         trade_type = 'day'
     try:
-        db_manager.add_to_brown_watchlist(symbol, note, trade_type)
+        db_manager.add_to_brown_watchlist(symbol, note, trade_type, request.user.get('id', 1))
         _add_brown_log('info', f'Added {symbol} ({trade_type}) to watchlist')
         return jsonify({'success': True})
     except Exception as e:
@@ -6330,7 +6489,7 @@ def remove_brown_bot_watchlist(symbol):
     """Remove a symbol from the BrownBot watchlist."""
     symbol = symbol.strip().upper()
     try:
-        db_manager.remove_from_brown_watchlist(symbol)
+        db_manager.remove_from_brown_watchlist(symbol, request.user.get('id', 1))
         _add_brown_log('info', f'Removed {symbol} from watchlist')
         return jsonify({'success': True})
     except Exception as e:
@@ -6574,12 +6733,12 @@ def manage_das_connection():
         
         elif request.method == 'POST':
             # Force reconnection to DAS
-            app_logger.info("🔄 Force reconnecting to DAS...")
-            
+            # app_logger.info("🔄 Force reconnecting to DAS...")
+
             success = trading_bot.force_reconnect_das()
-            
+
             if success:
-                app_logger.info("✅ Successfully reconnected to DAS")
+                pass  # app_logger.info("✅ Successfully reconnected to DAS")
                 return jsonify({
                     'success': True,
                     'message': 'Successfully reconnected to DAS',
@@ -6589,7 +6748,7 @@ def manage_das_connection():
                     'timestamp': datetime.now().isoformat()
                 })
             else:
-                app_logger.error("❌ Failed to reconnect to DAS")
+                pass  # app_logger.error("❌ Failed to reconnect to DAS")
                 return jsonify({
                     'success': False,
                     'error': 'Failed to reconnect to DAS. Please ensure DAS Trader is running.',
@@ -6599,7 +6758,7 @@ def manage_das_connection():
                 }), 500
             
     except Exception as e:
-        app_logger.error(f"Error managing DAS connection: {e}")
+        pass  # app_logger.error(f"Error managing DAS connection: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -6906,7 +7065,7 @@ def import_das_trades():
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
-        app_logger.error(f"Error importing DAS trades: {e}")
+        pass  # app_logger.error(f"Error importing DAS trades: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -7049,7 +7208,7 @@ def sync_trades_from_das():
                 'error': message
             }), 400
     except Exception as e:
-        app_logger.error(f"Error syncing trades from DAS: {e}")
+        pass  # app_logger.error(f"Error syncing trades from DAS: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -8053,7 +8212,7 @@ def get_open_positions():
     """Return live open positions from Alpaca.
     Priority: running BrownBot broker → DB config → ALPACA_API_KEY env var."""
     try:
-        user_id = getattr(request.user, 'id', 1)  # matches pattern used by all other broker endpoints
+        user_id = request.user.get('id', 1)  # matches pattern used by all other broker endpoints
 
         broker = _brown_broker
         if broker:
@@ -9731,15 +9890,15 @@ if __name__ == '__main__':
         if SCHEDULED_SYNC_AVAILABLE:
             try:
                 start_scheduled_sync()
-                app_logger.info("✅ Scheduled DAS sync service started")
+                pass  # app_logger.info("✅ Scheduled DAS sync service started")
             except Exception as e:
-                app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
+                pass  # app_logger.error(f"❌ Failed to start scheduled DAS sync: {e}")
         else:
-            app_logger.warning("⚠️ Scheduled DAS sync not available")
+            pass  # app_logger.warning("⚠️ Scheduled DAS sync not available")
 
         start_position_sync_scheduler()
     else:
-        app_logger.info("ℹ️ DAS integration disabled — skipping DAS sync services")
+        pass  # app_logger.info("ℹ️ DAS integration disabled — skipping DAS sync services")
 
     app_logger.info("Starting Gap-Up Detection Web API...")
     app_logger.info("Server will be available at http://localhost:5000")

@@ -480,7 +480,85 @@ For each broker position that isn't tracked in BrownBot's DB: create a new posit
 
 All order-management debug lines are prefixed `[BrownBot ...]` and written to `app_logger` at `DEBUG` level — they appear in the server log when `LOG_LEVEL=DEBUG` and are **not** shown in the UI activity log.
 
-Filter your logs with: `grep '\[BrownBot'`
+### Log files (local Docker)
+
+| File | Level | Notes |
+|------|-------|-------|
+| `gap-trade-bot/backend/logs/gap_trade_backend_all.log` | DEBUG + above | Volume-mounted — readable on host without exec |
+| `gap-trade-bot/backend/logs/gap_trade_backend_errors.log` | ERROR only | Smaller, faster to scan when something blows up |
+
+Container name: **`gap-trade-bot-web-1`** (confirm with `docker ps`)
+
+### Log commands — Windows PowerShell (paste these tomorrow morning)
+
+> **Note:** PowerShell has no `grep`. Use `Select-String` on the host, or push the filter inside the container with `bash -c "... | grep ..."`.
+
+```powershell
+# ── All BrownBot activity (full order lifecycle) ──────────────────────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep '\[BrownBot'"
+
+# ── Entry flow only (scanner → order placed → fill confirmed) ─────────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep -E '\[BrownBot entry\]|\[BrownBot:.*\] BUY'"
+
+# ── Monitor loop only (pending order polls + finalize) ────────────────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep -E '\[BrownBot monitor\]|\[BrownBot finalize_'"
+
+# ── Exit flow only (close_position → SELL → finalize_exit) ───────────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep -E '\[BrownBot close_position\]|\[BrownBot finalize_exit\]|\[BrownBot:.*\] SELL'"
+
+# ── Warnings and errors only (rejections, timeouts, DB failures) ──────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep -E 'WARNING|ERROR'"
+
+# ── Specific symbol (replace NVDA) ────────────────────────────────────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep '\[BrownBot' | grep 'NVDA'"
+
+# ── P&L lines only (every confirmed exit with dollar result) ──────────────────
+docker exec -it gap-trade-bot-web-1 bash -c "tail -f logs/gap_trade_backend_all.log | grep -E 'EXITED|P&L calc|realized_pnl'"
+
+# ── Dump today's entries + exits (non-tailing, quick morning summary) ─────────
+docker exec gap-trade-bot-web-1 bash -c "grep 'ENTERED\|EXITED' logs/gap_trade_backend_all.log | grep $(date +%Y-%m-%d)"
+
+# ── PowerShell alternative (Select-String) if bash not in image ───────────────
+docker exec gap-trade-bot-web-1 tail -f logs/gap_trade_backend_all.log | Select-String "\[BrownBot"
+```
+
+### PowerShell — complete symbol trace (entry → exit, no tail)
+
+Replace `NVDA` with your symbol. Run from the repo root after market close or whenever you want the full history.
+
+```powershell
+$log = "gap-trade-bot\backend\logs\gap_trade_backend_all.log"
+
+# ── Full lifecycle for one symbol ─────────────────────────────────────────────
+Select-String "NVDA" $log | Select-String "\[BrownBot" | Select-Object -ExpandProperty Line
+
+# ── Entry only (BUY placed → fill confirmed) ──────────────────────────────────
+Select-String "NVDA" $log | Select-String "\[BrownBot entry\]|\[BrownBot:.*\] BUY.*NVDA|ENTERED.*NVDA|BUY confirmed.*NVDA" | Select-Object -ExpandProperty Line
+
+# ── Monitor polls for this symbol (this happens only when there is pendinf order at broker side) ─────────────────────────────────────────────
+Select-String "NVDA" $log | Select-String "\[BrownBot monitor\]|\[BrownBot finalize_entry\]" | Select-Object -ExpandProperty Line
+
+monitor all postions :
+
+Select-String "DELL" $log | Select-String "\[BrownBot" | Select-Object -ExpandProperty Line
+
+Select-String "DELL" $log | Select-String "BrownBot" | Select-Object -ExpandProperty Line
+
+# ── Exit only (SELL placed → fill confirmed → P&L) ────────────────────────────
+Select-String "NVDA" $log | Select-String "\[BrownBot close_position\]|\[BrownBot finalize_exit\]|\[BrownBot:.*\] SELL.*NVDA|EXITED.*NVDA|P&L calc.*NVDA" | Select-Object -ExpandProperty Line
+
+# ── Warnings / errors for this symbol only ────────────────────────────────────
+Select-String "NVDA" $log | Select-String "WARNING|ERROR" | Select-Object -ExpandProperty Line
+
+# ── Today's trades for ALL symbols (quick P&L summary) ───────────────────────
+$today = (Get-Date -Format "yyyy-MM-dd")
+Select-String $today $log | Select-String "ENTERED|EXITED" | Select-Object -ExpandProperty Line
+
+# ── All symbols that had any activity today ───────────────────────────────────
+$today = (Get-Date -Format "yyyy-MM-dd")
+Select-String $today $log | Select-String "ENTERED|EXITED" |
+    ForEach-Object { ($_.Line -split '\s+')[6] } | Sort-Object -Unique
+```
 
 ### Entry submission (`_brown_enter_position`)
 

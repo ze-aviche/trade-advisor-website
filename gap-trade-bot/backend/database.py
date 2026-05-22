@@ -281,14 +281,16 @@ class DatabaseManager:
             if cursor.fetchone()['cnt'] == 0:
                 cursor.execute('INSERT INTO brown_bot_config (user_id) VALUES (1)')
 
-            # brown_watchlist: manually pinned symbols for BrownBot
+            # brown_watchlist: manually pinned symbols for BrownBot (per-user)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS brown_watchlist (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL UNIQUE,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    symbol TEXT NOT NULL,
                     note TEXT,
                     trade_type TEXT DEFAULT 'day',
-                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, symbol)
                 )
             ''')
 
@@ -361,6 +363,35 @@ class DatabaseManager:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
                 except sqlite3.OperationalError:
                     pass  # column already exists
+
+            # brown_watchlist: migrate old schema (symbol UNIQUE) to per-user composite key
+            # Detect by checking if our composite index exists yet
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_brown_wl_user_sym'"
+            )
+            if not cursor.fetchone():
+                # Check if old schema has no user_id column yet
+                cursor.execute('PRAGMA table_info(brown_watchlist)')
+                cols = {r['name'] for r in cursor.fetchall()}
+                if 'user_id' not in cols:
+                    cursor.execute('ALTER TABLE brown_watchlist ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1')
+                # Recreate table with composite unique key (symbol unique alone would block multi-user)
+                cursor.execute('''CREATE TABLE IF NOT EXISTS _brown_watchlist_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    symbol TEXT NOT NULL,
+                    note TEXT,
+                    trade_type TEXT DEFAULT 'day',
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, symbol)
+                )''')
+                cursor.execute(
+                    'INSERT OR IGNORE INTO _brown_watchlist_new (user_id, symbol, note, trade_type, added_at) '
+                    'SELECT user_id, symbol, note, trade_type, added_at FROM brown_watchlist'
+                )
+                cursor.execute('DROP TABLE brown_watchlist')
+                cursor.execute('ALTER TABLE _brown_watchlist_new RENAME TO brown_watchlist')
+                cursor.execute('CREATE UNIQUE INDEX idx_brown_wl_user_sym ON brown_watchlist(user_id, symbol)')
 
             # swing_daily_picks: persisted AI-ranked swing picks keyed by trading date
             cursor.execute('''
@@ -2611,34 +2642,40 @@ class DatabaseManager:
 
     # ── BrownBot watchlist ────────────────────────────────────────────────────
 
-    def get_brown_watchlist(self) -> list:
+    def get_brown_watchlist(self, user_id: int = 1) -> list:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT symbol, note, trade_type, added_at FROM brown_watchlist ORDER BY added_at DESC')
+                cursor.execute(
+                    'SELECT symbol, note, trade_type, added_at FROM brown_watchlist WHERE user_id=? ORDER BY added_at DESC',
+                    (user_id,)
+                )
                 return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             print(f"Database error fetching brown_watchlist: {e}")
             return []
 
-    def add_to_brown_watchlist(self, symbol: str, note: str = '', trade_type: str = 'day') -> tuple:
+    def add_to_brown_watchlist(self, symbol: str, note: str = '', trade_type: str = 'day', user_id: int = 1) -> tuple:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'INSERT OR REPLACE INTO brown_watchlist (symbol, note, trade_type) VALUES (?, ?, ?)',
-                    (symbol.upper().strip(), note, trade_type)
+                    'INSERT OR REPLACE INTO brown_watchlist (symbol, note, trade_type, user_id) VALUES (?, ?, ?, ?)',
+                    (symbol.upper().strip(), note, trade_type, user_id)
                 )
                 conn.commit()
                 return True, "Added to watchlist"
         except Exception as e:
             return False, str(e)
 
-    def remove_from_brown_watchlist(self, symbol: str) -> tuple:
+    def remove_from_brown_watchlist(self, symbol: str, user_id: int = 1) -> tuple:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('DELETE FROM brown_watchlist WHERE symbol=?', (symbol.upper().strip(),))
+                cursor.execute(
+                    'DELETE FROM brown_watchlist WHERE symbol=? AND user_id=?',
+                    (symbol.upper().strip(), user_id)
+                )
                 conn.commit()
                 return True, "Removed from watchlist"
         except Exception as e:

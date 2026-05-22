@@ -2081,7 +2081,11 @@
                                     <i class="fas fa-moon text-blue-400 mr-1"></i>Swing: {{ brownBotStatus.stats?.swing_entered || 0 }} in / {{ brownBotStatus.stats?.swing_exited || 0 }} out
                                 </span>
                             </div>
-                            <button @click="toggleBrownBot" :disabled="loading.brownBotToggle"
+                            <div v-if="brownBotStatus?.in_use_by_other" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-sm">
+                                <i class="fas fa-lock text-yellow-400"></i>
+                                Bot is running for another user
+                            </div>
+                            <button v-else @click="toggleBrownBot" :disabled="loading.brownBotToggle"
                                     :class="brownBotStatus?.running ? 'bg-green-600 hover:bg-green-700 ring-2 ring-green-400/40' : 'bg-amber-600 hover:bg-amber-700'"
                                     class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50">
                                 <i v-if="loading.brownBotToggle" class="fas fa-spinner fa-spin"></i>
@@ -2628,7 +2632,6 @@
                                         <th class="px-4 py-2 text-left">Symbol</th>
                                         <th class="px-4 py-2 text-right">Gap %</th>
                                         <th class="px-4 py-2 text-right">Price</th>
-                                        <th class="px-4 py-2 text-right text-cyan-500">VWAP</th>
                                         <th class="px-4 py-2 text-right">Vol (M)</th>
                                         <th class="px-4 py-2 text-left text-cyan-500">Signal</th>
                                     </tr>
@@ -2643,13 +2646,6 @@
                                                 ${{ (brownBotLivePrices[s.ticker]?.price ?? s.price)?.toFixed(2) ?? '—' }}
                                             </span>
                                             <span v-if="brownBotLivePrices[s.ticker]?.price" class="ml-1 text-[9px] text-green-500 font-mono">live</span>
-                                        </td>
-                                        <td class="px-4 py-2 text-right">
-                                            <span v-if="brownBotLivePrices[s.ticker]?.vwap != null"
-                                                  :class="(brownBotLivePrices[s.ticker]?.price ?? s.price) > brownBotLivePrices[s.ticker].vwap ? 'text-green-400' : 'text-red-400'">
-                                                ${{ brownBotLivePrices[s.ticker].vwap.toFixed(2) }}
-                                            </span>
-                                            <span v-else class="text-gray-600">—</span>
                                         </td>
                                         <td class="px-4 py-2 text-right text-gray-400">{{ ((s.volume || 0) / 1e6).toFixed(2) }}</td>
                                         <td class="px-4 py-2">
@@ -2669,7 +2665,18 @@
                                                 </div>
                                             </template>
                                             <template v-else-if="brownBotSignals[s.ticker]">
-                                                <span class="text-xs text-gray-600">—</span>
+                                                <!-- API returned ok=true but checks=[] means no filters are configured -->
+                                                <span v-if="brownBotSignals[s.ticker].ok === true"
+                                                      class="text-xs text-gray-500 italic"
+                                                      title="No signal filters enabled in BrownBot config — enable VWAP, Candle, Extension, or Volume checks to see signal badges here">
+                                                    no filters
+                                                </span>
+                                                <!-- ok=null means an error occurred per-symbol -->
+                                                <span v-else
+                                                      class="text-xs text-red-500/70 italic"
+                                                      :title="brownBotSignals[s.ticker].reason || 'Signal check failed'">
+                                                    error
+                                                </span>
                                             </template>
                                             <template v-else>
                                                 <span class="text-xs text-gray-600">—</span>
