@@ -5941,7 +5941,7 @@ const app = createApp({
         // ── BrownBot methods ───────────────────────────────────────────────
         async loadBrownBotStatus() {
             try {
-                const response = await axios.get('/api/brown-bot/status');
+                const response = await axios.get('/api/brown-bot/status', { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotStatus = response.data;
                 }
@@ -5975,9 +5975,12 @@ const app = createApp({
                     } else {
                         this.stopSessionKeepalive();
                     }
+                } else {
+                    this.showNotification(response.data.error || 'Failed to toggle BrownBot', 'error');
                 }
             } catch (error) {
                 console.error('Error toggling BrownBot:', error);
+                this.showNotification('Error communicating with server', 'error');
             } finally {
                 this.loading.brownBotToggle = false;
             }

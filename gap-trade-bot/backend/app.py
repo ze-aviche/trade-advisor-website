@@ -277,6 +277,7 @@ _brown_order_monitor_thread = None
 _brown_bot_lock = threading.Lock()
 _brown_risk_manager = None  # instantiated on start from config
 _brown_broker = None        # BrokerBase instance held for the bot's lifetime
+_brown_bot_user_id: int = 1  # user who started the bot — used by background threads for DB reads
 _brown_exit_thread = None
 # Playbook cache — keyed by symbol, populated by background threads, cleared on bot start
 _playbook_cache:   dict = {}   # symbol → GapUpTradeAgent playbook dict
@@ -3978,7 +3979,7 @@ def _brown_bot_scan_and_enter():
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
-    config = db_manager.get_brown_bot_config()
+    config = db_manager.get_brown_bot_config(_brown_bot_user_id)
 
     # Rebuild RiskManager from fresh config each iteration so UI config changes
     # (slot caps, loss limit) take effect immediately without restarting the bot.
@@ -4863,7 +4864,7 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
-    config = db_manager.get_brown_bot_config()
+    config = db_manager.get_brown_bot_config(_brown_bot_user_id)
 
     # Parse EOD time from config (e.g. '15:45')
     eod_str = config.get('day_eod_exit_time', '15:45')
@@ -5164,11 +5165,33 @@ def seed_gap_data():
 # ── BrownBot API endpoints ─────────────────────────────────────────────────
 
 @app.route('/api/brown-bot/status', methods=['GET'])
+@require_auth
 def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
     global _brown_bot_running, _brown_bot_active_positions
+
+    current_user_id = request.user.get('id', 1)
+    is_owner = (not _brown_bot_running) or (_brown_bot_user_id == current_user_id)
+
+    # Non-owners see the bot as idle — their actions don't affect another user's session
+    if not is_owner:
+        own_broker = _get_broker(current_user_id)
+        return jsonify({
+            'success': True,
+            'running': False,
+            'in_use_by_other': True,
+            'das_enabled': DAS_ENABLED,
+            'das_connected': False,
+            'broker': own_broker.to_dict() if own_broker else None,
+            'stats': {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0},
+            'active_positions_count': 0,
+            'active_positions': [],
+            'entry_counts': {},
+            'skipped_symbols': [],
+        })
+
     das_ok = DAS_ENABLED and _das_direct is not None
-    broker = _brown_broker or _get_broker()
+    broker = _brown_broker or _get_broker(current_user_id)
     broker_info = broker.to_dict() if broker else None
 
     # Snapshot in-memory BrownBot state under lock.
@@ -5308,7 +5331,7 @@ def get_brown_bot_broker_orders():
         until   – ISO date YYYY-MM-DD upper bound
         symbols – comma-separated ticker filter, e.g. NVDA,TSLA
     """
-    broker = _brown_broker or _get_broker()
+    broker = _brown_broker or _get_broker(request.user.get('id', 1))
     if not broker:
         return jsonify({'success': False, 'error': 'No broker configured'})
     if not hasattr(broker, 'get_orders_history'):
@@ -5342,7 +5365,7 @@ def get_brown_bot_broker_activities():
         date  – ISO date YYYY-MM-DD (Alpaca UTC day boundary)
         limit – max results (default 50, max 100)
     """
-    broker = _brown_broker or _get_broker()
+    broker = _brown_broker or _get_broker(request.user.get('id', 1))
     if not broker:
         return jsonify({'success': False, 'error': 'No broker configured'})
     if not hasattr(broker, 'get_activities'):
@@ -5364,12 +5387,24 @@ def get_brown_bot_broker_activities():
 @require_auth
 def start_brown_bot():
     """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread, _swing_candidates_cache, _swing_ai_picks_cache
+    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread, _swing_candidates_cache, _swing_ai_picks_cache, _brown_bot_user_id
     if _brown_bot_running:
+        if _brown_bot_user_id != request.user.get('id', 1):
+            return jsonify({'success': False, 'error': 'BrownBot is currently running for another user. Only one session can run at a time.'})
         return jsonify({'success': False, 'error': 'BrownBot is already running'})
 
+    _brown_bot_user_id = request.user.get('id', 1)
+
     # Require a configured broker — BrownBot is broker-agnostic, not DAS-only
-    _brown_broker = _get_broker()
+    _brown_broker = _get_broker(_brown_bot_user_id)
+    if not _brown_broker and _brown_bot_user_id != 1:
+        # Migration fallback: configs saved before the multi-user fix were stored under user_id=1.
+        # If the user has no personal config yet, try the admin slot so the bot can still start.
+        _brown_broker = _get_broker(1)
+        if _brown_broker:
+            _add_brown_log('warning',
+                'Using broker config from admin account (migration fallback). '
+                'Re-save your broker credentials in Account Settings to assign them to your account.')
     if not _brown_broker:
         return jsonify({'success': False, 'error': 'No broker configured. Set up a broker in Account Settings before starting BrownBot.'})
     _add_brown_log('info', f'Broker ready: {_brown_broker.name}')
@@ -5377,7 +5412,7 @@ def start_brown_bot():
     # Instantiate risk manager from saved config
     if RISK_MANAGER_AVAILABLE:
         try:
-            config = db_manager.get_brown_bot_config()
+            config = db_manager.get_brown_bot_config(_brown_bot_user_id)
             _brown_risk_manager = RiskManager(config)
             _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
                                    f'day limit {config.get("max_concurrent_day", 3)}, '
@@ -5595,7 +5630,7 @@ def start_brown_bot():
                 # These positions already exist at the broker so we MUST track them for exit,
                 # regardless of the slot cap. New entries remain blocked by the cap check in
                 # _brown_bot_scan_and_enter; orphan adoption is recovery only, not new entry.
-                config = db_manager.get_brown_bot_config()
+                config = db_manager.get_brown_bot_config(_brown_bot_user_id)
                 swing_tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
                 swing_stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
                 day_tgt_pct   = float(config.get('day_profit_target_pct', 5.0))
@@ -5707,6 +5742,10 @@ def stop_brown_bot():
     global _brown_bot_running, _brown_bot_thread, _brown_exit_thread, _brown_broker, _brown_order_monitor_thread
     if not _brown_bot_running:
         return jsonify({'success': False, 'error': 'BrownBot is not running'})
+    current_user_id = request.user.get('id', 1)
+    is_super = request.user.get('system_role') in ('super_admin', 'dev_master')
+    if _brown_bot_user_id != current_user_id and not is_super:
+        return jsonify({'success': False, 'error': 'Only the user who started BrownBot (or a super admin) can stop it.'})
     _brown_bot_running = False
     # Short joins only — long joins block the eventlet greenlet and starve
     # Socket.IO keep-alive polls, causing session IDs to expire (400 errors).
@@ -5733,8 +5772,12 @@ def brown_bot_close_all():
     Marks positions _exit_pending and writes exit trades to DB.
     Memory cleanup is deferred to get_brown_bot_status once broker confirms fills."""
     global _brown_bot_active_positions
+    current_user_id = request.user.get('id', 1)
+    is_super = request.user.get('system_role') in ('super_admin', 'dev_master')
+    if _brown_bot_running and _brown_bot_user_id != current_user_id and not is_super:
+        return jsonify({'success': False, 'error': 'Cannot close positions — bot session belongs to another user.'})
 
-    broker = _brown_broker or _get_broker()
+    broker = (_brown_broker if _brown_bot_user_id == current_user_id else None) or _get_broker(current_user_id)
     if not broker:
         return jsonify({'success': False, 'error': 'No broker available'})
 
@@ -5843,7 +5886,7 @@ def brown_bot_close_all():
 def get_brown_bot_config_endpoint():
     """Return current BrownBot config."""
     try:
-        cfg = db_manager.get_brown_bot_config()
+        cfg = db_manager.get_brown_bot_config(request.user.get('id', 1))
         return jsonify({'success': True, 'config': cfg})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -5857,7 +5900,7 @@ def update_brown_bot_config_endpoint():
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
-        ok, msg = db_manager.update_brown_bot_config(data)
+        ok, msg = db_manager.update_brown_bot_config(data, request.user.get('id', 1))
         if not ok:
             return jsonify({'success': False, 'error': msg}), 500
         return jsonify({'success': True, 'message': msg})
@@ -5868,7 +5911,9 @@ def update_brown_bot_config_endpoint():
 @app.route('/api/brown-bot/logs', methods=['GET'])
 @require_auth
 def get_brown_bot_logs():
-    """Return recent BrownBot activity logs."""
+    """Return recent BrownBot activity logs — only for the user who started the bot."""
+    if _brown_bot_running and _brown_bot_user_id != request.user.get('id', 1):
+        return jsonify({'success': True, 'logs': []})
     return jsonify({'success': True, 'logs': list(reversed(_brown_bot_logs[-100:]))})
 
 
@@ -5877,15 +5922,19 @@ def get_brown_bot_logs():
 def get_brown_bot_risk_status():
     """Return live risk snapshot: daily P&L, open positions, circuit breaker state."""
     global _brown_risk_manager, _brown_bot_active_positions
-    with _brown_bot_lock:
-        positions = dict(_brown_bot_active_positions)
-    unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
-    if _brown_risk_manager is not None:
+    current_user_id = request.user.get('id', 1)
+    is_owner = (not _brown_bot_running) or (_brown_bot_user_id == current_user_id)
+
+    # Only expose the live risk manager snapshot to the user who started the bot
+    if is_owner and _brown_risk_manager is not None:
+        with _brown_bot_lock:
+            positions = dict(_brown_bot_active_positions)
+        unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
         snapshot = _brown_risk_manager.status(positions, unrealized_pnl=unrealized_total)
     else:
-        # Risk manager not started — return defaults from config
+        # Risk manager not started or belongs to another user — return defaults from caller's config
         try:
-            config = db_manager.get_brown_bot_config()
+            config = db_manager.get_brown_bot_config(current_user_id)
         except Exception:
             config = {}
         today = _last_trading_date()
@@ -5893,6 +5942,7 @@ def get_brown_bot_risk_status():
             realized_pnl = db_manager.get_brown_daily_realized_pnl(today)
         except Exception:
             realized_pnl = 0.0
+        unrealized_total = 0.0
         total_pnl = realized_pnl + unrealized_total
         max_loss = float(config.get('max_daily_loss', -500.0))
         snapshot = {
@@ -5934,7 +5984,7 @@ def get_supported_brokers():
 @require_auth
 def list_broker_configs():
     """Return all saved broker configs for the current user (no secrets in response)."""
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     configs = db_manager.get_broker_configs(user_id)
     return jsonify({'success': True, 'configs': configs})
 
@@ -5946,7 +5996,7 @@ def save_broker_config(broker_name):
     Save (upsert) a broker config.  Pass api_key / api_secret only when the user
     explicitly updates them — omitting them preserves the stored values.
     """
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     data = request.get_json() or {}
     ok, msg = db_manager.upsert_broker_config(broker_name, data, user_id)
     if ok:
@@ -5959,7 +6009,7 @@ def save_broker_config(broker_name):
 @require_auth
 def activate_broker(broker_name):
     """Switch the active broker without touching credentials."""
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     ok, msg = db_manager.activate_broker(broker_name, user_id)
     if ok:
         _invalidate_broker_cache(user_id)
@@ -5971,7 +6021,7 @@ def activate_broker(broker_name):
 @require_auth
 def delete_broker_config(broker_name):
     """Remove a broker config (revoke access)."""
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     ok, msg = db_manager.delete_broker_config(broker_name, user_id)
     if ok:
         return jsonify({'success': True, 'message': msg})
@@ -5985,7 +6035,7 @@ def test_broker_connection(broker_name):
     Attempt to connect with the stored credentials and return live account info.
     Used by the UI "Test Connection" button.
     """
-    user_id = getattr(request.user, 'id', 1)
+    user_id = request.user.get('id', 1)
     row = db_manager.get_broker_config(broker_name, user_id)
     if not row:
         return jsonify({'success': False,
@@ -6229,7 +6279,7 @@ def swing_backtest():
 def get_brown_bot_candidates():
     """Return gap-up scanner results filtered by config thresholds, merged with watchlist."""
     try:
-        config = db_manager.get_brown_bot_config()
+        config = db_manager.get_brown_bot_config(request.user.get('id', 1))
         min_gap = config.get('min_gap_pct', 10.0)
         min_price = config.get('min_price', 5.0)
         max_price = config.get('max_price', 500.0)
@@ -6250,7 +6300,7 @@ def get_brown_bot_candidates():
                 continue
             scanner_hits.append({**s, 'source': 'scanner', 'trade_type': 'day', 'note': ''})
 
-        watchlist = db_manager.get_brown_watchlist()
+        watchlist = db_manager.get_brown_watchlist(request.user.get('id', 1))
         wl_symbols = {w['symbol'] for w in watchlist}
         scanner_symbols = {s['ticker'] for s in scanner_hits}
 
@@ -6332,7 +6382,7 @@ def get_brown_bot_candidate_signals():
     if not symbols:
         return jsonify({'success': False, 'error': 'symbols param required'}), 400
 
-    config = db_manager.get_brown_bot_config()
+    config = db_manager.get_brown_bot_config(request.user.get('id', 1))
 
     # Batch-fetch prices for all symbols in one Alpaca snapshot call.
     # Per-symbol get_real_stock_data would fire N snapshot requests concurrently and hit 429.
@@ -6408,7 +6458,7 @@ def get_brown_bot_live_prices():
 def get_brown_bot_watchlist():
     """Return current BrownBot watchlist."""
     try:
-        return jsonify({'success': True, 'watchlist': db_manager.get_brown_watchlist()})
+        return jsonify({'success': True, 'watchlist': db_manager.get_brown_watchlist(request.user.get('id', 1))})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -6426,7 +6476,7 @@ def add_brown_bot_watchlist():
     if trade_type not in ('day', 'swing', 'auto'):
         trade_type = 'day'
     try:
-        db_manager.add_to_brown_watchlist(symbol, note, trade_type)
+        db_manager.add_to_brown_watchlist(symbol, note, trade_type, request.user.get('id', 1))
         _add_brown_log('info', f'Added {symbol} ({trade_type}) to watchlist')
         return jsonify({'success': True})
     except Exception as e:
@@ -6439,7 +6489,7 @@ def remove_brown_bot_watchlist(symbol):
     """Remove a symbol from the BrownBot watchlist."""
     symbol = symbol.strip().upper()
     try:
-        db_manager.remove_from_brown_watchlist(symbol)
+        db_manager.remove_from_brown_watchlist(symbol, request.user.get('id', 1))
         _add_brown_log('info', f'Removed {symbol} from watchlist')
         return jsonify({'success': True})
     except Exception as e:
@@ -8162,7 +8212,7 @@ def get_open_positions():
     """Return live open positions from Alpaca.
     Priority: running BrownBot broker → DB config → ALPACA_API_KEY env var."""
     try:
-        user_id = getattr(request.user, 'id', 1)  # matches pattern used by all other broker endpoints
+        user_id = request.user.get('id', 1)  # matches pattern used by all other broker endpoints
 
         broker = _brown_broker
         if broker:

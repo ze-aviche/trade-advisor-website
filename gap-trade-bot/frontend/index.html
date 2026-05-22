@@ -2081,7 +2081,11 @@
                                     <i class="fas fa-moon text-blue-400 mr-1"></i>Swing: {{ brownBotStatus.stats?.swing_entered || 0 }} in / {{ brownBotStatus.stats?.swing_exited || 0 }} out
                                 </span>
                             </div>
-                            <button @click="toggleBrownBot" :disabled="loading.brownBotToggle"
+                            <div v-if="brownBotStatus?.in_use_by_other" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-sm">
+                                <i class="fas fa-lock text-yellow-400"></i>
+                                Bot is running for another user
+                            </div>
+                            <button v-else @click="toggleBrownBot" :disabled="loading.brownBotToggle"
                                     :class="brownBotStatus?.running ? 'bg-green-600 hover:bg-green-700 ring-2 ring-green-400/40' : 'bg-amber-600 hover:bg-amber-700'"
                                     class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50">
                                 <i v-if="loading.brownBotToggle" class="fas fa-spinner fa-spin"></i>
