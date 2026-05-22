@@ -4774,7 +4774,7 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
     if not bp:
         _add_brown_log('warning',
             f'No open position for {symbol} in broker — removing from tracking (no sell placed)',
-            user_id=user_id, user_id=user_id)
+            user_id=user_id)
         with lock:
             active_positions.pop(position_id, None)
             closing_positions.discard(position_id)
@@ -5421,7 +5421,7 @@ def start_brown_bot():
             _add_brown_log('warning',
                 'Using broker config from admin account (migration fallback). '
                 'Re-save your broker credentials in Account Settings to assign them to your account.',
-                user_id=user_id, user_id=user_id)
+                user_id=user_id)
     if not sess.broker:
         with _brown_sessions_lock:
             _brown_sessions.pop(user_id, None)
@@ -5436,7 +5436,7 @@ def start_brown_bot():
             _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
                                    f'day limit {config.get("max_concurrent_day", 3)}, '
                                    f'swing limit {config.get("max_concurrent_swing", 5)}',
-                           user_id=user_id, user_id=user_id)
+                           user_id=user_id)
         except Exception as e:
             _add_brown_log('warning', f'RiskManager init failed: {e}', user_id=user_id)
 
@@ -5515,7 +5515,7 @@ def start_brown_bot():
                             pass
                         _add_brown_log('info',
                             f'{_sym}: avg_entry_price confirmed from broker on restart = ${_fp:.2f}',
-                            user_id=user_id, user_id=user_id)
+                            user_id=user_id)
 
                 # Outside the lock: recovery of exit trades for stale positions
                 for pid, sym, entry_oid, stale_pos in stale:
@@ -5575,7 +5575,7 @@ def start_brown_bot():
                                 _add_brown_log('info',
                                     f'{sym}: recovered exit trade on restart — '
                                     f'{fill_qty} @ ${fill_price:.2f}, P&L {"+$" if realized_pnl >= 0 else "-$"}{abs(realized_pnl):.2f}',
-                                    user_id=user_id, user_id=user_id)
+                                    user_id=user_id)
                         except Exception as _rec_err:
                             app_logger.debug(f'BrownBot startup recovery check {sym}: {_rec_err}')
 
@@ -5597,7 +5597,7 @@ def start_brown_bot():
                     _add_brown_log('info',
                         f'Startup: removed {len(stale)} position(s) not in broker '
                         f'({", ".join(sym for _, sym, _, _ in stale)})',
-                        user_id=user_id, user_id=user_id)
+                        user_id=user_id)
 
                 # 2 — adopt orphans
                 config = db_manager.get_brown_bot_config(user_id)
@@ -5645,7 +5645,7 @@ def start_brown_bot():
                             _add_brown_log('warning',
                                 f'{position_type.upper()} cap {cap_val} exceeded by orphan {sym_up} '
                                 f'({cur_val + 1} {position_type} positions) — tracking for exit only',
-                                user_id=user_id, user_id=user_id)
+                                user_id=user_id)
                         pos = {
                             'position_id':       pid,
                             'symbol':            sym_up,
@@ -5669,7 +5669,7 @@ def start_brown_bot():
                         _add_brown_log('warning',
                             f'Adopted orphan {position_type} position: {sym_up} @ ${entry_price:.2f} '
                             f'(was in broker but not tracked — targets set from current config)',
-                            user_id=user_id, user_id=user_id)
+                            user_id=user_id)
                 if not stale and not adopted:
                     _add_brown_log('info', 'Startup check: all positions confirmed in sync with broker', user_id=user_id)
             except Exception as _ve:
