@@ -93,6 +93,17 @@ def setup_logging(log_level='INFO', log_dir='logs'):
     
     print("Backend logging configured with Unicode support")
 
+    # Suppress noisy loggers not relevant to BrownBot/Alpaca debugging.
+    # Remove individual entries to re-enable a logger.
+    for _suppressed_logger in [
+        # DAS Trader — DAS_ENABLED=False, none of these should fire anyway
+        'das_integration', 'das_utils', 'das_startup',
+        'scheduled_das_sync', 'bot.broker.das', 'panic_exit', 'bot.trading_bot',
+        # Historical data fetch — verbose cache/delta logic, not needed during live trading
+        'historical_data', 'historical_cache',
+    ]:
+        logging.getLogger(_suppressed_logger).setLevel(logging.CRITICAL)
+
 def get_logger(name):
     """
     Get a logger instance with the specified name
