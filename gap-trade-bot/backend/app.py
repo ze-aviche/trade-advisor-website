@@ -2118,10 +2118,14 @@ def get_historical_data(ticker):
             }), 500
         
         if historical_data is None:
-            app_logger.warning(f"⚠️ No historical data returned for {ticker}")
+            app_logger.warning(f"⚠️ No bar data returned for {ticker} — Alpaca API may be down or credentials/subscription invalid")
             return jsonify({
                 'success': False,
-                'error': f'No historical data available for {ticker}'
+                'error': (
+                    f'No price data available for {ticker}. '
+                    f'This usually means the Alpaca API key is missing or the subscription '
+                    f'does not include historical bars. Check server logs for details.'
+                )
             }), 404
         
         # Ensure we return a list even if empty

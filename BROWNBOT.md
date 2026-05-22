@@ -8,16 +8,109 @@ Gated to the **Yogi** subscription tier.
 
 ## Runtime
 
-Two daemon threads are started together on `POST /api/brown-bot/start` and stopped on `POST /api/brown-bot/stop`:
+Three daemon threads are started together on `POST /api/brown-bot/start` and stopped on `POST /api/brown-bot/stop`:
 
 | Thread | Function | Interval |
 |--------|----------|----------|
-| `BrownBotScanner` | `_brown_bot_scan_and_enter()` | 30 s |
-| `BrownBotExits` | `_brown_bot_check_exits()` | 2 s (swing-specific every 60 s) |
+| `BrownBotScanner` | `_brown_bot_scanner_loop()` → `_brown_bot_scan_and_enter()` | 30 s |
+| `BrownBotExits` | `_brown_bot_exit_loop()` → `_brown_bot_check_exits()` | 2 s (swing-specific every 60 s) |
+| `BrownBotOrderMonitor` | `_brown_order_monitor_loop()` | 2 s |
 
-The running flag `_brown_bot_running` is the only shutdown signal — both loops poll it and exit cleanly.
+`_brown_bot_running` is the only shutdown signal — all three loops poll it and exit cleanly.
 
-On `start_brown_bot()` the bot also restores any positions that were persisted to `brown_positions` (DB) before the last server restart, so active positions survive process restarts without manual reconciliation.
+On `start_brown_bot()` the bot restores any `status='open'` positions from `brown_positions` (DB), cross-references with the broker, and only keeps positions the broker actually holds. See **Restart & Recovery** for the full reconciliation flow.
+
+---
+
+## Order Management Flow
+
+This is the core lifecycle that separates "order submitted" from "fill confirmed". No DB writes happen until the broker confirms a fill.
+
+```
+1. Scanner identifies candidate
+         │
+         ▼
+2. _brown_enter_position()
+   · places market BUY via broker.place_order()
+   · saves position to brown_positions (status='open', avg_entry_price=NULL if pending)
+   · writes row to brown_orders (status='pending' or 'filled')
+   · adds order_id to _brown_pending_orders for the monitor to watch
+         │
+         ├─ Fast path (fill confirmed immediately):
+         │  · update_brown_order_fill(order_id, fill_price, fill_qty)
+         │  · update_brown_position_entry(position_id, fill_price, fill_qty)
+         │  · add_trade(BROWN_ENTRY_*)
+         │  · avg_entry_price in memory + DB = actual fill
+         │
+         └─ Async path (fill not confirmed yet):
+            · order_id sits in _brown_pending_orders
+            · position in DB with avg_entry_price=NULL
+            · DB state survives a server crash
+                     │
+                     ▼
+3. _brown_order_monitor_loop() polls every 2 s
+   · calls broker.get_order(order_id) for each pending order
+         │
+         ├─ FILLED  →  _brown_monitor_finalize_entry()
+         │             · updates memory: avg_entry_price, profit_target, stop_loss
+         │             · update_brown_order_fill()         → brown_orders status=filled
+         │             · update_brown_position_entry()     → brown_positions.avg_entry_price
+         │             · save_brown_position()             → refreshes data_json blob
+         │             · add_trade(BROWN_ENTRY_*)
+         │
+         ├─ CANCELLED / REJECTED
+         │             · removes from _brown_pending_orders + _brown_bot_active_positions
+         │             · delete_brown_position()           → removes phantom row
+         │
+         └─ Timeout (>60 s)
+               · pre-cancel fill check (fills just before timeout handled cleanly)
+               · broker.cancel_order()
+               · same cleanup as CANCELLED path above
+
+4. Exit condition met
+         │
+         ▼
+5. _brown_close_position()
+   · broker.get_position(symbol)   → confirms broker holds the position before selling
+   · broker.close_position(symbol) → places market SELL
+   · writes row to brown_orders (side='S', status='pending')
+   · adds sell order_id to _brown_pending_orders
+   · removes position from _brown_bot_active_positions (memory)
+   · brown_positions row stays status='open' until fill is confirmed
+
+6. _brown_order_monitor_loop() polls the SELL order every 2 s
+         │
+         └─ FILLED  →  _brown_monitor_finalize_exit()
+                       · pop from _brown_pending_orders
+                       · realized_pnl = (fill_price - avg_entry_price) × fill_qty
+                       · update_brown_order_fill()        → brown_orders status=filled
+                       · close_brown_position()           → brown_positions status='closed',
+                                                             realized_pnl, exit_price stored
+                       · add_trade(BROWN_EXIT_*)          → trades table, pnl=realized_pnl
+
+7. P&L is now in brown_positions.realized_pnl (permanent record)
+   and in trades.pnl (feed for the Positions / P&L tabs)
+```
+
+### In-memory state during a trade
+
+| Dict / Set | Purpose |
+|------------|---------|
+| `_brown_bot_active_positions` | All open positions (removed when sell submitted) |
+| `_brown_pending_orders` | All orders waiting for broker fill confirmation |
+| `_brown_closing_positions` | Set of position_ids currently being sent to the broker; prevents double-exit |
+| `_brown_entry_counts` | Fill-confirmed entry count per symbol (survives restart via DB) |
+| `_brown_attempted_symbols` | Every symbol attempted this session — no retries for fills OR rejections |
+
+### Source of truth per field
+
+| Field | Authoritative source |
+|-------|---------------------|
+| `avg_entry_price` | `brown_positions.avg_entry_price` column (written by `update_brown_position_entry` on fill confirm) |
+| `realized_pnl` | `brown_positions.realized_pnl` (written by `close_brown_position` on exit fill) |
+| `unrealized_pnl` | `brown_positions.unrealized_pnl` (persisted every 2 s by exit loop) |
+| Daily realized P&L | `get_brown_daily_realized_pnl()` → `SUM(realized_pnl) FROM brown_positions WHERE status='closed' AND trade_date=today` |
+| Order log | `brown_orders` table — immutable per-order row, updated once on fill |
 
 ---
 
@@ -57,17 +150,16 @@ _check_day_entry_signal(symbol)
       ▼
 RiskManager.can_enter(symbol, 'day')
 · max_concurrent_day slot check
-· max_daily_loss circuit breaker  (today's realized P&L from trades table)
+· max_daily_loss circuit breaker
       │
       ▼
 _brown_enter_position(symbol, 'day')
 · Pre-flight buying power check  →  skips (no order sent) if account BP < price × qty
 · Marks symbol in _brown_attempted_symbols BEFORE the order
 · Places market BUY via broker.place_order()
-· Stores position in _brown_bot_active_positions
-· Persists position to brown_positions table (DB)
-· Writes BROWN_ENTRY_* record to trades table
-· Increments _brown_entry_counts[symbol] only on a confirmed fill
+· Saves position to brown_positions (DB) immediately
+· Writes entry row to brown_orders (DB)
+· Defers trade record to monitor thread (written only after fill confirmed)
 ```
 
 ---
@@ -113,7 +205,6 @@ Market cap filter  (1 Polygon reference batch call)
 SMA-10 trend filter  (parallel Polygon daily bars, ~15 bars per ticker)
 · Computes 10-day SMA for every candidate
 · Drops stocks whose close is > 3% below SMA-10  →  broken pattern
-· Logs each dropped ticker with close vs SMA-10 to app_logger.debug
       │
       ▼
 Claude Haiku ranking
@@ -166,9 +257,9 @@ _brown_enter_position(symbol, 'swing')
 · Pre-flight buying power check  →  skips if BP insufficient
 · Places market BUY
 · Sets profit_target and stop_loss from live price + config pct
-· Stores in _brown_bot_active_positions
-· Persists position to brown_positions table (DB)
-· Writes BROWN_ENTRY_* record to trades table
+· Saves position to brown_positions (DB) immediately
+· Writes entry row to brown_orders (DB)
+· Defers trade record to monitor thread
 ```
 
 #### Swing Candidates UI
@@ -179,7 +270,7 @@ The Swing Trade Candidates panel in the UI shows all Grade A/B Bullish picks wit
 |--------|---------|
 | **Active** | Position currently open in `_brown_bot_active_positions` |
 | **Entered Today** | Fill confirmed (`_brown_entry_counts` has the symbol) |
-| **Skipped** | Attempted but rejected/BP-insufficient (`_brown_attempted_symbols` has it, `_brown_entry_counts` does not) — will not be retried this session |
+| **Skipped** | Attempted but rejected/BP-insufficient — will not be retried this session |
 | **Eligible** | No attempt yet; bot may enter on the next scan |
 
 ---
@@ -193,11 +284,14 @@ For each position in _brown_bot_active_positions:
       │
       ▼
 _brown_get_current_price(symbol)
-→  broker.get_quote()  →  Alpaca StockLatestTradeRequest (real last-trade price)
-→  DAS Level 1 fallback
+→  broker.get_current_price()  →  live last-trade price
       │
       ▼
-Update unrealized_pnl in position dict  (shown live in UI)
+Update unrealized_pnl in memory (shown live in UI)
+update_brown_position_unrealized() persists to DB every 2 s:
+  · brown_positions.current_price
+  · brown_positions.unrealized_pnl
+  · brown_positions.unrealized_pnl_pct
       │
       ▼
 Breakeven stop check
@@ -213,33 +307,41 @@ Exit conditions (checked in order):
   3. EOD flatten      day trades only — at day_eod_exit_time ET
   4. Max hold days    swing trades only — entry_date + swing_max_hold_days
   5. Earnings         swing trades only — queries Nasdaq earnings calendar
-                      via _ai_agent._get_earnings_calendar()
                       exits N days before confirmed earnings date
       │
       ▼
 _brown_close_position(position_id, exit_reason)
-· broker.get_position(symbol)   →  confirms position exists
-                                    (prevents accidental short if already flat)
-· broker.close_position(symbol) →  market SELL via broker abstraction layer
-· Polls broker.get_order() up to 3× for actual fill price (filled_avg_price)
-· Deletes position from brown_positions table (DB)
-· Writes BROWN_EXIT_* record to trades table
-· Removes from _brown_bot_active_positions
+· _brown_closing_positions guard  →  prevents double-exit if two loop ticks overlap
+· broker.get_position(symbol)     →  confirms broker holds position before selling
+· broker.close_position(symbol)   →  market SELL (cannot accidentally short)
+· writes exit row to brown_orders (status='pending')
+· adds to _brown_pending_orders   →  monitor takes over
+· removes from _brown_bot_active_positions (memory only — DB row stays 'open')
+      │
+      ▼
+_brown_order_monitor_loop() confirms fill (see Order Management Flow above)
+      │
+      ▼
+_brown_monitor_finalize_exit() closes the books:
+· close_brown_position()  →  brown_positions status='closed', realized_pnl stored
+· add_trade(BROWN_EXIT_*) →  trades table, pnl = realized P&L
 ```
 
 ---
 
 ## Risk Manager
 
-Instantiated from `brown_bot_config` when the bot starts. Re-reads today's realized P&L from the `trades` table on each `can_enter()` call.
+`bot/risk_manager.py → RiskManager`. Instantiated from `brown_bot_config` when the bot starts.
 
 | Guard | What it checks |
 |-------|---------------|
-| `max_daily_loss` | Sum of today's BROWN_EXIT P&L ≤ threshold → circuit breaker halts all new entries |
-| `max_concurrent_day` | Count of open day positions < limit |
-| `max_concurrent_swing` | Count of open swing positions < limit |
+| `max_daily_loss` | `get_brown_daily_realized_pnl(today)` → `SUM(realized_pnl) FROM brown_positions WHERE status='closed' AND trade_date=today`. If total ≤ threshold, circuit breaker halts all new entries. |
+| `max_concurrent_day` | Count of open day positions in `_brown_bot_active_positions` (excludes `_exit_pending`) |
+| `max_concurrent_swing` | Count of open swing positions (same) |
 
-`GET /api/brown-bot/risk-status` returns a live snapshot even when the bot is stopped.
+The risk manager reads from `brown_positions` — not `trades`. This means P&L from `close_all` and from normally-exited positions are all counted correctly via a single consistent source.
+
+`GET /api/brown-bot/risk-status` returns a live snapshot even when the bot is stopped (reads config + today's P&L from DB directly).
 
 ---
 
@@ -247,37 +349,113 @@ Instantiated from `brown_bot_config` when the bot starts. Re-reads today's reali
 
 | Data | Storage | Notes |
 |------|---------|-------|
-| Active positions | `_brown_bot_active_positions` (memory dict) | Seeded from `brown_positions` DB on `start_brown_bot()` |
-| Active positions (backup) | `brown_positions` table (SQLite) | Written on entry, deleted on exit — survives server restarts |
-| Entry counts | `_brown_entry_counts` (memory dict) | Filled-only entries; resets on start; restored from DB on restart |
-| Attempted symbols | `_brown_attempted_symbols` (memory set) | All attempts this session (fills + rejections); resets on start; restored on restart |
-| Trade history | `trades` table (SQLite) | `trade_id` prefixed `BROWN_ENTRY_*` / `BROWN_EXIT_*` |
-| Daily stats | Queried live from `trades` table | Never in-memory; always accurate after restart |
+| Active positions | `_brown_bot_active_positions` (memory dict) | Seeded from `brown_positions WHERE status='open'` on start |
+| Position ledger | `brown_positions` table (SQLite) | **Permanent** — rows transition `status='open'` → `'closed'`, never deleted on normal exit |
+| Order log | `brown_orders` table (SQLite) | **Immutable** — one row per BUY or SELL, `status='pending'` → `'filled'`/`'cancelled'` |
+| Entry counts | `_brown_entry_counts` (memory dict) | Fill-confirmed only; resets on start; restored from DB on restart |
+| Attempted symbols | `_brown_attempted_symbols` (memory set) | All attempts (fills + rejections); resets on start; restored on restart |
+| Pending fills | `_brown_pending_orders` (memory dict) | order_id → metadata; cleared on restart (recovered via broker on next start) |
+| Trade history | `trades` table (SQLite) | `BROWN_ENTRY_*` / `BROWN_EXIT_*` — written only after broker fill confirmation |
+| Daily stats | `get_brown_daily_realized_pnl()` | Reads from `brown_positions` — always accurate after restart |
 | Swing picks | `swing_daily_picks` table (SQLite) | Keyed by trading date; updated at 8 PM ET daily |
 | Swing picks cache | `_daily_picks_cache` (memory dict) | Seeded from DB on cold start |
 | Activity log | `_brown_bot_logs` (memory, last 100) | Served via `GET /api/brown-bot/logs` |
 
 BrownBot positions are **never** written to the `positions` table (owned by the DAS sync / Exit Bot). The Exit Bot ignores them entirely.
 
+The `brown_orders` table is append-only — `INSERT OR IGNORE` on submission means duplicate order_ids are silently dropped if the same order is submitted twice (e.g. race between monitor and direct path).
+
 ---
 
-## Session Management
+## Restart & Recovery
 
-BrownBot runs as a server-side daemon — it continues executing regardless of whether the user has a browser open or their session is active. The UI is a control panel only.
+`start_brown_bot()` runs a four-step reconciliation before launching threads:
 
-### Session keepalive (frontend)
+### Step 1 — Restore from DB
 
-When the bot is **running**, the frontend automatically pings `POST /api/session/ping` every 4 minutes to extend the 24-hour session window. This fires even if the user has navigated away from the BrownBot tab. The keepalive starts on `toggleBrownBot()` (start) and stops on `toggleBrownBot()` (stop).
+Load all rows from `brown_positions WHERE status='open'` (or status IS NULL for legacy rows). Day positions from a previous trading date are deleted immediately. All others are added to `_brown_bot_active_positions`.
 
-`POST /api/session/ping` is an authenticated endpoint that extends the session and returns the new `expires_at` timestamp.
+### Step 2 — Patch unconfirmed avg_entry_price
 
-### Session expiry warning
+For positions that survived step 1: if `avg_entry_price` is NULL in the DB (entry fill was never confirmed before the last restart), fetch the broker's `avg_entry_price` for that symbol and write it to both memory and DB. Also recalculates `profit_target` and `stop_loss` based on the actual fill.
 
-When the session has fewer than 30 minutes remaining, an amber dismissible banner appears at the top of the page with a "Stay logged in" button. Clicking it calls the ping endpoint to reset the timer. The banner also notes that BrownBot will keep running even if the session lapses.
+This closes the narrow crash window between `_brown_enter_position` saving the position row and `_brown_monitor_finalize_entry` writing the confirmed fill price.
 
-### Global bot status chip
+### Step 3 — Drop stale positions (in DB, not in broker)
 
-A green animated "BrownBot LIVE" chip is displayed in the top nav bar whenever the bot is running, regardless of which tab is active. Clicking it navigates to the BrownBot tab.
+For each restored position whose symbol the broker no longer holds:
+
+1. **Check DB for a sell trade** — if a `BROWN_EXIT_*` row already exists for this symbol on or after the entry date, nothing to recover; the exit completed normally before the restart.
+
+2. **Check broker order history for a filled sell** — if a fill is found: write `close_brown_position()` (marks the DB row `status='closed'` with P&L), write `add_trade(BROWN_EXIT_*)`. This recovers P&L from the scenario where the server crashed after placing the sell but before the monitor confirmed it.
+
+3. **Cancel the pending entry order at broker** — if no sell was found anywhere (phantom entry: position saved to DB but order never filled), call `broker.cancel_order(entry_oid)` to prevent a delayed fill from creating an untracked broker position, then `delete_brown_position()` and `update_brown_order_fill(status='cancelled')`.
+
+### Step 4 — Adopt orphans (in broker, not in DB)
+
+For each broker position that isn't tracked in BrownBot's DB: create a new position dict using the broker's `avg_entry_price`, derive targets/stops from current config pcts, save to `brown_positions`, and add to `_brown_bot_active_positions`. A warning is logged if this pushes the count above the configured slot cap.
+
+---
+
+## Debug Logging
+
+All order-management debug lines are prefixed `[BrownBot ...]` and written to `app_logger` at `DEBUG` level — they appear in the server log when `LOG_LEVEL=DEBUG` and are **not** shown in the UI activity log.
+
+Filter your logs with: `grep '\[BrownBot'`
+
+### Entry submission (`_brown_enter_position`)
+
+| Log prefix | What it tells you |
+|------------|------------------|
+| `[BrownBot entry] immediate status check` | Broker's response to `get_order()` right after `place_order()` — shows `status`, `filled_avg_price`, `filled_qty` |
+| `[BrownBot entry] not yet filled — deferring to monitor` | Fast-path check found no fill yet; order goes into `_brown_pending_orders` |
+| `[BrownBot entry] position_id=… entry_confirmed=…` | Summary of the position dict before it's saved — key fields: `avg_entry_price`, `target`, `stop` |
+| `[BrownBot entry] position saved to DB` | `save_brown_position()` succeeded |
+| `[BrownBot entry] brown_orders row written … status=pending/filled` | `add_brown_order()` succeeded |
+| `[BrownBot entry] fast-path: update_brown_order_fill + update_brown_position_entry done` | Confirmed fill written to DB on the fast path |
+
+UI log also emits: `"BUY submitted order=… waiting for broker fill confirmation"` when taking the async path.
+
+### Order monitor loop (`_brown_order_monitor_loop`)
+
+| Log prefix | What it tells you |
+|------------|------------------|
+| `[BrownBot monitor] polling N pending order(s): [SYM/type …]` | Every cycle that has pending orders — confirms the loop is running and what it's watching |
+| `[BrownBot monitor] SYM entry/exit order=… status=… age=Xs` | Per-order status from broker each poll — the key line to check if an order is stuck |
+| `[BrownBot monitor] SYM FILLED → calling finalize_entry/exit` | Fill confirmed — about to write to DB |
+| `[BrownBot monitor] SYM exit CANCELLED — position restored` | Exit rejected; position put back in `_brown_bot_active_positions` for retry |
+| `[BrownBot monitor] SYM exit CANCELLED — no saved_pos, cannot restore` | Exit rejected but the `position` snapshot was missing from meta — position may be orphaned |
+
+### Finalize entry (`_brown_monitor_finalize_entry`)
+
+| Log prefix | What it tells you |
+|------------|------------------|
+| `[BrownBot finalize_entry] SYM order=… fill_price=… fill_qty=…` | Entry point — confirms which order is being finalized |
+| `[BrownBot finalize_entry] SYM memory updated — avg_entry=… target=… stop=…` | In-memory position updated with actual fill; these are the numbers the exit loop will use |
+| `[BrownBot finalize_entry] SYM NOT found in active_positions` | Position was already removed from memory before the fill arrived (unusual) |
+| `[BrownBot finalize_entry] SYM brown_orders updated … status=filled` | `update_brown_order_fill()` success |
+| `[BrownBot finalize_entry] SYM brown_positions.avg_entry_price updated → X` | `update_brown_position_entry()` success |
+| `[BrownBot finalize_entry] SYM save_brown_position done` | Full position blob refreshed in DB |
+
+### Finalize exit (`_brown_monitor_finalize_exit`)
+
+| Log prefix | What it tells you |
+|------------|------------------|
+| `[BrownBot finalize_exit] SYM order=… fill_price=… fill_qty=… reason=… avg_entry=… entry_price_in_meta=…` | Entry point — `avg_entry` and `entry_price_in_meta` should match; a discrepancy means the meta carried the wrong entry price |
+| `[BrownBot finalize_exit] SYM P&L calc: (fill - avg_entry) × qty = pnl (pct%)` | Full P&L arithmetic — paste this line to verify the math |
+| `[BrownBot finalize_exit] SYM brown_orders updated … status=filled` | Exit order row updated |
+| `[BrownBot finalize_exit] SYM brown_positions status → closed realized_pnl=…` | `close_brown_position()` succeeded |
+| `[BrownBot finalize_exit] SYM trades row written pnl=…` | `add_trade()` succeeded |
+
+### Exit submission (`_brown_close_position`)
+
+| Log prefix | What it tells you |
+|------------|------------------|
+| `[BrownBot close_position] SYM position_id=… reason=… qty=… current_price=… avg_entry_price=…` | Entry point — confirm the position the exit loop is acting on |
+| `[BrownBot close_position] SYM broker confirms position: qty=… avg_entry=… unrealized=…` | Broker position check passed; these are the broker's live numbers |
+| `[BrownBot close_position] SYM exit brown_orders row written … status=pending reason=…` | Exit order logged to `brown_orders` |
+| `[BrownBot close_position] SYM queued to pending_orders … avg_entry_in_meta=… approx_exit=…` | The two numbers that will determine P&L once the fill comes in |
+| `[BrownBot close_position] SYM removed from active_positions, monitor will call finalize_exit` | Position handed off to monitor — no longer in the exit loop's next tick |
 
 ---
 
@@ -339,14 +517,32 @@ All settings live in `brown_bot_config` (DB) and are editable in the Configurati
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/brown-bot/status` | — | Running state, stats, active positions |
-| POST | `/api/brown-bot/start` | ✓ | Instantiate RiskManager, restore positions, launch threads |
+| POST | `/api/brown-bot/start` | ✓ | Instantiate RiskManager, recover positions, launch threads |
 | POST | `/api/brown-bot/stop` | ✓ | Clear flag, join threads |
 | GET/POST | `/api/brown-bot/config` | ✓ | Read / write config |
 | GET | `/api/brown-bot/logs` | ✓ | Last 100 activity log entries |
-| GET | `/api/brown-bot/risk-status` | ✓ | Live risk snapshot |
+| GET | `/api/brown-bot/risk-status` | ✓ | Live risk snapshot (daily P&L, slots, circuit breaker) |
 | GET | `/api/brown-bot/candidates` | ✓ | Filtered gap-ups (scanner candidates) |
 | GET | `/api/brown-bot/candidate-signals` | ✓ | Intraday signal check results per symbol |
 | POST | `/api/session/ping` | ✓ | Extend session + return new `expires_at` (used by keepalive) |
+
+---
+
+## Session Management
+
+BrownBot runs as a server-side daemon — it continues executing regardless of whether the user has a browser open or their session is active. The UI is a control panel only.
+
+### Session keepalive (frontend)
+
+When the bot is **running**, the frontend automatically pings `POST /api/session/ping` every 4 minutes to extend the 24-hour session window. This fires even if the user has navigated away from the BrownBot tab. The keepalive starts on `toggleBrownBot()` (start) and stops on `toggleBrownBot()` (stop).
+
+### Session expiry warning
+
+When the session has fewer than 30 minutes remaining, an amber dismissible banner appears at the top of the page with a "Stay logged in" button. Clicking it calls the ping endpoint to reset the timer. The banner also notes that BrownBot will keep running even if the session lapses.
+
+### Global bot status chip
+
+A green animated "BrownBot LIVE" chip is displayed in the top nav bar whenever the bot is running, regardless of which tab is active. Clicking it navigates to the BrownBot tab.
 
 ---
 
@@ -354,9 +550,12 @@ All settings live in `brown_bot_config` (DB) and are editable in the Configurati
 
 - **No manual input** — BrownBot is fully autonomous. Day candidates come from the gap-up scanner; swing candidates come from the daily AI hot picks.
 - **Long only** — all entries are market BUY. `broker.close_position()` is used for exits to prevent accidental short selling.
-- **Single process** — runs inside the same Flask/eventlet process as the rest of the app. Both loops are daemon threads; they share `_brown_bot_active_positions` via `_brown_bot_lock`.
-- **No position table writes** — BrownBot positions live in memory, `brown_positions`, and `trades` only. Never write to the `positions` table.
-- **Retry guard** — `_brown_attempted_symbols` (a set) is marked before every order attempt. The scan loop skips any symbol already in this set, so a rejected or BP-failed order is never retried in the same session.
-- **Buying power pre-flight** — `_brown_enter_position()` checks `broker.get_account().buying_power` before placing the order. If insufficient, the symbol is logged, marked as attempted (skipped), and no order is sent. Fails open if the account API call errors.
+- **Single process** — runs inside the same Flask/eventlet process as the rest of the app. All three threads share `_brown_bot_active_positions` via `_brown_bot_lock`.
+- **No `positions` table writes** — BrownBot positions live in memory, `brown_positions`, and `trades` only. Never write to the `positions` table.
+- **Broker-confirmed writes** — trade records in `trades` and realized P&L in `brown_positions` are written only after the broker confirms a fill. `_brown_pending_orders` bridges the gap between order submission and fill confirmation.
+- **Permanent position ledger** — `brown_positions` rows are never deleted on a normal exit. They transition `status='open'` → `'closed'`. Only phantom entries (buy order never filled) are deleted.
+- **Retry guard** — `_brown_attempted_symbols` is marked before every order attempt. The scan loop skips any symbol already in this set, so a rejected or BP-failed order is never retried in the same session.
+- **Buying power pre-flight** — `_brown_enter_position()` checks `broker.get_account().buying_power` before placing the order. If insufficient, the symbol is logged, marked as attempted, and no order is sent. Fails open if the account API call errors.
 - **Swing picks are session-scoped** — `_brown_entry_counts` prevents re-entering the same swing pick multiple times in a day, even if the position closes and re-qualifies.
 - **Bot/session decoupling** — BrownBot runs independently of the user's login session. The session keepalive is a convenience, not a dependency; if the session lapses the bot continues running.
+- **Double-exit guard** — `_brown_closing_positions` is a set of position_ids currently being sent to the broker. The exit loop skips any position already in this set, preventing duplicate sell orders if two loop ticks overlap.
