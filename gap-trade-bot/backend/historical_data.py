@@ -25,33 +25,79 @@ load_dotenv()
 
 _ET_TZ = pytz.timezone('America/New_York')
 
+# Rate limiter: cap all Alpaca bar requests to 3 per second across all threads.
+# Free-tier Alpaca allows ~200 req/min; paid plans are higher.  Keeping at 3/s
+# stays well inside both limits and prevents 429s from parallel prefetch.
+_alpaca_rate_lock = threading.Lock()
+_alpaca_last_call_ts: float = 0.0
+_ALPACA_MIN_INTERVAL = 0.34  # seconds between calls → ~3 req/s
+
+
+def _alpaca_throttle():
+    global _alpaca_last_call_ts
+    with _alpaca_rate_lock:
+        now  = time.monotonic()
+        wait = _ALPACA_MIN_INTERVAL - (now - _alpaca_last_call_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _alpaca_last_call_ts = time.monotonic()
+
+
 def _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min'):
-    """Fetch bars from Alpaca Data API with pagination, returning list of raw dicts."""
+    """Fetch bars from Alpaca Data API with pagination, returning list of raw dicts.
+
+    Tries feed=sip first (full market data); falls back to feed=iex on 403
+    so free-tier Alpaca accounts still work.
+    """
     key    = os.environ.get('ALPACA_API_KEY', '')
     secret = os.environ.get('ALPACA_API_SECRET', '')
     if not key or not secret:
+        logger.warning('_alpaca_bars_raw: ALPACA_API_KEY / ALPACA_API_SECRET not set')
         return []
     url     = f'https://data.alpaca.markets/v2/stocks/{ticker.upper()}/bars'
     headers = {'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret}
-    params  = {'timeframe': timeframe, 'start': start_iso, 'end': end_iso,
-               'limit': 10000, 'adjustment': 'raw', 'feed': 'sip'}
-    all_bars = []
-    while True:
-        try:
-            resp = requests.get(url, headers=headers, params=params, timeout=15)
-            if resp.status_code != 200:
-                logger.debug(f'_alpaca_bars_raw {ticker}: HTTP {resp.status_code}')
+
+    feeds_to_try = ['sip', 'iex']
+    for feed in feeds_to_try:
+        params = {'timeframe': timeframe, 'start': start_iso, 'end': end_iso,
+                  'limit': 10000, 'adjustment': 'raw', 'feed': feed}
+        all_bars  = []
+        http_code = None   # last HTTP status seen on this feed attempt
+        failed    = False
+        while True:
+            try:
+                _alpaca_throttle()
+                resp = requests.get(url, headers=headers, params=params, timeout=15)
+                http_code = resp.status_code
+                if http_code != 200:
+                    body = resp.text[:300]
+                    if http_code in (403, 429) and feed == 'sip':
+                        reason = 'subscription limit' if http_code == 403 else 'rate limited'
+                        logger.warning(
+                            f'_alpaca_bars_raw {ticker}: SIP feed returned {http_code} '
+                            f'({reason}) — retrying with IEX feed. body={body}')
+                    else:
+                        logger.warning(
+                            f'_alpaca_bars_raw {ticker}: HTTP {http_code} '
+                            f'feed={feed} body={body}')
+                    failed = True
+                    break
+                data = resp.json()
+                all_bars.extend(data.get('bars') or [])
+                token = data.get('next_page_token')
+                if not token:
+                    break
+                params['page_token'] = token
+            except Exception as e:
+                logger.warning(f'_alpaca_bars_raw {ticker} feed={feed}: {e}')
+                failed = True
                 break
-            data = resp.json()
-            all_bars.extend(data.get('bars') or [])
-            token = data.get('next_page_token')
-            if not token:
-                break
-            params['page_token'] = token
-        except Exception as e:
-            logger.debug(f'_alpaca_bars_raw {ticker}: {e}')
+        if not failed:
+            return all_bars
+        # 403/429 on SIP → try IEX next; any other failure → give up
+        if not (http_code in (403, 429) and feed == 'sip'):
             break
-    return all_bars
+    return []
 
 def _et_to_iso(date_str, time_str):
     """Convert 'YYYY-MM-DD' + 'HH:MM' ET to a UTC ISO string (handles DST via pytz)."""
@@ -778,7 +824,10 @@ def get_historical_gap_up_data(ticker, days=30, use_cache=True, min_gap_percent=
             return []
         
         if not daily_data:
-            logger.error(f"❌ No historical data found for {ticker}")
+            logger.error(
+                f"❌ No daily bar data returned for {ticker} from Alpaca "
+                f"(both SIP and IEX feeds tried). Check ALPACA_API_KEY / "
+                f"ALPACA_API_SECRET and subscription plan.")
             return None
         
         # Process batch data to extract gap-up information (cache at 5% threshold)

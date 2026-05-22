@@ -2397,6 +2397,11 @@
                                     <p class="text-[10px] text-gray-600 mt-0.5">Auto-exit before confirmed upcoming earnings date</p>
                                 </div>
                             </label>
+                            <div v-if="brownBotConfig.swing_earnings_protection_enabled" class="flex items-center gap-2 pl-6">
+                                <input v-model.number="brownBotConfig.swing_earnings_exit_days" type="number" step="1" min="1" max="14"
+                                       class="w-20 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                <span class="text-xs text-gray-500">days before earnings</span>
+                            </div>
                             <!-- Swing Trailing Stop -->
                             <div class="border-t border-gray-700/60 pt-3">
                                 <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Trailing Stop</span>
