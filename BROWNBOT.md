@@ -26,67 +26,146 @@ On `start_brown_bot()` the bot restores any `status='open'` positions from `brow
 
 This is the core lifecycle that separates "order submitted" from "fill confirmed". No DB writes happen until the broker confirms a fill.
 
+Log channels:
+- **UI log** — visible in the BrownBot Logs panel (WARNING/INFO via `_add_brown_log`)
+- **Server log** — server stdout only (DEBUG via `app_logger.debug`; filter with `grep '\[BrownBot'`)
+ 
+
+ On Render (production): the logs/ folder is inside the container filesystem — it exists but is wiped on each deploy. If you want to read it live, SSH into the Render shell and run:
+
+
+tail -f logs/gap_trade_backend_all.log | grep '\[BrownBot'
+Locally (Docker): same path inside the container. To stream it from the host:
+
+
+docker exec -it <container> tail -f logs/gap_trade_backend_all.log | grep '\[BrownBot'
+
+docker exec -it gap-trade-bot-web-1 tail -f logs/gap_trade_backend_all.log in local
+
+
+Important caveat: the file handler is at DEBUG level, so all app_logger.debug(...) lines (the [BrownBot ...] order management lines) are written to the file. The console/Render web log only shows INFO and above — so the file is the only place you'll see the per-poll monitor details.
+
+
+
 ```
 1. Scanner identifies candidate
          │
          ▼
 2. _brown_enter_position()
-   · places market BUY via broker.place_order()
-   · saves position to brown_positions (status='open', avg_entry_price=NULL if pending)
-   · writes row to brown_orders (status='pending' or 'filled')
-   · adds order_id to _brown_pending_orders for the monitor to watch
+   · pre-flight buying power check
+   · broker.place_order(BUY, MARKET)
+
+   SERVER  [BrownBot:Alpaca] BUY {qty} {SYM} → order_id={id} status={status}
+   UI      {SYM}: entry started — approx ${price}, type={day|swing}
+   (on immediate rejection)
+   UI  ⚠   {SYM} order {id…} rejected immediately — not entering
+
+   · immediate fill check via broker.get_order()
+   SERVER  [BrownBot entry] immediate status check {SYM} order={id…}
+             status={status} filled_avg_price={x} filled_qty={n}
+
+         ├─ Fast path — fill confirmed right away:
+         │   SERVER  [BrownBot entry] {SYM} position_id=… entry_confirmed=True
+         │             avg_entry_price={x} target={t} stop={s}
+         │   SERVER  [BrownBot entry] {SYM} position saved to DB (status=open)
+         │   SERVER  [BrownBot entry] {SYM} brown_orders row written … status=filled
+         │   (fill price differs from scanner approx)
+         │   UI      {SYM} fill confirmed ${fill} (scanner approx was ${approx})
+         │   UI      ENTERED {DAY|SWING} {SYM} ~${price} | target ${t} (+x%) | stop ${s} (-x%)
          │
-         ├─ Fast path (fill confirmed immediately):
-         │  · update_brown_order_fill(order_id, fill_price, fill_qty)
-         │  · update_brown_position_entry(position_id, fill_price, fill_qty)
-         │  · add_trade(BROWN_ENTRY_*)
-         │  · avg_entry_price in memory + DB = actual fill
-         │
-         └─ Async path (fill not confirmed yet):
-            · order_id sits in _brown_pending_orders
-            · position in DB with avg_entry_price=NULL
-            · DB state survives a server crash
-                     │
-                     ▼
+         └─ Async path — still pending:
+             SERVER  [BrownBot entry] {SYM} order {id…} not yet filled — deferring to monitor loop
+             SERVER  [BrownBot entry] {SYM} position saved to DB (status=open)
+             SERVER  [BrownBot entry] {SYM} brown_orders row written … status=pending
+             UI      {SYM} BUY pending broker confirmation — DB write deferred
+             UI      ENTERED {DAY|SWING} {SYM} ~${price} | target ${t} | stop ${s}
+                      │
+                      ▼
 3. _brown_order_monitor_loop() polls every 2 s
-   · calls broker.get_order(order_id) for each pending order
+   SERVER  [BrownBot monitor] polling {N} pending order(s): [{SYM}/entry …]
+   SERVER  [BrownBot monitor] {SYM} entry order={id…} status={status} age={n}s
+             filled_avg_price={x} filled_qty={n}
          │
-         ├─ FILLED  →  _brown_monitor_finalize_entry()
-         │             · updates memory: avg_entry_price, profit_target, stop_loss
-         │             · update_brown_order_fill()         → brown_orders status=filled
-         │             · update_brown_position_entry()     → brown_positions.avg_entry_price
-         │             · save_brown_position()             → refreshes data_json blob
-         │             · add_trade(BROWN_ENTRY_*)
+         ├─ FILLED → _brown_monitor_finalize_entry()
+         │   SERVER  [BrownBot monitor] {SYM} FILLED → calling finalize_entry
+         │   SERVER  [BrownBot finalize_entry] {SYM} order={id…} fill_price={x} fill_qty={n}
+         │   SERVER  [BrownBot finalize_entry] {SYM} memory updated —
+         │             avg_entry={x} target={t} stop={s}
+         │   SERVER  [BrownBot finalize_entry] {SYM} brown_orders updated … status=filled
+         │   SERVER  [BrownBot finalize_entry] {SYM} brown_positions.avg_entry_price updated → {x}
+         │   SERVER  [BrownBot finalize_entry] {SYM} save_brown_position done
+         │   UI      {SYM} BUY confirmed by broker: {n} @ ${fill}
+         │
+         ├─ PARTIAL → no action, re-polls next cycle (market orders fill quickly)
          │
          ├─ CANCELLED / REJECTED
-         │             · removes from _brown_pending_orders + _brown_bot_active_positions
-         │             · delete_brown_position()           → removes phantom row
+         │   UI  ⚠   {SYM} entry/exit order {id…} CANCELLED/REJECTED — no DB write
+         │   UI  ⚠   {SYM}: phantom entry removed — order was not filled
          │
-         └─ Timeout (>60 s)
-               · pre-cancel fill check (fills just before timeout handled cleanly)
-               · broker.cancel_order()
-               · same cleanup as CANCELLED path above
+         └─ Timeout (>60 s, still not FILLED)
+               UI  ⚠  {SYM} entry order {id…} stuck {n}s — checking fill before cancel
+               │
+               ├─ fill_qty > 0 (partial fill at timeout)
+               │   UI  ⚠  {SYM}: entry order partially filled ({x}/{n} shares) at
+               │             timeout — cancelling remainder, accepting partial
+               │   → _brown_monitor_finalize_entry() at actual fill_qty  (logs as above)
+               │
+               └─ fill_qty == 0 (no fill)
+                   UI  ⚠  {SYM}: entry timed out and not filled — position removed
 
-4. Exit condition met
+4. Exit condition met (profit target / stop / EOD / max hold / earnings)
          │
          ▼
 5. _brown_close_position()
-   · broker.get_position(symbol)   → confirms broker holds the position before selling
-   · broker.close_position(symbol) → places market SELL
-   · writes row to brown_orders (side='S', status='pending')
-   · adds sell order_id to _brown_pending_orders
-   · removes position from _brown_bot_active_positions (memory)
-   · brown_positions row stays status='open' until fill is confirmed
+   SERVER  [BrownBot close_position] {SYM} position_id=… reason=… qty=…
+             current_price=… avg_entry_price=…
+   (broker position check)
+   SERVER  [BrownBot close_position] {SYM} broker confirms position:
+             qty=… avg_entry=… unrealized=…
+   (if broker has no position — aborts without selling)
+   UI  ⚠   No open position for {SYM} in broker — removing from tracking (no sell placed)
+
+   · broker.close_position(symbol) → market SELL
+   SERVER  [BrownBot:Alpaca] SELL {SYM} → order_id={id}
+   SERVER  [BrownBot close_position] {SYM} queued to pending_orders
+             order={id…} avg_entry_in_meta={x} approx_exit={price}
+   SERVER  [BrownBot close_position] {SYM} removed from active_positions,
+             monitor will call finalize_exit
 
 6. _brown_order_monitor_loop() polls the SELL order every 2 s
+   SERVER  [BrownBot monitor] polling {N} pending order(s): [{SYM}/exit …]
+   SERVER  [BrownBot monitor] {SYM} exit order={id…} status={status} age={n}s
          │
-         └─ FILLED  →  _brown_monitor_finalize_exit()
-                       · pop from _brown_pending_orders
-                       · realized_pnl = (fill_price - avg_entry_price) × fill_qty
-                       · update_brown_order_fill()        → brown_orders status=filled
-                       · close_brown_position()           → brown_positions status='closed',
-                                                             realized_pnl, exit_price stored
-                       · add_trade(BROWN_EXIT_*)          → trades table, pnl=realized_pnl
+         ├─ PARTIAL → wait; polls again next cycle
+         │
+         ├─ FILLED → _brown_monitor_finalize_exit()
+         │   SERVER  [BrownBot monitor] {SYM} FILLED → calling finalize_exit
+         │   SERVER  [BrownBot finalize_exit] {SYM} order={id…} fill_price={x}
+         │             fill_qty={n} reason={r} avg_entry={e} entry_price_in_meta={m}
+         │   SERVER  [BrownBot finalize_exit] {SYM} P&L calc:
+         │             ({fill} - {avg_entry}) × {qty} = {pnl} ({pct}%)
+         │   SERVER  [BrownBot finalize_exit] {SYM} brown_orders updated … status=filled
+         │   SERVER  [BrownBot finalize_exit] {SYM} brown_positions status → closed
+         │             realized_pnl={pnl} realized_pnl_pct={pct}
+         │   SERVER  [BrownBot finalize_exit] {SYM} trades row written pnl={pnl}
+         │   UI      EXITED {DAY|SWING} {SYM} [{reason}]
+         │             entry ${avg} → exit ${fill} × {qty} | P&L +/-${pnl}
+         │
+         ├─ CANCELLED / REJECTED
+         │   UI  ⚠   {SYM} exit {id…} CANCELLED/REJECTED — no DB write
+         │   UI  ⚠   {SYM}: exit order rejected — position restored for retry
+         │
+         └─ Timeout (>60 s)
+               ├─ fill_qty > 0 (partial exit at timeout)
+               │   UI  ⚠  {SYM}: exit order partially filled ({x}/{n} shares) at
+               │             timeout — cancelling remainder, accepting partial
+               │   → _brown_monitor_finalize_exit() at fill_qty  (logs as above)
+               │   UI  ⚠  {SYM}: {remaining} shares restored to active tracking
+               │             after partial exit — exit loop will retry
+               │
+               └─ fill_qty == 0 (no fill)
+                   UI  ⚠  {SYM}: exit order timed out — position restored,
+                             exit loop will retry
 
 7. P&L is now in brown_positions.realized_pnl (permanent record)
    and in trades.pnl (feed for the Positions / P&L tabs)
@@ -426,6 +505,14 @@ UI log also emits: `"BUY submitted order=… waiting for broker fill confirmatio
 | `[BrownBot monitor] SYM exit CANCELLED — position restored` | Exit rejected; position put back in `_brown_bot_active_positions` for retry |
 | `[BrownBot monitor] SYM exit CANCELLED — no saved_pos, cannot restore` | Exit rejected but the `position` snapshot was missing from meta — position may be orphaned |
 
+UI activity log also emits these on partial-fill timeout (visible in the BrownBot Logs panel):
+
+| UI log message | What happened |
+|----------------|--------------|
+| `SYM: entry order partially filled (X/N shares) at timeout — cancelling remainder, accepting partial` | Partial BUY at timeout — position tracked at `X` shares, not `N` |
+| `SYM: exit order partially filled (X/N shares) at timeout — cancelling remainder, accepting partial` | Partial SELL at timeout — exit recorded for `X` shares |
+| `SYM: Y shares restored to active tracking after partial exit — exit loop will retry` | `(N − X)` remaining shares put back in tracking for the next exit attempt |
+
 ### Finalize entry (`_brown_monitor_finalize_entry`)
 
 | Log prefix | What it tells you |
@@ -559,3 +646,4 @@ A green animated "BrownBot LIVE" chip is displayed in the top nav bar whenever t
 - **Swing picks are session-scoped** — `_brown_entry_counts` prevents re-entering the same swing pick multiple times in a day, even if the position closes and re-qualifies.
 - **Bot/session decoupling** — BrownBot runs independently of the user's login session. The session keepalive is a convenience, not a dependency; if the session lapses the bot continues running.
 - **Double-exit guard** — `_brown_closing_positions` is a set of position_ids currently being sent to the broker. The exit loop skips any position already in this set, preventing duplicate sell orders if two loop ticks overlap.
+- **Partial fill safety** — `PARTIAL` status during normal polling is treated as "still waiting" and re-polled next cycle. At the 60-second timeout, if `filled_qty > 0` the remaining unfilled shares are cancelled at the broker and the partial fill is accepted: entry positions are tracked at the actual filled share count; exit positions record the filled portion and restore the remaining shares to active tracking so the exit loop can retry. If `filled_qty == 0` at timeout, the order is cancelled and cleaned up as if it was never filled.

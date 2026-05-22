@@ -4596,7 +4596,7 @@ def _brown_order_monitor_loop():
                     order = _brown_broker.get_order(oid)
                     fill_price = (float(order.filled_avg_price)
                                   if order.filled_avg_price else meta.get('approx_price', 0.0))
-                    fill_qty   = int(order.filled_qty or meta.get('quantity', 0))
+                    fill_qty   = int(order.filled_qty or 0)
                     if order.status == _OStatus.FILLED:
                         _add_brown_log('info',
                             f'{symbol}: order filled just before timeout — finalising instead of cancelling')
@@ -4605,6 +4605,43 @@ def _brown_order_monitor_loop():
                         else:
                             _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
                         continue  # handled — skip the cancel/wipe block below
+                    if order.status == _OStatus.PARTIAL and fill_qty > 0:
+                        # Partial fill at timeout: cancel the remaining unfilled portion,
+                        # then accept whatever was actually filled rather than orphaning
+                        # broker shares (entry) or over-selling on retry (exit).
+                        try:
+                            _brown_broker.cancel_order(oid)
+                        except Exception:
+                            pass
+                        requested_qty = meta.get('quantity', fill_qty)
+                        _add_brown_log('warning',
+                            f'{symbol}: {order_type} order partially filled '
+                            f'({fill_qty}/{requested_qty} shares) at timeout — '
+                            f'cancelling remainder, accepting partial')
+                        if order_type == 'entry':
+                            # Accept the partial fill: finalize with actual fill_qty.
+                            # finalize_entry stores fill_qty in the position so exit
+                            # loop will only try to sell what we actually own.
+                            _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
+                        else:
+                            # Accept the partial exit: finalize for fill_qty, then
+                            # restore the remaining shares to active tracking so the
+                            # exit loop can sell them on the next cycle.
+                            _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
+                            remaining_qty = requested_qty - fill_qty
+                            if remaining_qty > 0:
+                                saved_pos = meta.get('position')
+                                if saved_pos:
+                                    restored = dict(saved_pos)
+                                    restored['quantity'] = remaining_qty
+                                    position_id = meta.get('position_id')
+                                    with _brown_bot_lock:
+                                        _brown_bot_active_positions[position_id] = restored
+                                        _brown_closing_positions.discard(position_id)
+                                    _add_brown_log('warning',
+                                        f'{symbol}: {remaining_qty} shares restored to '
+                                        f'active tracking after partial exit — exit loop will retry')
+                        continue  # handled
                 except Exception as _pre_cancel_e:
                     app_logger.debug(f'[BrownBot monitor] pre-cancel status check {oid} failed: {_pre_cancel_e}')
 
