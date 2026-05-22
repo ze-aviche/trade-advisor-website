@@ -5304,6 +5304,64 @@
                     </div>
                 </div>
 
+                <!-- Active BrownBot Sessions — admin overview -->
+                <div class="bg-gray-800 rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-robot text-green-400"></i>Active BrownBot Sessions
+                            <span class="text-xs bg-green-900/40 border border-green-700/40 text-green-300 rounded px-2 py-0.5">
+                                {{ adminBotSessions.length }} running
+                            </span>
+                        </h3>
+                        <button @click="loadAdminBotSessions()" :disabled="adminBotSessionsLoading"
+                                class="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded transition-colors disabled:opacity-50">
+                            <i :class="adminBotSessionsLoading ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'" class="mr-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div v-if="adminBotSessions.length === 0" class="text-gray-500 text-sm text-center py-6">
+                        No BrownBot sessions are currently running.
+                    </div>
+                    <div v-else class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-gray-700">
+                                    <th class="py-2 px-3 font-medium">User</th>
+                                    <th class="py-2 px-3 font-medium">Broker</th>
+                                    <th class="py-2 px-3 font-medium">Positions</th>
+                                    <th class="py-2 px-3 font-medium">Unrealized P&amp;L</th>
+                                    <th class="py-2 px-3 font-medium">Entries Today</th>
+                                    <th class="py-2 px-3 font-medium">Day / Swing Exited</th>
+                                    <th class="py-2 px-3 font-medium">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="s in adminBotSessions" :key="s.user_id" class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                                    <td class="py-3 px-3 text-white font-medium">{{ s.username }}</td>
+                                    <td class="py-3 px-3 text-gray-300">{{ s.broker || '—' }}</td>
+                                    <td class="py-3 px-3">
+                                        <span class="text-white font-semibold">{{ s.active_positions }}</span>
+                                    </td>
+                                    <td class="py-3 px-3">
+                                        <span :class="s.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'" class="font-mono">
+                                            {{ s.unrealized_pnl >= 0 ? '+' : '' }}${{ Math.abs(s.unrealized_pnl).toFixed(2) }}
+                                        </span>
+                                    </td>
+                                    <td class="py-3 px-3 text-gray-300">{{ s.entries_today }}</td>
+                                    <td class="py-3 px-3 text-gray-300">
+                                        {{ (s.stats && s.stats.day_exited) || 0 }} / {{ (s.stats && s.stats.swing_exited) || 0 }}
+                                    </td>
+                                    <td class="py-3 px-3">
+                                        <button v-if="isSuperAdmin || isDevMaster" @click="adminStopBotSession(s.user_id)"
+                                                class="bg-red-800 hover:bg-red-700 text-white text-xs px-3 py-1 rounded transition-colors">
+                                            <i class="fas fa-stop mr-1"></i>Stop
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- DB Query Utility — super_admin and dev_master only -->
                 <div v-if="isSuperAdmin || isDevMaster" class="bg-gray-800 rounded-xl p-6 shadow-lg">
                     <h3 class="text-white font-semibold mb-1 flex items-center gap-2">

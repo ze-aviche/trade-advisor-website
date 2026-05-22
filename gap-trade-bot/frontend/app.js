@@ -206,6 +206,8 @@ const app = createApp({
                 adminAddUserLoading: false,
                 adminAddUserError: '',
                 adminAddUserSuccess: '',
+                adminBotSessions: [],
+                adminBotSessionsLoading: false,
 
                 // Account tab sub-section
                 accountSection: 'subscription',
@@ -1193,6 +1195,7 @@ const app = createApp({
                 } else if (tabName === 'admin') {
                     if (this.isStaff) {
                         this.loadAdminUsers();
+                        this.loadAdminBotSessions();
                     } else {
                         this.activeTab = 'about';
                     }
@@ -1618,6 +1621,33 @@ const app = createApp({
                     console.error('Error loading admin users:', error);
                 } finally {
                     this.adminLoading = false;
+                }
+            },
+
+            async loadAdminBotSessions() {
+                this.adminBotSessionsLoading = true;
+                try {
+                    const response = await fetch('/api/admin/bots/status', {
+                        headers: this.authHeaders()
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.adminBotSessions = data.sessions || [];
+                    }
+                } catch (error) {
+                    console.error('Error loading admin bot sessions:', error);
+                } finally {
+                    this.adminBotSessionsLoading = false;
+                }
+            },
+
+            async adminStopBotSession(userId) {
+                if (!confirm(`Stop BrownBot for user ID ${userId}?`)) return;
+                try {
+                    await axios.post(`/api/brown-bot/stop?user_id=${userId}`, {}, { headers: this.authHeaders() });
+                    await this.loadAdminBotSessions();
+                } catch (e) {
+                    alert('Failed to stop bot: ' + (e.response?.data?.error || e.message));
                 }
             },
 

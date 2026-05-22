@@ -261,28 +261,53 @@ def _invalidate_broker_cache(user_id: int = 1):
         _broker_cache.pop(user_id, None)
 
 
-# BrownBot global state
-_brown_bot_running = False
-_brown_bot_thread = None
-_brown_bot_logs = []
-_brown_bot_log_id = 0
-_brown_bot_stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
-_brown_bot_active_positions = {}  # position_id -> position dict
-_brown_entry_counts: dict = {}    # symbol -> successful entries this session (fills only)
-_brown_attempted_symbols: set = set()  # all symbols attempted this session (prevents retry)
-_brown_eod_flattened_symbols: set = set()  # day symbols EOD-flattened today — blocked from re-entry
-_brown_closing_positions: set = set()  # position_ids currently being closed — prevents double-exit race
-_brown_pending_orders: dict = {}       # order_id → metadata; monitor writes DB only after confirmed fill
-_brown_order_monitor_thread = None
-_brown_bot_lock = threading.Lock()
-_brown_risk_manager = None  # instantiated on start from config
-_brown_broker = None        # BrokerBase instance held for the bot's lifetime
-_brown_bot_user_id: int = 1  # user who started the bot — used by background threads for DB reads
-_brown_exit_thread = None
-# Playbook cache — keyed by symbol, populated by background threads, cleared on bot start
-_playbook_cache:   dict = {}   # symbol → GapUpTradeAgent playbook dict
-_playbook_pending: set  = set()  # symbols whose background fetch is in progress
-_playbook_failed:  set  = set()  # symbols where fetch failed — fall back to config defaults
+# BrownBot per-user session state
+# Each user who starts BrownBot gets an isolated BrownSession.
+# Background threads receive user_id and look up _brown_sessions[user_id].
+class BrownSession:
+    """All runtime state for one user's BrownBot instance."""
+    __slots__ = [
+        'user_id', 'running', 'broker', 'risk_manager', 'lock',
+        'active_positions', 'entry_counts', 'attempted_symbols',
+        'eod_flattened_symbols', 'closing_positions', 'pending_orders',
+        'logs', 'log_id', 'stats',
+        'scanner_thread', 'exit_thread', 'order_monitor_thread',
+        'swing_candidates_cache', 'swing_ai_picks_cache',
+        'playbook_cache', 'playbook_pending', 'playbook_failed',
+    ]
+
+    def __init__(self, user_id: int):
+        self.user_id            = user_id
+        self.running            = False
+        self.broker             = None
+        self.risk_manager       = None
+        self.lock               = threading.Lock()
+        self.active_positions   = {}   # position_id -> position dict
+        self.entry_counts: dict = {}   # symbol -> successful entries this session
+        self.attempted_symbols: set = set()
+        self.eod_flattened_symbols: set = set()
+        self.closing_positions: set = set()
+        self.pending_orders: dict = {}  # order_id -> metadata
+        self.logs: list = []
+        self.log_id: int = 0
+        self.stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
+        self.scanner_thread      = None
+        self.exit_thread         = None
+        self.order_monitor_thread = None
+        self.swing_candidates_cache = {'ts': 0.0, 'candidates': []}
+        self.swing_ai_picks_cache   = {'ts': 0.0, 'picks': [], 'fingerprint': ''}
+        self.playbook_cache:   dict = {}
+        self.playbook_pending: set  = set()
+        self.playbook_failed:  set  = set()
+
+
+_brown_sessions: dict = {}           # user_id (int) -> BrownSession
+_brown_sessions_lock = threading.Lock()  # guards _brown_sessions dict mutations only
+
+
+def _get_brown_session(user_id: int):
+    """Return the BrownSession for user_id, or None if not running."""
+    return _brown_sessions.get(user_id)
 
 
 class _DasDirectSocket:
@@ -394,26 +419,27 @@ def add_entry_bot_log(level, message):
         app_logger.info(f"Entry Bot: {message}")
 
 
-def _add_brown_log(level: str, message: str):
-    """Add a log entry to the BrownBot activity log."""
-    global _brown_bot_logs, _brown_bot_log_id
+def _add_brown_log(level: str, message: str, user_id: int = 0):
+    """Add a log entry to the requesting user's BrownBot session log."""
     import pytz as _tz
     _et_now = datetime.now(_tz.timezone('US/Eastern'))
-    _brown_bot_log_id += 1
-    _brown_bot_logs.append({
-        'id': _brown_bot_log_id,
-        'timestamp': _et_now.isoformat(),
-        'level': level,
-        'message': message,
-    })
-    if len(_brown_bot_logs) > 200:
-        _brown_bot_logs = _brown_bot_logs[-200:]
+    sess = _brown_sessions.get(user_id)
+    if sess is not None:
+        sess.log_id += 1
+        sess.logs.append({
+            'id': sess.log_id,
+            'timestamp': _et_now.isoformat(),
+            'level': level,
+            'message': message,
+        })
+        if len(sess.logs) > 200:
+            sess.logs = sess.logs[-200:]
     if level == 'error':
-        app_logger.error(f"BrownBot: {message}")
+        app_logger.error(f"BrownBot[uid={user_id}]: {message}")
     elif level == 'warning':
-        app_logger.warning(f"BrownBot: {message}")
+        app_logger.warning(f"BrownBot[uid={user_id}]: {message}")
     else:
-        app_logger.info(f"BrownBot: {message}")
+        app_logger.info(f"BrownBot[uid={user_id}]: {message}")
 
 
 # Global DAS connection for reuse
@@ -3196,44 +3222,56 @@ def _parse_playbook_pcts(playbook: dict):
     return stop_pct, target_pct
 
 
-def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict):
+def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict, user_id: int = 0):
     """
     Background thread: fetch 5-year gap-up history and run GapUpTradeAgent for a symbol.
-    Result is stored in _playbook_cache[symbol]; _playbook_pending/failed updated on exit.
+    Result is stored in sess.playbook_cache[symbol]; pending/failed sets updated on exit.
     """
-    global _playbook_cache, _playbook_pending, _playbook_failed
+    sess = _get_brown_session(user_id)
+    playbook_cache   = sess.playbook_cache   if sess else {}
+    playbook_pending = sess.playbook_pending if sess else set()
+    playbook_failed  = sess.playbook_failed  if sess else set()
     try:
         from historical_data import get_historical_gap_up_data
-        _add_brown_log('info', f'[Playbook] Fetching 5yr history for {symbol}…')
+        _add_brown_log('info', f'[Playbook] Fetching 5yr history for {symbol}…', user_id)
         rows = get_historical_gap_up_data(symbol, days=1825, use_cache=True, min_gap_percent=5) or []
         if not rows:
-            _add_brown_log('warning', f'[Playbook] No historical data for {symbol} — using config defaults')
-            _playbook_failed.add(symbol)
+            _add_brown_log('warning', f'[Playbook] No historical data for {symbol} — using config defaults', user_id)
+            playbook_failed.add(symbol)
             return
         stats    = _compute_stats_from_rows(rows, min_gap=5.0)
         playbook = _gap_up_agent.analyze(symbol, rows, stats, sector_info, sector_perf)
-        _playbook_cache[symbol] = playbook
+        playbook_cache[symbol] = playbook
         bias = playbook.get('bias', '?')
         conf = playbook.get('bias_confidence', '?')
         stp, tgt = _parse_playbook_pcts(playbook)
         _add_brown_log('info',
             f'[Playbook] {symbol} ready — bias={bias}/{conf} '
             f'stop={stp}% target={tgt}% '
-            f'({stats["totalDays"]} gap-up days analyzed)')
+            f'({stats["totalDays"]} gap-up days analyzed)', user_id=user_id)
     except Exception as _e:
-        _add_brown_log('warning', f'[Playbook] {symbol} fetch failed: {_e} — will use config defaults')
+        _add_brown_log('warning', f'[Playbook] {symbol} fetch failed: {_e} — will use config defaults', user_id)
         app_logger.warning(f'Playbook fetch failed for {symbol}: {_e}', exc_info=True)
-        _playbook_failed.add(symbol)
+        playbook_failed.add(symbol)
     finally:
-        _playbook_pending.discard(symbol)
+        playbook_pending.discard(symbol)
 
 
-def _brown_enter_position(symbol, position_type, config, approx_price, playbook_override=None):
+def _brown_enter_position(user_id: int, symbol, position_type, config, approx_price, playbook_override=None):
     """Place a BUY order for BrownBot and record the position in memory."""
-    global _brown_bot_active_positions, _brown_bot_stats, _brown_entry_counts, _brown_attempted_symbols, _brown_pending_orders
+    sess = _get_brown_session(user_id)
+    if not sess:
+        return
+    active_positions = sess.active_positions
+    lock             = sess.lock
+    entry_counts     = sess.entry_counts
+    attempted_symbols = sess.attempted_symbols
+    pending_orders   = sess.pending_orders
+    broker           = sess.broker
+    stats            = sess.stats
 
     price = float(approx_price or 0)
-    _add_brown_log('info', f'{symbol}: entry started — approx ${price:.2f}, type={position_type}')
+    _add_brown_log('info', f'{symbol}: entry started — approx ${price:.2f}, type={position_type}', user_id)
     pct_key = 'day_position_pct' if position_type == 'day' else 'swing_position_pct'
     position_pct = float(config.get(pct_key, 5.0 if position_type == 'day' else 3.0))
 
@@ -3243,11 +3281,11 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     if position_pct > MAX_PCT:
         _add_brown_log('warning',
             f'{symbol}: {pct_key} {position_pct:.1f}% exceeds safety cap {MAX_PCT:.0f}% '
-            f'— capped. Check your BrownBot config.')
+            f'— capped. Check your BrownBot config.', user_id=user_id)
         position_pct = MAX_PCT
 
-    if not _brown_broker:
-        _add_brown_log('error', f'SKIP {symbol}: no broker available')
+    if not broker:
+        _add_brown_log('error', f'SKIP {symbol}: no broker available', user_id)
         return
 
     # If approx_price is 0 or missing, try a direct Alpaca quote before giving up.
@@ -3271,7 +3309,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         if price <= 0:
             # Transient price failure — do NOT mark attempted so the next scan can retry.
             _add_brown_log('warning',
-                f'SKIP {symbol}: could not determine current price — will retry next scan')
+                f'SKIP {symbol}: could not determine current price — will retry next scan', user_id=user_id)
             return
 
     # Fetch account equity to size the position and check buying power.
@@ -3279,45 +3317,45 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     # restores as positions close intraday, so insufficient-BP should not block
     # the symbol for the full session.
     try:
-        acct = _brown_broker.get_account()
+        acct = broker.get_account()
         if acct.equity > 0:
             dollar_size = acct.equity * (position_pct / 100.0)
             quantity    = max(1, int(dollar_size / price))
             required    = price * quantity
             _add_brown_log('info',
                 f'{symbol}: sizing {position_pct:.1f}% of ${acct.equity:,.0f} equity '
-                f'= ${dollar_size:,.0f} → {quantity} shares @ ${price:.2f}')
+                f'= ${dollar_size:,.0f} → {quantity} shares @ ${price:.2f}', user_id=user_id)
             if acct.buying_power < required:
                 _add_brown_log('warning',
                     f'SKIP {symbol}: insufficient buying power '
                     f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) '
-                    f'— will retry when BP frees up')
+                    f'— will retry when BP frees up', user_id=user_id)
                 return  # NOT added to attempted — will retry on next scan
         else:
-            _add_brown_log('warning', f'{symbol}: equity is 0 — using fallback 1 share')
+            _add_brown_log('warning', f'{symbol}: equity is 0 — using fallback 1 share', user_id)
             quantity = 1
     except Exception as _bp_err:
         app_logger.debug(f'BrownBot account fetch failed for {symbol}: {_bp_err}')
         quantity = max(1, int(dollar_size / price)) if 'dollar_size' in dir() else 1
-        _add_brown_log('warning', f'{symbol}: account fetch failed — fallback {quantity} shares')
+        _add_brown_log('warning', f'{symbol}: account fetch failed — fallback {quantity} shares', user_id)
 
     # Mark as attempted now that BP is confirmed and we are about to place an order.
     # Fills, broker rejections, and order errors all lock the symbol for this session.
     # Transient failures (price unavailable, insufficient BP) return early above.
-    _brown_attempted_symbols.add(symbol)
+    attempted_symbols.add(symbol)
 
     try:
         from bot.broker.base import OrderSide, OrderType as OType
-        order = _brown_broker.place_order(
+        order = broker.place_order(
             symbol     = symbol,
             side       = OrderSide.BUY,
             qty        = float(quantity),
             order_type = OType.MARKET,
         )
         order_id = order.order_id
-        app_logger.info(f'[BrownBot:{_brown_broker.name}] BUY {quantity} {symbol} → order_id={order_id} status={order.status}')
+        app_logger.info(f'[BrownBot:{broker.name}] BUY {quantity} {symbol} → order_id={order_id} status={order.status}')
     except Exception as _order_err:
-        _add_brown_log('error', f'Order rejected for {symbol}: {_order_err}')
+        _add_brown_log('error', f'Order rejected for {symbol}: {_order_err}', user_id)
         return
 
     # Check immediately for fast fill or outright rejection.
@@ -3326,14 +3364,14 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
     if order_id:
         try:
             from bot.broker.base import OrderStatus as _OStatus
-            _filled = _brown_broker.get_order(str(order_id))
+            _filled = broker.get_order(str(order_id))
             app_logger.debug(
                 f'[BrownBot entry] immediate status check {symbol} '
                 f'order={str(order_id)[:8]}… status={_filled.status} '
                 f'filled_avg_price={_filled.filled_avg_price} filled_qty={_filled.filled_qty}')
             if _filled.status in (_OStatus.CANCELLED, _OStatus.REJECTED):
                 _add_brown_log('error',
-                    f'{symbol} order {str(order_id)[:8]}… rejected immediately — not entering')
+                    f'{symbol} order {str(order_id)[:8]}… rejected immediately — not entering', user_id=user_id)
                 return
             if _filled.filled_avg_price:
                 _fill_price = float(_filled.filled_avg_price)
@@ -3341,7 +3379,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 if _fill_price != price:
                     _add_brown_log('info',
                         f'{symbol} fill confirmed ${_fill_price:.2f} '
-                        f'(scanner approx was ${price:.2f})')
+                        f'(scanner approx was ${price:.2f})', user_id=user_id)
                 price    = _fill_price
                 quantity = _fill_qty
                 _entry_confirmed = True
@@ -3410,8 +3448,8 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         'playbook_target_pct': tgt_pct if playbook_override else None,
         'playbook_summary':    playbook_summary,
     }
-    with _brown_bot_lock:
-        _brown_bot_active_positions[position_id] = position
+    with lock:
+        active_positions[position_id] = position
 
     app_logger.debug(
         f'[BrownBot entry] {symbol} position_id={position_id} '
@@ -3421,10 +3459,10 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
 
     # Persist position to DB so it survives a server restart
     try:
-        db_manager.save_brown_position(position_id, position)
+        db_manager.save_brown_position(position_id, position, user_id=user_id)
         app_logger.debug(f'[BrownBot entry] {symbol} position saved to DB (status=open)')
     except Exception as _e:
-        _add_brown_log('warning', f'DB position save failed for {symbol}: {_e}')
+        _add_brown_log('warning', f'DB position save failed for {symbol}: {_e}', user_id)
 
     # Log the order to the immutable orders table
     if order_id:
@@ -3442,7 +3480,7 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 'status':         _order_status_str,
                 'submitted_at':   datetime.now().isoformat(),
                 'trade_date':     _trade_date,
-            })
+            }, user_id=user_id)
             app_logger.debug(
                 f'[BrownBot entry] {symbol} brown_orders row written '
                 f'order={str(order_id)[:8]}… status={_order_status_str}')
@@ -3454,12 +3492,12 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                     f'update_brown_order_fill + update_brown_position_entry done '
                     f'fill_price={price} fill_qty={quantity}')
         except Exception as _e:
-            _add_brown_log('warning', f'DB order log failed for {symbol}: {_e}')
+            _add_brown_log('warning', f'DB order log failed for {symbol}: {_e}', user_id)
 
     if not _entry_confirmed and order_id:
         _add_brown_log('info',
             f'{symbol} BUY submitted order={str(order_id)[:8]}… — '
-            f'waiting for broker fill confirmation')
+            f'waiting for broker fill confirmation', user_id=user_id)
 
     # Write BUY trade to DB only after broker confirms the fill.
     if _entry_confirmed:
@@ -3481,14 +3519,14 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 'position_type': position_type,
                 'days_held':     None,
                 'source':        'brownbot',
-                'broker':        _brown_broker.name if _brown_broker else None,
+                'broker':        broker.name if broker else None,
             })
         except Exception as _e:
-            _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
+            _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}', user_id)
     elif order_id:
         # Slow path: order still pending — monitor thread will write DB on confirmed fill.
-        with _brown_bot_lock:
-            _brown_pending_orders[str(order_id)] = {
+        with lock:
+            pending_orders[str(order_id)] = {
                 'type':          'entry',
                 'symbol':        symbol,
                 'position_id':   position_id,
@@ -3498,11 +3536,11 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
                 'quantity':      quantity,
                 'position_type': position_type,
             }
-        _add_brown_log('info', f'{symbol} BUY pending broker confirmation — DB write deferred')
+        _add_brown_log('info', f'{symbol} BUY pending broker confirmation — DB write deferred', user_id)
 
     # Count only actual fills — not rejected/skipped attempts
-    _brown_entry_counts[symbol] = _brown_entry_counts.get(symbol, 0) + 1
-    entry_num = _brown_entry_counts[symbol]
+    entry_counts[symbol] = entry_counts.get(symbol, 0) + 1
+    entry_num = entry_counts[symbol]
     times_str = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-entry ×{entry_num - 1})'
     position['entry_num'] = entry_num
 
@@ -3510,16 +3548,15 @@ def _brown_enter_position(symbol, position_type, config, approx_price, playbook_
         'info',
         f"ENTERED {position_type.upper()} {symbol} {times_str} ~${price:.2f} | "
         f"target ${profit_target} (+{tgt_pct}%, {tgt_src}) | stop ${stop_loss} (-{stp_pct}%, {stp_src})"
-        + (f' | playbook bias={playbook_bias}' if playbook_bias else '')
-    )
+        + (f' | playbook bias={playbook_bias}' if playbook_bias else ''),
+        user_id
+    , user_id=user_id)
 
 
-# ── Swing scanner caches ──────────────────────────────────────────────────────
-_swing_candidates_cache = {'ts': 0.0, 'candidates': []}
-_swing_ai_picks_cache   = {'ts': 0.0, 'picks': [], 'fingerprint': ''}
+# Swing scanner caches are now per-session (BrownSession.swing_candidates_cache / swing_ai_picks_cache)
 
 
-def _fetch_swing_universe(config):
+def _fetch_swing_universe(config, user_id: int = 0):
     """
     Return (symbols: list[str], meta: dict) from Alpaca most-actives + movers.
     meta[symbol] = {'volume': int, 'price': float, 'chg_pct': float,
@@ -3529,7 +3566,7 @@ def _fetch_swing_universe(config):
     ak  = os.environ.get('ALPACA_API_KEY', '')
     aks = os.environ.get('ALPACA_API_SECRET', '')
     if not (ak and aks):
-        _add_brown_log('warning', 'Swing scanner: ALPACA_API_KEY/SECRET not set')
+        _add_brown_log('warning', 'Swing scanner: ALPACA_API_KEY/SECRET not set', user_id=user_id)
         return [], {}
 
     headers  = {'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': aks}
@@ -3734,29 +3771,31 @@ def _check_swing_entry_signal(symbol, tech, config):
     return all_pass, checks, ' | '.join(parts)
 
 
-def _brown_scan_swing_candidates(config):
+def _brown_scan_swing_candidates(config, user_id: int = 0):
     """
     Broad-market swing candidate scan: Alpaca most-actives + gainers →
     price/volume/market-cap/float filters → daily-bar technicals.
-    Results are cached for 5 minutes to avoid hammering the API every 30 s.
+    Results are cached per-session for 5 minutes.
     Returns list of candidate dicts, each suitable for _check_swing_entry_signal
     and SwingPicksAgent.rank_candidates.
     """
-    global _swing_candidates_cache
+    sess = _get_brown_session(user_id)
+    swing_candidates_cache = sess.swing_candidates_cache if sess else {'ts': 0.0, 'candidates': []}
 
     now = time.time()
-    if now - _swing_candidates_cache.get('ts', 0) < 300:
-        return _swing_candidates_cache.get('candidates', [])
+    if now - swing_candidates_cache.get('ts', 0) < 300:
+        return swing_candidates_cache.get('candidates', [])
 
-    _add_brown_log('info', 'Swing scanner: refreshing universe from Alpaca screener…')
+    _add_brown_log('info', 'Swing scanner: refreshing universe from Alpaca screener…', user_id)
 
-    symbols_list, meta = _fetch_swing_universe(config)
+    symbols_list, meta = _fetch_swing_universe(config, user_id=user_id)
     if not symbols_list:
-        _add_brown_log('warning', 'Swing scanner: screener returned no symbols')
-        _swing_candidates_cache = {'ts': now, 'candidates': []}
+        _add_brown_log('warning', 'Swing scanner: screener returned no symbols', user_id=user_id)
+        if sess:
+            sess.swing_candidates_cache = {'ts': now, 'candidates': []}
         return []
 
-    _add_brown_log('info', f'Swing scanner: {len(symbols_list)} raw symbols from screener')
+    _add_brown_log('info', f'Swing scanner: {len(symbols_list)} raw symbols from screener', user_id)
 
     # Pre-price filter: the Alpaca most-actives endpoint does NOT return OHLC data,
     # so many symbols will have price=0 in meta. Only exclude symbols whose price
@@ -3770,13 +3809,14 @@ def _brown_scan_swing_candidates(config):
                 and not (min_price <= float(meta.get(s, {}).get('price') or 0) <= max_price))
     ]
     if not price_ok:
-        _add_brown_log('info', 'Swing scanner: no symbols passed pre-price filter')
-        _swing_candidates_cache = {'ts': now, 'candidates': []}
+        _add_brown_log('info', 'Swing scanner: no symbols passed pre-price filter', user_id)
+        if sess:
+            sess.swing_candidates_cache = {'ts': now, 'candidates': []}
         return []
 
     _add_brown_log('info',
         f'Swing scanner: {len(price_ok)} symbols after pre-price filter, '
-        f'fetching 30-day daily bars…')
+        f'fetching 30-day daily bars…', user_id=user_id)
 
     bars_by_sym = _fetch_swing_daily_bars(price_ok, days=30)
 
@@ -3882,37 +3922,40 @@ def _brown_scan_swing_candidates(config):
     _add_brown_log('info',
         f'Swing scanner: {len(candidates)} candidates after all filters '
         f'(skipped no_bars={skipped["no_bars"]} vol={skipped["volume"]} '
-        f'cap={skipped["market_cap"]} float={skipped["float"]})')
+        f'cap={skipped["market_cap"]} float={skipped["float"]})', user_id=user_id)
 
-    _swing_candidates_cache = {'ts': now, 'candidates': candidates}
+    if sess:
+        sess.swing_candidates_cache = {'ts': now, 'candidates': candidates}
     return candidates
 
 
-def _brown_rank_swing_ai(candidates):
+def _brown_rank_swing_ai(candidates, user_id: int = 0):
     """
     Run SwingPicksAgent.rank_candidates on `candidates` and return the
     AI-ranked picks list (grade A/B/C, bias Bullish/Bearish).
-    Results are cached for 15 minutes, or until the candidate symbol set changes.
+    Results are cached per-session for 15 minutes, or until candidate set changes.
     Falls back to treating all candidates as Grade B / Bullish if AI unavailable.
     """
-    global _swing_ai_picks_cache
+    sess = _get_brown_session(user_id)
+    swing_ai_picks_cache = sess.swing_ai_picks_cache if sess else {'ts': 0.0, 'picks': [], 'fingerprint': ''}
 
     fingerprint = ','.join(sorted(c['ticker'] for c in candidates))
     now = time.time()
-    cached = _swing_ai_picks_cache
+    cached = swing_ai_picks_cache
     if (fingerprint == cached.get('fingerprint', '')
             and now - cached.get('ts', 0) < 900):
         return cached.get('picks', [])
 
     if not (AI_AGENT_AVAILABLE and _swing_agent):
         _add_brown_log('info',
-            'Swing scanner: AI not available — treating all filtered candidates as approved')
+            'Swing scanner: AI not available — treating all filtered candidates as approved', user_id=user_id)
         picks = [
             {'ticker': c['ticker'], 'grade': 'B', 'bias': 'Bullish',
              'reason': 'AI not configured', 'entry_zone': '', 'watch_for': '', 'risk': ''}
             for c in candidates
         ]
-        _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+        if sess:
+            sess.swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
         try:
             db_manager.save_swing_screener_snapshot(_last_trading_date(), candidates, picks)
         except Exception as _ssh_err:
@@ -3930,16 +3973,17 @@ def _brown_rank_swing_ai(candidates):
         session_key = _last_trading_date()
 
         _add_brown_log('info',
-            f'Swing AI ranking {len(candidates)} candidates via SwingPicksAgent…')
+            f'Swing AI ranking {len(candidates)} candidates via SwingPicksAgent…', user_id=user_id)
         result = _swing_agent.rank_candidates(candidates, session_key, market_open=in_mkt)
         picks  = result.get('picks', [])
         market_note = result.get('market_note', '')
         if market_note:
-            _add_brown_log('info', f'Swing AI market note: {market_note}')
+            _add_brown_log('info', f'Swing AI market note: {market_note}', user_id)
         _add_brown_log('info',
             f'Swing AI ranked {len(picks)} picks — '
-            f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…')
-        _swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
+            f'grades: {", ".join(p.get("grade","?") + "/" + p.get("bias","?") for p in picks[:5])}…', user_id=user_id)
+        if sess:
+            sess.swing_ai_picks_cache = {'ts': now, 'picks': picks, 'fingerprint': fingerprint}
         # Save screener snapshot for Option-B backtest data collection (always — even
         # if picks is empty, candidates are worth recording for forward-return analysis).
         try:
@@ -3967,24 +4011,30 @@ def _brown_rank_swing_ai(candidates):
         return picks
     except Exception as e:
         app_logger.warning(f'BrownBot swing AI ranking failed: {e}', exc_info=True)
-        _add_brown_log('warning', f'Swing AI ranking failed: {e} — skipping swing entries this cycle')
+        _add_brown_log('warning', f'Swing AI ranking failed: {e} — skipping swing entries this cycle', user_id)
         return []
 
 
-def _brown_bot_scan_and_enter():
+def _brown_bot_scan_and_enter(user_id: int):
     """One iteration of the BrownBot entry loop: scan, filter, gate, order."""
-    global _brown_bot_running, _brown_risk_manager
+    sess = _get_brown_session(user_id)
+    if not sess or not sess.running:
+        return
+    risk_manager     = sess.risk_manager
+    active_positions = sess.active_positions
+    attempted_symbols = sess.attempted_symbols
 
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
-    config = db_manager.get_brown_bot_config(_brown_bot_user_id)
+    config = db_manager.get_brown_bot_config(user_id)
 
     # Rebuild RiskManager from fresh config each iteration so UI config changes
     # (slot caps, loss limit) take effect immediately without restarting the bot.
     if RISK_MANAGER_AVAILABLE:
-        _brown_risk_manager = RiskManager(config)
+        sess.risk_manager = RiskManager(config)
+        risk_manager = sess.risk_manager
 
     # Use the live in-memory data kept current by the gap-up monitor loop.
     # Falls back to today's DB snapshot when the monitor hasn't populated yet.
@@ -3995,9 +4045,9 @@ def _brown_bot_scan_and_enter():
             _today_str = now_et.date().isoformat()
             raw_gaps = db_manager.get_gap_up_snapshot(_today_str) or []
             if raw_gaps:
-                _add_brown_log('info', f'Scanner using DB snapshot ({len(raw_gaps)} stocks)')
+                _add_brown_log('info', f'Scanner using DB snapshot ({len(raw_gaps)} stocks)', user_id)
         except Exception as e:
-            _add_brown_log('warning', f'DB snapshot fallback failed: {e}')
+            _add_brown_log('warning', f'DB snapshot fallback failed: {e}', user_id)
 
     min_gap = float(config.get('min_gap_pct', 10.0))
     min_price = float(config.get('min_price', 5.0))
@@ -4026,8 +4076,9 @@ def _brown_bot_scan_and_enter():
     _add_brown_log('info',
         f'Scanner: {len(raw_gaps)} raw gaps → {len(scanner_hits)} passed filters '
         f'(gap≥{min_gap}%, price ${min_price:.0f}–${max_price:.0f}, vol≥{min_vol_m}M'
-        + (f', float{float_op}{float_val}M' if float_val > 0 else '') + ')'
-    )
+        + (f', float{float_op}{float_val}M' if float_val > 0 else '') + ')',
+        user_id
+    , user_id=user_id)
     for _s in raw_gaps:
         _t = _s.get('ticker', '?')
         if _t in scanner_hits:
@@ -4047,9 +4098,9 @@ def _brown_bot_scan_and_enter():
         app_logger.debug(f'BrownBot FILTER-OUT {_t}: {", ".join(_reasons) or "unknown"}')
 
     # Snapshot active state under lock
-    with _brown_bot_lock:
-        active_symbols = {p['symbol'] for p in _brown_bot_active_positions.values()}
-        active_copy = dict(_brown_bot_active_positions)
+    with sess.lock:
+        active_symbols = {p['symbol'] for p in active_positions.values()}
+        active_copy = dict(active_positions)
 
     # Day time gate (configurable, default 09:35–10:30 ET)
     _gate_enabled = bool(config.get('day_time_gate_enabled', True))
@@ -4068,8 +4119,9 @@ def _brown_bot_scan_and_enter():
             _gate_str = 'parse error → open'
     _add_brown_log('info',
         f'Day time gate: {"OPEN" if day_window_open else "CLOSED"} '
-        f'(now {now_et.strftime("%H:%M")} ET, window {_gate_str})'
-    )
+        f'(now {now_et.strftime("%H:%M")} ET, window {_gate_str})',
+        user_id
+    , user_id=user_id)
 
     # ── Hard market-hours guard (not user-configurable) ─────────────────────
     _mkt_open  = now_et.replace(hour=9,  minute=30, second=0, microsecond=0)
@@ -4077,109 +4129,109 @@ def _brown_bot_scan_and_enter():
     _in_market_hours = (_mkt_open <= now_et <= _mkt_close) and (now_et.weekday() < 5)
     if not _in_market_hours:
         _add_brown_log('info',
-            f'Outside market hours ({now_et.strftime("%H:%M ET %A")}) — skipping day trade entries')
+            f'Outside market hours ({now_et.strftime("%H:%M ET %A")}) — skipping day trade entries', user_id=user_id)
 
     # ── Process auto-scanned gap-up candidates (day trade) ──
     _day_trades_on = config.get('day_trades_enabled', True) and _in_market_hours
     if not config.get('day_trades_enabled', True):
-        _add_brown_log('info', 'Day trades disabled — skipping day trade entries')
+        _add_brown_log('info', 'Day trades disabled — skipping day trade entries', user_id)
     for symbol, s in (scanner_hits.items() if _day_trades_on else []):
-        if not _brown_bot_running:
+        if not sess.running:
             return
         if symbol in active_symbols:
-            _add_brown_log('info', f'SKIP {symbol}: already in active positions')
+            _add_brown_log('info', f'SKIP {symbol}: already in active positions', user_id)
             continue
-        if symbol in _brown_attempted_symbols:
+        if symbol in attempted_symbols:
             continue  # already attempted this session (filled, rejected, or timed out)
-        if symbol in _brown_eod_flattened_symbols:
-            _add_brown_log('info', f'SKIP {symbol}: EOD-flattened earlier today — no re-entry')
+        if symbol in sess.eod_flattened_symbols:
+            _add_brown_log('info', f'SKIP {symbol}: EOD-flattened earlier today — no re-entry', user_id)
             continue
         if not day_window_open:
-            _add_brown_log('info', f'SKIP {symbol}: outside day time gate ({now_et.strftime("%H:%M")} ET, window {_gate_str})')
+            _add_brown_log('info', f'SKIP {symbol}: outside day time gate ({now_et.strftime("%H:%M")} ET, window {_gate_str})', user_id)
             continue
         # Intraday trend signal check — use live broker quote for current price so
         # VWAP/extension checks aren't comparing against a stale gap-open price.
         # gap_price stays as the scanner price (the price at which the gap was detected).
-        live_price = _brown_get_current_price(symbol) or s.get('price', 0)
+        live_price = _brown_get_current_price(user_id, symbol) or s.get('price', 0)
         sig_ok, sig_checks, sig_reason = _check_day_entry_signal(
             symbol, live_price, s.get('price', 0), config)
         if not sig_ok:
-            _add_brown_log('info', f'SKIP {symbol} [TREND] {sig_reason}')
+            _add_brown_log('info', f'SKIP {symbol} [TREND] {sig_reason}', user_id)
             continue
         if sig_checks:
-            _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}')
+            _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}', user_id)
 
         # Playbook gate — AI analysis of 5-yr gap history for this symbol.
         # Short/High-confidence bias means it historically gaps and reverses — skip.
         # If the playbook isn't ready yet, defer to the next scan cycle.
         playbook_override = None
         if config.get('day_ai_playbook', True) and AI_AGENT_AVAILABLE and _gap_up_agent:
-            if symbol in _playbook_cache:
-                pb       = _playbook_cache[symbol]
+            if symbol in sess.playbook_cache:
+                pb       = sess.playbook_cache[symbol]
                 pb_bias  = pb.get('bias', '')
                 pb_conf  = pb.get('bias_confidence', '')
                 if pb_bias == 'Short' and pb_conf == 'High':
                     _add_brown_log('info',
-                        f'SKIP {symbol} [PLAYBOOK] bias=Short/High — historically bearish after gap')
+                        f'SKIP {symbol} [PLAYBOOK] bias=Short/High — historically bearish after gap', user_id=user_id)
                     continue
                 playbook_override = pb
                 _add_brown_log('info',
-                    f'{symbol} playbook ready — bias={pb_bias}/{pb_conf}, using for stop/target')
-            elif symbol in _playbook_pending:
+                    f'{symbol} playbook ready — bias={pb_bias}/{pb_conf}, using for stop/target', user_id=user_id)
+            elif symbol in sess.playbook_pending:
                 _add_brown_log('info',
-                    f'DEFER {symbol}: playbook fetch in progress — will retry next scan cycle')
+                    f'DEFER {symbol}: playbook fetch in progress — will retry next scan cycle', user_id=user_id)
                 continue
-            elif symbol not in _playbook_failed:
+            elif symbol not in sess.playbook_failed:
                 # First encounter — kick off background fetch and defer entry
-                _playbook_pending.add(symbol)
+                sess.playbook_pending.add(symbol)
                 _pb_thread = threading.Thread(
                     target=_fetch_and_cache_playbook,
-                    args=(symbol, {}, {}),
+                    args=(symbol, {}, {}, user_id),
                     daemon=True,
                     name=f'Playbook-{symbol}',
                 )
                 _pb_thread.start()
                 _add_brown_log('info',
-                    f'DEFER {symbol}: started playbook fetch — will enter on next scan cycle')
+                    f'DEFER {symbol}: started playbook fetch — will enter on next scan cycle', user_id=user_id)
                 continue
             # else: playbook fetch previously failed → proceed with config defaults
 
         # Hard cap: re-read live day count under lock so a stale active_copy or
         # a concurrent order-monitor removal can never let us exceed the limit.
         max_day = int(config.get('max_concurrent_day', 3))
-        with _brown_bot_lock:
+        with sess.lock:
             live_day = sum(
-                1 for p in _brown_bot_active_positions.values()
+                1 for p in active_positions.values()
                 if p.get('position_type') in ('day', 'brown_day')
                 and not p.get('_exit_pending')
             )
-            active_copy = dict(_brown_bot_active_positions)
+            active_copy = dict(active_positions)
         if live_day >= max_day:
             _add_brown_log('info',
-                f'Day cap {max_day} reached ({live_day} open) — no more day entries this scan')
+                f'Day cap {max_day} reached ({live_day} open) — no more day entries this scan', user_id=user_id)
             break
 
-        if _brown_risk_manager:
+        if risk_manager:
             _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
-            _rs = _brown_risk_manager.status(active_copy, unrealized_pnl=_unrealized)
-            allowed, reason = _brown_risk_manager.can_enter(symbol, 'day', active_copy, unrealized_pnl=_unrealized)
+            _rs = risk_manager.status(active_copy, unrealized_pnl=_unrealized)
+            allowed, reason = risk_manager.can_enter(symbol, 'day', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
                 _add_brown_log('warning',
                     f'SKIP {symbol} [RISK] {reason} '
                     f'(total P&L ${_rs["daily_pnl"]:.0f}, '
                     f'limit ${_rs["max_daily_loss"]:.0f}, '
-                    f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]})')
+                    f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]})', user_id=user_id)
                 continue
             _add_brown_log('info',
                 f'{symbol} risk OK — total P&L ${_rs["daily_pnl"]:.0f} '
                 f'(realized ${_rs["realized_pnl"]:.0f} + unrealized ${_rs["unrealized_pnl"]:.0f}), '
-                f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}')
-        _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%')
-        _brown_enter_position(symbol, 'day', config, s.get('price', 0), playbook_override=playbook_override)
+                f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}', user_id=user_id)
+        _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%', user_id)
+        _brown_enter_position(user_id, symbol, 'day', config, s.get('price', 0), playbook_override=playbook_override)
         # Refresh active state after entry
-        with _brown_bot_lock:
+        with sess.lock:
             active_symbols.add(symbol)
-            active_copy = dict(_brown_bot_active_positions)
+            active_copy = dict(active_positions)
 
     # ── Process swing candidates from broad-market scan ──────────────────
     # Steps 1-3 (scan → signal filter → AI ranking) run regardless of market hours
@@ -4187,7 +4239,7 @@ def _brown_bot_scan_and_enter():
     # Step 4 (position entry) is gated to market hours only.
     _swing_entry_allowed = _in_market_hours and config.get('swing_trades_enabled', True)
     if not config.get('swing_trades_enabled', True):
-        _add_brown_log('info', 'Swing trades disabled — will scan but not enter')
+        _add_brown_log('info', 'Swing trades disabled — will scan but not enter', user_id)
     elif _swing_entry_allowed and config.get('swing_time_gate_enabled'):
         _sg_start = config.get('swing_time_gate_start', '09:30')
         _sg_end   = config.get('swing_time_gate_end', '15:00')
@@ -4201,98 +4253,98 @@ def _brown_bot_scan_and_enter():
         except Exception:
             pass
         if not _swing_entry_allowed:
-            _add_brown_log('info', f'Swing entry gate closed ({_sg_start}–{_sg_end} ET) — scanning but not entering')
+            _add_brown_log('info', f'Swing entry gate closed ({_sg_start}–{_sg_end} ET) — scanning but not entering', user_id)
 
     # Step 1 — Universe scan: Alpaca most-actives + gainers, then
     # price / avg-volume / market-cap / float filters + daily-bar technicals.
     # Results are cached 5 min so the 30-s loop doesn't hammer the API.
-    swing_raw = _brown_scan_swing_candidates(config)
+    swing_raw = _brown_scan_swing_candidates(config, user_id)
     if not swing_raw:
-        _add_brown_log('info', 'Swing scanner: no candidates after filters')
+        _add_brown_log('info', 'Swing scanner: no candidates after filters', user_id)
         return
 
     # Step 2 — User-configured entry signal filters (optional, all off by default).
     signal_passed = []
     for cand in swing_raw:
         sym = cand['symbol']
-        if sym in active_symbols or sym in _brown_attempted_symbols:
+        if sym in active_symbols or sym in attempted_symbols:
             continue
         sig_ok, _checks, sig_reason = _check_swing_entry_signal(sym, cand, config)
         if sig_ok:
             signal_passed.append(cand)
         else:
-            _add_brown_log('info', f'SKIP swing {sym} [SIGNAL] {sig_reason}')
+            _add_brown_log('info', f'SKIP swing {sym} [SIGNAL] {sig_reason}', user_id)
 
     if not signal_passed:
-        _add_brown_log('info', 'Swing scanner: no candidates passed entry signal filters')
+        _add_brown_log('info', 'Swing scanner: no candidates passed entry signal filters', user_id)
         return
 
     # Step 3 — AI ranking via SwingPicksAgent (Haiku, Grade A/B + Bullish only).
     # Results cached 15 min; only re-runs when the candidate fingerprint changes.
     # Always runs so the BrownBot table and Swing tab are populated.
-    ai_picks = _brown_rank_swing_ai(signal_passed)
+    ai_picks = _brown_rank_swing_ai(signal_passed, user_id)
     hot_swing_picks = [
         p for p in ai_picks
         if p.get('grade') in ('A', 'B') and p.get('bias', '').lower() == 'bullish'
     ]
     if not hot_swing_picks:
-        _add_brown_log('info', 'Swing AI: no Grade A/B Bullish picks')
+        _add_brown_log('info', 'Swing AI: no Grade A/B Bullish picks', user_id)
         return
 
     # Step 4 — Risk gate + position entry (market hours only)
     if not _swing_entry_allowed:
         _add_brown_log('info',
             f'Swing scan complete ({len(hot_swing_picks)} picks ready) — '
-            f'entry {"disabled" if not config.get("swing_trades_enabled", True) else "waiting for market open"}')
+            f'entry {"disabled" if not config.get("swing_trades_enabled", True) else "waiting for market open"}', user_id=user_id)
         return
     for pick in hot_swing_picks:
-        if not _brown_bot_running:
+        if not sess.running:
             return
         symbol = pick.get('ticker', '').upper()
         if not symbol:
             continue
         if symbol in active_symbols:
             continue
-        if symbol in _brown_attempted_symbols:
+        if symbol in attempted_symbols:
             continue
 
         # Hard cap: re-read live swing count under lock
         max_swing = int(config.get('max_concurrent_swing', 5))
-        with _brown_bot_lock:
+        with sess.lock:
             live_swing = sum(
-                1 for p in _brown_bot_active_positions.values()
+                1 for p in active_positions.values()
                 if p.get('position_type') in ('swing', 'brown_swing')
                 and not p.get('_exit_pending')
             )
-            active_copy = dict(_brown_bot_active_positions)
+            active_copy = dict(active_positions)
         if live_swing >= max_swing:
             _add_brown_log('info',
-                f'Swing cap {max_swing} reached ({live_swing} open) — no more swing entries this scan')
+                f'Swing cap {max_swing} reached ({live_swing} open) — no more swing entries this scan', user_id=user_id)
             break
 
-        if _brown_risk_manager:
+        if risk_manager:
             _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
-            _rs = _brown_risk_manager.status(active_copy, unrealized_pnl=_unrealized)
-            allowed, reason = _brown_risk_manager.can_enter(symbol, 'swing', active_copy, unrealized_pnl=_unrealized)
+            _rs = risk_manager.status(active_copy, unrealized_pnl=_unrealized)
+            allowed, reason = risk_manager.can_enter(symbol, 'swing', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
                 _add_brown_log('warning',
                     f'SKIP swing {symbol} [RISK] {reason} '
                     f'(total P&L ${_rs["daily_pnl"]:.0f}, '
-                    f'swing slots {_rs["open_swing"]}/{_rs["max_concurrent_swing"]})')
+                    f'swing slots {_rs["open_swing"]}/{_rs["max_concurrent_swing"]})', user_id=user_id)
                 continue
             _add_brown_log('info',
                 f'{symbol} risk OK — total P&L ${_rs["daily_pnl"]:.0f} '
                 f'(realized ${_rs["realized_pnl"]:.0f} + unrealized ${_rs["unrealized_pnl"]:.0f}), '
-                f'swing slots {_rs["open_swing"]}/{_rs["max_concurrent_swing"]}')
+                f'swing slots {_rs["open_swing"]}/{_rs["max_concurrent_swing"]}', user_id=user_id)
 
-        live_price  = _brown_get_current_price(symbol) or 0
+        live_price  = _brown_get_current_price(user_id, symbol) or 0
         grade       = pick.get('grade', '?')
         pick_reason = pick.get('reason', '')
         entry_zone  = pick.get('entry_zone', '')
         _add_brown_log('info',
             f'Entering SWING {symbol} [Grade {grade}] — {pick_reason}'
-            + (f' · entry zone: {entry_zone}' if entry_zone else ''))
-        _brown_enter_position(symbol, 'swing', config, live_price)
+            + (f' · entry zone: {entry_zone}' if entry_zone else ''), user_id=user_id)
+        _brown_enter_position(user_id, symbol, 'swing', config, live_price)
         # Record actual entry in screener history for backtest accuracy
         try:
             import pytz as _ptz
@@ -4300,58 +4352,62 @@ def _brown_bot_scan_and_enter():
             db_manager.mark_swing_screener_entered(_hist_date, symbol, live_price or 0)
         except Exception:
             pass
-        with _brown_bot_lock:
+        with sess.lock:
             active_symbols.add(symbol)
-            active_copy = dict(_brown_bot_active_positions)
+            active_copy = dict(active_positions)
 
 
-def _brown_bot_scanner_loop():
+def _brown_bot_scanner_loop(user_id: int):
     """BrownBot daemon thread: scans and enters every 30 seconds."""
-    global _brown_bot_running
-    _add_brown_log('info', 'BrownBot scanner loop started')
-    while _brown_bot_running:
+    _add_brown_log('info', 'BrownBot scanner loop started', user_id)
+    sess = _get_brown_session(user_id)
+    while sess and sess.running:
         try:
-            _brown_bot_scan_and_enter()
+            _brown_bot_scan_and_enter(user_id)
         except Exception as e:
             app_logger.error(f'BrownBot scanner error: {e}', exc_info=True)
-            _add_brown_log('error', f'Scanner loop error: {e}')
+            _add_brown_log('error', f'Scanner loop error: {e}', user_id)
         # Sleep 30 s in 1-second ticks for clean shutdown
         for _ in range(30):
-            if not _brown_bot_running:
+            if not sess.running:
                 break
             time.sleep(1)
-    _add_brown_log('info', 'BrownBot scanner loop stopped')
+    _add_brown_log('info', 'BrownBot scanner loop stopped', user_id)
 
 
-def _brown_get_current_price(symbol):
+def _brown_get_current_price(user_id: int, symbol: str):
     """Fetch current price for an open BrownBot position via the active broker."""
-    if not _brown_broker:
+    sess = _get_brown_session(user_id)
+    broker = sess.broker if sess else None
+    if not broker:
         return None
     try:
-        return _brown_broker.get_current_price(symbol)
+        return broker.get_current_price(symbol)
     except Exception as e:
         app_logger.warning(f'[BrownBot] price fetch failed for {symbol}: {e}')
     return None
 
 
-def _brown_get_prices_batch(symbols):
+def _brown_get_prices_batch(user_id: int, symbols):
     """
     Fetch prices for multiple symbols in ONE Alpaca snapshot call.
     Returns dict {symbol: price}.  Falls back to per-symbol on error.
     Used by the exit loop to avoid N individual API calls per tick.
     """
-    if not _brown_broker or not symbols:
+    sess = _get_brown_session(user_id)
+    broker = sess.broker if sess else None
+    if not broker or not symbols:
         return {}
     # Use batch snapshot if the broker supports it
-    if hasattr(_brown_broker, 'get_quotes_batch'):
+    if hasattr(broker, 'get_quotes_batch'):
         try:
-            return _brown_broker.get_quotes_batch(symbols)
+            return broker.get_quotes_batch(symbols)
         except Exception as e:
             app_logger.warning(f'[BrownBot] batch price fetch failed: {e} — falling back to per-symbol')
     # Fallback: individual calls (original behaviour)
     prices = {}
     for sym in symbols:
-        p = _brown_get_current_price(sym)
+        p = _brown_get_current_price(user_id, sym)
         if p:
             prices[sym] = p
     return prices
@@ -4359,9 +4415,9 @@ def _brown_get_prices_batch(symbols):
 
 # ── Broker-confirmed order monitor ────────────────────────────────────────────
 
-def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
+def _brown_monitor_finalize_entry(user_id: int, oid, meta, fill_price, fill_qty):
     """Write the confirmed BUY trade to DB and update the in-memory position."""
-    global _brown_bot_active_positions, _brown_pending_orders
+    sess = _get_brown_session(user_id)
     symbol        = meta['symbol']
     position_id   = meta['position_id']
     position_type = meta['position_type']
@@ -4370,53 +4426,46 @@ def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
         f'[BrownBot finalize_entry] {symbol} order={oid[:8]}… '
         f'fill_price={fill_price} fill_qty={fill_qty}')
 
-    with _brown_bot_lock:
-        pos = _brown_bot_active_positions.get(position_id)
-        if pos:
-            tgt_pct = pos.get('profit_target_pct', 5.0)
-            stp_pct = pos.get('stop_loss_pct', 2.5)
-            pos['entry_price']      = fill_price
-            pos['avg_entry_price']  = fill_price
-            pos['quantity']         = fill_qty
-            pos['profit_target']    = round(fill_price * (1 + tgt_pct / 100), 2)
-            pos['stop_loss']        = round(fill_price * (1 - stp_pct / 100), 2)
-            pos['_entry_confirmed'] = True
-            app_logger.debug(
-                f'[BrownBot finalize_entry] {symbol} memory updated — '
-                f'avg_entry={fill_price} target={pos["profit_target"]} stop={pos["stop_loss"]}')
-        else:
-            app_logger.debug(
-                f'[BrownBot finalize_entry] {symbol} position_id={position_id} '
-                f'NOT found in active_positions (may have been removed already)')
-        _brown_pending_orders.pop(oid, None)
+    if sess:
+        with sess.lock:
+            pos = sess.active_positions.get(position_id)
+            if pos:
+                tgt_pct = pos.get('profit_target_pct', 5.0)
+                stp_pct = pos.get('stop_loss_pct', 2.5)
+                pos['entry_price']      = fill_price
+                pos['avg_entry_price']  = fill_price
+                pos['quantity']         = fill_qty
+                pos['profit_target']    = round(fill_price * (1 + tgt_pct / 100), 2)
+                pos['stop_loss']        = round(fill_price * (1 - stp_pct / 100), 2)
+                pos['_entry_confirmed'] = True
+                app_logger.debug(
+                    f'[BrownBot finalize_entry] {symbol} memory updated — '
+                    f'avg_entry={fill_price} target={pos["profit_target"]} stop={pos["stop_loss"]}')
+            else:
+                app_logger.debug(
+                    f'[BrownBot finalize_entry] {symbol} position_id={position_id} '
+                    f'NOT found in active_positions (may have been removed already)')
+            sess.pending_orders.pop(oid, None)
 
     # Update the orders table with actual fill data
     try:
         db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
-        app_logger.debug(
-            f'[BrownBot finalize_entry] {symbol} brown_orders updated '
-            f'order={oid[:8]}… fill_price={fill_price} fill_qty={fill_qty} status=filled')
     except Exception as _uoe:
         app_logger.debug(f'[BrownBot finalize_entry] {symbol} update_brown_order_fill failed: {_uoe}')
 
-    # Update position with confirmed avg entry price
     try:
         db_manager.update_brown_position_entry(position_id, fill_price, fill_qty)
-        app_logger.debug(
-            f'[BrownBot finalize_entry] {symbol} brown_positions.avg_entry_price '
-            f'updated → {fill_price}')
     except Exception as _upe:
         app_logger.debug(f'[BrownBot finalize_entry] {symbol} update_brown_position_entry failed: {_upe}')
 
     try:
-        db_manager.save_brown_position(
-            position_id, _brown_bot_active_positions.get(position_id) or meta
-        )
-        app_logger.debug(f'[BrownBot finalize_entry] {symbol} save_brown_position done')
+        pos_snap = (sess.active_positions.get(position_id) if sess else None) or meta
+        db_manager.save_brown_position(position_id, pos_snap, user_id=user_id)
     except Exception as _spe:
         app_logger.debug(f'[BrownBot finalize_entry] {symbol} save_brown_position failed: {_spe}')
 
     try:
+        broker_name = sess.broker.name if (sess and sess.broker) else None
         db_manager.add_trade({
             'trade_id':      f'BROWN_ENTRY_{symbol}_{oid}',
             'symbol':        symbol,
@@ -4433,16 +4482,16 @@ def _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty):
             'position_type': position_type,
             'days_held':     None,
             'source':        'brownbot',
-            'broker':        _brown_broker.name if _brown_broker else None,
+            'broker':        broker_name,
         })
-        _add_brown_log('info', f'{symbol} BUY confirmed by broker: {fill_qty} @ ${fill_price:.2f}')
+        _add_brown_log('info', f'{symbol} BUY confirmed by broker: {fill_qty} @ ${fill_price:.2f}', user_id)
     except Exception as _e:
-        _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}')
+        _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}', user_id)
 
 
-def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
+def _brown_monitor_finalize_exit(user_id: int, oid, meta, fill_price, fill_qty):
     """Write the confirmed SELL trade to DB and update exit stats."""
-    global _brown_bot_stats, _brown_pending_orders, _brown_attempted_symbols
+    sess = _get_brown_session(user_id)
     symbol        = meta['symbol']
     position_id   = meta['position_id']
     position_type = meta['position_type']
@@ -4457,39 +4506,28 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
         f'fill_price={fill_price} fill_qty={fill_qty} reason={exit_reason} '
         f'avg_entry={avg_entry} entry_price_in_meta={entry_price}')
 
-    with _brown_bot_lock:
-        _brown_pending_orders.pop(oid, None)
+    if sess:
+        with sess.lock:
+            sess.pending_orders.pop(oid, None)
 
     realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry else 0.0
     realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
 
-    app_logger.debug(
-        f'[BrownBot finalize_exit] {symbol} P&L calc: '
-        f'({fill_price} - {avg_entry}) × {fill_qty} = {realized_pnl} '
-        f'({realized_pnl_pct:.2f}%)')
-
-    # Update orders table with actual fill data
     try:
         db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
-        app_logger.debug(
-            f'[BrownBot finalize_exit] {symbol} brown_orders updated '
-            f'order={oid[:8]}… fill_price={fill_price} fill_qty={fill_qty} status=filled')
     except Exception as _uoe:
         app_logger.debug(f'[BrownBot finalize_exit] {symbol} update_brown_order_fill failed: {_uoe}')
 
-    # Mark position as closed with realized P&L
     try:
         db_manager.close_brown_position(
             position_id, fill_price, oid, exit_reason,
             realized_pnl, realized_pnl_pct
         )
-        app_logger.debug(
-            f'[BrownBot finalize_exit] {symbol} brown_positions status → closed '
-            f'realized_pnl={realized_pnl} realized_pnl_pct={realized_pnl_pct}')
     except Exception as _e:
-        _add_brown_log('warning', f'DB position close failed for {symbol}: {_e}')
+        _add_brown_log('warning', f'DB position close failed for {symbol}: {_e}', user_id)
 
     try:
+        broker_name = sess.broker.name if (sess and sess.broker) else None
         db_manager.add_trade({
             'trade_id':      f'BROWN_EXIT_{symbol}_{oid}',
             'symbol':        symbol,
@@ -4506,51 +4544,49 @@ def _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty):
             'position_type': position_type,
             'days_held':     days_held,
             'source':        'brownbot',
-            'broker':        _brown_broker.name if _brown_broker else None,
+            'broker':        broker_name,
         })
         app_logger.debug(f'[BrownBot finalize_exit] {symbol} trades row written pnl={realized_pnl}')
     except Exception as _e:
-        _add_brown_log('warning', f'DB exit write failed for {symbol}: {_e}')
+        _add_brown_log('warning', f'DB exit write failed for {symbol}: {_e}', user_id)
 
-    if position_type == 'day':
-        _brown_bot_stats['day_exited'] += 1
-    else:
-        _brown_bot_stats['swing_exited'] += 1
+    if sess:
+        if position_type == 'day':
+            sess.stats['day_exited'] += 1
+        else:
+            sess.stats['swing_exited'] += 1
 
     pnl_str  = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
     exit_tag = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-exit ×{entry_num - 1})'
     _add_brown_log(
         'info',
         f'EXITED {position_type.upper()} {symbol} {exit_tag} [{exit_reason}] '
-        f'entry ${avg_entry:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}'
-    )
+        f'entry ${avg_entry:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}',
+        user_id
+    , user_id=user_id)
 
-    # Unlock the symbol for re-entry on the next scanner cycle.
-    # EOD-flattened symbols are still blocked by _brown_eod_flattened_symbols;
-    # failed/timed-out orders never reach this path so they stay locked.
-    with _brown_bot_lock:
-        _brown_attempted_symbols.discard(symbol)
-    _add_brown_log('info', f'{symbol}: unlocked for re-entry (exit confirmed)')
+    if sess:
+        with sess.lock:
+            sess.attempted_symbols.discard(symbol)
+    _add_brown_log('info', f'{symbol}: unlocked for re-entry (exit confirmed)', user_id)
 
 
-def _brown_order_monitor_loop():
+def _brown_order_monitor_loop(user_id: int):
     """
-    Background thread: polls _brown_pending_orders every 2 s and writes to DB
+    Background thread: polls sess.pending_orders every 2 s and writes to DB
     only after the broker confirms a fill.  Handles rejections and timeouts.
     """
-    global _brown_bot_running, _brown_pending_orders, _brown_bot_active_positions
-    global _brown_closing_positions, _brown_entry_counts
-
     ORDER_TIMEOUT = 60  # seconds before a stuck order is cancelled
-    _last_status_log: dict[str, str] = {}  # oid → last logged status string
+    _last_status_log: dict = {}  # oid → last logged status string
 
-    while _brown_bot_running:
+    sess = _get_brown_session(user_id)
+    while sess and sess.running:
         time.sleep(2)
-        if not _brown_pending_orders or not _brown_broker:
+        if not sess.pending_orders or not sess.broker:
             continue
 
-        with _brown_bot_lock:
-            pending_snapshot = list(_brown_pending_orders.items())
+        with sess.lock:
+            pending_snapshot = list(sess.pending_orders.items())
 
         if pending_snapshot:
             app_logger.debug(
@@ -4558,14 +4594,14 @@ def _brown_order_monitor_loop():
                 f'{[m["symbol"]+"/"+m["type"] for _, m in pending_snapshot]}')
 
         for oid, meta in pending_snapshot:
-            if not _brown_bot_running:
+            if not sess.running:
                 break
             symbol     = meta['symbol']
             order_type = meta['type']
             age        = time.time() - meta['submitted_at']
 
             try:
-                order = _brown_broker.get_order(oid)
+                order = sess.broker.get_order(oid)
             except Exception as _e:
                 app_logger.debug(f'[BrownBot monitor] get_order {oid} failed: {_e}')
                 continue
@@ -4584,87 +4620,63 @@ def _brown_order_monitor_loop():
                 _last_status_log[oid] = _cur_status_str
 
             if order.status == _OStatus.FILLED:
-                app_logger.debug(
-                    f'[BrownBot monitor] {symbol} FILLED → calling '
-                    f'finalize_{"entry" if order_type == "entry" else "exit"}')
                 if order_type == 'entry':
-                    _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
+                    _brown_monitor_finalize_entry(user_id, oid, meta, fill_price, fill_qty)
                 else:
-                    _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
+                    _brown_monitor_finalize_exit(user_id, oid, meta, fill_price, fill_qty)
 
             elif order.status in (_OStatus.CANCELLED, _OStatus.REJECTED):
-                with _brown_bot_lock:
-                    _brown_pending_orders.pop(oid, None)
+                with sess.lock:
+                    sess.pending_orders.pop(oid, None)
                 status_str = str(order.status).upper()
-                _add_brown_log('warning', f'{symbol} {order_type} order {oid[:8]}… {status_str} — no DB write')
+                _add_brown_log('warning', f'{symbol} {order_type} order {oid[:8]}… {status_str} — no DB write', user_id)
                 if order_type == 'entry':
                     position_id = meta['position_id']
-                    with _brown_bot_lock:
-                        _brown_bot_active_positions.pop(position_id, None)
-                        _brown_entry_counts.pop(symbol, None)
+                    with sess.lock:
+                        sess.active_positions.pop(position_id, None)
+                        sess.entry_counts.pop(symbol, None)
                     try:
-                        db_manager.delete_brown_position(position_id)
+                        db_manager.delete_brown_position(position_id, user_id=user_id)
                     except Exception:
                         pass
-                    _add_brown_log('warning', f'{symbol}: phantom entry removed — order was not filled')
+                    _add_brown_log('warning', f'{symbol}: phantom entry removed — order was not filled', user_id)
                 else:
-                    # Exit order rejected — restore position so exit loop can retry
                     saved_pos = meta.get('position')
                     if saved_pos:
-                        with _brown_bot_lock:
-                            _brown_bot_active_positions[meta['position_id']] = saved_pos
-                        app_logger.debug(
-                            f'[BrownBot monitor] {symbol} exit {status_str} — '
-                            f'position restored to active_positions for retry')
-                        _add_brown_log('warning', f'{symbol}: exit order rejected — position restored for retry')
-                    else:
-                        app_logger.debug(
-                            f'[BrownBot monitor] {symbol} exit {status_str} — '
-                            f'no saved_pos in meta, position cannot be restored')
+                        with sess.lock:
+                            sess.active_positions[meta['position_id']] = saved_pos
+                        _add_brown_log('warning', f'{symbol}: exit order rejected — position restored for retry', user_id)
 
             elif age > ORDER_TIMEOUT:
                 _add_brown_log('warning',
-                    f'{symbol} {order_type} order {oid[:8]}… stuck {age:.0f}s — checking fill before cancel')
-                # Re-fetch order status immediately before cancelling.
-                # The order may have filled between our last poll and now (paper trading lag,
-                # slow Alpaca API). Cancelling a filled order silently fails, and we would
-                # then wipe a genuine open position from tracking.
+                    f'{symbol} {order_type} order {oid[:8]}… stuck {age:.0f}s — checking fill before cancel', user_id=user_id)
                 try:
-                    order = _brown_broker.get_order(oid)
+                    order = sess.broker.get_order(oid)
                     fill_price = (float(order.filled_avg_price)
                                   if order.filled_avg_price else meta.get('approx_price', 0.0))
                     fill_qty   = int(order.filled_qty or 0)
                     if order.status == _OStatus.FILLED:
                         _add_brown_log('info',
-                            f'{symbol}: order filled just before timeout — finalising instead of cancelling')
+                            f'{symbol}: order filled just before timeout — finalising instead of cancelling', user_id=user_id)
                         if order_type == 'entry':
-                            _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
+                            _brown_monitor_finalize_entry(user_id, oid, meta, fill_price, fill_qty)
                         else:
-                            _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
-                        continue  # handled — skip the cancel/wipe block below
+                            _brown_monitor_finalize_exit(user_id, oid, meta, fill_price, fill_qty)
+                        continue
                     if order.status == _OStatus.PARTIAL and fill_qty > 0:
-                        # Partial fill at timeout: cancel the remaining unfilled portion,
-                        # then accept whatever was actually filled rather than orphaning
-                        # broker shares (entry) or over-selling on retry (exit).
                         try:
-                            _brown_broker.cancel_order(oid)
+                            sess.broker.cancel_order(oid)
                         except Exception:
                             pass
                         requested_qty = meta.get('quantity', fill_qty)
                         _add_brown_log('warning',
                             f'{symbol}: {order_type} order partially filled '
                             f'({fill_qty}/{requested_qty} shares) at timeout — '
-                            f'cancelling remainder, accepting partial')
+                            f'cancelling remainder, accepting partial', user_id=user_id)
                         if order_type == 'entry':
-                            # Accept the partial fill: finalize with actual fill_qty.
-                            # finalize_entry stores fill_qty in the position so exit
-                            # loop will only try to sell what we actually own.
-                            _brown_monitor_finalize_entry(oid, meta, fill_price, fill_qty)
+                            _brown_monitor_finalize_entry(user_id, oid, meta, fill_price, fill_qty)
                         else:
-                            # Accept the partial exit: finalize for fill_qty, then
-                            # restore the remaining shares to active tracking so the
-                            # exit loop can sell them on the next cycle.
-                            _brown_monitor_finalize_exit(oid, meta, fill_price, fill_qty)
+                            _brown_monitor_finalize_exit(user_id, oid, meta, fill_price, fill_qty)
                             remaining_qty = requested_qty - fill_qty
                             if remaining_qty > 0:
                                 saved_pos = meta.get('position')
@@ -4672,73 +4684,78 @@ def _brown_order_monitor_loop():
                                     restored = dict(saved_pos)
                                     restored['quantity'] = remaining_qty
                                     position_id = meta.get('position_id')
-                                    with _brown_bot_lock:
-                                        _brown_bot_active_positions[position_id] = restored
-                                        _brown_closing_positions.discard(position_id)
+                                    with sess.lock:
+                                        sess.active_positions[position_id] = restored
+                                        sess.closing_positions.discard(position_id)
                                     _add_brown_log('warning',
                                         f'{symbol}: {remaining_qty} shares restored to '
-                                        f'active tracking after partial exit — exit loop will retry')
-                        continue  # handled
+                                        f'active tracking after partial exit — exit loop will retry', user_id=user_id)
+                        continue
                 except Exception as _pre_cancel_e:
                     app_logger.debug(f'[BrownBot monitor] pre-cancel status check {oid} failed: {_pre_cancel_e}')
 
                 try:
-                    _brown_broker.cancel_order(oid)
+                    sess.broker.cancel_order(oid)
                 except Exception:
                     pass
-                with _brown_bot_lock:
-                    _brown_pending_orders.pop(oid, None)
+                with sess.lock:
+                    sess.pending_orders.pop(oid, None)
                 if order_type == 'entry':
                     position_id = meta['position_id']
-                    with _brown_bot_lock:
-                        _brown_bot_active_positions.pop(position_id, None)
-                        _brown_entry_counts.pop(symbol, None)
+                    with sess.lock:
+                        sess.active_positions.pop(position_id, None)
+                        sess.entry_counts.pop(symbol, None)
                     try:
-                        db_manager.delete_brown_position(position_id)
+                        db_manager.delete_brown_position(position_id, user_id=user_id)
                     except Exception:
                         pass
-                    _add_brown_log('warning', f'{symbol}: entry timed out and not filled — position removed')
+                    _add_brown_log('warning', f'{symbol}: entry timed out and not filled — position removed', user_id)
                 else:
-                    # Exit order timed out (cancelled above). Restore the position to
-                    # active tracking so the exit loop can place a fresh order next tick.
-                    # This keeps BrownBot's count in sync with the broker — the position
-                    # is still open there and must not vanish from our tracking.
                     saved_pos = meta.get('position')
                     if saved_pos:
                         position_id = meta.get('position_id')
-                        with _brown_bot_lock:
-                            _brown_bot_active_positions[position_id] = saved_pos
-                            _brown_closing_positions.discard(position_id)
+                        with sess.lock:
+                            sess.active_positions[position_id] = saved_pos
+                            sess.closing_positions.discard(position_id)
                         try:
-                            db_manager.save_brown_position(position_id, saved_pos)
+                            db_manager.save_brown_position(position_id, saved_pos, user_id=user_id)
                         except Exception:
                             pass
                         _add_brown_log('warning',
-                            f'{symbol}: exit order timed out — position restored, exit loop will retry')
+                            f'{symbol}: exit order timed out — position restored, exit loop will retry', user_id=user_id)
                     else:
                         _add_brown_log('warning',
-                            f'{symbol}: exit timed out but no saved position — position may be orphaned')
+                            f'{symbol}: exit timed out but no saved position — position may be orphaned', user_id=user_id)
 
 
-def _brown_close_position(position_id, position, exit_reason):
+def _brown_close_position(user_id: int, position_id, position, exit_reason):
     """Close a BrownBot position, record the trade, and remove from active positions."""
-    global _brown_bot_active_positions, _brown_bot_stats, _brown_eod_flattened_symbols, _brown_closing_positions, _brown_pending_orders
+    sess = _get_brown_session(user_id)
+    if not sess:
+        return False
+    broker          = sess.broker
+    lock            = sess.lock
+    active_positions  = sess.active_positions
+    closing_positions = sess.closing_positions
+    pending_orders    = sess.pending_orders
+    eod_flattened     = sess.eod_flattened_symbols
+
     symbol = position['symbol']
     quantity = int(position.get('quantity', 100))
     current_price = position.get('_current_price') or position.get('entry_price', 0)
     entry_price = float(position.get('entry_price', 0))
     position_type = position.get('position_type', 'day')
 
-    if not _brown_broker:
-        _add_brown_log('error', f'No broker available to close {symbol}')
+    if not broker:
+        _add_brown_log('error', f'No broker available to close {symbol}', user_id=user_id)
         return False
 
     # Prevent double-exit race: if already being closed by another loop tick, skip.
-    with _brown_bot_lock:
-        if position_id in _brown_closing_positions:
+    with lock:
+        if position_id in closing_positions:
             app_logger.debug(f'[BrownBot] {symbol} ({position_id}) already closing — skipping duplicate exit')
             return False
-        _brown_closing_positions.add(position_id)
+        closing_positions.add(position_id)
 
     order_id = None
 
@@ -4750,16 +4767,17 @@ def _brown_close_position(position_id, position, exit_reason):
     # Verify the broker actually holds this position before selling.
     # If it doesn't exist (e.g. BUY never filled), abort cleanly.
     try:
-        bp = _brown_broker.get_position(symbol)
+        bp = broker.get_position(symbol)
     except Exception as _gpe:
         app_logger.debug(f'[BrownBot close_position] {symbol} get_position raised: {_gpe}')
         bp = None
     if not bp:
         _add_brown_log('warning',
-            f'No open position for {symbol} in broker — removing from tracking (no sell placed)')
-        with _brown_bot_lock:
-            _brown_bot_active_positions.pop(position_id, None)
-            _brown_closing_positions.discard(position_id)
+            f'No open position for {symbol} in broker — removing from tracking (no sell placed)',
+            user_id=user_id, user_id=user_id)
+        with lock:
+            active_positions.pop(position_id, None)
+            closing_positions.discard(position_id)
         return False
 
     app_logger.debug(
@@ -4768,13 +4786,13 @@ def _brown_close_position(position_id, position, exit_reason):
 
     # Use broker's close_position so we can never accidentally short.
     try:
-        order = _brown_broker.close_position(symbol)
+        order = broker.close_position(symbol)
         order_id = order.order_id
-        app_logger.info(f'[BrownBot:{_brown_broker.name}] SELL {symbol} → order_id={order_id}')
+        app_logger.info(f'[BrownBot:{broker.name}] SELL {symbol} → order_id={order_id}')
     except Exception as e:
-        _add_brown_log('error', f'SELL order failed for {symbol}: {e}')
-        with _brown_bot_lock:
-            _brown_closing_positions.discard(position_id)  # allow exit loop to retry
+        _add_brown_log('error', f'SELL order failed for {symbol}: {e}', user_id=user_id)
+        with lock:
+            closing_positions.discard(position_id)  # allow exit loop to retry
         return False
 
     # Calculate days held (needed for DB record written by the monitor)
@@ -4804,17 +4822,17 @@ def _brown_close_position(position_id, position, exit_reason):
             'exit_reason':    exit_reason,
             'submitted_at':   datetime.now().isoformat(),
             'trade_date':     _trade_date,
-        })
+        }, user_id=user_id)
         app_logger.debug(
             f'[BrownBot close_position] {symbol} exit brown_orders row written '
             f'order={str(order_id)[:8]}… status=pending reason={exit_reason}')
     except Exception as _e:
-        _add_brown_log('warning', f'DB exit order log failed for {symbol}: {_e}')
+        _add_brown_log('warning', f'DB exit order log failed for {symbol}: {_e}', user_id=user_id)
 
     # Queue the exit for the monitor thread — DB write happens after confirmed fill.
     _avg_entry_for_meta = position.get('avg_entry_price') or entry_price
-    with _brown_bot_lock:
-        _brown_pending_orders[str(order_id)] = {
+    with lock:
+        pending_orders[str(order_id)] = {
             'type':            'exit',
             'symbol':          symbol,
             'position_id':     position_id,
@@ -4839,32 +4857,39 @@ def _brown_close_position(position_id, position, exit_reason):
     # Don't delete from DB — close_brown_position (called after fill confirmation)
     # marks it as 'closed' with realized P&L. Keeping the row until fill ensures
     # correct recovery if the server restarts while the exit order is in-flight.
-    with _brown_bot_lock:
-        _brown_bot_active_positions.pop(position_id, None)
-        _brown_closing_positions.discard(position_id)
+    with lock:
+        active_positions.pop(position_id, None)
+        closing_positions.discard(position_id)
     app_logger.debug(
         f'[BrownBot close_position] {symbol} removed from active_positions, '
         f'monitor will call finalize_exit on fill')
 
     # EOD flatten tracking must happen immediately (blocks re-entry the same day)
     if position_type == 'day' and 'EOD_FLATTEN' in exit_reason:
-        _brown_eod_flattened_symbols.add(symbol)
+        eod_flattened.add(symbol)
 
     _add_brown_log(
         'info',
         f'SELL submitted {position_type.upper()} {symbol} [{exit_reason}] — '
-        f'awaiting fill confirmation (entry ${entry_price:.2f})'
+        f'awaiting fill confirmation (entry ${entry_price:.2f})',
+        user_id=user_id,
     )
     return True
 
 
-def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
+def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=False):
     """Evaluate all open BrownBot positions for exit conditions."""
+    sess = _get_brown_session(user_id)
+    if not sess or not sess.running:
+        return
+    lock             = sess.lock
+    active_positions = sess.active_positions
+
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
-    config = db_manager.get_brown_bot_config(_brown_bot_user_id)
+    config = db_manager.get_brown_bot_config(user_id)
 
     # Parse EOD time from config (e.g. '15:45')
     eod_str = config.get('day_eod_exit_time', '15:45')
@@ -4905,8 +4930,8 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
     _day_stp_pct   = float(config.get('day_stop_loss_pct', 2.5))
     _swing_tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
     _swing_stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
-    with _brown_bot_lock:
-        for _pid, _pos in _brown_bot_active_positions.items():
+    with lock:
+        for _pid, _pos in active_positions.items():
             _ptype  = _pos.get('position_type', 'day')
             _entry  = float(_pos.get('avg_entry_price') or _pos.get('entry_price') or 0)
             if not _entry:
@@ -4924,12 +4949,12 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
                     and not _pos.get('_trail_high')):
                 _pos['stop_loss']     = round(_entry * (1 - _stp_pct / 100), 2)
                 _pos['stop_loss_pct'] = _stp_pct
-        positions_snapshot = dict(_brown_bot_active_positions)
+        positions_snapshot = dict(active_positions)
 
     # Batch-fetch all prices in ONE API call to avoid per-symbol rate limiting.
     _active_symbols = [p['symbol'] for p in positions_snapshot.values()
                        if not p.get('_exit_pending')]
-    _price_cache = _brown_get_prices_batch(_active_symbols) if _active_symbols else {}
+    _price_cache = _brown_get_prices_batch(user_id, _active_symbols) if _active_symbols else {}
     if _active_symbols and verbose:
         app_logger.info(
             f'[BrownBot exits] monitoring {len(_active_symbols)} position(s): '
@@ -4955,7 +4980,7 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
                 f'type={_pos.get("position_type","?")} pending_exit={_pos.get("_exit_pending",False)}')
 
     for position_id, position in positions_snapshot.items():
-        if not _brown_bot_running:
+        if not sess.running:
             return
         # Skip positions already being closed (close-all or individual exit in-flight)
         if position.get('_exit_pending'):
@@ -4973,10 +4998,10 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
         # EOD force-flatten: time-based — must fire even if price fetch failed.
         # _brown_close_position falls back to entry_price when _current_price is None.
         if position_type == 'day' and now_et >= eod_time:
-            _add_brown_log('trade', f'{symbol}: EOD force-flatten at {eod_str} ET')
+            _add_brown_log('trade', f'{symbol}: EOD force-flatten at {eod_str} ET', user_id=user_id)
             app_logger.info(f'[BrownBot] EOD flatten {symbol} (now={now_et.strftime("%H:%M:%S")} ET, eod={eod_str})')
             position_with_price = {**position, '_current_price': current_price}
-            _brown_close_position(position_id, position_with_price, f'EOD_FLATTEN ({eod_str} ET)')
+            _brown_close_position(user_id, position_id, position_with_price, f'EOD_FLATTEN ({eod_str} ET)')
             continue
 
         # All remaining exit checks need a live price — skip if unavailable
@@ -4992,11 +5017,11 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
         ) if entry_price else 0.0
 
         # Update unrealized P&L and current price in shared state
-        with _brown_bot_lock:
-            if position_id in _brown_bot_active_positions:
-                _brown_bot_active_positions[position_id]['unrealized_pnl']     = unrealized_pnl
-                _brown_bot_active_positions[position_id]['unrealized_pnl_pct'] = unrealized_pnl_pct
-                _brown_bot_active_positions[position_id]['_current_price']     = current_price
+        with lock:
+            if position_id in active_positions:
+                active_positions[position_id]['unrealized_pnl']     = unrealized_pnl
+                active_positions[position_id]['unrealized_pnl_pct'] = unrealized_pnl_pct
+                active_positions[position_id]['_current_price']     = current_price
 
         # Persist unrealized P&L to DB so it survives between polls
         try:
@@ -5016,12 +5041,12 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
             breakeven_pct = float(config.get(f'{position_type}_breakeven_trigger_pct', 50.0))
             progress = (current_price - entry_price) / (profit_target - entry_price) * 100
             if progress >= breakeven_pct:
-                with _brown_bot_lock:
-                    if position_id in _brown_bot_active_positions:
-                        _brown_bot_active_positions[position_id]['stop_loss'] = entry_price
-                        _brown_bot_active_positions[position_id]['_at_breakeven'] = True
+                with lock:
+                    if position_id in active_positions:
+                        active_positions[position_id]['stop_loss'] = entry_price
+                        active_positions[position_id]['_at_breakeven'] = True
                 stop_loss = entry_price
-                _add_brown_log('info', f'{symbol}: stop moved to breakeven ${entry_price:.2f} ({progress:.0f}% to target)')
+                _add_brown_log('info', f'{symbol}: stop moved to breakeven ${entry_price:.2f} ({progress:.0f}% to target)', user_id=user_id)
 
         # ── Trailing stop: ratchet stop_loss up as price rises ──
         trail_key = f'{position_type}_trailing_stop_enabled'
@@ -5029,17 +5054,17 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
         if config.get(trail_key) and entry_price:
             trail_pct = float(config.get(trail_pct_key, 5.0))
             # Initialise the high-water mark on first tick
-            with _brown_bot_lock:
-                if position_id in _brown_bot_active_positions:
-                    if not _brown_bot_active_positions[position_id].get('_trail_high'):
-                        _brown_bot_active_positions[position_id]['_trail_high'] = entry_price
-                    if current_price > _brown_bot_active_positions[position_id]['_trail_high']:
-                        _brown_bot_active_positions[position_id]['_trail_high'] = current_price
-                    trail_high = _brown_bot_active_positions[position_id]['_trail_high']
+            with lock:
+                if position_id in active_positions:
+                    if not active_positions[position_id].get('_trail_high'):
+                        active_positions[position_id]['_trail_high'] = entry_price
+                    if current_price > active_positions[position_id]['_trail_high']:
+                        active_positions[position_id]['_trail_high'] = current_price
+                    trail_high = active_positions[position_id]['_trail_high']
                     new_stop = round(trail_high * (1 - trail_pct / 100), 4)
-                    cur_stop = _brown_bot_active_positions[position_id].get('stop_loss') or 0
+                    cur_stop = active_positions[position_id].get('stop_loss') or 0
                     if new_stop > cur_stop:
-                        _brown_bot_active_positions[position_id]['stop_loss'] = new_stop
+                        active_positions[position_id]['stop_loss'] = new_stop
                         stop_loss = new_stop
 
         # ── Exit condition checks ──
@@ -5067,26 +5092,26 @@ def _brown_bot_check_exits(check_swing_specific=False, verbose=False):
 
         if exit_reason:
             position_with_price = {**position, '_current_price': current_price}
-            _brown_close_position(position_id, position_with_price, exit_reason)
+            _brown_close_position(user_id, position_id, position_with_price, exit_reason)
 
 
-def _brown_bot_exit_loop():
+def _brown_bot_exit_loop(user_id: int):
     """BrownBot exit daemon: checks open positions for exit conditions every 2 seconds."""
-    global _brown_bot_running
-    _add_brown_log('info', 'BrownBot exit loop started')
+    sess = _get_brown_session(user_id)
+    _add_brown_log('info', 'BrownBot exit loop started', user_id=user_id)
     tick = 0
-    while _brown_bot_running:
+    while sess and sess.running:
         try:
             # Verbose summary every 30 ticks (60 s) — logs all monitored positions with P&L.
             # Swing-specific checks (hold days, earnings) also run on the same cadence.
             _verbose = (tick % 30 == 0)
-            _brown_bot_check_exits(check_swing_specific=_verbose, verbose=_verbose)
+            _brown_bot_check_exits(user_id, check_swing_specific=_verbose, verbose=_verbose)
             tick += 1
         except Exception as e:
             app_logger.error(f'BrownBot exit loop error: {e}', exc_info=True)
-            _add_brown_log('error', f'Exit loop error: {e}')
+            _add_brown_log('error', f'Exit loop error: {e}', user_id=user_id)
         time.sleep(2)
-    _add_brown_log('info', 'BrownBot exit loop stopped')
+    _add_brown_log('info', 'BrownBot exit loop stopped', user_id=user_id)
 
 
 # ── Backtest API endpoints ─────────────────────────────────────────────────
@@ -5168,21 +5193,21 @@ def seed_gap_data():
 @require_auth
 def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
-    global _brown_bot_running, _brown_bot_active_positions
-
     current_user_id = request.user.get('id', 1)
-    is_owner = (not _brown_bot_running) or (_brown_bot_user_id == current_user_id)
+    sess = _brown_sessions.get(current_user_id)
+    running = sess is not None and sess.running
 
-    # Non-owners see the bot as idle — their actions don't affect another user's session
-    if not is_owner:
-        own_broker = _get_broker(current_user_id)
+    das_ok = DAS_ENABLED and _das_direct is not None
+    broker = (sess.broker if sess else None) or _get_broker(current_user_id)
+    broker_info = broker.to_dict() if broker else None
+
+    if not sess:
         return jsonify({
             'success': True,
             'running': False,
-            'in_use_by_other': True,
             'das_enabled': DAS_ENABLED,
-            'das_connected': False,
-            'broker': own_broker.to_dict() if own_broker else None,
+            'das_connected': das_ok,
+            'broker': broker_info,
             'stats': {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0},
             'active_positions_count': 0,
             'active_positions': [],
@@ -5190,30 +5215,26 @@ def get_brown_bot_status():
             'skipped_symbols': [],
         })
 
-    das_ok = DAS_ENABLED and _das_direct is not None
-    broker = _brown_broker or _get_broker(current_user_id)
-    broker_info = broker.to_dict() if broker else None
+    lock             = sess.lock
+    active_positions = sess.active_positions
+    pending_orders   = sess.pending_orders
 
     # Snapshot in-memory BrownBot state under lock.
-    # Used as metadata overlay (targets, stops, type, entry time) on top of
-    # broker positions — not as the row source.
-    with _brown_bot_lock:
+    with lock:
         bb_by_symbol = {
             (pos.get('symbol') or '').upper(): pos
-            for pos in _brown_bot_active_positions.values()
+            for pos in active_positions.values()
         }
         pending_exit_syms = {
             (meta.get('symbol') or '').upper()
-            for meta in _brown_pending_orders.values()
+            for meta in pending_orders.values()
             if meta.get('type') == 'exit'
         }
-        entry_counts = dict(_brown_entry_counts)
-        skipped_symbols = list(_brown_attempted_symbols - set(_brown_entry_counts.keys()))
+        entry_counts = dict(sess.entry_counts)
+        skipped_symbols = list(sess.attempted_symbols - set(sess.entry_counts.keys()))
 
     # Use broker.get_positions() as the row source so the table always matches
     # what actually exists at the broker — no stale ghosts, no missing orphans.
-    # BrownBot metadata (targets, stops, type, entry time, BE flag) is merged in
-    # from the in-memory dict keyed by symbol.
     positions_list = []
     if broker:
         try:
@@ -5251,10 +5272,9 @@ def get_brown_bot_status():
             positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
             app_logger.debug(f'BrownBot status: broker fetch failed, falling back to in-memory: {_be}')
-            # Fallback: serve in-memory so the UI is never completely empty
-            with _brown_bot_lock:
-                positions_list = list(_brown_bot_active_positions.values())
-            for meta in _brown_pending_orders.values():
+            with lock:
+                positions_list = list(active_positions.values())
+            for meta in pending_orders.values():
                 if meta.get('type') == 'exit' and meta.get('position'):
                     pos = dict(meta['position'])
                     pos['_exit_pending'] = True
@@ -5263,26 +5283,19 @@ def get_brown_bot_status():
 
     active_count = len(positions_list)
 
-    # Clean up _exit_pending positions that are no longer held at the broker
-    # (close-all fills confirmed). This is the deferred clear that replaces the
-    # immediate _brown_bot_active_positions.clear() in brown_bot_close_all.
-    # We only remove from memory — the brown_positions row stays as a 'closed'
-    # historical record for P&L tracking. close_brown_position was already called
-    # in brown_bot_close_all, so deleting would erase realized P&L data.
+    # Clean up _exit_pending positions no longer held at broker (close-all confirmed).
     if broker:
         broker_syms = {p.get('symbol', '').upper() for p in positions_list}
-        with _brown_bot_lock:
+        with lock:
             gone_pids = [
-                pid for pid, pos in _brown_bot_active_positions.items()
+                pid for pid, pos in active_positions.items()
                 if pos.get('_exit_pending') and
                    pos.get('symbol', '').upper() not in broker_syms
             ]
             for pid in gone_pids:
-                _brown_bot_active_positions.pop(pid, None)
+                active_positions.pop(pid, None)
 
     # Pull today's entry/exit counts from DB so stats survive restarts.
-    # Use last_trading_date (ET) so trades entered during US market hours
-    # are always bucketed to the same date regardless of server UTC offset.
     today = _last_trading_date()
     stats = {'day_entered': 0, 'swing_entered': 0, 'day_exited': 0, 'swing_exited': 0}
     try:
@@ -5307,7 +5320,7 @@ def get_brown_bot_status():
 
     return jsonify({
         'success': True,
-        'running': _brown_bot_running,
+        'running': running,
         'das_enabled': DAS_ENABLED,
         'das_connected': das_ok,
         'broker': broker_info,
@@ -5331,7 +5344,9 @@ def get_brown_bot_broker_orders():
         until   – ISO date YYYY-MM-DD upper bound
         symbols – comma-separated ticker filter, e.g. NVDA,TSLA
     """
-    broker = _brown_broker or _get_broker(request.user.get('id', 1))
+    _uid = request.user.get('id', 1)
+    _sess = _brown_sessions.get(_uid)
+    broker = (_sess.broker if _sess else None) or _get_broker(_uid)
     if not broker:
         return jsonify({'success': False, 'error': 'No broker configured'})
     if not hasattr(broker, 'get_orders_history'):
@@ -5365,7 +5380,9 @@ def get_brown_bot_broker_activities():
         date  – ISO date YYYY-MM-DD (Alpaca UTC day boundary)
         limit – max results (default 50, max 100)
     """
-    broker = _brown_broker or _get_broker(request.user.get('id', 1))
+    _uid = request.user.get('id', 1)
+    _sess = _brown_sessions.get(_uid)
+    broker = (_sess.broker if _sess else None) or _get_broker(_uid)
     if not broker:
         return jsonify({'success': False, 'error': 'No broker configured'})
     if not hasattr(broker, 'get_activities'):
@@ -5386,122 +5403,98 @@ def get_brown_bot_broker_activities():
 @app.route('/api/brown-bot/start', methods=['POST'])
 @require_auth
 def start_brown_bot():
-    """Start BrownBot — instantiates RiskManager from current config."""
-    global _brown_bot_running, _brown_bot_thread, _brown_risk_manager, _brown_broker, _brown_entry_counts, _brown_attempted_symbols, _brown_closing_positions, _brown_pending_orders, _brown_order_monitor_thread, _swing_candidates_cache, _swing_ai_picks_cache, _brown_bot_user_id
-    if _brown_bot_running:
-        if _brown_bot_user_id != request.user.get('id', 1):
-            return jsonify({'success': False, 'error': 'BrownBot is currently running for another user. Only one session can run at a time.'})
-        return jsonify({'success': False, 'error': 'BrownBot is already running'})
+    """Start BrownBot for the requesting user — each user gets an isolated session."""
+    user_id = request.user.get('id', 1)
 
-    _brown_bot_user_id = request.user.get('id', 1)
+    with _brown_sessions_lock:
+        existing = _brown_sessions.get(user_id)
+        if existing and existing.running:
+            return jsonify({'success': False, 'error': 'BrownBot is already running'})
+        sess = BrownSession(user_id)
+        _brown_sessions[user_id] = sess
 
-    # Require a configured broker — BrownBot is broker-agnostic, not DAS-only
-    _brown_broker = _get_broker(_brown_bot_user_id)
-    if not _brown_broker and _brown_bot_user_id != 1:
-        # Migration fallback: configs saved before the multi-user fix were stored under user_id=1.
-        # If the user has no personal config yet, try the admin slot so the bot can still start.
-        _brown_broker = _get_broker(1)
-        if _brown_broker:
+    # Require a configured broker
+    sess.broker = _get_broker(user_id)
+    if not sess.broker and user_id != 1:
+        sess.broker = _get_broker(1)
+        if sess.broker:
             _add_brown_log('warning',
                 'Using broker config from admin account (migration fallback). '
-                'Re-save your broker credentials in Account Settings to assign them to your account.')
-    if not _brown_broker:
+                'Re-save your broker credentials in Account Settings to assign them to your account.',
+                user_id=user_id, user_id=user_id)
+    if not sess.broker:
+        with _brown_sessions_lock:
+            _brown_sessions.pop(user_id, None)
         return jsonify({'success': False, 'error': 'No broker configured. Set up a broker in Account Settings before starting BrownBot.'})
-    _add_brown_log('info', f'Broker ready: {_brown_broker.name}')
+    _add_brown_log('info', f'Broker ready: {sess.broker.name}', user_id=user_id)
 
     # Instantiate risk manager from saved config
     if RISK_MANAGER_AVAILABLE:
         try:
-            config = db_manager.get_brown_bot_config(_brown_bot_user_id)
-            _brown_risk_manager = RiskManager(config)
+            config = db_manager.get_brown_bot_config(user_id)
+            sess.risk_manager = RiskManager(config)
             _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
                                    f'day limit {config.get("max_concurrent_day", 3)}, '
-                                   f'swing limit {config.get("max_concurrent_swing", 5)}')
+                                   f'swing limit {config.get("max_concurrent_swing", 5)}',
+                           user_id=user_id, user_id=user_id)
         except Exception as e:
-            _add_brown_log('warning', f'RiskManager init failed: {e}')
-    _brown_entry_counts.clear()
-    _brown_attempted_symbols.clear()
-    _brown_eod_flattened_symbols.clear()
-    _brown_closing_positions.clear()
-    _brown_pending_orders.clear()
-    _playbook_cache.clear()
-    _playbook_pending.clear()
-    _playbook_failed.clear()
-    # Invalidate swing caches so first scan uses current config
-    _swing_candidates_cache = {'ts': 0.0, 'candidates': []}
-    _swing_ai_picks_cache   = {'ts': 0.0, 'picks': [], 'fingerprint': ''}
-    # Always start with a clean slate — positions will be rebuilt from DB + broker check.
-    # Without this, in-memory ghosts from a previous stop/start cycle within the same
-    # server process inflate the count until the exit loop cleans them up.
-    with _brown_bot_lock:
-        _brown_bot_active_positions.clear()
+            _add_brown_log('warning', f'RiskManager init failed: {e}', user_id=user_id)
 
-    # Restore positions that were open when the server last stopped.
-    # Then cross-reference against the broker so we never track a position
-    # the broker no longer holds.
+    # Restore positions from DB and cross-reference with broker
     try:
         import pytz as _pytz_r
         today_et = datetime.now(_pytz_r.timezone('US/Eastern')).strftime('%Y-%m-%d')
-        saved = db_manager.get_brown_positions()
+        saved = db_manager.get_brown_positions(user_id=user_id)
         restored, purged = 0, 0
 
-        with _brown_bot_lock:
+        with sess.lock:
             for pos in (saved or []):
                 pid = pos.get('position_id')
                 if not pid:
                     continue
                 pos_type = (pos.get('position_type') or 'day').lower()
                 entry_time = pos.get('entry_time', '')
-                # Day positions are only valid for today's session — purge old ones
                 if pos_type == 'day':
                     entry_date = entry_time[:10] if entry_time else ''
                     if entry_date != today_et:
-                        db_manager.delete_brown_position(pid)
+                        db_manager.delete_brown_position(pid, user_id=user_id)
                         purged += 1
                         continue
                 pos.setdefault('unrealized_pnl', 0.0)
-                _brown_bot_active_positions[pid] = pos
+                sess.active_positions[pid] = pos
                 sym = pos.get('symbol', '')
                 if sym:
-                    _brown_attempted_symbols.add(sym)
-                    _brown_entry_counts[sym] = _brown_entry_counts.get(sym, 0) + 1
+                    sess.attempted_symbols.add(sym)
+                    sess.entry_counts[sym] = sess.entry_counts.get(sym, 0) + 1
                 restored += 1
 
         if purged:
-            _add_brown_log('info', f'Purged {purged} stale day position(s) from previous session(s)')
+            _add_brown_log('info', f'Purged {purged} stale day position(s) from previous session(s)', user_id=user_id)
         if restored:
-            _add_brown_log('info', f'Restored {restored} position(s) from DB — verifying with broker…')
+            _add_brown_log('info', f'Restored {restored} position(s) from DB — verifying with broker…', user_id=user_id)
 
-        # Cross-reference with broker (both directions):
-        # 1. Remove positions we track but broker no longer holds (stale).
-        # 2. Adopt positions broker holds that we lost track of (orphans) —
-        #    e.g. from a DB write failure or server crash after order fill.
-        if _brown_broker:
+        if sess.broker:
             try:
-                all_broker_pos = _brown_broker.get_positions()
-                broker_pos_map  = {p.symbol.upper(): p for p in all_broker_pos}
-                tracked_syms    = {pos.get('symbol', '').upper()
-                                   for pos in _brown_bot_active_positions.values()}
+                all_broker_pos = sess.broker.get_positions()
+                broker_pos_map = {p.symbol.upper(): p for p in all_broker_pos}
+                tracked_syms   = {pos.get('symbol', '').upper()
+                                  for pos in sess.active_positions.values()}
 
                 # 1 — drop stale (in DB but not in broker)
                 stale = [
                     (pid, pos.get('symbol', '').upper(), pos.get('entry_order_id'), dict(pos))
-                    for pid, pos in list(_brown_bot_active_positions.items())
+                    for pid, pos in list(sess.active_positions.items())
                     if pos.get('symbol', '').upper() not in broker_pos_map
                 ]
-                with _brown_bot_lock:
+                with sess.lock:
                     for pid, sym, entry_oid, _sp in stale:
-                        _brown_bot_active_positions.pop(pid, None)
-                        _brown_entry_counts.pop(sym, None)
-                        _brown_attempted_symbols.discard(sym)
-                        # Don't delete from brown_positions yet — recovery loop below
-                        # will either close_brown_position (if exit found) or delete.
+                        sess.active_positions.pop(pid, None)
+                        sess.entry_counts.pop(sym, None)
+                        sess.attempted_symbols.discard(sym)
 
-                # 1b — for positions confirmed at broker but with avg_entry_price=None
-                # in DB (narrow crash window between _brown_enter_position saving and
-                # finalize_entry writing the confirmed fill), patch from broker now.
-                with _brown_bot_lock:
-                    for _pid, _pos in list(_brown_bot_active_positions.items()):
+                # 1b — patch missing avg_entry_price from broker
+                with sess.lock:
+                    for _pid, _pos in list(sess.active_positions.items()):
                         _sym = _pos.get('symbol', '').upper()
                         _bp  = broker_pos_map.get(_sym)
                         if not _bp or _pos.get('avg_entry_price'):
@@ -5521,26 +5514,17 @@ def start_brown_bot():
                         except Exception:
                             pass
                         _add_brown_log('info',
-                            f'{_sym}: avg_entry_price confirmed from broker on restart'
-                            f' = ${_fp:.2f}')
+                            f'{_sym}: avg_entry_price confirmed from broker on restart = ${_fp:.2f}',
+                            user_id=user_id, user_id=user_id)
 
-                # Outside the lock: for each stale position, try to recover the
-                # exit trade from broker order history before deleting the buy.
-                # Scenario: server crashed after placing the sell but before the
-                # monitor confirmed the fill → broker filled the sell, wrote
-                # nothing to DB, buy trade still exists. Without recovery, we
-                # delete the buy and lose the P&L entirely.
+                # Outside the lock: recovery of exit trades for stale positions
                 for pid, sym, entry_oid, stale_pos in stale:
                     entry_price  = float(stale_pos.get('entry_price', 0) or 0)
                     pos_type     = stale_pos.get('position_type', 'day')
                     entry_date   = (stale_pos.get('entry_time', '') or '')[:10] or _last_trading_date()
                     exit_written = False
-
-                    # Check if a sell trade already exists in our DB (normal close
-                    # that completed before the restart). If so, nothing to recover.
                     try:
-                        existing_sells = db_manager.get_trades(
-                            symbol=sym, start_date=entry_date, limit=20)
+                        existing_sells = db_manager.get_trades(symbol=sym, start_date=entry_date, limit=20)
                         has_db_sell = any(
                             t.get('side') in ('S', 'SS') and t.get('source') == 'brownbot'
                             for t in (existing_sells or [])
@@ -5548,12 +5532,9 @@ def start_brown_bot():
                     except Exception:
                         has_db_sell = False
 
-                    if not has_db_sell and entry_oid and _brown_broker:
-                        # No sell in DB — ask the broker for filled sell orders
-                        # for this symbol placed on or after the entry date.
+                    if not has_db_sell and entry_oid and sess.broker:
                         try:
-                            filled = _brown_broker.get_orders_history(
-                                status='filled', symbols=[sym], limit=50)
+                            filled = sess.broker.get_orders_history(status='filled', symbols=[sym], limit=50)
                             sell_order = next((
                                 o for o in (filled or [])
                                 if o.get('side', '').lower() in ('sell', 'sell_short')
@@ -5584,53 +5565,42 @@ def start_brown_bot():
                                     'position_type': pos_type,
                                     'days_held':     None,
                                     'source':        'brownbot',
-                                    'broker':        _brown_broker.name,
+                                    'broker':        sess.broker.name,
                                 })
-                                # Mark position as closed with recovered P&L
                                 db_manager.close_brown_position(
                                     pid, fill_price, str(sell_order['order_id']),
                                     'RECOVERED_ON_RESTART', realized_pnl, realized_pnl_pct,
-                                    fill_time_str
-                                )
+                                    fill_time_str)
                                 exit_written = True
                                 _add_brown_log('info',
                                     f'{sym}: recovered exit trade on restart — '
-                                    f'{fill_qty} @ ${fill_price:.2f}, P&L {"+$" if realized_pnl >= 0 else "-$"}{abs(realized_pnl):.2f}')
+                                    f'{fill_qty} @ ${fill_price:.2f}, P&L {"+$" if realized_pnl >= 0 else "-$"}{abs(realized_pnl):.2f}',
+                                    user_id=user_id, user_id=user_id)
                         except Exception as _rec_err:
                             app_logger.debug(f'BrownBot startup recovery check {sym}: {_rec_err}')
 
-                    # Only delete the buy trade + position when entry was phantom
-                    # (no sell found anywhere). If we recovered an exit, keep the
-                    # buy and the brown_positions row (now marked 'closed').
                     if entry_oid and not has_db_sell and not exit_written:
-                        # Cancel the pending buy order at broker before cleanup so
-                        # a delayed fill doesn't create an untracked broker position.
                         try:
-                            if _brown_broker:
-                                _brown_broker.cancel_order(entry_oid)
+                            if sess.broker:
+                                sess.broker.cancel_order(entry_oid)
                         except Exception:
-                            pass  # already filled, rejected, or not found — ignore
+                            pass
                         db_manager.delete_buy_trade_by_order_id(entry_oid)
-                        db_manager.delete_brown_position(pid)
+                        db_manager.delete_brown_position(pid, user_id=user_id)
                         try:
-                            db_manager.update_brown_order_fill(
-                                entry_oid, 0, 0, status='cancelled')
+                            db_manager.update_brown_order_fill(entry_oid, 0, 0, status='cancelled')
                         except Exception:
                             pass
                         app_logger.info(f'BrownBot startup: deleted phantom entry {sym} (entry_oid={entry_oid})')
-                    elif has_db_sell or exit_written:
-                        app_logger.info(f'BrownBot startup: kept buy trade {sym} — exit {"already in DB" if has_db_sell else "recovered from broker"}')
 
                 if stale:
                     _add_brown_log('info',
                         f'Startup: removed {len(stale)} position(s) not in broker '
-                        f'({", ".join(sym for _, sym, _, _ in stale)})')
+                        f'({", ".join(sym for _, sym, _, _ in stale)})',
+                        user_id=user_id, user_id=user_id)
 
-                # 2 — adopt orphans (in broker but not tracked)
-                # These positions already exist at the broker so we MUST track them for exit,
-                # regardless of the slot cap. New entries remain blocked by the cap check in
-                # _brown_bot_scan_and_enter; orphan adoption is recovery only, not new entry.
-                config = db_manager.get_brown_bot_config(_brown_bot_user_id)
+                # 2 — adopt orphans
+                config = db_manager.get_brown_bot_config(user_id)
                 swing_tgt_pct = float(config.get('swing_profit_target_pct', 15.0))
                 swing_stp_pct = float(config.get('swing_stop_loss_pct', 7.0))
                 day_tgt_pct   = float(config.get('day_profit_target_pct', 5.0))
@@ -5644,10 +5614,6 @@ def start_brown_bot():
                     if sym_up not in tracked_syms:
                         entry_price = float(bp.avg_entry_price or bp.current_price or 0)
                         pid = f'BROWN_{sym_up}_{int(time.time())}_{adopted}'
-
-                        # Determine position_type from today's BUY trade in DB.
-                        # Falls back to 'swing' when no record exists (e.g. the entry
-                        # timed out before the fill was confirmed and written to DB).
                         position_type = 'swing'
                         try:
                             recent_t = db_manager.get_trades(
@@ -5662,20 +5628,13 @@ def start_brown_bot():
                                 position_type = 'day' if pt in ('day', 'brown_day') else 'swing'
                         except Exception:
                             pass
-
                         use_tgt_pct = day_tgt_pct if position_type == 'day' else swing_tgt_pct
                         use_stp_pct = day_stp_pct if position_type == 'day' else swing_stp_pct
-
-                        # Warn when adopting this position would exceed the configured cap.
-                        with _brown_bot_lock:
-                            cur_swing = sum(
-                                1 for p in _brown_bot_active_positions.values()
-                                if p.get('position_type') in ('swing', 'brown_swing')
-                            )
-                            cur_day = sum(
-                                1 for p in _brown_bot_active_positions.values()
-                                if p.get('position_type') in ('day', 'brown_day')
-                            )
+                        with sess.lock:
+                            cur_swing = sum(1 for p in sess.active_positions.values()
+                                            if p.get('position_type') in ('swing', 'brown_swing'))
+                            cur_day   = sum(1 for p in sess.active_positions.values()
+                                            if p.get('position_type') in ('day', 'brown_day'))
                         cap_exceeded = (
                             (position_type == 'swing' and cur_swing >= max_swing) or
                             (position_type == 'day'   and cur_day   >= max_day)
@@ -5685,9 +5644,8 @@ def start_brown_bot():
                             cur_val = cur_swing  if position_type == 'swing' else cur_day
                             _add_brown_log('warning',
                                 f'{position_type.upper()} cap {cap_val} exceeded by orphan {sym_up} '
-                                f'({cur_val + 1} {position_type} positions) — tracking for exit only, '
-                                f'no new {position_type} entries until a slot frees up')
-
+                                f'({cur_val + 1} {position_type} positions) — tracking for exit only',
+                                user_id=user_id, user_id=user_id)
                         pos = {
                             'position_id':       pid,
                             'symbol':            sym_up,
@@ -5702,66 +5660,72 @@ def start_brown_bot():
                             'entry_time_epoch':  time.time(),
                             'unrealized_pnl':    float(bp.unrealized_pnl or 0),
                         }
-                        with _brown_bot_lock:
-                            _brown_bot_active_positions[pid] = pos
-                            _brown_attempted_symbols.add(sym_up)
-                            _brown_entry_counts[sym_up] = _brown_entry_counts.get(sym_up, 0) + 1
-                        db_manager.save_brown_position(pid, pos)
+                        with sess.lock:
+                            sess.active_positions[pid] = pos
+                            sess.attempted_symbols.add(sym_up)
+                            sess.entry_counts[sym_up] = sess.entry_counts.get(sym_up, 0) + 1
+                        db_manager.save_brown_position(pid, pos, user_id=user_id)
                         adopted += 1
                         _add_brown_log('warning',
                             f'Adopted orphan {position_type} position: {sym_up} @ ${entry_price:.2f} '
-                            f'(was in broker but not tracked — targets set from current config)')
+                            f'(was in broker but not tracked — targets set from current config)',
+                            user_id=user_id, user_id=user_id)
                 if not stale and not adopted:
-                    _add_brown_log('info', 'Startup check: all positions confirmed in sync with broker')
+                    _add_brown_log('info', 'Startup check: all positions confirmed in sync with broker', user_id=user_id)
             except Exception as _ve:
-                _add_brown_log('warning', f'Broker position verification failed (keeping DB positions): {_ve}')
+                _add_brown_log('warning', f'Broker position verification failed (keeping DB positions): {_ve}', user_id=user_id)
     except Exception as _e:
-        _add_brown_log('warning', f'Position restore from DB failed: {_e}')
+        _add_brown_log('warning', f'Position restore from DB failed: {_e}', user_id=user_id)
 
-    _brown_bot_running = True
-    _brown_bot_thread = threading.Thread(
-        target=_brown_bot_scanner_loop, daemon=True, name='BrownBotScanner'
+    sess.running = True
+    sess.scanner_thread = threading.Thread(
+        target=_brown_bot_scanner_loop, args=(user_id,), daemon=True, name=f'BrownBotScanner-{user_id}'
     )
-    _brown_bot_thread.start()
-    _brown_exit_thread = threading.Thread(
-        target=_brown_bot_exit_loop, daemon=True, name='BrownBotExits'
+    sess.scanner_thread.start()
+    sess.exit_thread = threading.Thread(
+        target=_brown_bot_exit_loop, args=(user_id,), daemon=True, name=f'BrownBotExits-{user_id}'
     )
-    _brown_exit_thread.start()
-    _brown_order_monitor_thread = threading.Thread(
-        target=_brown_order_monitor_loop, daemon=True, name='BrownBotOrderMonitor'
+    sess.exit_thread.start()
+    sess.order_monitor_thread = threading.Thread(
+        target=_brown_order_monitor_loop, args=(user_id,), daemon=True, name=f'BrownBotOrderMonitor-{user_id}'
     )
-    _brown_order_monitor_thread.start()
-    _add_brown_log('info', 'BrownBot scanner + exit + order-monitor loops launched')
+    sess.order_monitor_thread.start()
+    _add_brown_log('info', 'BrownBot scanner + exit + order-monitor loops launched', user_id=user_id)
     return jsonify({'success': True, 'message': 'BrownBot started'})
 
 
 @app.route('/api/brown-bot/stop', methods=['POST'])
 @require_auth
 def stop_brown_bot():
-    """Stop BrownBot — clears the running flag and joins both threads."""
-    global _brown_bot_running, _brown_bot_thread, _brown_exit_thread, _brown_broker, _brown_order_monitor_thread
-    if not _brown_bot_running:
-        return jsonify({'success': False, 'error': 'BrownBot is not running'})
-    current_user_id = request.user.get('id', 1)
+    """Stop the requesting user's BrownBot session."""
+    user_id = request.user.get('id', 1)
     is_super = request.user.get('system_role') in ('super_admin', 'dev_master')
-    if _brown_bot_user_id != current_user_id and not is_super:
+
+    # Admins can stop any session by passing ?user_id=<uid> in the query string
+    target_uid = user_id
+    if is_super and request.args.get('user_id'):
+        try:
+            target_uid = int(request.args['user_id'])
+        except (ValueError, TypeError):
+            pass
+
+    sess = _brown_sessions.get(target_uid)
+    if not sess or not sess.running:
+        return jsonify({'success': False, 'error': 'BrownBot is not running'})
+    if target_uid != user_id and not is_super:
         return jsonify({'success': False, 'error': 'Only the user who started BrownBot (or a super admin) can stop it.'})
-    _brown_bot_running = False
-    # Short joins only — long joins block the eventlet greenlet and starve
-    # Socket.IO keep-alive polls, causing session IDs to expire (400 errors).
-    # Threads poll _brown_bot_running every 2 s (exit/monitor) or 30 s (scanner),
-    # so they will exit on their own; we don't need to wait for them here.
-    if _brown_bot_thread and _brown_bot_thread.is_alive():
-        _brown_bot_thread.join(timeout=3)
-    if _brown_exit_thread and _brown_exit_thread.is_alive():
-        _brown_exit_thread.join(timeout=3)
-    if _brown_order_monitor_thread and _brown_order_monitor_thread.is_alive():
-        _brown_order_monitor_thread.join(timeout=3)
-    _brown_bot_thread = None
-    _brown_exit_thread = None
-    _brown_order_monitor_thread = None
-    _brown_broker = None
-    _add_brown_log('info', 'BrownBot stopped')
+
+    sess.running = False
+    # Short joins only — long joins block the eventlet greenlet.
+    if sess.scanner_thread and sess.scanner_thread.is_alive():
+        sess.scanner_thread.join(timeout=3)
+    if sess.exit_thread and sess.exit_thread.is_alive():
+        sess.exit_thread.join(timeout=3)
+    if sess.order_monitor_thread and sess.order_monitor_thread.is_alive():
+        sess.order_monitor_thread.join(timeout=3)
+    _add_brown_log('info', 'BrownBot stopped', user_id=target_uid)
+    with _brown_sessions_lock:
+        _brown_sessions.pop(target_uid, None)
     return jsonify({'success': True, 'message': 'BrownBot stopped'})
 
 
@@ -5771,25 +5735,25 @@ def brown_bot_close_all():
     """Close every position in the Alpaca account using the bulk endpoint.
     Marks positions _exit_pending and writes exit trades to DB.
     Memory cleanup is deferred to get_brown_bot_status once broker confirms fills."""
-    global _brown_bot_active_positions
     current_user_id = request.user.get('id', 1)
     is_super = request.user.get('system_role') in ('super_admin', 'dev_master')
-    if _brown_bot_running and _brown_bot_user_id != current_user_id and not is_super:
+    sess = _brown_sessions.get(current_user_id)
+    if sess and sess.running and sess.user_id != current_user_id and not is_super:
         return jsonify({'success': False, 'error': 'Cannot close positions — bot session belongs to another user.'})
 
-    broker = (_brown_broker if _brown_bot_user_id == current_user_id else None) or _get_broker(current_user_id)
+    broker = (sess.broker if sess else None) or _get_broker(current_user_id)
     if not broker:
         return jsonify({'success': False, 'error': 'No broker available'})
 
     try:
         closed = broker.close_all_positions()
     except Exception as e:
-        _add_brown_log('error', f'Close-all failed: {e}')
+        _add_brown_log('error', f'Close-all failed: {e}', user_id=current_user_id)
         return jsonify({'success': False, 'error': str(e)})
 
     closed_symbols = [c['symbol'] for c in closed]
     _add_brown_log('warning',
-        f'CLOSE ALL: {len(closed)} position(s) submitted — {", ".join(closed_symbols) or "none"}')
+        f'CLOSE ALL: {len(closed)} position(s) submitted — {", ".join(closed_symbols) or "none"}', user_id=current_user_id)
 
     # Build a symbol→order_id map from the broker response for order logging
     closeall_order_map = {c['symbol']: c.get('order_id') for c in closed}
@@ -5798,9 +5762,12 @@ def brown_bot_close_all():
     # not already being closed. Skip _exit_pending — previous close-all handled them.
     now_str = datetime.now().isoformat()
     _trade_date = _last_trading_date()
-    with _brown_bot_lock:
+    _sess_ca = _brown_sessions.get(current_user_id)
+    _active_ca  = _sess_ca.active_positions if _sess_ca else {}
+    _lock_ca    = _sess_ca.lock if _sess_ca else threading.Lock()
+    with _lock_ca:
         snapshot = {
-            pid: pos for pid, pos in _brown_bot_active_positions.items()
+            pid: pos for pid, pos in _active_ca.items()
             if not pos.get('_exit_pending')
         }
 
@@ -5830,7 +5797,7 @@ def brown_bot_close_all():
                     'exit_reason':    'CLOSE_ALL',
                     'submitted_at':   now_str,
                     'trade_date':     _trade_date,
-                })
+                }, user_id=current_user_id)
             except Exception:
                 pass
 
@@ -5866,13 +5833,10 @@ def brown_bot_close_all():
             app_logger.debug(f'close-all position close failed for {sym}: {_e}')
 
     # Mark positions as pending-close rather than clearing immediately.
-    # The status endpoint builds bb_by_symbol from _brown_bot_active_positions;
-    # clearing here would cause the next poll to show positions with no
-    # metadata (Day type, no targets/stops) until Alpaca confirms the fills.
-    # Once broker confirms positions are gone, get_brown_bot_status cleans them up.
-    with _brown_bot_lock:
-        for pos in _brown_bot_active_positions.values():
+    with _lock_ca:
+        for pos in _active_ca.values():
             pos['_exit_pending'] = True
+    _add_brown_log('warning', f'CLOSE ALL: {len(closed)} order(s) submitted', user_id=current_user_id)
 
     return jsonify({
         'success': True,
@@ -5911,35 +5875,34 @@ def update_brown_bot_config_endpoint():
 @app.route('/api/brown-bot/logs', methods=['GET'])
 @require_auth
 def get_brown_bot_logs():
-    """Return recent BrownBot activity logs — only for the user who started the bot."""
-    if _brown_bot_running and _brown_bot_user_id != request.user.get('id', 1):
-        return jsonify({'success': True, 'logs': []})
-    return jsonify({'success': True, 'logs': list(reversed(_brown_bot_logs[-100:]))})
+    """Return recent BrownBot activity logs for the requesting user's session."""
+    user_id = request.user.get('id', 1)
+    sess = _brown_sessions.get(user_id)
+    logs = sess.logs if sess else []
+    return jsonify({'success': True, 'logs': list(reversed(logs[-100:]))})
 
 
 @app.route('/api/brown-bot/risk-status', methods=['GET'])
 @require_auth
 def get_brown_bot_risk_status():
     """Return live risk snapshot: daily P&L, open positions, circuit breaker state."""
-    global _brown_risk_manager, _brown_bot_active_positions
     current_user_id = request.user.get('id', 1)
-    is_owner = (not _brown_bot_running) or (_brown_bot_user_id == current_user_id)
+    sess = _brown_sessions.get(current_user_id)
 
-    # Only expose the live risk manager snapshot to the user who started the bot
-    if is_owner and _brown_risk_manager is not None:
-        with _brown_bot_lock:
-            positions = dict(_brown_bot_active_positions)
+    if sess and sess.risk_manager is not None:
+        with sess.lock:
+            positions = dict(sess.active_positions)
         unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
-        snapshot = _brown_risk_manager.status(positions, unrealized_pnl=unrealized_total)
+        snapshot = sess.risk_manager.status(positions, unrealized_pnl=unrealized_total)
     else:
-        # Risk manager not started or belongs to another user — return defaults from caller's config
+        # Bot not running for this user — return defaults from their config
         try:
             config = db_manager.get_brown_bot_config(current_user_id)
         except Exception:
             config = {}
         today = _last_trading_date()
         try:
-            realized_pnl = db_manager.get_brown_daily_realized_pnl(today)
+            realized_pnl = db_manager.get_brown_daily_realized_pnl(today, user_id=current_user_id)
         except Exception:
             realized_pnl = 0.0
         unrealized_total = 0.0
@@ -5956,14 +5919,48 @@ def get_brown_bot_risk_status():
             'max_concurrent_swing': int(config.get('max_concurrent_swing', 5)),
             'circuit_breaker_open': total_pnl <= max_loss,
         }
-    # Per-ticker P&L breakdown for today — sourced from brown_positions table
+    # Per-ticker P&L breakdown for today
     try:
         _today = _last_trading_date()
-        snapshot['pnl_by_ticker'] = db_manager.get_brown_positions_pnl_by_ticker(_today)
+        snapshot['pnl_by_ticker'] = db_manager.get_brown_positions_pnl_by_ticker(_today, user_id=current_user_id)
     except Exception:
         snapshot['pnl_by_ticker'] = []
 
     return jsonify({'success': True, 'risk': snapshot})
+
+
+@app.route('/api/admin/bots/status', methods=['GET'])
+@require_auth
+@require_role('super_admin', 'dev_master', 'bot_admin')
+def admin_bots_status():
+    """Admin view: return a summary of every active BrownBot session across all users."""
+    sessions_out = []
+    with _brown_sessions_lock:
+        snapshot = dict(_brown_sessions)
+    for uid, sess in snapshot.items():
+        if not sess.running:
+            continue
+        # Fetch username from DB for display
+        try:
+            user_row = db_manager.get_user_by_id(uid)
+            username = (user_row.get('username') or user_row.get('email') or f'uid:{uid}') if user_row else f'uid:{uid}'
+        except Exception:
+            username = f'uid:{uid}'
+        with sess.lock:
+            pos_count   = len(sess.active_positions)
+            unrealized  = round(sum(p.get('unrealized_pnl', 0) for p in sess.active_positions.values()), 2)
+            entry_count = sum(sess.entry_counts.values())
+        broker_name = sess.broker.name if sess.broker else None
+        sessions_out.append({
+            'user_id':          uid,
+            'username':         username,
+            'broker':           broker_name,
+            'active_positions': pos_count,
+            'unrealized_pnl':   unrealized,
+            'entries_today':    entry_count,
+            'stats':            dict(sess.stats),
+        })
+    return jsonify({'success': True, 'sessions': sessions_out, 'count': len(sessions_out)})
 
 
 # ==============================================================================
@@ -6339,8 +6336,12 @@ def get_brown_bot_candidates():
 def get_brown_bot_swing_candidates():
     """Return the latest BrownBot swing scanner AI picks, enriched with technicals."""
     try:
-        picks = list(_swing_ai_picks_cache.get('picks', []))
-        cands_by_ticker = {c['ticker']: c for c in _swing_candidates_cache.get('candidates', [])}
+        _uid_sc = request.user.get('id', 1)
+        _sess_sc = _brown_sessions.get(_uid_sc)
+        _ai_cache  = _sess_sc.swing_ai_picks_cache    if _sess_sc else {'ts': 0.0, 'picks': []}
+        _cand_cache = _sess_sc.swing_candidates_cache if _sess_sc else {'ts': 0.0, 'candidates': []}
+        picks = list(_ai_cache.get('picks', []))
+        cands_by_ticker = {c['ticker']: c for c in _cand_cache.get('candidates', [])}
         result = []
         for p in picks:
             ticker = p.get('ticker', '')
@@ -6361,7 +6362,7 @@ def get_brown_bot_swing_candidates():
                 'rsi14':        tech.get('rsi'),   # candidate dict uses 'rsi', not 'rsi14'
                 'rel_vol':      tech.get('rel_vol'),
             })
-        cache_ts = _swing_ai_picks_cache.get('ts', 0)
+        cache_ts = _ai_cache.get('ts', 0)
         return jsonify({
             'success': True,
             'picks': result,
@@ -8214,9 +8215,10 @@ def get_open_positions():
     try:
         user_id = request.user.get('id', 1)  # matches pattern used by all other broker endpoints
 
-        broker = _brown_broker
+        _sess_op = _brown_sessions.get(user_id)
+        broker = _sess_op.broker if _sess_op else None
         if broker:
-            app_logger.info('get_open_positions: using _brown_broker (bot is running)')
+            app_logger.info('get_open_positions: using running BrownBot broker')
         else:
             broker = _get_broker(user_id)
             if broker:
@@ -8251,22 +8253,22 @@ def get_open_positions():
         raw_positions = broker.get_positions()
         app_logger.info(f'get_open_positions: got {len(raw_positions)} position(s) from {broker.name}')
 
-        # Build symbol → position_type map.
-        # Priority 1: in-memory BrownBot positions (bot running)
-        # Priority 2: pending exit orders — position removed from memory but close not yet confirmed
-        # Priority 3: brown_positions DB table (bot stopped but positions still open in broker)
+        # Build symbol → position_type map from this user's BrownBot session.
         type_map = {}
-        for bp in _brown_bot_active_positions.values():
-            sym = (bp.get('symbol') or '').upper()
-            if sym:
-                type_map[sym] = bp.get('position_type')  # 'day' or 'swing'
-        for meta in _brown_pending_orders.values():
-            if meta.get('type') == 'exit':
-                sym = (meta.get('symbol') or '').upper()
-                if sym and sym not in type_map:
-                    type_map[sym] = meta.get('position_type')
+        _sess_tm = _brown_sessions.get(user_id)
+        if _sess_tm:
+            with _sess_tm.lock:
+                for bp in _sess_tm.active_positions.values():
+                    sym = (bp.get('symbol') or '').upper()
+                    if sym:
+                        type_map[sym] = bp.get('position_type')
+                for meta in _sess_tm.pending_orders.values():
+                    if meta.get('type') == 'exit':
+                        sym = (meta.get('symbol') or '').upper()
+                        if sym and sym not in type_map:
+                            type_map[sym] = meta.get('position_type')
         try:
-            for bp in db_manager.get_brown_positions():
+            for bp in db_manager.get_brown_positions(user_id=user_id):
                 sym = (bp.get('symbol') or '').upper()
                 if sym and sym not in type_map:
                     type_map[sym] = bp.get('position_type')
