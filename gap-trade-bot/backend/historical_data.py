@@ -25,6 +25,24 @@ load_dotenv()
 
 _ET_TZ = pytz.timezone('America/New_York')
 
+# Rate limiter: cap all Alpaca bar requests to 3 per second across all threads.
+# Free-tier Alpaca allows ~200 req/min; paid plans are higher.  Keeping at 3/s
+# stays well inside both limits and prevents 429s from parallel prefetch.
+_alpaca_rate_lock = threading.Lock()
+_alpaca_last_call_ts: float = 0.0
+_ALPACA_MIN_INTERVAL = 0.34  # seconds between calls → ~3 req/s
+
+
+def _alpaca_throttle():
+    global _alpaca_last_call_ts
+    with _alpaca_rate_lock:
+        now  = time.monotonic()
+        wait = _ALPACA_MIN_INTERVAL - (now - _alpaca_last_call_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _alpaca_last_call_ts = time.monotonic()
+
+
 def _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min'):
     """Fetch bars from Alpaca Data API with pagination, returning list of raw dicts.
 
@@ -48,14 +66,16 @@ def _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min'):
         failed    = False
         while True:
             try:
+                _alpaca_throttle()
                 resp = requests.get(url, headers=headers, params=params, timeout=15)
                 http_code = resp.status_code
                 if http_code != 200:
                     body = resp.text[:300]
-                    if http_code == 403 and feed == 'sip':
+                    if http_code in (403, 429) and feed == 'sip':
+                        reason = 'subscription limit' if http_code == 403 else 'rate limited'
                         logger.warning(
-                            f'_alpaca_bars_raw {ticker}: SIP feed returned 403 '
-                            f'(subscription limit) — retrying with IEX feed. body={body}')
+                            f'_alpaca_bars_raw {ticker}: SIP feed returned {http_code} '
+                            f'({reason}) — retrying with IEX feed. body={body}')
                     else:
                         logger.warning(
                             f'_alpaca_bars_raw {ticker}: HTTP {http_code} '
@@ -74,8 +94,8 @@ def _alpaca_bars_raw(ticker, start_iso, end_iso, timeframe='1Min'):
                 break
         if not failed:
             return all_bars
-        # 403 on SIP → try IEX next; any other failure → give up
-        if not (http_code == 403 and feed == 'sip'):
+        # 403/429 on SIP → try IEX next; any other failure → give up
+        if not (http_code in (403, 429) and feed == 'sip'):
             break
     return []
 
