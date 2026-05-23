@@ -595,6 +595,14 @@ const app = createApp({
 
         
         computed: {
+            bestHour() {
+                if (!this.timeOfDayData.length) return null;
+                return this.timeOfDayData.reduce((a, b) => b.total_pnl > a.total_pnl ? b : a);
+            },
+            worstHour() {
+                if (!this.timeOfDayData.length) return null;
+                return this.timeOfDayData.reduce((a, b) => b.total_pnl < a.total_pnl ? b : a);
+            },
             maxDrawdown() {
                 if (!this.cumulativePnlData || this.cumulativePnlData.length < 1) return null;
                 let peak = -Infinity, maxDD = 0;
