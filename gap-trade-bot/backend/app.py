@@ -8053,186 +8053,125 @@ def get_winrate():
     return get_positions_summary()
 
 @app.route('/api/positions/daily-pnl', methods=['GET'])
+@require_auth
 def get_daily_pnl():
     """Get daily P&L data for charting"""
     try:
-        from database import db_manager
-        
-        # Get query parameters
+        current_user_id = request.user.get('id', 1)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
-        # Get daily P&L data from database
         daily_data = db_manager.get_daily_pnl_data(
-            start_date=start_date,
-            end_date=end_date
+            start_date=start_date, end_date=end_date, user_id=current_user_id
         )
-        
         return jsonify({
             'success': True,
-            'data': {
-                'daily_pnl': daily_data
-            },
+            'data': {'daily_pnl': daily_data},
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error getting daily P&L data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/cumulative-pnl', methods=['GET'])
+@require_auth
 def get_cumulative_pnl():
     """Get cumulative P&L data for growth tracking"""
     try:
-        from database import db_manager
-        
-        # Get query parameters
+        current_user_id = request.user.get('id', 1)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
-        # Get cumulative P&L data from database
         cumulative_data = db_manager.get_cumulative_pnl_data(
-            start_date=start_date,
-            end_date=end_date
+            start_date=start_date, end_date=end_date, user_id=current_user_id
         )
-        
         return jsonify({
             'success': True,
-            'data': {
-                'cumulative_pnl': cumulative_data
-            },
+            'data': {'cumulative_pnl': cumulative_data},
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error getting cumulative P&L data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/pie-chart/long-short', methods=['GET'])
+@require_auth
 def get_long_short_pnl():
     """Get P&L breakdown by long vs short positions for pie chart"""
     try:
-        from database import db_manager
-        
-        # Get query parameters
+        current_user_id = request.user.get('id', 1)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
-        # Get long/short P&L data from database
         long_short_data = db_manager.get_long_short_pnl_data(
-            start_date=start_date,
-            end_date=end_date
+            start_date=start_date, end_date=end_date, user_id=current_user_id
         )
-        
         return jsonify({
             'success': True,
-            'data': {
-                'long_short_pnl': long_short_data
-            },
+            'data': {'long_short_pnl': long_short_data},
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error getting long/short P&L data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/pie-chart/symbols', methods=['GET'])
+@require_auth
 def get_symbol_pnl():
     """Get P&L breakdown by symbol for pie chart"""
     try:
-        from database import db_manager
-        
-        # Get query parameters
+        current_user_id = request.user.get('id', 1)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         limit = request.args.get('limit', 10, type=int)
-        
-        # Get symbol P&L data from database
         symbol_data = db_manager.get_symbol_pnl_data(
-            start_date=start_date,
-            end_date=end_date,
-            limit=limit
+            start_date=start_date, end_date=end_date, limit=limit, user_id=current_user_id
         )
-        
         return jsonify({
             'success': True,
-            'data': {
-                'symbol_pnl': symbol_data
-            },
+            'data': {'symbol_pnl': symbol_data},
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error getting symbol P&L data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/pie-chart/win-loss', methods=['GET'])
+@require_auth
 def get_win_loss_pnl():
     """Get P&L breakdown by winning vs losing trades for pie chart"""
     try:
-        from database import db_manager
-        
-        # Get query parameters
+        current_user_id = request.user.get('id', 1)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
-        # Get win/loss P&L data from database
         win_loss_data = db_manager.get_win_loss_pnl_data(
-            start_date=start_date,
-            end_date=end_date
+            start_date=start_date, end_date=end_date, user_id=current_user_id
         )
-        
         return jsonify({
             'success': True,
-            'data': {
-                'win_loss_pnl': win_loss_data
-            },
+            'data': {'win_loss_pnl': win_loss_data},
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error getting win/loss P&L data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/pie-chart/monthly', methods=['GET'])
+@require_auth
 def get_monthly_pnl():
     """Get P&L breakdown by month for pie chart"""
     try:
-        from database import db_manager
-        
-        # Get query parameters
+        current_user_id = request.user.get('id', 1)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        
-        # Get monthly P&L data from database
         monthly_data = db_manager.get_monthly_pnl_data(
-            start_date=start_date,
-            end_date=end_date
+            start_date=start_date, end_date=end_date, user_id=current_user_id
         )
-        
         return jsonify({
             'success': True,
-            'data': {
-                'monthly_pnl': monthly_data
-            },
+            'data': {'monthly_pnl': monthly_data},
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         app_logger.error(f"Error getting monthly P&L data: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/open', methods=['GET'])
 @require_auth

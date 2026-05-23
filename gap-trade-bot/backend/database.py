@@ -1680,7 +1680,7 @@ class DatabaseManager:
             print(f"Database error getting positions win rate: {e}")
             return 0.0
 
-    def get_daily_pnl_data(self, start_date=None, end_date=None):
+    def get_daily_pnl_data(self, start_date=None, end_date=None, user_id=None):
         """Daily P&L grouped by trade_date from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
@@ -1694,6 +1694,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
@@ -1710,7 +1713,7 @@ class DatabaseManager:
             print(f"Database error getting daily P&L data: {e}")
             return []
 
-    def get_cumulative_pnl_data(self, start_date=None, end_date=None):
+    def get_cumulative_pnl_data(self, start_date=None, end_date=None, user_id=None):
         """Cumulative P&L running total from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
@@ -1723,6 +1726,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
@@ -1990,7 +1996,7 @@ class DatabaseManager:
         results.sort(key=lambda r: (r['exit_date'], r['exit_time']), reverse=True)
         return results[:limit]
 
-    def get_long_short_pnl_data(self, start_date=None, end_date=None):
+    def get_long_short_pnl_data(self, start_date=None, end_date=None, user_id=None):
         """P&L breakdown by Day vs Swing (BrownBot is long-only so Long/Short is meaningless)."""
         try:
             with self.get_connection() as conn:
@@ -2006,6 +2012,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
@@ -2020,7 +2029,7 @@ class DatabaseManager:
             print(f"Database error getting day/swing P&L data: {e}")
             return []
 
-    def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10):
+    def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10, user_id=None):
         """P&L breakdown by symbol for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2037,6 +2046,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
@@ -2053,7 +2065,7 @@ class DatabaseManager:
             print(f"Database error getting symbol P&L data: {e}")
             return []
 
-    def get_win_loss_pnl_data(self, start_date=None, end_date=None):
+    def get_win_loss_pnl_data(self, start_date=None, end_date=None, user_id=None):
         """P&L breakdown by winning vs losing trades for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2072,6 +2084,9 @@ class DatabaseManager:
                       AND source = 'brownbot'
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
@@ -2086,7 +2101,7 @@ class DatabaseManager:
             print(f"Database error getting win/loss P&L data: {e}")
             return []
 
-    def get_monthly_pnl_data(self, start_date=None, end_date=None):
+    def get_monthly_pnl_data(self, start_date=None, end_date=None, user_id=None):
         """P&L breakdown by month for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2102,6 +2117,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
