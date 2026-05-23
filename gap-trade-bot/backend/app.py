@@ -7891,6 +7891,52 @@ def get_debug_logs():
         }), 500
 
 # Positions-based API endpoints (replacing trades endpoints)
+
+def _parse_stats_filters(req):
+    """Extract date + advanced stats filters from request.args.
+    Returns (start_date, end_date, price_min, price_max, day_of_week_list,
+             time_start_utc, time_end_utc, utc_offset_mins).
+    ET times are converted to UTC HH:MM strings for SQLite comparison.
+    day_of_week_list uses SQLite %w convention (0=Sun, 1=Mon … 6=Sat).
+    """
+    import pytz as _pytz
+    start_date    = req.args.get('start_date')
+    end_date      = req.args.get('end_date')
+    price_min     = req.args.get('price_min',  type=float)
+    price_max     = req.args.get('price_max',  type=float)
+    dow_param     = req.args.get('day_of_week', '')   # comma-sep ints e.g. "1,2,3"
+    time_start_et = req.args.get('time_start', '')    # HH:MM ET
+    time_end_et   = req.args.get('time_end',   '')    # HH:MM ET
+
+    day_of_week = None
+    if dow_param:
+        try:
+            day_of_week = [int(d) for d in dow_param.split(',') if d.strip()]
+        except ValueError:
+            pass
+
+    time_start_utc = time_end_utc = None
+    utc_offset_mins = -300  # default EST
+    try:
+        et_tz   = _pytz.timezone('US/Eastern')
+        utc_tz  = _pytz.utc
+        et_now  = datetime.now(et_tz)
+        utc_offset_mins = int(et_now.utcoffset().total_seconds() / 60)
+        today   = et_now.date()
+        if time_start_et:
+            h, m = map(int, time_start_et.split(':'))
+            et_dt = et_tz.localize(datetime(today.year, today.month, today.day, h, m))
+            time_start_utc = et_dt.astimezone(utc_tz).strftime('%H:%M')
+        if time_end_et:
+            h, m = map(int, time_end_et.split(':'))
+            et_dt = et_tz.localize(datetime(today.year, today.month, today.day, h, m))
+            time_end_utc = et_dt.astimezone(utc_tz).strftime('%H:%M')
+    except Exception:
+        pass
+
+    return start_date, end_date, price_min, price_max, day_of_week, time_start_utc, time_end_utc, utc_offset_mins
+
+
 @app.route('/api/positions/summary', methods=['GET'])
 @require_auth
 def get_positions_summary():
@@ -7899,15 +7945,18 @@ def get_positions_summary():
     try:
         current_user_id = request.user.get('id', 1)
         symbol        = request.args.get('symbol')
-        start_date    = request.args.get('start_date')
-        end_date      = request.args.get('end_date')
         position_type = request.args.get('position_type')
         source        = request.args.get('source')
+        start_date, end_date, price_min, price_max, day_of_week, \
+            time_start_utc, time_end_utc, _ = _parse_stats_filters(request)
 
         positions  = db_manager.get_consolidated_positions(
             symbol=symbol, start_date=start_date, end_date=end_date,
             position_type=position_type, source=source, limit=10_000,
             user_id=current_user_id,
+            price_min=price_min, price_max=price_max,
+            time_start_utc=time_start_utc, time_end_utc=time_end_utc,
+            day_of_week=day_of_week,
         )
         total_pnl  = sum(p['pnl'] for p in positions)
         wins       = sum(1 for p in positions if p['pnl'] > 0)
@@ -7932,15 +7981,18 @@ def get_extended_stats():
     try:
         current_user_id = request.user.get('id', 1)
         symbol        = request.args.get('symbol')
-        start_date    = request.args.get('start_date')
-        end_date      = request.args.get('end_date')
         position_type = request.args.get('position_type')
         source        = request.args.get('source')
+        start_date, end_date, price_min, price_max, day_of_week, \
+            time_start_utc, time_end_utc, _ = _parse_stats_filters(request)
 
         positions = db_manager.get_consolidated_positions(
             symbol=symbol, start_date=start_date, end_date=end_date,
             position_type=position_type, source=source, limit=10_000,
             user_id=current_user_id,
+            price_min=price_min, price_max=price_max,
+            time_start_utc=time_start_utc, time_end_utc=time_end_utc,
+            day_of_week=day_of_week,
         )
 
         _empty = {
@@ -8055,19 +8107,14 @@ def get_winrate():
 @app.route('/api/positions/daily-pnl', methods=['GET'])
 @require_auth
 def get_daily_pnl():
-    """Get daily P&L data for charting"""
     try:
-        current_user_id = request.user.get('id', 1)
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        daily_data = db_manager.get_daily_pnl_data(
-            start_date=start_date, end_date=end_date, user_id=current_user_id
-        )
-        return jsonify({
-            'success': True,
-            'data': {'daily_pnl': daily_data},
-            'timestamp': datetime.now().isoformat()
-        })
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, dow, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_daily_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'daily_pnl': data}, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting daily P&L data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -8075,19 +8122,14 @@ def get_daily_pnl():
 @app.route('/api/positions/cumulative-pnl', methods=['GET'])
 @require_auth
 def get_cumulative_pnl():
-    """Get cumulative P&L data for growth tracking"""
     try:
-        current_user_id = request.user.get('id', 1)
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        cumulative_data = db_manager.get_cumulative_pnl_data(
-            start_date=start_date, end_date=end_date, user_id=current_user_id
-        )
-        return jsonify({
-            'success': True,
-            'data': {'cumulative_pnl': cumulative_data},
-            'timestamp': datetime.now().isoformat()
-        })
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, dow, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_cumulative_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'cumulative_pnl': data}, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting cumulative P&L data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -8095,19 +8137,14 @@ def get_cumulative_pnl():
 @app.route('/api/positions/pie-chart/long-short', methods=['GET'])
 @require_auth
 def get_long_short_pnl():
-    """Get P&L breakdown by long vs short positions for pie chart"""
     try:
-        current_user_id = request.user.get('id', 1)
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        long_short_data = db_manager.get_long_short_pnl_data(
-            start_date=start_date, end_date=end_date, user_id=current_user_id
-        )
-        return jsonify({
-            'success': True,
-            'data': {'long_short_pnl': long_short_data},
-            'timestamp': datetime.now().isoformat()
-        })
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, dow, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_long_short_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'long_short_pnl': data}, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting long/short P&L data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -8115,20 +8152,15 @@ def get_long_short_pnl():
 @app.route('/api/positions/pie-chart/symbols', methods=['GET'])
 @require_auth
 def get_symbol_pnl():
-    """Get P&L breakdown by symbol for pie chart"""
     try:
-        current_user_id = request.user.get('id', 1)
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
+        uid   = request.user.get('id', 1)
         limit = request.args.get('limit', 10, type=int)
-        symbol_data = db_manager.get_symbol_pnl_data(
-            start_date=start_date, end_date=end_date, limit=limit, user_id=current_user_id
-        )
-        return jsonify({
-            'success': True,
-            'data': {'symbol_pnl': symbol_data},
-            'timestamp': datetime.now().isoformat()
-        })
+        sd, ed, pmin, pmax, dow, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_symbol_pnl_data(
+            start_date=sd, end_date=ed, limit=limit, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'symbol_pnl': data}, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting symbol P&L data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -8136,19 +8168,14 @@ def get_symbol_pnl():
 @app.route('/api/positions/pie-chart/win-loss', methods=['GET'])
 @require_auth
 def get_win_loss_pnl():
-    """Get P&L breakdown by winning vs losing trades for pie chart"""
     try:
-        current_user_id = request.user.get('id', 1)
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        win_loss_data = db_manager.get_win_loss_pnl_data(
-            start_date=start_date, end_date=end_date, user_id=current_user_id
-        )
-        return jsonify({
-            'success': True,
-            'data': {'win_loss_pnl': win_loss_data},
-            'timestamp': datetime.now().isoformat()
-        })
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, dow, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_win_loss_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'win_loss_pnl': data}, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting win/loss P&L data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -8156,21 +8183,48 @@ def get_win_loss_pnl():
 @app.route('/api/positions/pie-chart/monthly', methods=['GET'])
 @require_auth
 def get_monthly_pnl():
-    """Get P&L breakdown by month for pie chart"""
     try:
-        current_user_id = request.user.get('id', 1)
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        monthly_data = db_manager.get_monthly_pnl_data(
-            start_date=start_date, end_date=end_date, user_id=current_user_id
-        )
-        return jsonify({
-            'success': True,
-            'data': {'monthly_pnl': monthly_data},
-            'timestamp': datetime.now().isoformat()
-        })
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, dow, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_monthly_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'monthly_pnl': data}, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error getting monthly P&L data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/positions/time-of-day', methods=['GET'])
+@require_auth
+def get_time_of_day_pnl():
+    """P&L grouped by exit hour (ET). Respects date, price, and day-of-week filters."""
+    try:
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, dow, _, _, utc_offset_mins = _parse_stats_filters(request)
+        data = db_manager.get_time_of_day_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            utc_offset_mins=utc_offset_mins,
+            price_min=pmin, price_max=pmax, day_of_week=dow)
+        return jsonify({'success': True, 'data': {'time_of_day': data}, 'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        app_logger.error(f"Error getting time-of-day P&L data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/positions/day-of-week', methods=['GET'])
+@require_auth
+def get_day_of_week_pnl():
+    """P&L grouped by day of week (Mon–Fri ET). Respects date, price, and time filters."""
+    try:
+        uid = request.user.get('id', 1)
+        sd, ed, pmin, pmax, _, ts_utc, te_utc, _ = _parse_stats_filters(request)
+        data = db_manager.get_day_of_week_pnl_data(
+            start_date=sd, end_date=ed, user_id=uid,
+            time_start_utc=ts_utc, time_end_utc=te_utc,
+            price_min=pmin, price_max=pmax)
+        return jsonify({'success': True, 'data': {'day_of_week': data}, 'timestamp': datetime.now().isoformat()})
+    except Exception as e:
+        app_logger.error(f"Error getting day-of-week P&L data: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/open', methods=['GET'])

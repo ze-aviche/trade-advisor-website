@@ -73,6 +73,8 @@ const app = createApp({
                     dailyPnl: false,
                     cumulativePnl: false,
                     pieCharts: false,
+                    timeOfDay: false,
+                    dayOfWeek: false,
                     backtest: false,
                     runBacktest: false,
                     equityChart: false,
@@ -516,15 +518,27 @@ const app = createApp({
                 statsStartDate: '',
                 statsEndDate: '',
                 statsPreset: 'all',
-                
+                // Advanced stats filters
+                statsTimeStart: '',        // HH:MM in ET
+                statsTimeEnd: '',          // HH:MM in ET
+                statsPriceMin: '',
+                statsPriceMax: '',
+                statsDayOfWeek: [],        // SQLite %w ints: 1=Mon…5=Fri
+
                 // Daily P&L chart data
                 dailyPnlData: [],
                 dailyPnlChart: null,
                 dailyPnlChartType: 'bar', // Default to bar chart
-                
+
                 // Cumulative P&L chart data
                 cumulativePnlData: [],
                 cumulativePnlChart: null,
+
+                // Time-of-day & day-of-week breakdown
+                timeOfDayData: [],
+                timeOfDayChart: null,
+                dayOfWeekData: [],
+                dayOfWeekChart: null,
 
                 // Pie Chart data
                 pieChartData: {
@@ -2761,9 +2775,30 @@ const app = createApp({
 
             _statsDateQs() {
                 const p = [];
-                if (this.statsStartDate) p.push(`start_date=${this.statsStartDate}`);
-                if (this.statsEndDate)   p.push(`end_date=${this.statsEndDate}`);
+                if (this.statsStartDate)              p.push(`start_date=${this.statsStartDate}`);
+                if (this.statsEndDate)                p.push(`end_date=${this.statsEndDate}`);
+                if (this.statsTimeStart)              p.push(`time_start=${this.statsTimeStart}`);
+                if (this.statsTimeEnd)                p.push(`time_end=${this.statsTimeEnd}`);
+                if (this.statsPriceMin !== '')         p.push(`price_min=${this.statsPriceMin}`);
+                if (this.statsPriceMax !== '')         p.push(`price_max=${this.statsPriceMax}`);
+                if (this.statsDayOfWeek.length)       p.push(`day_of_week=${this.statsDayOfWeek.join(',')}`);
                 return p.length ? '?' + p.join('&') : '';
+            },
+
+            toggleStatsDow(d) {
+                const idx = this.statsDayOfWeek.indexOf(d);
+                if (idx >= 0) this.statsDayOfWeek.splice(idx, 1);
+                else          this.statsDayOfWeek.push(d);
+                this.loadStats();
+            },
+
+            clearStatsAdvancedFilters() {
+                this.statsTimeStart  = '';
+                this.statsTimeEnd    = '';
+                this.statsPriceMin   = '';
+                this.statsPriceMax   = '';
+                this.statsDayOfWeek  = [];
+                this.loadStats();
             },
 
             setStatsDatePreset(preset) {
@@ -2786,9 +2821,14 @@ const app = createApp({
             },
 
             clearStatsFilter() {
-                this.statsStartDate = '';
-                this.statsEndDate = '';
-                this.statsPreset = 'all';
+                this.statsStartDate  = '';
+                this.statsEndDate    = '';
+                this.statsPreset     = 'all';
+                this.statsTimeStart  = '';
+                this.statsTimeEnd    = '';
+                this.statsPriceMin   = '';
+                this.statsPriceMax   = '';
+                this.statsDayOfWeek  = [];
                 this.loadStats();
             },
 
@@ -2821,6 +2861,8 @@ const app = createApp({
                         this.loadDailyPnlData(),
                         this.loadCumulativePnlData(),
                         this.loadPieChartData(),
+                        this.loadTimeOfDayData(),
+                        this.loadDayOfWeekData(),
                     ]);
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
@@ -2882,18 +2924,140 @@ const app = createApp({
                 }
             },
             
+            async loadTimeOfDayData() {
+                this.loading.timeOfDay = true;
+                try {
+                    const res  = await fetch(`/api/positions/time-of-day${this._statsDateQs()}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        this.timeOfDayData = data.data.time_of_day || [];
+                        this.$nextTick(() => { this.updateTimeOfDayChart(); });
+                    }
+                } catch (e) {
+                    console.error('Error loading time-of-day data:', e);
+                } finally {
+                    this.loading.timeOfDay = false;
+                }
+            },
+
+            async loadDayOfWeekData() {
+                this.loading.dayOfWeek = true;
+                try {
+                    const res  = await fetch(`/api/positions/day-of-week${this._statsDateQs()}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        this.dayOfWeekData = data.data.day_of_week || [];
+                        this.$nextTick(() => { this.updateDayOfWeekChart(); });
+                    }
+                } catch (e) {
+                    console.error('Error loading day-of-week data:', e);
+                } finally {
+                    this.loading.dayOfWeek = false;
+                }
+            },
+
+            updateTimeOfDayChart() {
+                const ctx = document.getElementById('timeOfDayChart');
+                if (!ctx || !this.timeOfDayData.length) return;
+                if (this.timeOfDayChart) { this.timeOfDayChart.destroy(); this.timeOfDayChart = null; }
+                const labels = this.timeOfDayData.map(r => r.label);
+                const values = this.timeOfDayData.map(r => r.total_pnl);
+                const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)');
+                this.timeOfDayChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Total P&L ($)',
+                            data: values,
+                            backgroundColor: colors,
+                            borderColor: colors.map(c => c.replace('0.8', '1')),
+                            borderWidth: 1,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: (ctx) => {
+                                        const r = this.timeOfDayData[ctx.dataIndex];
+                                        return [`Trades: ${r.trade_count}`, `Avg: $${r.avg_pnl}`, `Win rate: ${r.win_rate}%`];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: {
+                                ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                border: { dash: [4, 4] }
+                            }
+                        }
+                    }
+                });
+            },
+
+            updateDayOfWeekChart() {
+                const ctx = document.getElementById('dayOfWeekChart');
+                if (!ctx || !this.dayOfWeekData.length) return;
+                if (this.dayOfWeekChart) { this.dayOfWeekChart.destroy(); this.dayOfWeekChart = null; }
+                const labels = this.dayOfWeekData.map(r => r.label);
+                const values = this.dayOfWeekData.map(r => r.total_pnl);
+                const colors = values.map(v => v >= 0 ? 'rgba(99,102,241,0.8)' : 'rgba(239,68,68,0.8)');
+                this.dayOfWeekChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Total P&L ($)',
+                            data: values,
+                            backgroundColor: colors,
+                            borderColor: colors.map(c => c.replace('0.8', '1')),
+                            borderWidth: 1,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: (ctx) => {
+                                        const r = this.dayOfWeekData[ctx.dataIndex];
+                                        return [`Trades: ${r.trade_count}`, `Avg: $${r.avg_pnl}`, `Win rate: ${r.win_rate}%`];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: {
+                                ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                border: { dash: [4, 4] }
+                            }
+                        }
+                    }
+                });
+            },
+
             updateDailyPnlChart() {
                 if (!this.dailyPnlData || this.dailyPnlData.length === 0) {
                     console.log('📊 No daily P&L data to display');
                     return;
                 }
-                
+
                 const ctx = document.getElementById('dailyPnlChart');
                 if (!ctx) {
                     console.error('❌ Daily P&L chart canvas not found');
                     return;
                 }
-                
+
                 // Destroy existing chart if it exists
                 if (this.dailyPnlChart) {
                     this.dailyPnlChart.destroy();

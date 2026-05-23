@@ -1680,7 +1680,40 @@ class DatabaseManager:
             print(f"Database error getting positions win rate: {e}")
             return 0.0
 
-    def get_daily_pnl_data(self, start_date=None, end_date=None, user_id=None):
+    # ------------------------------------------------------------------
+    # Stats filter helper
+    # ------------------------------------------------------------------
+    def _apply_stats_filters(self, query, params, user_id=None, start_date=None,
+                              end_date=None, time_start_utc=None, time_end_utc=None,
+                              price_min=None, price_max=None, day_of_week=None):
+        """Append AND clauses + params for common stats filters on the trades table."""
+        if user_id is not None:
+            query += ' AND user_id = ?';                params.append(user_id)
+        if start_date:
+            query += ' AND trade_date >= ?';             params.append(start_date)
+        if end_date:
+            query += ' AND trade_date <= ?';             params.append(end_date)
+        if time_start_utc:
+            query += " AND strftime('%H:%M', trade_time) >= ?"; params.append(time_start_utc)
+        if time_end_utc:
+            query += " AND strftime('%H:%M', trade_time) <= ?"; params.append(time_end_utc)
+        if price_min is not None:
+            query += ' AND price >= ?';                  params.append(price_min)
+        if price_max is not None:
+            query += ' AND price <= ?';                  params.append(price_max)
+        if day_of_week:
+            ph = ','.join('?' * len(day_of_week))
+            query += f" AND CAST(strftime('%w', trade_date) AS INTEGER) IN ({ph})"
+            params.extend(day_of_week)
+        return query, params
+
+    # ------------------------------------------------------------------
+    # Stats chart data functions
+    # ------------------------------------------------------------------
+
+    def get_daily_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                            time_start_utc=None, time_end_utc=None,
+                            price_min=None, price_max=None, day_of_week=None):
         """Daily P&L grouped by trade_date from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
@@ -1694,15 +1727,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                if user_id is not None:
-                    query += ' AND user_id = ?'
-                    params.append(user_id)
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY trade_date ORDER BY trade_date ASC'
                 cursor.execute(query, params)
                 return [
@@ -1713,7 +1740,9 @@ class DatabaseManager:
             print(f"Database error getting daily P&L data: {e}")
             return []
 
-    def get_cumulative_pnl_data(self, start_date=None, end_date=None, user_id=None):
+    def get_cumulative_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                 time_start_utc=None, time_end_utc=None,
+                                 price_min=None, price_max=None, day_of_week=None):
         """Cumulative P&L running total from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
@@ -1726,15 +1755,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                if user_id is not None:
-                    query += ' AND user_id = ?'
-                    params.append(user_id)
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY trade_date ORDER BY trade_date ASC'
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
@@ -1830,7 +1853,9 @@ class DatabaseManager:
             return []
 
     def get_consolidated_positions(self, symbol=None, start_date=None, end_date=None,
-                                    position_type=None, source=None, limit=1000, user_id=None):
+                                    position_type=None, source=None, limit=1000, user_id=None,
+                                    price_min=None, price_max=None,
+                                    time_start_utc=None, time_end_utc=None, day_of_week=None):
         """
         Consolidated closed positions — one row per round-trip per symbol per session.
 
@@ -1993,10 +2018,31 @@ class DatabaseManager:
         if start_date:
             results = [r for r in results if r['exit_date'] >= start_date]
 
+        # Additional filters applied at result level (after FIFO matching)
+        if price_min is not None:
+            results = [r for r in results if r.get('avg_exit') is not None and r['avg_exit'] >= price_min]
+        if price_max is not None:
+            results = [r for r in results if r.get('avg_exit') is not None and r['avg_exit'] <= price_max]
+        if time_start_utc:
+            # exit_time is ISO datetime: YYYY-MM-DDTHH:MM:SS...
+            results = [r for r in results if r.get('exit_time', '')[11:16] >= time_start_utc]
+        if time_end_utc:
+            results = [r for r in results if r.get('exit_time', '')[11:16] <= time_end_utc]
+        if day_of_week:
+            from datetime import date as _dt_cls
+            def _sqlite_dow(d):
+                try:
+                    return (_dt_cls.fromisoformat(d).weekday() + 1) % 7
+                except Exception:
+                    return -1
+            results = [r for r in results if _sqlite_dow(r.get('exit_date', '')) in day_of_week]
+
         results.sort(key=lambda r: (r['exit_date'], r['exit_time']), reverse=True)
         return results[:limit]
 
-    def get_long_short_pnl_data(self, start_date=None, end_date=None, user_id=None):
+    def get_long_short_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                time_start_utc=None, time_end_utc=None,
+                                price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by Day vs Swing (BrownBot is long-only so Long/Short is meaningless)."""
         try:
             with self.get_connection() as conn:
@@ -2012,15 +2058,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
-                if user_id is not None:
-                    query += ' AND user_id = ?'
-                    params.append(user_id)
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY position_type ORDER BY total_pnl DESC'
                 cursor.execute(query, params)
                 return [{'position_type': r['position_type'], 'total_pnl': float(r['total_pnl']),
@@ -2029,7 +2069,9 @@ class DatabaseManager:
             print(f"Database error getting day/swing P&L data: {e}")
             return []
 
-    def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10, user_id=None):
+    def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10, user_id=None,
+                             time_start_utc=None, time_end_utc=None,
+                             price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by symbol for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2046,15 +2088,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
-                if user_id is not None:
-                    query += ' AND user_id = ?'
-                    params.append(user_id)
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY symbol ORDER BY total_pnl DESC LIMIT ?'
                 params.append(limit)
                 cursor.execute(query, params)
@@ -2065,7 +2101,9 @@ class DatabaseManager:
             print(f"Database error getting symbol P&L data: {e}")
             return []
 
-    def get_win_loss_pnl_data(self, start_date=None, end_date=None, user_id=None):
+    def get_win_loss_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                               time_start_utc=None, time_end_utc=None,
+                               price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by winning vs losing trades for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2084,15 +2122,9 @@ class DatabaseManager:
                       AND source = 'brownbot'
                 '''
                 params = []
-                if user_id is not None:
-                    query += ' AND user_id = ?'
-                    params.append(user_id)
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY trade_result ORDER BY total_pnl DESC'
                 cursor.execute(query, params)
                 return [{'trade_result': r['trade_result'], 'total_pnl': float(r['total_pnl']),
@@ -2101,7 +2133,9 @@ class DatabaseManager:
             print(f"Database error getting win/loss P&L data: {e}")
             return []
 
-    def get_monthly_pnl_data(self, start_date=None, end_date=None, user_id=None):
+    def get_monthly_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                              time_start_utc=None, time_end_utc=None,
+                              price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by month for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2117,21 +2151,102 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
-                if user_id is not None:
-                    query += ' AND user_id = ?'
-                    params.append(user_id)
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY month ORDER BY month ASC'
                 cursor.execute(query, params)
                 return [{'month': r['month'], 'total_pnl': float(r['total_pnl']),
                          'position_count': r['position_count']} for r in cursor.fetchall()]
         except Exception as e:
             print(f"Database error getting monthly P&L data: {e}")
+            return []
+
+    def get_time_of_day_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                   utc_offset_mins=-300,
+                                   price_min=None, price_max=None, day_of_week=None):
+        """P&L breakdown by exit hour (ET) for time-of-day analysis.
+
+        utc_offset_mins: offset of ET from UTC in minutes — -240 (EDT) or -300 (EST).
+        trade_time is stored as UTC ISO string so we shift by this offset.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = '''
+                    SELECT
+                        (((CAST(strftime('%H', trade_time) AS INTEGER) * 60
+                           + CAST(strftime('%M', trade_time) AS INTEGER)
+                           + 1440 + ?) % 1440) / 60) AS et_hour,
+                        COALESCE(SUM(pnl), 0)  AS total_pnl,
+                        COUNT(*)               AS trade_count,
+                        AVG(pnl)               AS avg_pnl,
+                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
+                '''
+                params = [utc_offset_mins]
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    None, None, price_min, price_max, day_of_week)
+                query += ' GROUP BY et_hour ORDER BY et_hour ASC'
+                cursor.execute(query, params)
+                return [
+                    {
+                        'hour':        row['et_hour'],
+                        'label':       f"{row['et_hour']:02d}:00–{(row['et_hour']+1):02d}:00 ET",
+                        'total_pnl':   round(float(row['total_pnl']), 2),
+                        'trade_count': row['trade_count'],
+                        'avg_pnl':     round(float(row['avg_pnl']), 2),
+                        'wins':        row['wins'],
+                        'win_rate':    round(row['wins'] / row['trade_count'] * 100, 1) if row['trade_count'] else 0,
+                    }
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
+            print(f"Database error getting time-of-day P&L data: {e}")
+            return []
+
+    def get_day_of_week_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                   time_start_utc=None, time_end_utc=None,
+                                   price_min=None, price_max=None):
+        """P&L breakdown by day of week (Mon–Fri), always returns all 5 trading days."""
+        DOW_LABELS = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = '''
+                    SELECT
+                        CAST(strftime('%w', trade_date) AS INTEGER) AS dow,
+                        COALESCE(SUM(pnl), 0)  AS total_pnl,
+                        COUNT(*)               AS trade_count,
+                        AVG(pnl)               AS avg_pnl,
+                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
+                '''
+                params = []
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, None)
+                query += ' GROUP BY dow ORDER BY dow ASC'
+                cursor.execute(query, params)
+                rows_by_dow = {row['dow']: row for row in cursor.fetchall()}
+                return [
+                    {
+                        'dow':         d,
+                        'label':       DOW_LABELS[d],
+                        'total_pnl':   round(float(rows_by_dow[d]['total_pnl']), 2) if d in rows_by_dow else 0.0,
+                        'trade_count': rows_by_dow[d]['trade_count'] if d in rows_by_dow else 0,
+                        'avg_pnl':     round(float(rows_by_dow[d]['avg_pnl']), 2) if d in rows_by_dow else 0.0,
+                        'wins':        rows_by_dow[d]['wins'] if d in rows_by_dow else 0,
+                        'win_rate':    round(rows_by_dow[d]['wins'] / rows_by_dow[d]['trade_count'] * 100, 1)
+                                       if d in rows_by_dow and rows_by_dow[d]['trade_count'] else 0,
+                    }
+                    for d in [1, 2, 3, 4, 5]
+                ]
+        except Exception as e:
+            print(f"Database error getting day-of-week P&L data: {e}")
             return []
 
     def get_extended_stats(self, start_date=None, end_date=None):
