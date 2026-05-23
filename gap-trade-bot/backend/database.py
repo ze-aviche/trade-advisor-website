@@ -221,7 +221,7 @@ class DatabaseManager:
                 ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
                 ('trades',          'source',             "TEXT DEFAULT 'brownbot'"),
                 ('trades',          'broker',             'TEXT DEFAULT NULL'),
-                ('trades',          'user_id',            'INTEGER NOT NULL DEFAULT 1'),
+                ('trades',          'user_id',            'INTEGER DEFAULT 1'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
