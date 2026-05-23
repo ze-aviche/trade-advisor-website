@@ -1129,6 +1129,14 @@ const app = createApp({
         },
         
         methods: {
+            // Authenticated fetch — automatically adds Bearer token from localStorage.
+            authFetch(url, options = {}) {
+                const token = localStorage.getItem('session_token');
+                const headers = Object.assign({}, options.headers || {});
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                return fetch(url, Object.assign({}, options, { headers }));
+            },
+
             checkAuth() {
                 const sessionToken = localStorage.getItem('session_token');
                 const user = localStorage.getItem('user');
@@ -2473,9 +2481,9 @@ const app = createApp({
                     
                     // Load fresh stats from positions endpoints
                     const [totalPositionsRes, totalPnlRes, winRateRes] = await Promise.all([
-                        fetch(`/api/positions/total_positions?t=${Date.now()}`),
-                        fetch(`/api/positions/total_pnl?t=${Date.now()}`),
-                        fetch(`/api/positions/winrate?t=${Date.now()}`)
+                        this.authFetch(`/api/positions/total_positions?t=${Date.now()}`),
+                        this.authFetch(`/api/positions/total_pnl?t=${Date.now()}`),
+                        this.authFetch(`/api/positions/winrate?t=${Date.now()}`)
                     ]);
                     
                     if (totalPositionsRes.ok && totalPnlRes.ok && winRateRes.ok) {
@@ -2843,7 +2851,7 @@ const app = createApp({
             async loadExtendedStats() {
                 try {
                     const qs = this._statsDateQs();
-                    const res = await fetch(`/api/positions/extended-stats${qs}`);
+                    const res = await this.authFetch(`/api/positions/extended-stats${qs}`);
                     const data = await res.json();
                     if (data.success) this.extendedStats = data.data;
                 } catch (e) {
@@ -2855,7 +2863,7 @@ const app = createApp({
                 this.loading.stats = true;
                 const qs = this._statsDateQs();
                 try {
-                    const summaryRes  = await fetch(`/api/positions/summary${qs}`);
+                    const summaryRes  = await this.authFetch(`/api/positions/summary${qs}`);
                     const summaryData = await summaryRes.json();
                     if (summaryData.success) {
                         this.stats.total_pnl       = summaryData.data.total_pnl       || 0;
@@ -2883,7 +2891,7 @@ const app = createApp({
             async loadDailyPnlData() {
                 this.loading.dailyPnl = true;
                 try {
-                    const response = await fetch(`/api/positions/daily-pnl${this._statsDateQs()}`);
+                    const response = await this.authFetch(`/api/positions/daily-pnl${this._statsDateQs()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2909,7 +2917,7 @@ const app = createApp({
             async loadCumulativePnlData() {
                 this.loading.cumulativePnl = true;
                 try {
-                    const response = await fetch(`/api/positions/cumulative-pnl${this._statsDateQs()}`);
+                    const response = await this.authFetch(`/api/positions/cumulative-pnl${this._statsDateQs()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2935,7 +2943,7 @@ const app = createApp({
             async loadTimeOfDayData() {
                 this.loading.timeOfDay = true;
                 try {
-                    const res  = await fetch(`/api/positions/time-of-day${this._statsDateQs()}`);
+                    const res  = await this.authFetch(`/api/positions/time-of-day${this._statsDateQs()}`);
                     const data = await res.json();
                     if (data.success) {
                         this.timeOfDayData = data.data.time_of_day || [];
@@ -2951,7 +2959,7 @@ const app = createApp({
             async loadDayOfWeekData() {
                 this.loading.dayOfWeek = true;
                 try {
-                    const res  = await fetch(`/api/positions/day-of-week${this._statsDateQs()}`);
+                    const res  = await this.authFetch(`/api/positions/day-of-week${this._statsDateQs()}`);
                     const data = await res.json();
                     if (data.success) {
                         this.dayOfWeekData = data.data.day_of_week || [];
@@ -3357,10 +3365,10 @@ const app = createApp({
                     const qs = this._statsDateQs();
                     const sep = qs ? '&' : '?';
                     const [longShortResponse, symbolsResponse, winLossResponse, monthlyResponse] = await Promise.all([
-                        fetch(`/api/positions/pie-chart/long-short${qs}`),
-                        fetch(`/api/positions/pie-chart/symbols${qs}${sep}limit=${this.pieChartSymbolLimit}`),
-                        fetch(`/api/positions/pie-chart/win-loss${qs}`),
-                        fetch(`/api/positions/pie-chart/monthly${qs}`)
+                        this.authFetch(`/api/positions/pie-chart/long-short${qs}`),
+                        this.authFetch(`/api/positions/pie-chart/symbols${qs}${sep}limit=${this.pieChartSymbolLimit}`),
+                        this.authFetch(`/api/positions/pie-chart/win-loss${qs}`),
+                        this.authFetch(`/api/positions/pie-chart/monthly${qs}`)
                     ]);
 
                     const [longShortData, symbolsData, winLossData, monthlyData] = await Promise.all([
@@ -3666,7 +3674,7 @@ const app = createApp({
                     console.log('🔄 Loading fresh dashboard positions data...');
                     
                     // Load positions data for charts and analytics
-                    const response = await fetch(`/api/positions/pnl-history?t=${Date.now()}`);
+                    const response = await this.authFetch(`/api/positions/pnl-history?t=${Date.now()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -3744,7 +3752,7 @@ const app = createApp({
                 if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim())
                     params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
                     
-                    const response = await fetch(`/api/trades?${params.toString()}`);
+                    const response = await this.authFetch(`/api/trades?${params.toString()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -3832,7 +3840,7 @@ const app = createApp({
                     params.append('position_type', this.positionsHistoryType.trim());
                 // broker filter applied client-side in sortedPositions computed
 
-                const response = await fetch(`/api/positions/daily?${params.toString()}`);
+                const response = await this.authFetch(`/api/positions/daily?${params.toString()}`);
                 const data = await response.json();
 
                 if (data.success) {
