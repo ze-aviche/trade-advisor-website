@@ -9899,6 +9899,32 @@ def _start_background_tasks():
 
 _start_background_tasks()
 
+# ---------------------------------------------------------------------------
+# Explicit startup column guards — run AFTER db_manager is imported so these
+# are visible in the container logs. Each ALTER TABLE is idempotent: SQLite
+# raises OperationalError("duplicate column name") if the column already
+# exists, which we catch and ignore.
+# ---------------------------------------------------------------------------
+def _ensure_schema_columns():
+    _cols_to_add = [
+        ('trades',         'user_id',  'INTEGER DEFAULT 1'),
+        ('brown_positions','user_id',  'INTEGER DEFAULT 1'),
+        ('brown_orders',   'user_id',  'INTEGER DEFAULT 1'),
+    ]
+    with db_manager.get_connection() as _sc:
+        for _tbl, _col, _defn in _cols_to_add:
+            try:
+                _sc.execute(f'ALTER TABLE {_tbl} ADD COLUMN {_col} {_defn}')
+                _sc.commit()
+                app_logger.info(f'[Schema] Added column {_tbl}.{_col}')
+            except Exception as _e:
+                if 'duplicate column' in str(_e).lower():
+                    app_logger.debug(f'[Schema] {_tbl}.{_col} already exists — OK')
+                else:
+                    app_logger.warning(f'[Schema] Could not add {_tbl}.{_col}: {_e}')
+
+_ensure_schema_columns()
+
 if __name__ == '__main__':
     
     # DAS Trader integration is disabled — skip DAS sync services
