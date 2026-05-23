@@ -73,6 +73,8 @@ const app = createApp({
                     dailyPnl: false,
                     cumulativePnl: false,
                     pieCharts: false,
+                    timeOfDay: false,
+                    dayOfWeek: false,
                     backtest: false,
                     runBacktest: false,
                     equityChart: false,
@@ -516,15 +518,27 @@ const app = createApp({
                 statsStartDate: '',
                 statsEndDate: '',
                 statsPreset: 'all',
-                
+                // Advanced stats filters
+                statsTimeStart: '',        // HH:MM in ET
+                statsTimeEnd: '',          // HH:MM in ET
+                statsPriceMin: '',
+                statsPriceMax: '',
+                statsDayOfWeek: [],        // SQLite %w ints: 1=Mon…5=Fri
+
                 // Daily P&L chart data
                 dailyPnlData: [],
                 dailyPnlChart: null,
                 dailyPnlChartType: 'bar', // Default to bar chart
-                
+
                 // Cumulative P&L chart data
                 cumulativePnlData: [],
                 cumulativePnlChart: null,
+
+                // Time-of-day & day-of-week breakdown
+                timeOfDayData: [],
+                timeOfDayChart: null,
+                dayOfWeekData: [],
+                dayOfWeekChart: null,
 
                 // Pie Chart data
                 pieChartData: {
@@ -581,6 +595,14 @@ const app = createApp({
 
         
         computed: {
+            bestHour() {
+                if (!this.timeOfDayData.length) return null;
+                return this.timeOfDayData.reduce((a, b) => b.total_pnl > a.total_pnl ? b : a);
+            },
+            worstHour() {
+                if (!this.timeOfDayData.length) return null;
+                return this.timeOfDayData.reduce((a, b) => b.total_pnl < a.total_pnl ? b : a);
+            },
             maxDrawdown() {
                 if (!this.cumulativePnlData || this.cumulativePnlData.length < 1) return null;
                 let peak = -Infinity, maxDD = 0;
@@ -1107,6 +1129,14 @@ const app = createApp({
         },
         
         methods: {
+            // Authenticated fetch — automatically adds Bearer token from localStorage.
+            authFetch(url, options = {}) {
+                const token = localStorage.getItem('session_token');
+                const headers = Object.assign({}, options.headers || {});
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                return fetch(url, Object.assign({}, options, { headers }));
+            },
+
             checkAuth() {
                 const sessionToken = localStorage.getItem('session_token');
                 const user = localStorage.getItem('user');
@@ -2451,9 +2481,9 @@ const app = createApp({
                     
                     // Load fresh stats from positions endpoints
                     const [totalPositionsRes, totalPnlRes, winRateRes] = await Promise.all([
-                        fetch(`/api/positions/total_positions?t=${Date.now()}`),
-                        fetch(`/api/positions/total_pnl?t=${Date.now()}`),
-                        fetch(`/api/positions/winrate?t=${Date.now()}`)
+                        this.authFetch(`/api/positions/total_positions?t=${Date.now()}`),
+                        this.authFetch(`/api/positions/total_pnl?t=${Date.now()}`),
+                        this.authFetch(`/api/positions/winrate?t=${Date.now()}`)
                     ]);
                     
                     if (totalPositionsRes.ok && totalPnlRes.ok && winRateRes.ok) {
@@ -2761,9 +2791,30 @@ const app = createApp({
 
             _statsDateQs() {
                 const p = [];
-                if (this.statsStartDate) p.push(`start_date=${this.statsStartDate}`);
-                if (this.statsEndDate)   p.push(`end_date=${this.statsEndDate}`);
+                if (this.statsStartDate)              p.push(`start_date=${this.statsStartDate}`);
+                if (this.statsEndDate)                p.push(`end_date=${this.statsEndDate}`);
+                if (this.statsTimeStart)              p.push(`time_start=${this.statsTimeStart}`);
+                if (this.statsTimeEnd)                p.push(`time_end=${this.statsTimeEnd}`);
+                if (this.statsPriceMin !== '')         p.push(`price_min=${this.statsPriceMin}`);
+                if (this.statsPriceMax !== '')         p.push(`price_max=${this.statsPriceMax}`);
+                if (this.statsDayOfWeek.length)       p.push(`day_of_week=${this.statsDayOfWeek.join(',')}`);
                 return p.length ? '?' + p.join('&') : '';
+            },
+
+            toggleStatsDow(d) {
+                const idx = this.statsDayOfWeek.indexOf(d);
+                if (idx >= 0) this.statsDayOfWeek.splice(idx, 1);
+                else          this.statsDayOfWeek.push(d);
+                this.loadStats();
+            },
+
+            clearStatsAdvancedFilters() {
+                this.statsTimeStart  = '';
+                this.statsTimeEnd    = '';
+                this.statsPriceMin   = '';
+                this.statsPriceMax   = '';
+                this.statsDayOfWeek  = [];
+                this.loadStats();
             },
 
             setStatsDatePreset(preset) {
@@ -2786,16 +2837,21 @@ const app = createApp({
             },
 
             clearStatsFilter() {
-                this.statsStartDate = '';
-                this.statsEndDate = '';
-                this.statsPreset = 'all';
+                this.statsStartDate  = '';
+                this.statsEndDate    = '';
+                this.statsPreset     = 'all';
+                this.statsTimeStart  = '';
+                this.statsTimeEnd    = '';
+                this.statsPriceMin   = '';
+                this.statsPriceMax   = '';
+                this.statsDayOfWeek  = [];
                 this.loadStats();
             },
 
             async loadExtendedStats() {
                 try {
                     const qs = this._statsDateQs();
-                    const res = await fetch(`/api/positions/extended-stats${qs}`);
+                    const res = await this.authFetch(`/api/positions/extended-stats${qs}`);
                     const data = await res.json();
                     if (data.success) this.extendedStats = data.data;
                 } catch (e) {
@@ -2807,7 +2863,7 @@ const app = createApp({
                 this.loading.stats = true;
                 const qs = this._statsDateQs();
                 try {
-                    const summaryRes  = await fetch(`/api/positions/summary${qs}`);
+                    const summaryRes  = await this.authFetch(`/api/positions/summary${qs}`);
                     const summaryData = await summaryRes.json();
                     if (summaryData.success) {
                         this.stats.total_pnl       = summaryData.data.total_pnl       || 0;
@@ -2821,6 +2877,8 @@ const app = createApp({
                         this.loadDailyPnlData(),
                         this.loadCumulativePnlData(),
                         this.loadPieChartData(),
+                        this.loadTimeOfDayData(),
+                        this.loadDayOfWeekData(),
                     ]);
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
@@ -2833,7 +2891,7 @@ const app = createApp({
             async loadDailyPnlData() {
                 this.loading.dailyPnl = true;
                 try {
-                    const response = await fetch(`/api/positions/daily-pnl${this._statsDateQs()}`);
+                    const response = await this.authFetch(`/api/positions/daily-pnl${this._statsDateQs()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2859,7 +2917,7 @@ const app = createApp({
             async loadCumulativePnlData() {
                 this.loading.cumulativePnl = true;
                 try {
-                    const response = await fetch(`/api/positions/cumulative-pnl${this._statsDateQs()}`);
+                    const response = await this.authFetch(`/api/positions/cumulative-pnl${this._statsDateQs()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -2882,18 +2940,140 @@ const app = createApp({
                 }
             },
             
+            async loadTimeOfDayData() {
+                this.loading.timeOfDay = true;
+                try {
+                    const res  = await this.authFetch(`/api/positions/time-of-day${this._statsDateQs()}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        this.timeOfDayData = data.data.time_of_day || [];
+                        this.$nextTick(() => { this.updateTimeOfDayChart(); });
+                    }
+                } catch (e) {
+                    console.error('Error loading time-of-day data:', e);
+                } finally {
+                    this.loading.timeOfDay = false;
+                }
+            },
+
+            async loadDayOfWeekData() {
+                this.loading.dayOfWeek = true;
+                try {
+                    const res  = await this.authFetch(`/api/positions/day-of-week${this._statsDateQs()}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        this.dayOfWeekData = data.data.day_of_week || [];
+                        this.$nextTick(() => { this.updateDayOfWeekChart(); });
+                    }
+                } catch (e) {
+                    console.error('Error loading day-of-week data:', e);
+                } finally {
+                    this.loading.dayOfWeek = false;
+                }
+            },
+
+            updateTimeOfDayChart() {
+                const ctx = document.getElementById('timeOfDayChart');
+                if (!ctx || !this.timeOfDayData.length) return;
+                if (this.timeOfDayChart) { this.timeOfDayChart.destroy(); this.timeOfDayChart = null; }
+                const labels = this.timeOfDayData.map(r => r.label);
+                const values = this.timeOfDayData.map(r => r.total_pnl);
+                const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)');
+                this.timeOfDayChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Total P&L ($)',
+                            data: values,
+                            backgroundColor: colors,
+                            borderColor: colors.map(c => c.replace('0.8', '1')),
+                            borderWidth: 1,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: (ctx) => {
+                                        const r = this.timeOfDayData[ctx.dataIndex];
+                                        return [`Trades: ${r.trade_count}`, `Avg: $${r.avg_pnl}`, `Win rate: ${r.win_rate}%`];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: {
+                                ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                border: { dash: [4, 4] }
+                            }
+                        }
+                    }
+                });
+            },
+
+            updateDayOfWeekChart() {
+                const ctx = document.getElementById('dayOfWeekChart');
+                if (!ctx || !this.dayOfWeekData.length) return;
+                if (this.dayOfWeekChart) { this.dayOfWeekChart.destroy(); this.dayOfWeekChart = null; }
+                const labels = this.dayOfWeekData.map(r => r.label);
+                const values = this.dayOfWeekData.map(r => r.total_pnl);
+                const colors = values.map(v => v >= 0 ? 'rgba(99,102,241,0.8)' : 'rgba(239,68,68,0.8)');
+                this.dayOfWeekChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Total P&L ($)',
+                            data: values,
+                            backgroundColor: colors,
+                            borderColor: colors.map(c => c.replace('0.8', '1')),
+                            borderWidth: 1,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: (ctx) => {
+                                        const r = this.dayOfWeekData[ctx.dataIndex];
+                                        return [`Trades: ${r.trade_count}`, `Avg: $${r.avg_pnl}`, `Win rate: ${r.win_rate}%`];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: {
+                                ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                border: { dash: [4, 4] }
+                            }
+                        }
+                    }
+                });
+            },
+
             updateDailyPnlChart() {
                 if (!this.dailyPnlData || this.dailyPnlData.length === 0) {
                     console.log('📊 No daily P&L data to display');
                     return;
                 }
-                
+
                 const ctx = document.getElementById('dailyPnlChart');
                 if (!ctx) {
                     console.error('❌ Daily P&L chart canvas not found');
                     return;
                 }
-                
+
                 // Destroy existing chart if it exists
                 if (this.dailyPnlChart) {
                     this.dailyPnlChart.destroy();
@@ -3185,10 +3365,10 @@ const app = createApp({
                     const qs = this._statsDateQs();
                     const sep = qs ? '&' : '?';
                     const [longShortResponse, symbolsResponse, winLossResponse, monthlyResponse] = await Promise.all([
-                        fetch(`/api/positions/pie-chart/long-short${qs}`),
-                        fetch(`/api/positions/pie-chart/symbols${qs}${sep}limit=${this.pieChartSymbolLimit}`),
-                        fetch(`/api/positions/pie-chart/win-loss${qs}`),
-                        fetch(`/api/positions/pie-chart/monthly${qs}`)
+                        this.authFetch(`/api/positions/pie-chart/long-short${qs}`),
+                        this.authFetch(`/api/positions/pie-chart/symbols${qs}${sep}limit=${this.pieChartSymbolLimit}`),
+                        this.authFetch(`/api/positions/pie-chart/win-loss${qs}`),
+                        this.authFetch(`/api/positions/pie-chart/monthly${qs}`)
                     ]);
 
                     const [longShortData, symbolsData, winLossData, monthlyData] = await Promise.all([
@@ -3494,7 +3674,7 @@ const app = createApp({
                     console.log('🔄 Loading fresh dashboard positions data...');
                     
                     // Load positions data for charts and analytics
-                    const response = await fetch(`/api/positions/pnl-history?t=${Date.now()}`);
+                    const response = await this.authFetch(`/api/positions/pnl-history?t=${Date.now()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -3572,7 +3752,7 @@ const app = createApp({
                 if (this.tradeHistoryTicker && this.tradeHistoryTicker.trim())
                     params.append('symbol', this.tradeHistoryTicker.trim().toUpperCase());
                     
-                    const response = await fetch(`/api/trades?${params.toString()}`);
+                    const response = await this.authFetch(`/api/trades?${params.toString()}`);
                     const data = await response.json();
                     
                     if (data.success) {
@@ -3660,7 +3840,7 @@ const app = createApp({
                     params.append('position_type', this.positionsHistoryType.trim());
                 // broker filter applied client-side in sortedPositions computed
 
-                const response = await fetch(`/api/positions/daily?${params.toString()}`);
+                const response = await this.authFetch(`/api/positions/daily?${params.toString()}`);
                 const data = await response.json();
 
                 if (data.success) {
