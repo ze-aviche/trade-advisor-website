@@ -3520,6 +3520,7 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
                 'days_held':     None,
                 'source':        'brownbot',
                 'broker':        broker.name if broker else None,
+                'user_id':       user_id,
             })
         except Exception as _e:
             _add_brown_log('warning', f'DB entry write failed for {symbol}: {_e}', user_id)
@@ -4032,7 +4033,7 @@ def _brown_bot_scan_and_enter(user_id: int):
     # Rebuild RiskManager from fresh config each iteration so UI config changes
     # (slot caps, loss limit) take effect immediately without restarting the bot.
     if RISK_MANAGER_AVAILABLE:
-        sess.risk_manager = RiskManager(config)
+        sess.risk_manager = RiskManager(config, user_id=user_id)
         risk_manager = sess.risk_manager
 
     # Use the live in-memory data kept current by the gap-up monitor loop.
@@ -4480,6 +4481,7 @@ def _brown_monitor_finalize_entry(user_id: int, oid, meta, fill_price, fill_qty)
             'days_held':     None,
             'source':        'brownbot',
             'broker':        broker_name,
+            'user_id':       user_id,
         })
         _add_brown_log('info', f'{symbol} BUY confirmed by broker: {fill_qty} @ ${fill_price:.2f}', user_id)
     except Exception as _e:
@@ -4542,6 +4544,7 @@ def _brown_monitor_finalize_exit(user_id: int, oid, meta, fill_price, fill_qty):
             'days_held':     days_held,
             'source':        'brownbot',
             'broker':        broker_name,
+            'user_id':       user_id,
         })
         app_logger.debug(f'[BrownBot finalize_exit] {symbol} trades row written pnl={realized_pnl}')
     except Exception as _e:
@@ -5300,8 +5303,9 @@ def get_brown_bot_status():
                 '''SELECT position_type, side, COUNT(*) AS cnt
                    FROM trades
                    WHERE trade_date = ? AND trade_id LIKE 'BROWN_%'
+                     AND user_id = ?
                    GROUP BY position_type, side''',
-                (today,)
+                (today, current_user_id)
             ).fetchall()
         for r in rows:
             pt   = (r['position_type'] or 'day').lower()
@@ -5428,7 +5432,7 @@ def start_brown_bot():
     if RISK_MANAGER_AVAILABLE:
         try:
             config = db_manager.get_brown_bot_config(user_id)
-            sess.risk_manager = RiskManager(config)
+            sess.risk_manager = RiskManager(config, user_id=user_id)
             _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
                                    f'day limit {config.get("max_concurrent_day", 3)}, '
                                    f'swing limit {config.get("max_concurrent_swing", 5)}',
@@ -5562,6 +5566,7 @@ def start_brown_bot():
                                     'days_held':     None,
                                     'source':        'brownbot',
                                     'broker':        sess.broker.name,
+                                    'user_id':       user_id,
                                 })
                                 db_manager.close_brown_position(
                                     pid, fill_price, str(sell_order['order_id']),
@@ -5614,7 +5619,7 @@ def start_brown_bot():
                         try:
                             recent_t = db_manager.get_trades(
                                 symbol=sym_up, start_date=_today_str_o,
-                                end_date=_today_str_o, limit=5)
+                                end_date=_today_str_o, limit=5, user_id=user_id)
                             buy_rec = next(
                                 (t for t in recent_t
                                  if t.get('side') == 'B' and t.get('source') == 'brownbot'),
@@ -5815,6 +5820,7 @@ def brown_bot_close_all():
                 'days_held':     None,
                 'source':        'brownbot',
                 'broker':        broker.name if broker else None,
+                'user_id':       current_user_id,
             })
         except Exception as _e:
             app_logger.debug(f'close-all DB trade write failed for {sym}: {_e}')
@@ -6926,29 +6932,32 @@ def get_strategies():
 
 # Trade History API endpoints
 @app.route('/api/trades', methods=['GET'])
+@require_auth
 def get_trades():
     """Get trade history with optional filtering"""
     try:
         from database import db_manager
-        
+        current_user_id = request.user.get('id', 1)
+
         # Get query parameters
         symbol = request.args.get('symbol')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         limit = int(request.args.get('limit', 100))
-        
+
         # Validate limit
         if limit > 1000:
             limit = 1000
-        
+
         # Get trades from database
         trades = db_manager.get_trades(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
-            limit=limit
+            limit=limit,
+            user_id=current_user_id,
         )
-        
+
         # Get summary statistics
         summary = db_manager.get_trade_summary(
             symbol=symbol,
@@ -7336,6 +7345,7 @@ def get_position_sync_status():
 # Position History API endpoints
 # Daily Position History API endpoints
 @app.route('/api/positions/daily', methods=['GET'])
+@require_auth
 def get_daily_positions():
     """Return consolidated closed positions for the Positions tab.
 
@@ -7343,6 +7353,7 @@ def get_daily_positions():
     FIFO-matched and consolidated across partial fills.
     """
     try:
+        current_user_id = request.user.get('id', 1)
         symbol        = request.args.get('symbol')
         start_date    = request.args.get('start_date')
         end_date      = request.args.get('end_date')
@@ -7353,6 +7364,7 @@ def get_daily_positions():
         positions = db_manager.get_consolidated_positions(
             symbol=symbol, start_date=start_date, end_date=end_date,
             position_type=position_type, source=source, limit=limit,
+            user_id=current_user_id,
         )
         total_pnl = sum(p['pnl'] for p in positions)
         wins      = sum(1 for p in positions if p['pnl'] > 0)
@@ -7867,10 +7879,12 @@ def get_debug_logs():
 
 # Positions-based API endpoints (replacing trades endpoints)
 @app.route('/api/positions/summary', methods=['GET'])
+@require_auth
 def get_positions_summary():
     """Return total_positions, total_pnl, and win_rate using the same FIFO-consolidated
     round-trip logic as the Positions tab, so Stats and Positions always agree."""
     try:
+        current_user_id = request.user.get('id', 1)
         symbol        = request.args.get('symbol')
         start_date    = request.args.get('start_date')
         end_date      = request.args.get('end_date')
@@ -7880,6 +7894,7 @@ def get_positions_summary():
         positions  = db_manager.get_consolidated_positions(
             symbol=symbol, start_date=start_date, end_date=end_date,
             position_type=position_type, source=source, limit=10_000,
+            user_id=current_user_id,
         )
         total_pnl  = sum(p['pnl'] for p in positions)
         wins       = sum(1 for p in positions if p['pnl'] > 0)
@@ -7898,9 +7913,11 @@ def get_positions_summary():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/extended-stats', methods=['GET'])
+@require_auth
 def get_extended_stats():
     """Compute all Stats-tab metrics from the same FIFO-consolidated positions as the Positions tab."""
     try:
+        current_user_id = request.user.get('id', 1)
         symbol        = request.args.get('symbol')
         start_date    = request.args.get('start_date')
         end_date      = request.args.get('end_date')
@@ -7910,6 +7927,7 @@ def get_extended_stats():
         positions = db_manager.get_consolidated_positions(
             symbol=symbol, start_date=start_date, end_date=end_date,
             position_type=position_type, source=source, limit=10_000,
+            user_id=current_user_id,
         )
 
         _empty = {
@@ -9880,6 +9898,32 @@ def _start_background_tasks():
         app_logger.info("━━━ All background daemon threads launched ━━━")
 
 _start_background_tasks()
+
+# ---------------------------------------------------------------------------
+# Explicit startup column guards — run AFTER db_manager is imported so these
+# are visible in the container logs. Each ALTER TABLE is idempotent: SQLite
+# raises OperationalError("duplicate column name") if the column already
+# exists, which we catch and ignore.
+# ---------------------------------------------------------------------------
+def _ensure_schema_columns():
+    _cols_to_add = [
+        ('trades',         'user_id',  'INTEGER DEFAULT 1'),
+        ('brown_positions','user_id',  'INTEGER DEFAULT 1'),
+        ('brown_orders',   'user_id',  'INTEGER DEFAULT 1'),
+    ]
+    with db_manager.get_connection() as _sc:
+        for _tbl, _col, _defn in _cols_to_add:
+            try:
+                _sc.execute(f'ALTER TABLE {_tbl} ADD COLUMN {_col} {_defn}')
+                _sc.commit()
+                app_logger.info(f'[Schema] Added column {_tbl}.{_col}')
+            except Exception as _e:
+                if 'duplicate column' in str(_e).lower():
+                    app_logger.debug(f'[Schema] {_tbl}.{_col} already exists — OK')
+                else:
+                    app_logger.warning(f'[Schema] Could not add {_tbl}.{_col}: {_e}')
+
+_ensure_schema_columns()
 
 if __name__ == '__main__':
     
