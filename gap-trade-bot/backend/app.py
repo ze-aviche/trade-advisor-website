@@ -1517,9 +1517,10 @@ def admin_reset_user_password(user_id):
 @app.route('/api/admin/db-query', methods=['POST'])
 @require_role('super_admin', 'dev_master')
 def admin_db_query():
-    """Execute a read-only SQL query against the SQLite database.
-    Only SELECT and PRAGMA are permitted; writes are also blocked at the
-    connection level via PRAGMA query_only = ON."""
+    """Execute a SQL query against the SQLite database.
+    SELECT and PRAGMA are always allowed (read-only connection).
+    UPDATE, INSERT, DELETE, ALTER, CREATE, DROP are allowed for super_admin
+    and dev_master and are committed immediately."""
     import time as _time
     import re as _re
     try:
@@ -1528,37 +1529,49 @@ def admin_db_query():
         if not sql:
             return jsonify({'success': False, 'error': 'No SQL provided'}), 400
 
-        # Strip single-line and block comments, then check first token
+        # Strip comments then identify the statement type
         sql_clean = _re.sub(r'--[^\n]*', '', sql)
         sql_clean = _re.sub(r'/\*.*?\*/', '', sql_clean, flags=_re.S).strip()
         first_token = (_re.split(r'\s+', sql_clean)[0] or '').upper()
-        if first_token not in ('SELECT', 'PRAGMA'):
+
+        READ_TOKENS  = {'SELECT', 'PRAGMA'}
+        WRITE_TOKENS = {'UPDATE', 'INSERT', 'DELETE', 'ALTER', 'CREATE', 'DROP'}
+
+        if first_token not in READ_TOKENS | WRITE_TOKENS:
             return jsonify({'success': False,
-                            'error': 'Only SELECT and PRAGMA queries are permitted.'}), 400
+                            'error': f'Statement type "{first_token}" is not permitted.'}), 400
 
         # Prevent multi-statement injection (semicolon not at the very end)
         if ';' in sql_clean.rstrip('; \t\n'):
             return jsonify({'success': False,
                             'error': 'Multi-statement queries are not allowed.'}), 400
 
+        is_write = first_token in WRITE_TOKENS
         user = getattr(request, 'user', {})
-        app_logger.info(f"[admin-db-query] {user.get('username','?')}: {sql[:300]}")
+        log_prefix = '[admin-db-WRITE]' if is_write else '[admin-db-query]'
+        app_logger.info(f"{log_prefix} {user.get('username','?')}: {sql[:300]}")
 
         t0 = _time.time()
         with db_manager.get_connection() as conn:
-            conn.execute('PRAGMA query_only = ON')
+            if not is_write:
+                conn.execute('PRAGMA query_only = ON')
             cursor = conn.execute(sql)
+            if is_write:
+                conn.commit()
             columns = [d[0] for d in (cursor.description or [])]
-            rows = [list(r) for r in cursor.fetchmany(500)]
+            rows = [list(r) for r in cursor.fetchmany(500)] if cursor.description else []
+            rows_affected = cursor.rowcount if is_write else None
         elapsed_ms = round((_time.time() - t0) * 1000)
 
         return jsonify({
-            'success':    True,
-            'columns':    columns,
-            'rows':       rows,
-            'row_count':  len(rows),
-            'elapsed_ms': elapsed_ms,
-            'truncated':  len(rows) == 500,
+            'success':       True,
+            'columns':       columns,
+            'rows':          rows,
+            'row_count':     len(rows),
+            'rows_affected': rows_affected,
+            'elapsed_ms':    elapsed_ms,
+            'truncated':     len(rows) == 500,
+            'write':         is_write,
         })
     except Exception as e:
         app_logger.warning(f'admin_db_query error: {e}')

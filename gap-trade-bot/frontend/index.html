@@ -5366,9 +5366,9 @@
                 <div v-if="isSuperAdmin || isDevMaster" class="bg-gray-800 rounded-xl p-6 shadow-lg">
                     <h3 class="text-white font-semibold mb-1 flex items-center gap-2">
                         <i class="fas fa-database text-yellow-400"></i>SQLite Query Utility
-                        <span class="text-xs text-yellow-500 bg-yellow-900/30 border border-yellow-800/40 rounded px-2 py-0.5 ml-1">read-only</span>
+                        <span class="text-xs text-red-400 bg-red-900/30 border border-red-800/40 rounded px-2 py-0.5 ml-1">write enabled</span>
                     </h3>
-                    <p class="text-gray-500 text-xs mb-4">SELECT and PRAGMA only. Maximum 500 rows returned.</p>
+                    <p class="text-gray-500 text-xs mb-4">SELECT, UPDATE, INSERT, DELETE, ALTER supported. Maximum 500 rows returned.</p>
 
                     <!-- Quick-query pills -->
                     <div class="flex flex-wrap gap-2 mb-3">
@@ -5408,6 +5408,13 @@
                     <!-- Error -->
                     <div v-if="dbQuery.error" class="mt-3 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3 text-red-300 text-sm font-mono">
                         <i class="fas fa-exclamation-circle mr-2"></i>{{ dbQuery.error }}
+                    </div>
+
+                    <!-- Write confirmation -->
+                    <div v-if="!dbQuery.error && dbQuery.isWrite && dbQuery.rowsAffected !== null"
+                         class="mt-3 bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-3 text-green-300 text-sm">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        Query committed — {{ dbQuery.rowsAffected }} row{{ dbQuery.rowsAffected !== 1 ? 's' : '' }} affected · {{ dbQuery.elapsed }} ms
                     </div>
 
                     <!-- Results -->

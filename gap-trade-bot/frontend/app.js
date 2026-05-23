@@ -420,14 +420,16 @@ const app = createApp({
                 dataSource:    '',
             },
             dbQuery: {
-                sql:      '',
-                columns:  [],
-                rows:     [],
-                rowCount: 0,
-                elapsed:  0,
-                truncated: false,
-                loading:  false,
-                error:    '',
+                sql:          '',
+                columns:      [],
+                rows:         [],
+                rowCount:     0,
+                rowsAffected: null,
+                elapsed:      0,
+                truncated:    false,
+                loading:      false,
+                error:        '',
+                isWrite:      false,
             },
             brownBotSignals: {},
             brownBotLivePrices: {},
@@ -1595,11 +1597,13 @@ const app = createApp({
                     });
                     const data = await res.json();
                     if (!data.success) { this.dbQuery.error = data.error || 'Query failed'; return; }
-                    this.dbQuery.columns  = data.columns;
-                    this.dbQuery.rows     = data.rows;
-                    this.dbQuery.rowCount = data.row_count;
-                    this.dbQuery.elapsed  = data.elapsed_ms;
-                    this.dbQuery.truncated = data.truncated;
+                    this.dbQuery.columns      = data.columns;
+                    this.dbQuery.rows         = data.rows;
+                    this.dbQuery.rowCount     = data.row_count;
+                    this.dbQuery.rowsAffected = data.rows_affected ?? null;
+                    this.dbQuery.elapsed      = data.elapsed_ms;
+                    this.dbQuery.truncated    = data.truncated;
+                    this.dbQuery.isWrite      = data.write || false;
                 } catch (e) {
                     this.dbQuery.error = e.message;
                 } finally {
