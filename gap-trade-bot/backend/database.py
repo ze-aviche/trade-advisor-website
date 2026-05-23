@@ -2165,44 +2165,69 @@ class DatabaseManager:
     def get_time_of_day_pnl_data(self, start_date=None, end_date=None, user_id=None,
                                    utc_offset_mins=-300,
                                    price_min=None, price_max=None, day_of_week=None):
-        """P&L breakdown by exit hour (ET) for time-of-day analysis.
+        """P&L breakdown by 1-hour buckets starting at :30 (9:30, 10:30, … 3:30 ET).
 
         utc_offset_mins: offset of ET from UTC in minutes — -240 (EDT) or -300 (EST).
         trade_time is stored as UTC ISO string so we shift by this offset.
+        Market window: 9:30 (570 min) to 16:00 (960 min) ET → 7 buckets.
         """
+        # 7 fixed market-hours buckets: bucket 0 = 9:30–10:30, …, bucket 6 = 3:30–4:00
+        MARKET_BUCKETS = [
+            (0, "9:30"), (1, "10:30"), (2, "11:30"), (3, "12:30"),
+            (4, "1:30"), (5, "2:30"),  (6, "3:30"),
+        ]
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                query = '''
-                    SELECT
-                        (((CAST(strftime('%H', trade_time) AS INTEGER) * 60
-                           + CAST(strftime('%M', trade_time) AS INTEGER)
-                           + 1440 + ?) % 1440) / 60) AS et_hour,
-                        COALESCE(SUM(pnl), 0)  AS total_pnl,
-                        COUNT(*)               AS trade_count,
-                        AVG(pnl)               AS avg_pnl,
-                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins
+                # Inner query computes ET minutes from midnight for each trade.
+                # Outer query filters to market hours and groups into hourly buckets.
+                inner = '''
+                    SELECT pnl,
+                           (CAST(strftime('%H', trade_time) AS INTEGER) * 60
+                            + CAST(strftime('%M', trade_time) AS INTEGER)
+                            + 1440 + ?) % 1440 AS et_mins
                     FROM trades
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = [utc_offset_mins]
-                query, params = self._apply_stats_filters(
-                    query, params, user_id, start_date, end_date,
+                inner, params = self._apply_stats_filters(
+                    inner, params, user_id, start_date, end_date,
                     None, None, price_min, price_max, day_of_week)
-                query += ' GROUP BY et_hour ORDER BY et_hour ASC'
+
+                query = f'''
+                    SELECT (et_mins - 570) / 60 AS bucket,
+                           COALESCE(SUM(pnl), 0)                        AS total_pnl,
+                           COUNT(*)                                      AS trade_count,
+                           AVG(pnl)                                      AS avg_pnl,
+                           SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)     AS wins
+                    FROM ({inner}) sub
+                    WHERE et_mins >= 570 AND et_mins < 960
+                    GROUP BY bucket
+                    ORDER BY bucket
+                '''
                 cursor.execute(query, params)
-                return [
-                    {
-                        'hour':        row['et_hour'],
-                        'label':       f"{row['et_hour']:02d}:00–{(row['et_hour']+1):02d}:00 ET",
-                        'total_pnl':   round(float(row['total_pnl']), 2),
-                        'trade_count': row['trade_count'],
-                        'avg_pnl':     round(float(row['avg_pnl']), 2),
-                        'wins':        row['wins'],
-                        'win_rate':    round(row['wins'] / row['trade_count'] * 100, 1) if row['trade_count'] else 0,
-                    }
-                    for row in cursor.fetchall()
-                ]
+                by_bucket = {row['bucket']: row for row in cursor.fetchall()}
+
+                result = []
+                for bucket, label in MARKET_BUCKETS:
+                    row = by_bucket.get(bucket)
+                    if row:
+                        tc = row['trade_count'] or 0
+                        result.append({
+                            'bucket':      bucket,
+                            'label':       label,
+                            'total_pnl':   round(float(row['total_pnl']), 2),
+                            'trade_count': tc,
+                            'avg_pnl':     round(float(row['avg_pnl']), 2) if tc else 0.0,
+                            'wins':        row['wins'] or 0,
+                            'win_rate':    round((row['wins'] or 0) / tc * 100, 1) if tc else 0,
+                        })
+                    else:
+                        result.append({
+                            'bucket': bucket, 'label': label, 'total_pnl': 0.0,
+                            'trade_count': 0, 'avg_pnl': 0.0, 'wins': 0, 'win_rate': 0,
+                        })
+                return result
         except Exception as e:
             print(f"Database error getting time-of-day P&L data: {e}")
             return []

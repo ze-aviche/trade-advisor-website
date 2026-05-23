@@ -2993,6 +2993,7 @@ const app = createApp({
                         }]
                     },
                     options: {
+                        indexAxis: 'y',
                         responsive: true, maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
@@ -3006,8 +3007,8 @@ const app = createApp({
                             }
                         },
                         scales: {
-                            x: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                            y: {
+                            y: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            x: {
                                 ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
                                 grid: { color: 'rgba(255,255,255,0.05)' },
                                 border: { dash: [4, 4] }
