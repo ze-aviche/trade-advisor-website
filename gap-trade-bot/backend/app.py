@@ -3549,8 +3549,7 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         f"ENTERED {position_type.upper()} {symbol} {times_str} ~${price:.2f} | "
         f"target ${profit_target} (+{tgt_pct}%, {tgt_src}) | stop ${stop_loss} (-{stp_pct}%, {stp_src})"
         + (f' | playbook bias={playbook_bias}' if playbook_bias else ''),
-        user_id
-    , user_id=user_id)
+        user_id)
 
 
 # Swing scanner caches are now per-session (BrownSession.swing_candidates_cache / swing_ai_picks_cache)
@@ -4077,8 +4076,7 @@ def _brown_bot_scan_and_enter(user_id: int):
         f'Scanner: {len(raw_gaps)} raw gaps → {len(scanner_hits)} passed filters '
         f'(gap≥{min_gap}%, price ${min_price:.0f}–${max_price:.0f}, vol≥{min_vol_m}M'
         + (f', float{float_op}{float_val}M' if float_val > 0 else '') + ')',
-        user_id
-    , user_id=user_id)
+        user_id)
     for _s in raw_gaps:
         _t = _s.get('ticker', '?')
         if _t in scanner_hits:
@@ -4120,8 +4118,7 @@ def _brown_bot_scan_and_enter(user_id: int):
     _add_brown_log('info',
         f'Day time gate: {"OPEN" if day_window_open else "CLOSED"} '
         f'(now {now_et.strftime("%H:%M")} ET, window {_gate_str})',
-        user_id
-    , user_id=user_id)
+        user_id)
 
     # ── Hard market-hours guard (not user-configurable) ─────────────────────
     _mkt_open  = now_et.replace(hour=9,  minute=30, second=0, microsecond=0)
@@ -4562,8 +4559,7 @@ def _brown_monitor_finalize_exit(user_id: int, oid, meta, fill_price, fill_qty):
         'info',
         f'EXITED {position_type.upper()} {symbol} {exit_tag} [{exit_reason}] '
         f'entry ${avg_entry:.2f} → exit ${fill_price:.2f} × {fill_qty} | P&L {pnl_str}',
-        user_id
-    , user_id=user_id)
+        user_id)
 
     if sess:
         with sess.lock:
