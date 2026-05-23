@@ -221,6 +221,7 @@ class DatabaseManager:
                 ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
                 ('trades',          'source',             "TEXT DEFAULT 'brownbot'"),
                 ('trades',          'broker',             'TEXT DEFAULT NULL'),
+                ('trades',          'user_id',            'INTEGER NOT NULL DEFAULT 1'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
@@ -1016,7 +1017,7 @@ class DatabaseManager:
         except Exception as e:
             return False
 
-    def add_trade(self, trade_data):
+    def add_trade(self, trade_data, user_id: int = 1):
         """Add a new trade to the database"""
         qty = int(trade_data.get('quantity', 0))
         if qty <= 0 or qty > 1_000_000:
@@ -1031,8 +1032,8 @@ class DatabaseManager:
                     INSERT OR IGNORE INTO trades (
                         trade_id, symbol, side, quantity, price, route,
                         trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
-                        position_type, days_held, source, broker
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_type, days_held, source, broker, user_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -1050,6 +1051,7 @@ class DatabaseManager:
                     trade_data.get('days_held'),
                     trade_data.get('source', 'brownbot'),
                     trade_data.get('broker'),
+                    trade_data.get('user_id', user_id),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -1067,12 +1069,12 @@ class DatabaseManager:
             'total_cost_basis': 0.0,
         }
     
-    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100):
+    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100, user_id=None):
         """Get trades with optional filtering"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 query = '''
                     SELECT id, trade_id, symbol, side, quantity, price, route,
                            trade_time, order_id, liquidity, ecn_fee, pnl,
@@ -1081,15 +1083,19 @@ class DatabaseManager:
                     WHERE 1=1
                 '''
                 params = []
-                
+
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
+
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
+
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
+
                 if end_date:
                     query += ' AND trade_date <= ?'
                     params.append(end_date)
@@ -1818,7 +1824,7 @@ class DatabaseManager:
             return []
 
     def get_consolidated_positions(self, symbol=None, start_date=None, end_date=None,
-                                    position_type=None, source=None, limit=1000):
+                                    position_type=None, source=None, limit=1000, user_id=None):
         """
         Consolidated closed positions — one row per round-trip per symbol per session.
 
@@ -1845,6 +1851,8 @@ class DatabaseManager:
                 WHERE side IN ('B', 'S', 'SS')
             '''
             params = []
+            if user_id is not None:
+                query += ' AND user_id = ?';       params.append(user_id)
             if symbol:
                 query += ' AND symbol = ?';        params.append(symbol.upper())
             if source:
