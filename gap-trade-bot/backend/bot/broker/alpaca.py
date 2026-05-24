@@ -9,6 +9,8 @@ Docs: https://docs.alpaca.markets/reference/trading-api
 """
 from __future__ import annotations
 from typing import Optional
+import threading
+import time
 from logging_config import get_logger
 from .base import (
     BrokerBase, BrokerError,
@@ -18,8 +20,31 @@ from .base import (
 
 logger = get_logger(__name__)
 
+# Rate limiter for Alpaca data API calls (snapshot, latest trade).
+# historical_data.py has its own throttle at ~3 req/s; this caps the broker's
+# data calls at 1 req/2 s so both modules combined stay under the 200 req/min limit.
+_data_rate_lock  = threading.Lock()
+_data_last_call  = 0.0
+_DATA_MIN_INTERVAL = 2.0  # seconds between broker data API calls
+
+
+def _data_throttle():
+    global _data_last_call
+    with _data_rate_lock:
+        now  = time.monotonic()
+        wait = _DATA_MIN_INTERVAL - (now - _data_last_call)
+        if wait > 0:
+            time.sleep(wait)
+        _data_last_call = time.monotonic()
+
 
 def _map_order_status(alpaca_status: str) -> OrderStatus:
+    # alpaca-py SDK returns enum objects; str() gives 'OrderStatus.new'
+    # Extract just the value part after the dot so both raw strings
+    # ('new') and SDK enum reprs ('OrderStatus.new') are handled.
+    s = str(alpaca_status).lower()
+    if '.' in s:
+        s = s.split('.')[-1]
     return {
         'new':              OrderStatus.SUBMITTED,
         'partially_filled': OrderStatus.PARTIAL,
@@ -30,7 +55,12 @@ def _map_order_status(alpaca_status: str) -> OrderStatus:
         'pending_new':      OrderStatus.PENDING,
         'accepted':         OrderStatus.SUBMITTED,
         'held':             OrderStatus.SUBMITTED,
-    }.get(alpaca_status.lower(), OrderStatus.UNKNOWN)
+        'done_for_day':     OrderStatus.CANCELLED,
+        'expired':          OrderStatus.CANCELLED,
+        'replaced':         OrderStatus.CANCELLED,
+        'pending_cancel':   OrderStatus.SUBMITTED,
+        'pending_replace':  OrderStatus.SUBMITTED,
+    }.get(s, OrderStatus.UNKNOWN)
 
 
 class AlpacaBroker(BrokerBase):
@@ -298,33 +328,126 @@ class AlpacaBroker(BrokerBase):
             sym = symbol.upper()
 
             # Snapshot gives bid/ask, last trade, and daily cumulative volume in one call.
+            _data_throttle()
             snap_req = StockSnapshotRequest(symbol_or_symbols=sym)
             snaps    = self._data_client.get_stock_snapshot(snap_req)
             snap     = snaps.get(sym)
 
-            if snap is None:
-                raise BrokerError(f'No snapshot data returned for {sym}')
+            if snap is not None:
+                q     = snap.latest_quote
+                t     = snap.latest_trade
+                daily = snap.daily_bar
 
-            q     = snap.latest_quote
-            t     = snap.latest_trade
-            daily = snap.daily_bar
+                bid   = float(q.bid_price or 0) if q else 0.0
+                ask   = float(q.ask_price or 0) if q else 0.0
+                last_price = (float(t.price) if t and t.price else None) or bid or ask
 
-            bid   = float(q.bid_price or 0) if q else 0.0
-            ask   = float(q.ask_price or 0) if q else 0.0
-            last_price = (float(t.price) if t and t.price else None) or bid or ask
-            volume     = int(daily.volume) if daily and daily.volume else 0
+                # After market close bid/ask collapse to 0; use daily close as floor.
+                if not last_price and daily:
+                    last_price = float(daily.close or 0) or None
 
-            return Quote(
-                symbol = sym,
-                bid    = bid,
-                ask    = ask,
-                last   = last_price,
-                volume = volume,
+                volume = int(daily.volume) if daily and daily.volume else 0
+
+                if last_price:
+                    return Quote(symbol=sym, bid=bid, ask=ask, last=last_price, volume=volume)
+
+            # Snapshot returned None or had no usable price — fall back to the
+            # latest trade endpoint (works after hours, IEX feed, free plan).
+            logger.debug(f'get_quote {sym}: snapshot empty — trying latest trade endpoint')
+            import requests as _req
+            resp = _req.get(
+                f'https://data.alpaca.markets/v2/stocks/{sym}/trades/latest',
+                headers={'APCA-API-KEY-ID': self._api_key,
+                         'APCA-API-SECRET-KEY': self._api_secret},
+                params={'feed': 'iex'},
+                timeout=5,
             )
+            if resp.status_code == 200:
+                trade = resp.json().get('trade', {})
+                last_price = float(trade.get('p') or 0) or None
+                if last_price:
+                    return Quote(symbol=sym, bid=0.0, ask=0.0, last=last_price, volume=0)
+
+            raise BrokerError(f'No price data available for {sym} (snapshot empty, latest trade fallback failed)')
+
         except BrokerError:
             raise
         except Exception as e:
             raise BrokerError(f'Alpaca get_quote {symbol} failed: {e}') from e
+
+    def get_quotes_batch(self, symbols: list[str]) -> dict[str, float]:
+        """
+        Fetch last prices for multiple symbols in a single snapshot call.
+        Returns {symbol: last_price}.  Missing symbols are omitted.
+        Falls back to the latest-trade REST endpoint for any symbol with no
+        snapshot data (common after market close).
+        """
+        self._require_client()
+        if not symbols:
+            return {}
+        try:
+            from alpaca.data.requests import StockSnapshotRequest
+            syms = [s.upper() for s in symbols]
+            _data_throttle()
+            snap_req = StockSnapshotRequest(symbol_or_symbols=syms)
+            snaps    = self._data_client.get_stock_snapshot(snap_req)
+        except Exception as e:
+            err = str(e)
+            if 'too many requests' in err.lower():
+                # Back off and retry once before giving up
+                logger.warning(f'get_quotes_batch: 429 — backing off 5 s then retrying')
+                time.sleep(5)
+                try:
+                    from alpaca.data.requests import StockSnapshotRequest
+                    snap_req = StockSnapshotRequest(symbol_or_symbols=syms)
+                    snaps    = self._data_client.get_stock_snapshot(snap_req)
+                except Exception as e2:
+                    raise BrokerError(f'Alpaca batch snapshot failed after retry: {e2}') from e2
+            else:
+                raise BrokerError(f'Alpaca batch snapshot failed: {e}') from e
+
+        prices   = {}
+        missing  = []
+        for sym in syms:
+            snap = snaps.get(sym)
+            if snap is None:
+                missing.append(sym)
+                continue
+            q     = snap.latest_quote
+            t     = snap.latest_trade
+            daily = snap.daily_bar
+            bid   = float(q.bid_price or 0) if q else 0.0
+            ask   = float(q.ask_price or 0) if q else 0.0
+            last  = (float(t.price) if t and t.price else None) or bid or ask
+            if not last and daily:
+                last = float(daily.close or 0) or None
+            if last:
+                prices[sym] = last
+            else:
+                missing.append(sym)
+
+        # For symbols with no snapshot data, fall back to latest-trade endpoint
+        if missing:
+            import requests as _req
+            for sym in missing:
+                try:
+                    resp = _req.get(
+                        f'https://data.alpaca.markets/v2/stocks/{sym}/trades/latest',
+                        headers={'APCA-API-KEY-ID': self._api_key,
+                                 'APCA-API-SECRET-KEY': self._api_secret},
+                        params={'feed': 'iex'},
+                        timeout=5,
+                    )
+                    if resp.status_code == 200:
+                        p = float(resp.json().get('trade', {}).get('p') or 0)
+                        if p:
+                            prices[sym] = p
+                    elif resp.status_code == 429:
+                        logger.warning(f'get_quotes_batch latest-trade fallback: 429 for {sym}')
+                except Exception as _fe:
+                    logger.debug(f'get_quotes_batch latest-trade fallback {sym}: {_fe}')
+
+        return prices
 
     # ------------------------------------------------------------------
     # Order history

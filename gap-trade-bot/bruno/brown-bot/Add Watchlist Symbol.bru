@@ -1,0 +1,22 @@
+meta {
+  name: Add Watchlist Symbol
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/api/brown-bot/watchlist
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "symbol": "AAPL"
+  }
+}

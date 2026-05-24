@@ -1,0 +1,23 @@
+meta {
+  name: Update User Subscription
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{baseUrl}}/api/admin/users/{{debug_user_id}}/subscription
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "subscription_tier": "yogi",
+    "subscription_status": "active"
+  }
+}

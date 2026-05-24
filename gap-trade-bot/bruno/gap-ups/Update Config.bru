@@ -1,0 +1,25 @@
+meta {
+  name: Update Config
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/gap-ups/config
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "min_gap_pct": 5,
+    "min_price": 5,
+    "max_price": 100,
+    "min_volume": 500000
+  }
+}

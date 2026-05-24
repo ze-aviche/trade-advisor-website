@@ -1,0 +1,15 @@
+meta {
+  name: Swing Candidates
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/brown-bot/swing-candidates
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

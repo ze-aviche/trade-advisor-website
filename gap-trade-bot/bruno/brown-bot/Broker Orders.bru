@@ -1,0 +1,15 @@
+meta {
+  name: Broker Orders
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/brown-bot/broker-orders
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

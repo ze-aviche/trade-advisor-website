@@ -1,0 +1,22 @@
+meta {
+  name: Toggle User Active
+  type: http
+  seq: 11
+}
+
+put {
+  url: {{baseUrl}}/api/admin/users/{{debug_user_id}}/active
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "is_active": true
+  }
+}

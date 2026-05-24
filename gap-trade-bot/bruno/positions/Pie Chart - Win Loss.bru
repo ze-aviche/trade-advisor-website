@@ -1,0 +1,15 @@
+meta {
+  name: Pie Chart - Win Loss
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/positions/pie-chart/win-loss
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

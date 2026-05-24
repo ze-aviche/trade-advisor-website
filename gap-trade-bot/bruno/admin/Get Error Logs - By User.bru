@@ -1,0 +1,15 @@
+meta {
+  name: Get Error Logs - By User
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/admin/error-logs?user_id={{debug_user_id}}&limit=50
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Candidates
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/brown-bot/candidates
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

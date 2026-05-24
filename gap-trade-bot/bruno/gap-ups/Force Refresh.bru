@@ -1,0 +1,15 @@
+meta {
+  name: Force Refresh
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/gap-ups/force-refresh
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Stop
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/entry-bot/stop
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

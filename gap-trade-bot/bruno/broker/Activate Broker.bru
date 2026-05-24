@@ -1,0 +1,15 @@
+meta {
+  name: Activate Broker
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/broker/activate/alpaca
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

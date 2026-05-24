@@ -1,0 +1,15 @@
+meta {
+  name: Pie Chart - Monthly
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/positions/pie-chart/monthly
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

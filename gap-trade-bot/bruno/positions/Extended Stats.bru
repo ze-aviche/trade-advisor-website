@@ -1,0 +1,15 @@
+meta {
+  name: Extended Stats
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/positions/extended-stats
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

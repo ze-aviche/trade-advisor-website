@@ -1,0 +1,15 @@
+meta {
+  name: Open Positions
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/api/positions/open
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

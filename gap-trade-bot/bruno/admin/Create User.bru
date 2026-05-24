@@ -1,0 +1,25 @@
+meta {
+  name: Create User
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/admin/users
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "newuser",
+    "email": "newuser@example.com",
+    "password": "TempPass123!",
+    "system_role": "bot_admin"
+  }
+}
