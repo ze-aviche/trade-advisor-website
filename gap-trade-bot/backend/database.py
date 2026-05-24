@@ -28,7 +28,7 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self):
         """Context manager for database connections"""
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, check_same_thread=False)
         conn.row_factory = sqlite3.Row  # This allows accessing columns by name
         try:
             yield conn
@@ -155,6 +155,20 @@ class DatabaseManager:
                     source TEXT DEFAULT 'landing_popup',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     welcome_sent INTEGER DEFAULT 0
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS feedback_history (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    generated_at  TEXT    NOT NULL,
+                    lookback_days INTEGER NOT NULL,
+                    trade_count   INTEGER NOT NULL,
+                    total_pnl     REAL    NOT NULL,
+                    win_rate      REAL    NOT NULL,
+                    profit_factor REAL,
+                    analysis_json TEXT    NOT NULL,
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
 
@@ -537,6 +551,20 @@ class DatabaseManager:
                 'CREATE INDEX IF NOT EXISTS idx_brown_orders_position_id ON brown_orders(position_id)')
             cursor.execute(
                 'CREATE INDEX IF NOT EXISTS idx_brown_orders_trade_date ON brown_orders(trade_date)')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS feedback_history (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    generated_at  TEXT    NOT NULL,
+                    lookback_days INTEGER NOT NULL,
+                    trade_count   INTEGER NOT NULL,
+                    total_pnl     REAL    NOT NULL,
+                    win_rate      REAL    NOT NULL,
+                    profit_factor REAL,
+                    analysis_json TEXT    NOT NULL,
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
             # Upgrade trades.trade_id to UNIQUE — deduplicate first, then swap index.
             try:
@@ -1168,6 +1196,65 @@ class DatabaseManager:
         except Exception as e:
             print(f'Database error in get_trades_for_feedback: {e}')
             return []
+
+    def save_feedback_analysis(self, analysis: dict) -> int:
+        """Persist a feedback analysis run. Returns the new row id."""
+        import json as _json
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''INSERT INTO feedback_history
+                       (generated_at, lookback_days, trade_count, total_pnl,
+                        win_rate, profit_factor, analysis_json)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                    (
+                        analysis.get('generated_at'),
+                        analysis.get('lookback_days'),
+                        analysis.get('trade_count'),
+                        analysis.get('total_pnl'),
+                        analysis.get('win_rate'),
+                        analysis.get('stats', {}).get('profit_factor'),
+                        _json.dumps(analysis),
+                    ),
+                )
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            _db_logger.error(f'save_feedback_analysis failed: {e}', exc_info=True)
+            return -1
+
+    def get_feedback_history(self, limit: int = 10) -> list:
+        """Return last N feedback runs, newest first, as dicts with full analysis."""
+        import json as _json
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT id, generated_at, lookback_days, trade_count,
+                              total_pnl, win_rate, profit_factor, analysis_json
+                       FROM feedback_history
+                       ORDER BY id DESC
+                       LIMIT ?''',
+                    (limit,),
+                )
+                rows = []
+                for row in cursor.fetchall():
+                    r = dict(row)
+                    try:
+                        r['analysis'] = _json.loads(r.pop('analysis_json'))
+                    except Exception:
+                        r['analysis'] = {}
+                    rows.append(r)
+                return rows
+        except Exception as e:
+            _db_logger.error(f'get_feedback_history failed: {e}', exc_info=True)
+            return []
+
+    def get_latest_feedback(self) -> dict | None:
+        """Return the most recent feedback analysis, or None if none exist."""
+        history = self.get_feedback_history(limit=1)
+        return history[0]['analysis'] if history else None
 
     def get_trade_summary(self, symbol=None, start_date=None, end_date=None):
         """Get trade summary statistics"""

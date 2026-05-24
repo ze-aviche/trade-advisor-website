@@ -349,6 +349,7 @@ const app = createApp({
                 stats: { day_entered: 0, swing_entered: 0, day_exited: 0, swing_exited: 0 }
             },
             feedbackData: null,
+            feedbackHistory: [],
             feedbackCollapsed: false,
             feedbackLookbackDays: 30,
 
@@ -1235,6 +1236,7 @@ const app = createApp({
                 } else if (tabName === 'stats') {
                     this.stopPositionHistoryUpdates();
                     this.loadStats();
+                    this.loadFeedbackLatest();
                 } else if (tabName === 'backtest') {
                     console.log('🧪 Backtest tab selected - loading backtest data...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
@@ -1257,7 +1259,6 @@ const app = createApp({
                     this.stopPositionHistoryUpdates();
 
                     this.loadRegimeStatus();
-                    this.loadFeedbackLatest();
                     this.loadBrownBotStatus();
                     this.loadBrownBotConfig();
                     this.fetchBrownBotLogs();
@@ -6178,11 +6179,21 @@ const app = createApp({
         async loadFeedbackLatest() {
             try {
                 const res = await axios.get('/api/feedback/latest', { headers: this.authHeaders() });
-                if (res.data.success && res.data.analysis) {
-                    this.feedbackData = res.data.analysis;
+                if (res.data.success) {
+                    if (res.data.analysis) this.feedbackData = res.data.analysis;
+                    this.feedbackHistory = res.data.history || [];
                 }
             } catch (e) {
                 console.error('Error loading feedback latest:', e);
+            }
+        },
+
+        async loadFeedbackRun(runId) {
+            try {
+                const res = await axios.get(`/api/feedback/history/${runId}`, { headers: this.authHeaders() });
+                if (res.data.success) this.feedbackData = res.data.analysis;
+            } catch (e) {
+                console.error('Error loading feedback run:', e);
             }
         },
 
@@ -6196,6 +6207,7 @@ const app = createApp({
                 );
                 if (res.data.success) {
                     this.feedbackData = res.data.analysis;
+                    await this.loadFeedbackLatest();
                 } else {
                     alert('Analysis failed: ' + (res.data.error || 'unknown error'));
                 }

@@ -123,7 +123,7 @@ except Exception as _fb_err:
     _feedback_analyzer = None
     FEEDBACK_BOT_AVAILABLE = False
 
-_latest_feedback: dict = {}   # in-memory cache of last analysis result
+_latest_feedback: dict = {}   # in-memory cache of last analysis (populated from DB on first request)
 
 # Feature flag: controls DAS Trader integration.
 # Set DAS_ENABLED=true in .env (or environment) to enable for local/mock testing.
@@ -6303,36 +6303,72 @@ def get_brown_bot_risk_status():
 
 @app.route('/api/admin/bots/status', methods=['GET'])
 @require_auth
-@require_role('super_admin', 'dev_master', 'bot_admin')
-def admin_bots_status():
-    """Admin view: return a summary of every active BrownBot session across all users."""
-    sessions_out = []
-    with _brown_sessions_lock:
-        snapshot = dict(_brown_sessions)
-    for uid, sess in snapshot.items():
-        if not sess.running:
-            continue
-        # Fetch username from DB for display
-        try:
-            user_row = db_manager.get_user_by_id(uid)
-            username = (user_row.get('username') or user_row.get('email') or f'uid:{uid}') if user_row else f'uid:{uid}'
-        except Exception:
-            username = f'uid:{uid}'
-        with sess.lock:
-            pos_count   = len(sess.active_positions)
-            unrealized  = round(sum(p.get('unrealized_pnl', 0) for p in sess.active_positions.values()), 2)
-            entry_count = sum(sess.entry_counts.values())
-        broker_name = sess.broker.name if sess.broker else None
-        sessions_out.append({
-            'user_id':          uid,
-            'username':         username,
-            'broker':           broker_name,
-            'active_positions': pos_count,
-            'unrealized_pnl':   unrealized,
-            'entries_today':    entry_count,
-            'stats':            dict(sess.stats),
-        })
-    return jsonify({'success': True, 'sessions': sessions_out, 'count': len(sessions_out)})
+def run_feedback_analysis():
+    """Run the Purple Feedback Bot: query trades, compute stats, call Claude."""
+    global _latest_feedback
+    if not FEEDBACK_BOT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Feedback Bot unavailable (check ANTHROPIC_API_KEY)'}), 503
+    data          = request.get_json(silent=True) or {}
+    lookback_days = int(data.get('lookback_days', 30))
+    lookback_days = max(7, min(lookback_days, 180))
+    try:
+        trades     = db_manager.get_trades_for_feedback(lookback_days)
+        # Pass prior runs to Claude so it can compare and track improvement
+        history    = db_manager.get_feedback_history(limit=3)
+        prior_runs = [h['analysis'] for h in history]
+        result  = _feedback_analyzer.analyze(trades, lookback_days, prior_runs=prior_runs)
+        row_id  = db_manager.save_feedback_analysis(result)
+        if row_id == -1:
+            app_logger.warning('save_feedback_analysis returned -1 — check DB logs for the cause')
+        _latest_feedback = result
+        socketio.emit('feedback_ready', {'trade_count': result['trade_count']})
+        return jsonify({'success': True, 'analysis': result})
+    except Exception as _e:
+        app_logger.error(f'Feedback analysis error: {_e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(_e)}), 500
+
+
+@app.route('/api/feedback/latest', methods=['GET'])
+@require_auth
+def get_feedback_latest():
+    """Return the most recent feedback analysis, loading from DB if cache is cold."""
+    global _latest_feedback
+    if not _latest_feedback:
+        _latest_feedback = db_manager.get_latest_feedback() or {}
+    if not _latest_feedback:
+        return jsonify({'success': True, 'analysis': None, 'history': []})
+    history = db_manager.get_feedback_history(limit=10)
+    # Return lightweight history rows (no full stats payload) for the UI browser
+    history_meta = [
+        {
+            'id':            h['id'],
+            'generated_at':  h['generated_at'],
+            'lookback_days': h['lookback_days'],
+            'trade_count':   h['trade_count'],
+            'total_pnl':     h['total_pnl'],
+            'win_rate':      h['win_rate'],
+            'profit_factor': h['profit_factor'],
+        }
+        for h in history
+    ]
+    return jsonify({'success': True, 'analysis': _latest_feedback, 'history': history_meta})
+
+
+@app.route('/api/feedback/history/<int:run_id>', methods=['GET'])
+@require_auth
+def get_feedback_run(run_id):
+    """Return a specific historical feedback run by its DB id."""
+    import json as _json
+    try:
+        with db_manager.get_connection() as conn:
+            row = conn.execute(
+                'SELECT analysis_json FROM feedback_history WHERE id = ?', (run_id,)
+            ).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Run not found'}), 404
+        return jsonify({'success': True, 'analysis': _json.loads(row['analysis_json'])})
+    except Exception as _e:
+        return jsonify({'success': False, 'error': str(_e)}), 500
 
 
 # ==============================================================================

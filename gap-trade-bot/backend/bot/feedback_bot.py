@@ -11,24 +11,33 @@ from __future__ import annotations
 import json
 import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo('America/New_York')
 
 import anthropic
 
 _SYSTEM_PROMPT = """\
 You are a professional trading performance coach analysing a systematic \
 day/swing trader's results. You receive pre-aggregated statistics — never raw fills.
+All times in the data are Eastern Time (ET). US equity market hours are 09:30–16:00 ET.
+
+You may also receive a "prior_runs" array with summaries of previous analyses.
+Use them to track whether past recommendations were acted on and whether performance improved.
+If prior runs exist, explicitly compare key metrics (win rate, profit factor) to the most recent prior run.
 
 Rules:
 - Only surface patterns backed by ≥ 5 trades in that segment
 - Be specific: reference actual numbers from the data
+- If a prior recommendation appears to have been acted on (metric improved), acknowledge it
 - Output ONLY valid JSON — no prose, no markdown fences
 - Max 5 recommendations, ranked by expected impact on profitability
 
 Output schema (strict):
 {
-  "summary": "<2-3 sentence overall performance assessment>",
+  "summary": "<2-3 sentence overall assessment, comparing to prior run if available>",
   "strongest_setup": "<best-performing pattern with concrete numbers>",
   "recommendations": [
     {
@@ -54,13 +63,18 @@ class FeedbackAnalyzer:
 
     # ── public entry point ──────────────────────────────────────────────────
 
-    def analyze(self, trades: List[Dict], lookback_days: int = 30) -> Dict[str, Any]:
-        """Compute stats from trade list and call Claude for recommendations."""
+    def analyze(self, trades: List[Dict], lookback_days: int = 30,
+                prior_runs: Optional[List[Dict]] = None) -> Dict[str, Any]:
+        """Compute stats from trade list and call Claude for recommendations.
+
+        prior_runs: list of previous analysis dicts (newest first) — passed to
+        Claude so it can track improvement over time.
+        """
         if not trades:
             return self._empty_result(lookback_days)
 
         stats = self._compute_stats(trades, lookback_days)
-        recs  = self._call_claude(stats)
+        recs  = self._call_claude(stats, prior_runs or [])
         return {
             'generated_at':    datetime.utcnow().isoformat() + 'Z',
             'lookback_days':   lookback_days,
@@ -101,9 +115,17 @@ class FeedbackAnalyzer:
         for t in trades:
             raw = str(t.get('trade_time') or '')
             try:
-                time_part = raw.split('T')[-1][:5]   # handles ISO and time-only
-                h, m = int(time_part[:2]), int(time_part[3:5])
-                label = f'{h:02d}:{(m // 30) * 30:02d}'
+                if 'T' in raw or len(raw) > 8:
+                    # Full ISO datetime — convert UTC → ET
+                    dt = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    dt_et = dt.astimezone(_ET)
+                    h, m = dt_et.hour, dt_et.minute
+                else:
+                    # Time-only string (HH:MM or HH:MM:SS) — assume already ET
+                    h, m = int(raw[:2]), int(raw[3:5])
+                label = f'{h:02d}:{(m // 30) * 30:02d} ET'
             except Exception:
                 label = 'unknown'
             buckets[label].append(float(t.get('pnl', 0)))
@@ -126,7 +148,16 @@ class FeedbackAnalyzer:
         buckets: Dict[int, List[float]] = defaultdict(list)
         for t in trades:
             try:
-                d = datetime.fromisoformat(str(t.get('trade_date', ''))).weekday()
+                raw_time = str(t.get('trade_time') or '')
+                raw_date = str(t.get('trade_date', ''))
+                if 'T' in raw_time or len(raw_time) > 8:
+                    # Derive weekday from the full timestamp converted to ET
+                    dt = datetime.fromisoformat(raw_time.replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    d = dt.astimezone(_ET).weekday()
+                else:
+                    d = datetime.fromisoformat(raw_date).weekday()
                 buckets[d].append(float(t.get('pnl', 0)))
             except Exception:
                 pass
@@ -178,25 +209,53 @@ class FeedbackAnalyzer:
 
     # ── Claude call ─────────────────────────────────────────────────────────
 
-    def _call_claude(self, stats: Dict) -> Dict:
+    def _call_claude(self, stats: Dict, prior_runs: List[Dict]) -> Dict:
+        prior_section = ''
+        if prior_runs:
+            # Send only the lightweight summary fields of prior runs — not full stats
+            summaries = [
+                {
+                    'generated_at':    r.get('generated_at'),
+                    'lookback_days':   r.get('lookback_days'),
+                    'trade_count':     r.get('trade_count'),
+                    'total_pnl':       r.get('total_pnl'),
+                    'win_rate':        r.get('win_rate'),
+                    'profit_factor':   r.get('stats', {}).get('profit_factor'),
+                    'summary':         r.get('summary'),
+                    'recommendations': r.get('recommendations', []),
+                }
+                for r in prior_runs[:3]   # cap at 3 prior runs to control tokens
+            ]
+            prior_section = (
+                f'\n\nPrevious analysis runs (newest first) for trend comparison:\n'
+                f'{json.dumps(summaries, indent=2)}\n'
+            )
+
         prompt = (
             f'Here are the aggregated trading statistics for the past '
             f'{stats["lookback_days"]} days:\n\n'
-            f'{json.dumps(stats, indent=2)}\n\n'
+            f'{json.dumps(stats, indent=2)}'
+            f'{prior_section}\n\n'
             f'Analyse and return your JSON recommendations.'
         )
         try:
             msg  = self._client.messages.create(
                 model=self._model,
-                max_tokens=1024,
+                max_tokens=2048,
                 system=_SYSTEM_PROMPT,
                 messages=[{'role': 'user', 'content': prompt}],
             )
             text = msg.content[0].text.strip()
             # Strip markdown fences if Claude adds them despite instructions
-            if text.startswith('```'):
-                text = '\n'.join(text.split('\n')[1:])
-                text = text.rsplit('```', 1)[0].strip()
+            if '```' in text:
+                parts = text.split('```')
+                # parts[1] is inside the fences; strip optional language tag
+                text = parts[1].lstrip('json').strip() if len(parts) > 1 else text
+            # Extract just the JSON object in case there's surrounding prose
+            start = text.find('{')
+            end   = text.rfind('}')
+            if start != -1 and end != -1:
+                text = text[start:end + 1]
             return json.loads(text)
         except Exception as _e:
             return {
