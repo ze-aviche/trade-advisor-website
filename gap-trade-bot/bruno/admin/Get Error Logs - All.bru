@@ -1,0 +1,15 @@
+meta {
+  name: Get Error Logs - All
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/admin/error-logs?limit=50
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

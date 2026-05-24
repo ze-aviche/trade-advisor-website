@@ -1,0 +1,23 @@
+meta {
+  name: Enable Debug for User
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/admin/debug-user
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "user_id": {{debug_user_id}},
+    "enable": true
+  }
+}

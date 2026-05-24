@@ -1,0 +1,15 @@
+meta {
+  name: Logs
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/brown-bot/logs
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

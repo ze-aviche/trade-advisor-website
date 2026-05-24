@@ -1,0 +1,15 @@
+meta {
+  name: Delete Watchlist Symbol
+  type: http
+  seq: 14
+}
+
+delete {
+  url: {{baseUrl}}/api/brown-bot/watchlist/AAPL
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

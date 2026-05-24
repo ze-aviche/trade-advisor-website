@@ -1,0 +1,22 @@
+meta {
+  name: Recommendation
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/swing-recommendation/NVDA
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "force_refresh": false
+  }
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Active Positions
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/entry-bot/active-positions
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

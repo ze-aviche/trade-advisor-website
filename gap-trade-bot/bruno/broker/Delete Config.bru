@@ -1,0 +1,15 @@
+meta {
+  name: Delete Config
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/broker/config/alpaca
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

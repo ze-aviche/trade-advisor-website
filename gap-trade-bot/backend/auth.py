@@ -4,6 +4,7 @@ Authentication System for Trading Advisor
 Handles user registration, login, and session management using SQLite database
 """
 import hashlib
+import logging
 import re
 import secrets
 import time
@@ -11,6 +12,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify, session, g
 from database import db_manager
+
+_auth_logger = logging.getLogger('auth')
 
 class AuthManager:
     def __init__(self):
@@ -177,6 +180,11 @@ def require_auth(f):
 
         valid, session_data = auth_manager.validate_session(session_token)
         if not valid:
+            token_hint = ('…' + session_token[-6:]) if session_token else 'none'
+            _auth_logger.warning(
+                f'401 {request.method} {request.path} '
+                f'token={token_hint} ip={request.remote_addr}'
+            )
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
 
         request.user = auth_manager.get_user_by_session(session_token)

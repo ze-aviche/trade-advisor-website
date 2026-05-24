@@ -1,0 +1,15 @@
+meta {
+  name: Latest Daily Picks
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/swing-daily-picks/latest
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

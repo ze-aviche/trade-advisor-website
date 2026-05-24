@@ -183,10 +183,18 @@ def _log_api_request(response):
 
     msg = f"[{who}] {request.method} {request.path} → {response.status_code} ({ms}ms)"
 
+    _POLLING_PATHS = {
+        '/api/brown-bot/status', '/api/brown-bot/logs', '/api/brown-bot/risk-status',
+        '/api/bot/status', '/api/entry-bot/status', '/api/session/ping',
+        '/api/health',
+    }
+
     if response.status_code >= 500:
         app_logger.error(msg)
     elif response.status_code >= 400:
         app_logger.warning(msg)
+    elif request.path in _POLLING_PATHS:
+        app_logger.debug(msg)
     else:
         app_logger.info(msg)
 
@@ -483,6 +491,14 @@ def _add_brown_log(level: str, message: str, user_id: int = 0):
         app_logger.warning(f"BrownBot[uid={user_id}]: {message}")
     else:
         app_logger.info(f"BrownBot[uid={user_id}]: {message}")
+
+
+def _brown_debug(user_id: int, msg: str) -> None:
+    """Emit a verbose detail line at INFO level only when admin has debug-mode enabled for
+    this user. Use instead of app_logger.debug() in BrownBot daemon threads so the output
+    appears in structured logs without flooding all users' logs."""
+    if is_debug_user(user_id):
+        app_logger.info(f"BrownBot[uid={user_id}][DBG] {msg}")
 
 
 # Global DAS connection for reuse
@@ -3523,7 +3539,7 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
             _add_brown_log('warning', f'{symbol}: equity is 0 — using fallback 1 share', user_id)
             quantity = 1
     except Exception as _bp_err:
-        app_logger.debug(f'BrownBot account fetch failed for {symbol}: {_bp_err}')
+        _brown_debug(user_id, f'{symbol}: account fetch failed — {_bp_err}')
         quantity = max(1, int(dollar_size / price)) if 'dollar_size' in dir() else 1
         _add_brown_log('warning', f'{symbol}: account fetch failed — fallback {quantity} shares', user_id)
 
@@ -4282,7 +4298,7 @@ def _brown_bot_scan_and_enter(user_id: int):
         if not _float_ok(_s):
             _fm = _s.get('float_shares', 0) / 1_000_000
             _reasons.append(f'float {_fm:.1f}M failed {float_op}{float_val}M')
-        app_logger.debug(f'BrownBot FILTER-OUT {_t}: {", ".join(_reasons) or "unknown"}')
+        _brown_debug(user_id, f'FILTER-OUT {_t}: {", ".join(_reasons) or "unknown"}')
 
     # Snapshot active state under lock
     with sess.lock:
@@ -4940,23 +4956,22 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
     # Prevent double-exit race: if already being closed by another loop tick, skip.
     with lock:
         if position_id in closing_positions:
-            app_logger.debug(f'[BrownBot] {symbol} ({position_id}) already closing — skipping duplicate exit')
+            _brown_debug(user_id, f'{symbol} ({position_id[:8]}…) already closing — duplicate exit skipped')
             return False
         closing_positions.add(position_id)
 
     order_id = None
 
-    app_logger.debug(
-        f'[BrownBot close_position] {symbol} position_id={position_id} '
-        f'reason={exit_reason} qty={quantity} current_price={current_price} '
-        f'avg_entry_price={position.get("avg_entry_price")}')
+    _brown_debug(user_id,
+        f'CLOSE {symbol} position_id={position_id[:8]}… reason={exit_reason} '
+        f'qty={quantity} price={current_price} avg_entry={position.get("avg_entry_price")}')
 
     # Verify the broker actually holds this position before selling.
     # If it doesn't exist (e.g. BUY never filled), abort cleanly.
     try:
         bp = broker.get_position(symbol)
     except Exception as _gpe:
-        app_logger.debug(f'[BrownBot close_position] {symbol} get_position raised: {_gpe}')
+        _brown_debug(user_id, f'{symbol}: broker.get_position raised: {_gpe}')
         bp = None
     if not bp:
         _add_brown_log('warning',
@@ -4967,9 +4982,9 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
             closing_positions.discard(position_id)
         return False
 
-    app_logger.debug(
-        f'[BrownBot close_position] {symbol} broker confirms position: '
-        f'qty={bp.qty} avg_entry={bp.avg_entry_price} unrealized={bp.unrealized_pnl}')
+    _brown_debug(user_id,
+        f'{symbol}: broker position confirmed — qty={bp.qty} '
+        f'avg_entry={bp.avg_entry_price} unrealized={bp.unrealized_pnl}')
 
     # Use broker's close_position so we can never accidentally short.
     try:
@@ -5010,8 +5025,8 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
             'submitted_at':   datetime.now().isoformat(),
             'trade_date':     _trade_date,
         }, user_id=user_id)
-        app_logger.debug(
-            f'[BrownBot close_position] {symbol} exit brown_orders row written '
+        _brown_debug(user_id,
+            f'{symbol}: exit brown_orders row written — '
             f'order={str(order_id)[:8]}… status=pending reason={exit_reason}')
     except Exception as _e:
         _add_brown_log('warning', f'DB exit order log failed for {symbol}: {_e}', user_id=user_id)
@@ -5036,10 +5051,9 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
             'position':        dict(position),  # kept so monitor can restore on rejection
         }
 
-    app_logger.debug(
-        f'[BrownBot close_position] {symbol} queued to pending_orders '
-        f'order={str(order_id)[:8]}… avg_entry_in_meta={_avg_entry_for_meta} '
-        f'approx_exit={current_price}')
+    _brown_debug(user_id,
+        f'{symbol}: queued to pending_orders — order={str(order_id)[:8]}… '
+        f'avg_entry={_avg_entry_for_meta} approx_exit={current_price}')
 
     # Don't delete from DB — close_brown_position (called after fill confirmation)
     # marks it as 'closed' with realized P&L. Keeping the row until fill ensures
@@ -5047,9 +5061,8 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
     with lock:
         active_positions.pop(position_id, None)
         closing_positions.discard(position_id)
-    app_logger.debug(
-        f'[BrownBot close_position] {symbol} removed from active_positions, '
-        f'monitor will call finalize_exit on fill')
+    _brown_debug(user_id,
+        f'{symbol}: removed from active_positions — monitor will finalize on fill')
 
     # EOD flatten tracking must happen immediately (blocks re-entry the same day)
     if position_type == 'day' and 'EOD_FLATTEN' in exit_reason:
@@ -5290,9 +5303,9 @@ def _brown_bot_exit_loop(user_id: int):
     while sess and sess.running:
         try:
             # Verbose summary every 30 ticks (60 s) — logs all monitored positions with P&L.
-            # Swing-specific checks (hold days, earnings) also run on the same cadence.
-            _verbose = (tick % 30 == 0)
-            _brown_bot_check_exits(user_id, check_swing_specific=_verbose, verbose=_verbose)
+            # Also verbose every tick when admin has debug mode enabled for this user.
+            _verbose = (tick % 30 == 0) or is_debug_user(user_id)
+            _brown_bot_check_exits(user_id, check_swing_specific=(tick % 30 == 0), verbose=_verbose)
             tick += 1
         except Exception as e:
             app_logger.error(f'BrownBot exit loop error: {e}', exc_info=True)
