@@ -6301,7 +6301,46 @@ def get_brown_bot_risk_status():
     return jsonify({'success': True, 'risk': snapshot})
 
 
+@app.route('/api/regime/status', methods=['GET'])
+def get_regime_status():
+    """Return the current market regime signal and its component breakdown."""
+    return jsonify(_market_regime)
+
+
 @app.route('/api/admin/bots/status', methods=['GET'])
+@require_auth
+@require_role('super_admin', 'dev_master', 'bot_admin')
+def admin_bots_status():
+    """Admin view: return a summary of every active BrownBot session across all users."""
+    sessions_out = []
+    with _brown_sessions_lock:
+        snapshot = dict(_brown_sessions)
+    for uid, sess in snapshot.items():
+        if not sess.running:
+            continue
+        try:
+            user_row = db_manager.get_user_by_id(uid)
+            username = (user_row.get('username') or user_row.get('email') or f'uid:{uid}') if user_row else f'uid:{uid}'
+        except Exception:
+            username = f'uid:{uid}'
+        with sess.lock:
+            pos_count   = len(sess.active_positions)
+            unrealized  = round(sum(p.get('unrealized_pnl', 0) for p in sess.active_positions.values()), 2)
+            entry_count = sum(sess.entry_counts.values())
+        broker_name = sess.broker.name if sess.broker else None
+        sessions_out.append({
+            'user_id':          uid,
+            'username':         username,
+            'broker':           broker_name,
+            'active_positions': pos_count,
+            'unrealized_pnl':   unrealized,
+            'entries_today':    entry_count,
+            'stats':            dict(sess.stats),
+        })
+    return jsonify({'success': True, 'sessions': sessions_out, 'count': len(sessions_out)})
+
+
+@app.route('/api/feedback/analyze', methods=['POST'])
 @require_auth
 def run_feedback_analysis():
     """Run the Purple Feedback Bot: query trades, compute stats, call Claude."""
@@ -6313,7 +6352,6 @@ def run_feedback_analysis():
     lookback_days = max(7, min(lookback_days, 180))
     try:
         trades     = db_manager.get_trades_for_feedback(lookback_days)
-        # Pass prior runs to Claude so it can compare and track improvement
         history    = db_manager.get_feedback_history(limit=3)
         prior_runs = [h['analysis'] for h in history]
         result  = _feedback_analyzer.analyze(trades, lookback_days, prior_runs=prior_runs)
