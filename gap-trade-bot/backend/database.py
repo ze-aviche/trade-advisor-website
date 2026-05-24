@@ -2754,16 +2754,16 @@ class DatabaseManager:
         defaults = {
             'day_profit_target_pct': 5.0, 'day_stop_loss_pct': 2.5,
             'day_trailing_stop_enabled': False, 'day_trailing_stop_pct': 1.5,
-            'day_eod_exit_time': '15:45', 'day_breakeven_trigger_pct': 50.0,
+            'day_eod_exit_time': '15:55', 'day_breakeven_trigger_pct': 50.0,
             'day_time_gate_enabled': True, 'day_time_gate_start': '09:35', 'day_time_gate_end': '10:30',
             'swing_profit_target_pct': 15.0, 'swing_stop_loss_pct': 7.0,
             'swing_max_hold_days': 20, 'swing_earnings_protection_enabled': True,
             'swing_earnings_exit_days': 2, 'swing_breakeven_trigger_pct': 50.0,
-            'max_daily_loss': -500.0, 'max_concurrent_day': 3, 'max_concurrent_swing': 5,
-            'min_gap_pct': 10.0, 'min_price': 5.0, 'max_price': 500.0, 'min_volume_m': 0.5,
-            'max_float_m': 0.0, 'float_operator': '<=',
+            'max_daily_loss': -500.0, 'max_concurrent_day': 5, 'max_concurrent_swing': 3,
+            'min_gap_pct': 25.0, 'min_price': 1.0, 'max_price': 50.0, 'min_volume_m': 10.0,
+            'max_float_m': 5.0, 'float_operator': '>=',
             'day_check_vwap': False, 'day_check_candle': False,
-            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': True,
+            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': False,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
             # Swing scanner filters
@@ -2773,7 +2773,7 @@ class DatabaseManager:
             'swing_min_market_cap_m': 200.0, 'swing_max_market_cap_m': 0.0,
             'swing_max_float_m': 0.0,
             # Swing entry signals
-            'swing_check_above_sma20': False, 'swing_check_ma_cross': False,
+            'swing_check_above_sma20': True, 'swing_check_ma_cross': True,
             'swing_check_rsi_range': False, 'swing_rsi_min': 40.0, 'swing_rsi_max': 70.0,
             'swing_check_rel_vol': False, 'swing_rel_vol_min': 1.2,
             # Swing trailing stop

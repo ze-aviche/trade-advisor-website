@@ -110,9 +110,15 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Password</label>
-                            <input v-model="loginForm.password" type="password" required
-                                   class="w-full px-4 py-3.5 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
-                                   placeholder="Your password">
+                            <div class="relative">
+                                <input v-model="loginForm.password" :type="showLoginPassword ? 'text' : 'password'" required
+                                       class="w-full px-4 py-3.5 pr-12 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                                       placeholder="Your password">
+                                <button type="button" @click="showLoginPassword = !showLoginPassword"
+                                        class="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
+                                    <i :class="showLoginPassword ? 'fas fa-eye-slash' : 'fas fa-eye'" class="text-sm"></i>
+                                </button>
+                            </div>
                         </div>
                         <div v-if="error" class="flex items-center gap-2.5 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
                             <i class="fas fa-exclamation-circle text-red-400 flex-shrink-0 text-sm"></i>
@@ -409,6 +415,7 @@
                     error: '',
                     success: '',
                     loginForm: { username: '', password: '' },
+                    showLoginPassword: false,
                     forgotEmail: '',
                     resetToken: '',
                     resetForm: { password: '', confirm: '' },
