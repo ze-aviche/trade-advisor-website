@@ -6347,18 +6347,19 @@ def run_feedback_analysis():
     global _latest_feedback
     if not FEEDBACK_BOT_AVAILABLE:
         return jsonify({'success': False, 'error': 'Feedback Bot unavailable (check ANTHROPIC_API_KEY)'}), 503
+    uid           = request.user.get('id', 1)
     data          = request.get_json(silent=True) or {}
     lookback_days = int(data.get('lookback_days', 30))
     lookback_days = max(7, min(lookback_days, 180))
     try:
         trades     = db_manager.get_trades_for_feedback(lookback_days)
-        history    = db_manager.get_feedback_history(limit=3)
+        history    = db_manager.get_feedback_history(limit=3, user_id=uid)
         prior_runs = [h['analysis'] for h in history]
         result  = _feedback_analyzer.analyze(trades, lookback_days, prior_runs=prior_runs)
-        row_id  = db_manager.save_feedback_analysis(result)
+        row_id  = db_manager.save_feedback_analysis(result, user_id=uid)
         if row_id == -1:
             app_logger.warning('save_feedback_analysis returned -1 — check DB logs for the cause')
-        _latest_feedback = result
+        _latest_feedback[uid] = result
         socketio.emit('feedback_ready', {'trade_count': result['trade_count']})
         return jsonify({'success': True, 'analysis': result})
     except Exception as _e:
@@ -6369,14 +6370,14 @@ def run_feedback_analysis():
 @app.route('/api/feedback/latest', methods=['GET'])
 @require_auth
 def get_feedback_latest():
-    """Return the most recent feedback analysis, loading from DB if cache is cold."""
+    """Return the most recent feedback analysis for the current user."""
     global _latest_feedback
-    if not _latest_feedback:
-        _latest_feedback = db_manager.get_latest_feedback() or {}
-    if not _latest_feedback:
+    uid = request.user.get('id', 1)
+    if uid not in _latest_feedback:
+        _latest_feedback[uid] = db_manager.get_latest_feedback(user_id=uid) or {}
+    if not _latest_feedback[uid]:
         return jsonify({'success': True, 'analysis': None, 'history': []})
-    history = db_manager.get_feedback_history(limit=10)
-    # Return lightweight history rows (no full stats payload) for the UI browser
+    history = db_manager.get_feedback_history(limit=10, user_id=uid)
     history_meta = [
         {
             'id':            h['id'],
@@ -6389,18 +6390,20 @@ def get_feedback_latest():
         }
         for h in history
     ]
-    return jsonify({'success': True, 'analysis': _latest_feedback, 'history': history_meta})
+    return jsonify({'success': True, 'analysis': _latest_feedback[uid], 'history': history_meta})
 
 
 @app.route('/api/feedback/history/<int:run_id>', methods=['GET'])
 @require_auth
 def get_feedback_run(run_id):
-    """Return a specific historical feedback run by its DB id."""
+    """Return a specific historical feedback run, scoped to the current user."""
     import json as _json
+    uid = request.user.get('id', 1)
     try:
         with db_manager.get_connection() as conn:
             row = conn.execute(
-                'SELECT analysis_json FROM feedback_history WHERE id = ?', (run_id,)
+                'SELECT analysis_json FROM feedback_history WHERE id = ? AND user_id = ?',
+                (run_id, uid)
             ).fetchone()
         if not row:
             return jsonify({'success': False, 'error': 'Run not found'}), 404

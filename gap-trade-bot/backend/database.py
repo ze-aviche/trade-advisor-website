@@ -161,6 +161,7 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS feedback_history (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id       INTEGER NOT NULL DEFAULT 1,
                     generated_at  TEXT    NOT NULL,
                     lookback_days INTEGER NOT NULL,
                     trade_count   INTEGER NOT NULL,
@@ -555,6 +556,7 @@ class DatabaseManager:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS feedback_history (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id       INTEGER NOT NULL DEFAULT 1,
                     generated_at  TEXT    NOT NULL,
                     lookback_days INTEGER NOT NULL,
                     trade_count   INTEGER NOT NULL,
@@ -565,6 +567,11 @@ class DatabaseManager:
                     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            # Additive migration: add user_id to existing feedback_history tables
+            try:
+                cursor.execute('ALTER TABLE feedback_history ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1')
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
             # Upgrade trades.trade_id to UNIQUE — deduplicate first, then swap index.
             try:
@@ -1197,18 +1204,19 @@ class DatabaseManager:
             print(f'Database error in get_trades_for_feedback: {e}')
             return []
 
-    def save_feedback_analysis(self, analysis: dict) -> int:
-        """Persist a feedback analysis run. Returns the new row id."""
+    def save_feedback_analysis(self, analysis: dict, user_id: int = 1) -> int:
+        """Persist a feedback analysis run for a specific user. Returns the new row id."""
         import json as _json
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     '''INSERT INTO feedback_history
-                       (generated_at, lookback_days, trade_count, total_pnl,
+                       (user_id, generated_at, lookback_days, trade_count, total_pnl,
                         win_rate, profit_factor, analysis_json)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                     (
+                        user_id,
                         analysis.get('generated_at'),
                         analysis.get('lookback_days'),
                         analysis.get('trade_count'),
@@ -1224,8 +1232,8 @@ class DatabaseManager:
             _db_logger.error(f'save_feedback_analysis failed: {e}', exc_info=True)
             return -1
 
-    def get_feedback_history(self, limit: int = 10) -> list:
-        """Return last N feedback runs, newest first, as dicts with full analysis."""
+    def get_feedback_history(self, limit: int = 10, user_id: int = 1) -> list:
+        """Return last N feedback runs for a specific user, newest first."""
         import json as _json
         try:
             with self.get_connection() as conn:
@@ -1234,9 +1242,10 @@ class DatabaseManager:
                     '''SELECT id, generated_at, lookback_days, trade_count,
                               total_pnl, win_rate, profit_factor, analysis_json
                        FROM feedback_history
+                       WHERE user_id = ?
                        ORDER BY id DESC
                        LIMIT ?''',
-                    (limit,),
+                    (user_id, limit),
                 )
                 rows = []
                 for row in cursor.fetchall():
@@ -1251,9 +1260,9 @@ class DatabaseManager:
             _db_logger.error(f'get_feedback_history failed: {e}', exc_info=True)
             return []
 
-    def get_latest_feedback(self) -> dict | None:
-        """Return the most recent feedback analysis, or None if none exist."""
-        history = self.get_feedback_history(limit=1)
+    def get_latest_feedback(self, user_id: int = 1) -> dict | None:
+        """Return the most recent feedback analysis for a user, or None if none exist."""
+        history = self.get_feedback_history(limit=1, user_id=user_id)
         return history[0]['analysis'] if history else None
 
     def get_trade_summary(self, symbol=None, start_date=None, end_date=None):
