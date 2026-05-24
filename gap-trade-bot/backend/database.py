@@ -551,6 +551,26 @@ class DatabaseManager:
             except Exception:
                 pass  # If it already exists as unique, or any other issue, leave as-is
 
+            # error_logs: per-user server-side error log for admin debugging
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS error_logs (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id         INTEGER,
+                    timestamp       TEXT NOT NULL,
+                    endpoint        TEXT,
+                    method          TEXT,
+                    error_type      TEXT,
+                    error_message   TEXT,
+                    traceback       TEXT,
+                    request_payload TEXT,
+                    ip_address      TEXT
+                )
+            ''')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_error_logs_user_id ON error_logs(user_id)')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp)')
+
             conn.commit()
 
     def _get_user_count(self):
@@ -1709,6 +1729,54 @@ class DatabaseManager:
 
     # ------------------------------------------------------------------
     # Stats chart data functions
+    # ------------------------------------------------------------------
+    # Error log helpers
+    # ------------------------------------------------------------------
+
+    def add_error_log(self, user_id, endpoint, method, error_type,
+                      error_message, traceback_str, request_payload=None, ip_address=None):
+        try:
+            with self.get_connection() as conn:
+                conn.execute('''
+                    INSERT INTO error_logs
+                        (user_id, timestamp, endpoint, method, error_type,
+                         error_message, traceback, request_payload, ip_address)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    user_id,
+                    datetime.now().isoformat(),
+                    endpoint,
+                    method,
+                    error_type,
+                    error_message,
+                    traceback_str,
+                    request_payload,
+                    ip_address,
+                ))
+                conn.commit()
+        except Exception as e:
+            print(f"Failed to write error_log: {e}")
+
+    def get_error_logs(self, user_id=None, limit=100, since=None):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query  = 'SELECT * FROM error_logs WHERE 1=1'
+                params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(int(user_id))
+                if since:
+                    query += ' AND timestamp >= ?'
+                    params.append(since)
+                query += ' ORDER BY timestamp DESC LIMIT ?'
+                params.append(limit)
+                cursor.execute(query, params)
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            print(f"Failed to read error_logs: {e}")
+            return []
+
     # ------------------------------------------------------------------
 
     def get_daily_pnl_data(self, start_date=None, end_date=None, user_id=None,

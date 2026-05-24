@@ -18,7 +18,8 @@ from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
-from logging_config import setup_logging, get_logger, log_api_request, log_performance, log_error
+from logging_config import (setup_logging, get_logger, log_api_request, log_performance, log_error,
+                            set_debug_user, is_debug_user, get_debug_users)
 
 # Load environment variables
 load_dotenv()
@@ -138,16 +139,26 @@ except (ImportError, AttributeError):
     _async_mode = 'threading'
 socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode=_async_mode)
 
-# Tag each request with the authenticated user so Sentry errors show who was affected
+# Set user context on every request so log lines carry user_id even on public routes.
+# Protected routes also call auth._tag_request_context() which overwrites with verified data.
 @app.before_request
-def _set_sentry_user():
+def _set_request_context():
     g._req_start = time.time()
-    if _sentry_dsn:
-        token = request.headers.get('Authorization', '').replace('Bearer ', '') or request.cookies.get('session_token')
+    g.current_user_id = '-'
+    try:
+        token = (request.headers.get('Authorization', '').replace('Bearer ', '')
+                 or request.cookies.get('session_token', ''))
         if token and auth_manager:
             user = auth_manager.get_user_by_session(token)
             if user:
-                sentry_sdk.set_user({'id': user.get('id'), 'username': user.get('username'), 'email': user.get('email')})
+                uid = user.get('id')
+                g.current_user_id = uid
+                if _sentry_dsn:
+                    import sentry_sdk as _sdk
+                    _sdk.set_user({'id': str(uid), 'username': user.get('username'),
+                                   'email': user.get('email')})
+    except Exception:
+        pass
 
 
 @app.after_request
@@ -180,6 +191,38 @@ def _log_api_request(response):
         app_logger.info(msg)
 
     return response
+
+
+@app.errorhandler(Exception)
+def _handle_unhandled_exception(exc):
+    """Catch any exception not handled by a route and log it with user context."""
+    import traceback as _tb
+    uid       = getattr(g, 'current_user_id', None)
+    endpoint  = request.endpoint or request.path
+    tb_str    = _tb.format_exc()
+    app_logger.error(
+        f"Unhandled exception in {request.method} {request.path}: "
+        f"{type(exc).__name__}: {exc}",
+        exc_info=True,
+    )
+    # Persist to DB so admins can query per-user errors
+    try:
+        payload = None
+        if request.is_json:
+            payload = request.get_data(as_text=True)[:2000]
+        db_manager.add_error_log(
+            user_id         = uid,
+            endpoint        = endpoint,
+            method          = request.method,
+            error_type      = type(exc).__name__,
+            error_message   = str(exc)[:500],
+            traceback_str   = tb_str[:4000],
+            request_payload = payload,
+            ip_address      = request.remote_addr,
+        )
+    except Exception:
+        pass
+    return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 
 # Global variables for real-time data
@@ -1675,6 +1718,39 @@ def admin_db_query():
     except Exception as e:
         app_logger.warning(f'admin_db_query error: {e}')
         return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/api/admin/debug-user', methods=['POST', 'GET'])
+@require_auth
+@require_role('super_admin', 'dev_master')
+def admin_debug_user():
+    """GET — list users currently in verbose debug mode.
+    POST { user_id, enable } — toggle per-user debug logging."""
+    if request.method == 'GET':
+        return jsonify({'success': True, 'debug_user_ids': get_debug_users()})
+    data    = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    enable  = bool(data.get('enable', True))
+    if user_id is None:
+        return jsonify({'success': False, 'error': 'user_id required'}), 400
+    set_debug_user(int(user_id), enable)
+    action = 'enabled' if enable else 'disabled'
+    app_logger.info(f"[admin] debug logging {action} for user_id={user_id} "
+                    f"by {request.user.get('username')}")
+    return jsonify({'success': True, 'user_id': user_id, 'debug': enable,
+                    'debug_user_ids': get_debug_users()})
+
+
+@app.route('/api/admin/error-logs', methods=['GET'])
+@require_auth
+@require_role('super_admin', 'dev_master')
+def admin_error_logs():
+    """Return recent server-side error log entries, optionally filtered by user_id."""
+    user_id = request.args.get('user_id', type=int)
+    limit   = min(request.args.get('limit', 100, type=int), 500)
+    since   = request.args.get('since')          # ISO timestamp lower bound
+    logs    = db_manager.get_error_logs(user_id=user_id, limit=limit, since=since)
+    return jsonify({'success': True, 'logs': logs, 'count': len(logs)})
 
 
 @app.route('/api/auth/profile', methods=['PUT'])

@@ -1,14 +1,80 @@
 #!/usr/bin/env python3
 """
-Simplified Logging Configuration for Gap-Trade-Bot
-Provides clean logging with minimal file output and Unicode support
+Logging configuration for Gap-Trade-Bot.
+Provides structured JSON logging with per-request user context and per-user debug mode.
 """
 import os
+import json
 import logging
 import logging.handlers
 import sys
-from datetime import datetime
+import threading
+import traceback as _traceback
 from pathlib import Path
+
+# ── Per-user debug mode ────────────────────────────────────────────────────────
+# Admin can add/remove user IDs at runtime via POST /api/admin/debug-user.
+# When a user ID is in this set, their requests emit DEBUG-level logs even when
+# the global log level is INFO.
+
+_debug_user_ids: set = set()
+_debug_lock = threading.Lock()
+
+
+def set_debug_user(user_id: int, enable: bool) -> None:
+    """Enable or disable verbose debug logging for a specific user."""
+    with _debug_lock:
+        if enable:
+            _debug_user_ids.add(int(user_id))
+        else:
+            _debug_user_ids.discard(int(user_id))
+
+
+def is_debug_user(user_id: int) -> bool:
+    return int(user_id) in _debug_user_ids
+
+
+def get_debug_users() -> list:
+    with _debug_lock:
+        return sorted(_debug_user_ids)
+
+# ── Filters & Formatters ───────────────────────────────────────────────────────
+
+class UserContextFilter(logging.Filter):
+    """Inject user_id, ip, and endpoint into every log record.
+
+    Reads from Flask's g object when inside a request context.
+    Falls back to '-' in background threads and at startup.
+    """
+    def filter(self, record):
+        try:
+            from flask import g, request as _req
+            record.user_id  = getattr(g, 'current_user_id', '-')
+            record.ip       = _req.remote_addr or '-'
+            record.endpoint = _req.endpoint or _req.path or '-'
+        except RuntimeError:
+            record.user_id  = '-'
+            record.ip       = '-'
+            record.endpoint = '-'
+        return True
+
+
+class JsonFormatter(logging.Formatter):
+    """Single-line JSON log records for structured log aggregation (Render, Datadog, Logtail)."""
+    def format(self, record):
+        doc = {
+            'time':     self.formatTime(record, '%Y-%m-%dT%H:%M:%S'),
+            'level':    record.levelname,
+            'logger':   record.name,
+            'user_id':  getattr(record, 'user_id', '-'),
+            'ip':       getattr(record, 'ip', '-'),
+            'endpoint': getattr(record, 'endpoint', '-'),
+            'msg':      record.getMessage(),
+        }
+        if record.exc_info:
+            doc['exc'] = _traceback.format_exception(*record.exc_info)[-1].strip()
+        return json.dumps(doc, ensure_ascii=True)
+
 
 def setup_logging(log_level='INFO', log_dir='logs'):
     """
@@ -24,71 +90,55 @@ def setup_logging(log_level='INFO', log_dir='logs'):
     
     # Configure root logger
     root_logger = logging.getLogger()
-    # Set log level
     root_logger.setLevel(getattr(logging, log_level.upper()))
-    
-    # Clear any existing handlers
     root_logger.handlers.clear()
-    
-    # Create formatters with explicit date format
-    detailed_formatter = logging.Formatter(
-        '%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    simple_formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)s | %(name)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    # Console Handler (INFO and above) - UTF-8 safe
+
+    ctx_filter = UserContextFilter()
+
+    # Console handler — JSON lines so Render stdout is grep/filter-friendly
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(simple_formatter)
-    
-    # Set encoding for console handler to handle Unicode
+    console_handler.setFormatter(JsonFormatter())
+    console_handler.addFilter(ctx_filter)
     if hasattr(console_handler.stream, 'reconfigure'):
         try:
             console_handler.stream.reconfigure(encoding='utf-8')
-        except:
+        except Exception:
             pass
-    
     root_logger.addHandler(console_handler)
+
+    # Human-readable formatter for local log files
+    detailed_formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)s | user=%(user_id)s | %(name)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
     
-    # File Handler - All logs (DEBUG and above) with UTF-8 encoding
+    # File Handler — all logs (DEBUG+), human-readable for local dev
     try:
         all_logs_file = log_path / 'gap_trade_backend_all.log'
         file_handler = logging.handlers.RotatingFileHandler(
-            all_logs_file,
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5,
-            encoding='utf-8'  # Explicit UTF-8 encoding
+            all_logs_file, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8'
         )
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(detailed_formatter)
+        file_handler.addFilter(ctx_filter)
         root_logger.addHandler(file_handler)
-        print(f"File logging enabled - All logs: {all_logs_file}")
-    except PermissionError:
-        print("Warning: Could not create file log handler due to permission error. Using console logging only.")
-    except Exception as e:
-        print(f"Warning: Could not create file log handler: {e}. Using console logging only.")
-    
-    # File Handler - Errors only with UTF-8 encoding
+        print(f"File logging enabled: {all_logs_file}")
+    except (PermissionError, Exception) as e:
+        print(f"Warning: Could not create file log handler: {e}. Console only.")
+
+    # File Handler — errors only
     try:
         error_logs_file = log_path / 'gap_trade_backend_errors.log'
         error_handler = logging.handlers.RotatingFileHandler(
-            error_logs_file,
-            maxBytes=5*1024*1024,  # 5MB
-            backupCount=3,
-            encoding='utf-8'  # Explicit UTF-8 encoding
+            error_logs_file, maxBytes=5*1024*1024, backupCount=3, encoding='utf-8'
         )
         error_handler.setLevel(logging.ERROR)
         error_handler.setFormatter(detailed_formatter)
+        error_handler.addFilter(ctx_filter)
         root_logger.addHandler(error_handler)
-        print(f"Error logging enabled - Errors: {error_logs_file}")
-    except PermissionError:
-        print("Warning: Could not create error log handler due to permission error.")
-    except Exception as e:
+        print(f"Error logging enabled: {error_logs_file}")
+    except (PermissionError, Exception) as e:
         print(f"Warning: Could not create error log handler: {e}.")
     
     print("Backend logging configured with Unicode support")
@@ -195,9 +245,10 @@ class EmojiFilter(logging.Filter):
 
 # Apply emoji filter to console handler
 def apply_emoji_filter():
-    """Apply emoji filter to console logging to prevent Unicode errors"""
+    """Apply emoji filter to file handlers to prevent Unicode errors.
+    The console handler uses JsonFormatter (ensure_ascii=True) and is already safe."""
     root_logger = logging.getLogger()
     for handler in root_logger.handlers:
-        if isinstance(handler, logging.StreamHandler) and handler.stream == sys.stdout:
-            handler.addFilter(EmojiFilter())
-            break 
+        # Only add to file handlers — JsonFormatter already outputs ASCII-only
+        if isinstance(handler, logging.handlers.RotatingFileHandler):
+            handler.addFilter(EmojiFilter()) 
