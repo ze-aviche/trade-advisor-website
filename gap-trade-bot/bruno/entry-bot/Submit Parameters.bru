@@ -1,0 +1,27 @@
+meta {
+  name: Submit Parameters
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/entry-bot/submit-parameters
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "symbol": "NVDA",
+    "trade_type": "day",
+    "entry_price": 120.00,
+    "target_price": 125.00,
+    "stop_price": 118.00,
+    "shares": 100
+  }
+}

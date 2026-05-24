@@ -1,0 +1,23 @@
+meta {
+  name: Chat
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/ai-agent/chat
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "message": "What are the best gap-up stocks to trade today?",
+    "ticker": "NVDA"
+  }
+}

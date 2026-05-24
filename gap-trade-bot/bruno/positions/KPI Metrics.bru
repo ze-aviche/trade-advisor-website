@@ -1,0 +1,15 @@
+meta {
+  name: KPI Metrics
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/positions/total_positions
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Snapshot Dates
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/gap-ups/snapshot/dates
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

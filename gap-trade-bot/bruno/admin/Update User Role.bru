@@ -1,0 +1,22 @@
+meta {
+  name: Update User Role
+  type: http
+  seq: 9
+}
+
+put {
+  url: {{baseUrl}}/api/admin/users/{{debug_user_id}}/system-role
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "system_role": "bot_admin"
+  }
+}

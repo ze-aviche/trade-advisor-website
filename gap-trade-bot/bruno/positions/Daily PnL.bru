@@ -1,0 +1,15 @@
+meta {
+  name: Daily PnL
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/positions/daily-pnl
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

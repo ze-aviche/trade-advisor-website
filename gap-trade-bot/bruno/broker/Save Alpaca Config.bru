@@ -1,0 +1,24 @@
+meta {
+  name: Save Alpaca Config
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/broker/config/alpaca
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "api_key": "PKxxxxxxxxxxxxxx",
+    "secret_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "paper": true
+  }
+}

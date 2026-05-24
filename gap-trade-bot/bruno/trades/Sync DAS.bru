@@ -1,0 +1,15 @@
+meta {
+  name: Sync DAS
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/trades/sync-das
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

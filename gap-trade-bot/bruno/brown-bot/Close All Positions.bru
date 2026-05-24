@@ -1,0 +1,15 @@
+meta {
+  name: Close All Positions
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/brown-bot/close-all
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

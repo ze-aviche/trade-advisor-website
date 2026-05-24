@@ -1,0 +1,15 @@
+meta {
+  name: Test Connection
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/broker/test/alpaca
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}
