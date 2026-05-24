@@ -86,6 +86,7 @@ const app = createApp({
                     // BrownBot loading states
                     brownBotToggle: false,
                     brownBotConfig: false,
+                    feedback: false,
                     brownBotCandidates: false,
                     brownBotSignals: false,
                     brownBotOrders: false,
@@ -343,6 +344,10 @@ const app = createApp({
                 skipped_symbols: [],
                 stats: { day_entered: 0, swing_entered: 0, day_exited: 0, swing_exited: 0 }
             },
+            feedbackData: null,
+            feedbackCollapsed: false,
+            feedbackLookbackDays: 30,
+
             marketRegime: {
                 signal: 'NEUTRAL',
                 score: 0,
@@ -1217,6 +1222,7 @@ const app = createApp({
                     this.stopPositionHistoryUpdates();
 
                     this.loadRegimeStatus();
+                    this.loadFeedbackLatest();
                     this.loadBrownBotStatus();
                     this.loadBrownBotConfig();
                     this.fetchBrownBotLogs();
@@ -5954,6 +5960,38 @@ const app = createApp({
         },
         
         // ── BrownBot methods ───────────────────────────────────────────────
+        async loadFeedbackLatest() {
+            try {
+                const res = await axios.get('/api/feedback/latest', { headers: this.authHeaders() });
+                if (res.data.success && res.data.analysis) {
+                    this.feedbackData = res.data.analysis;
+                }
+            } catch (e) {
+                console.error('Error loading feedback latest:', e);
+            }
+        },
+
+        async runFeedbackAnalysis() {
+            this.loading.feedback = true;
+            try {
+                const res = await axios.post(
+                    '/api/feedback/analyze',
+                    { lookback_days: this.feedbackLookbackDays },
+                    { headers: this.authHeaders() }
+                );
+                if (res.data.success) {
+                    this.feedbackData = res.data.analysis;
+                } else {
+                    alert('Analysis failed: ' + (res.data.error || 'unknown error'));
+                }
+            } catch (e) {
+                console.error('Feedback analysis error:', e);
+                alert('Analysis error: ' + (e.response?.data?.error || e.message));
+            } finally {
+                this.loading.feedback = false;
+            }
+        },
+
         async loadRegimeStatus() {
             try {
                 const response = await axios.get('/api/regime/status');

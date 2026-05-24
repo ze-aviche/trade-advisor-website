@@ -112,6 +112,18 @@ except Exception as e:
     _swing_agent  = None
     AI_AGENT_AVAILABLE = False
 
+# Purple Feedback Bot
+try:
+    from bot.feedback_bot import FeedbackAnalyzer
+    _feedback_analyzer = FeedbackAnalyzer()
+    FEEDBACK_BOT_AVAILABLE = True
+except Exception as _fb_err:
+    app_logger.warning(f'FeedbackBot unavailable: {_fb_err}')
+    _feedback_analyzer = None
+    FEEDBACK_BOT_AVAILABLE = False
+
+_latest_feedback: dict = {}   # in-memory cache of last analysis result
+
 # Feature flag: controls DAS Trader integration.
 # Set DAS_ENABLED=true in .env (or environment) to enable for local/mock testing.
 DAS_ENABLED = os.environ.get('DAS_ENABLED', 'false').lower() == 'true'
@@ -390,7 +402,7 @@ def _regime_compute() -> dict:
         'spy_return_5d': round(spy_return, 2),
         'vix_level':     vix_level,
         'components':    components,
-        'last_updated':  datetime.now(pytz.timezone('US/Eastern')).isoformat(),
+        'last_updated':  datetime.now(__import__('pytz').timezone('US/Eastern')).isoformat(),
         'adjustments':   adjustments,
     }
 
@@ -398,8 +410,15 @@ def _regime_compute() -> dict:
 def _regime_monitor_loop():
     """Background daemon: recomputes market regime every 5 min (market hours) or 30 min (off-hours)."""
     global _market_regime
-    _et = pytz.timezone('US/Eastern')
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
     app_logger.info('[RegimeBot] Monitor loop started')
+    # Compute once immediately on startup so the UI badge appears regardless of time
+    try:
+        _market_regime.update(_regime_compute())
+        socketio.emit('regime_update', _market_regime)
+    except Exception as _e:
+        app_logger.warning(f'[RegimeBot] Initial compute failed: {_e}')
     while True:
         try:
             now_et = datetime.now(_et)
@@ -5827,6 +5846,36 @@ def get_brown_bot_risk_status():
 def get_regime_status():
     """Return the current market regime signal and its component breakdown."""
     return jsonify(_market_regime)
+
+
+@app.route('/api/feedback/analyze', methods=['POST'])
+@require_auth
+def run_feedback_analysis():
+    """Run the Purple Feedback Bot: query trades, compute stats, call Claude."""
+    global _latest_feedback
+    if not FEEDBACK_BOT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Feedback Bot unavailable (check ANTHROPIC_API_KEY)'}), 503
+    data         = request.get_json(silent=True) or {}
+    lookback_days = int(data.get('lookback_days', 30))
+    lookback_days = max(7, min(lookback_days, 180))   # clamp 7–180 days
+    try:
+        trades = db_manager.get_trades_for_feedback(lookback_days)
+        result = _feedback_analyzer.analyze(trades, lookback_days)
+        _latest_feedback = result
+        socketio.emit('feedback_ready', {'trade_count': result['trade_count']})
+        return jsonify({'success': True, 'analysis': result})
+    except Exception as _e:
+        app_logger.error(f'Feedback analysis error: {_e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(_e)}), 500
+
+
+@app.route('/api/feedback/latest', methods=['GET'])
+@require_auth
+def get_feedback_latest():
+    """Return the most recently run feedback analysis (in-memory cache)."""
+    if not _latest_feedback:
+        return jsonify({'success': True, 'analysis': None})
+    return jsonify({'success': True, 'analysis': _latest_feedback})
 
 
 # ==============================================================================
