@@ -221,6 +221,7 @@ class DatabaseManager:
                 ('trades',          'days_held',          'INTEGER DEFAULT NULL'),
                 ('trades',          'source',             "TEXT DEFAULT 'brownbot'"),
                 ('trades',          'broker',             'TEXT DEFAULT NULL'),
+                ('trades',          'user_id',            'INTEGER DEFAULT 1'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}')
@@ -281,14 +282,16 @@ class DatabaseManager:
             if cursor.fetchone()['cnt'] == 0:
                 cursor.execute('INSERT INTO brown_bot_config (user_id) VALUES (1)')
 
-            # brown_watchlist: manually pinned symbols for BrownBot
+            # brown_watchlist: manually pinned symbols for BrownBot (per-user)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS brown_watchlist (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL UNIQUE,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    symbol TEXT NOT NULL,
                     note TEXT,
                     trade_type TEXT DEFAULT 'day',
-                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, symbol)
                 )
             ''')
 
@@ -362,6 +365,35 @@ class DatabaseManager:
                 except sqlite3.OperationalError:
                     pass  # column already exists
 
+            # brown_watchlist: migrate old schema (symbol UNIQUE) to per-user composite key
+            # Detect by checking if our composite index exists yet
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_brown_wl_user_sym'"
+            )
+            if not cursor.fetchone():
+                # Check if old schema has no user_id column yet
+                cursor.execute('PRAGMA table_info(brown_watchlist)')
+                cols = {r['name'] for r in cursor.fetchall()}
+                if 'user_id' not in cols:
+                    cursor.execute('ALTER TABLE brown_watchlist ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1')
+                # Recreate table with composite unique key (symbol unique alone would block multi-user)
+                cursor.execute('''CREATE TABLE IF NOT EXISTS _brown_watchlist_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    symbol TEXT NOT NULL,
+                    note TEXT,
+                    trade_type TEXT DEFAULT 'day',
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, symbol)
+                )''')
+                cursor.execute(
+                    'INSERT OR IGNORE INTO _brown_watchlist_new (user_id, symbol, note, trade_type, added_at) '
+                    'SELECT user_id, symbol, note, trade_type, added_at FROM brown_watchlist'
+                )
+                cursor.execute('DROP TABLE brown_watchlist')
+                cursor.execute('ALTER TABLE _brown_watchlist_new RENAME TO brown_watchlist')
+                cursor.execute('CREATE UNIQUE INDEX idx_brown_wl_user_sym ON brown_watchlist(user_id, symbol)')
+
             # swing_daily_picks: persisted AI-ranked swing picks keyed by trading date
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS swing_daily_picks (
@@ -421,11 +453,30 @@ class DatabaseManager:
                 ('exit_price',         'REAL'),
                 ('exit_reason',        'TEXT'),
                 ('exit_time',          'TEXT'),
+                ('user_id',            'INTEGER NOT NULL DEFAULT 1'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_positions ADD COLUMN {col} {defn}')
                 except sqlite3.OperationalError:
                     pass  # column already exists
+            try:
+                cursor.execute(
+                    'CREATE INDEX IF NOT EXISTS idx_brown_positions_user '
+                    'ON brown_positions(user_id)')
+            except sqlite3.OperationalError:
+                pass
+
+            # brown_orders: add user_id for per-user isolation
+            try:
+                cursor.execute('ALTER TABLE brown_orders ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1')
+            except sqlite3.OperationalError:
+                pass  # already exists
+            try:
+                cursor.execute(
+                    'CREATE INDEX IF NOT EXISTS idx_brown_orders_user '
+                    'ON brown_orders(user_id)')
+            except sqlite3.OperationalError:
+                pass
 
             # swing_daily_bars: daily OHLCV cache used by the swing backtest to compute
             # forward returns without hitting Alpaca on every backtest run.
@@ -499,6 +550,26 @@ class DatabaseManager:
                 cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_trades_trade_id ON trades(trade_id)')
             except Exception:
                 pass  # If it already exists as unique, or any other issue, leave as-is
+
+            # error_logs: per-user server-side error log for admin debugging
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS error_logs (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id         INTEGER,
+                    timestamp       TEXT NOT NULL,
+                    endpoint        TEXT,
+                    method          TEXT,
+                    error_type      TEXT,
+                    error_message   TEXT,
+                    traceback       TEXT,
+                    request_payload TEXT,
+                    ip_address      TEXT
+                )
+            ''')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_error_logs_user_id ON error_logs(user_id)')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp)')
 
             conn.commit()
 
@@ -966,7 +1037,7 @@ class DatabaseManager:
         except Exception as e:
             return False
 
-    def add_trade(self, trade_data):
+    def add_trade(self, trade_data, user_id: int = 1):
         """Add a new trade to the database"""
         qty = int(trade_data.get('quantity', 0))
         if qty <= 0 or qty > 1_000_000:
@@ -981,8 +1052,8 @@ class DatabaseManager:
                     INSERT OR IGNORE INTO trades (
                         trade_id, symbol, side, quantity, price, route,
                         trade_time, order_id, liquidity, ecn_fee, pnl, trade_date,
-                        position_type, days_held, source, broker
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_type, days_held, source, broker, user_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     trade_data['trade_id'],
                     trade_data['symbol'],
@@ -1000,6 +1071,7 @@ class DatabaseManager:
                     trade_data.get('days_held'),
                     trade_data.get('source', 'brownbot'),
                     trade_data.get('broker'),
+                    trade_data.get('user_id', user_id),
                 ))
                 conn.commit()
                 return True, "Trade added successfully"
@@ -1017,12 +1089,12 @@ class DatabaseManager:
             'total_cost_basis': 0.0,
         }
     
-    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100):
+    def get_trades(self, symbol=None, start_date=None, end_date=None, limit=100, user_id=None):
         """Get trades with optional filtering"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 query = '''
                     SELECT id, trade_id, symbol, side, quantity, price, route,
                            trade_time, order_id, liquidity, ecn_fee, pnl,
@@ -1031,15 +1103,19 @@ class DatabaseManager:
                     WHERE 1=1
                 '''
                 params = []
-                
+
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
+
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
+
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
+
                 if end_date:
                     query += ' AND trade_date <= ?'
                     params.append(end_date)
@@ -1645,7 +1721,88 @@ class DatabaseManager:
             print(f"Database error getting positions win rate: {e}")
             return 0.0
 
-    def get_daily_pnl_data(self, start_date=None, end_date=None):
+    # ------------------------------------------------------------------
+    # Stats filter helper
+    # ------------------------------------------------------------------
+    def _apply_stats_filters(self, query, params, user_id=None, start_date=None,
+                              end_date=None, time_start_utc=None, time_end_utc=None,
+                              price_min=None, price_max=None, day_of_week=None):
+        """Append AND clauses + params for common stats filters on the trades table."""
+        if user_id is not None:
+            query += ' AND user_id = ?';                params.append(user_id)
+        if start_date:
+            query += ' AND trade_date >= ?';             params.append(start_date)
+        if end_date:
+            query += ' AND trade_date <= ?';             params.append(end_date)
+        if time_start_utc:
+            query += " AND strftime('%H:%M', trade_time) >= ?"; params.append(time_start_utc)
+        if time_end_utc:
+            query += " AND strftime('%H:%M', trade_time) <= ?"; params.append(time_end_utc)
+        if price_min is not None:
+            query += ' AND price >= ?';                  params.append(price_min)
+        if price_max is not None:
+            query += ' AND price <= ?';                  params.append(price_max)
+        if day_of_week:
+            ph = ','.join('?' * len(day_of_week))
+            query += f" AND CAST(strftime('%w', trade_date) AS INTEGER) IN ({ph})"
+            params.extend(day_of_week)
+        return query, params
+
+    # ------------------------------------------------------------------
+    # Stats chart data functions
+    # ------------------------------------------------------------------
+    # Error log helpers
+    # ------------------------------------------------------------------
+
+    def add_error_log(self, user_id, endpoint, method, error_type,
+                      error_message, traceback_str, request_payload=None, ip_address=None):
+        try:
+            with self.get_connection() as conn:
+                conn.execute('''
+                    INSERT INTO error_logs
+                        (user_id, timestamp, endpoint, method, error_type,
+                         error_message, traceback, request_payload, ip_address)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    user_id,
+                    datetime.now().isoformat(),
+                    endpoint,
+                    method,
+                    error_type,
+                    error_message,
+                    traceback_str,
+                    request_payload,
+                    ip_address,
+                ))
+                conn.commit()
+        except Exception as e:
+            print(f"Failed to write error_log: {e}")
+
+    def get_error_logs(self, user_id=None, limit=100, since=None):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query  = 'SELECT * FROM error_logs WHERE 1=1'
+                params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(int(user_id))
+                if since:
+                    query += ' AND timestamp >= ?'
+                    params.append(since)
+                query += ' ORDER BY timestamp DESC LIMIT ?'
+                params.append(limit)
+                cursor.execute(query, params)
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            print(f"Failed to read error_logs: {e}")
+            return []
+
+    # ------------------------------------------------------------------
+
+    def get_daily_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                            time_start_utc=None, time_end_utc=None,
+                            price_min=None, price_max=None, day_of_week=None):
         """Daily P&L grouped by trade_date from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
@@ -1659,12 +1816,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY trade_date ORDER BY trade_date ASC'
                 cursor.execute(query, params)
                 return [
@@ -1675,7 +1829,9 @@ class DatabaseManager:
             print(f"Database error getting daily P&L data: {e}")
             return []
 
-    def get_cumulative_pnl_data(self, start_date=None, end_date=None):
+    def get_cumulative_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                 time_start_utc=None, time_end_utc=None,
+                                 price_min=None, price_max=None, day_of_week=None):
         """Cumulative P&L running total from closed BrownBot exit trades."""
         try:
             with self.get_connection() as conn:
@@ -1688,12 +1844,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS') AND source = 'brownbot'
                 '''
                 params = []
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY trade_date ORDER BY trade_date ASC'
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
@@ -1789,7 +1942,9 @@ class DatabaseManager:
             return []
 
     def get_consolidated_positions(self, symbol=None, start_date=None, end_date=None,
-                                    position_type=None, source=None, limit=1000):
+                                    position_type=None, source=None, limit=1000, user_id=None,
+                                    price_min=None, price_max=None,
+                                    time_start_utc=None, time_end_utc=None, day_of_week=None):
         """
         Consolidated closed positions — one row per round-trip per symbol per session.
 
@@ -1816,6 +1971,8 @@ class DatabaseManager:
                 WHERE side IN ('B', 'S', 'SS')
             '''
             params = []
+            if user_id is not None:
+                query += ' AND user_id = ?';       params.append(user_id)
             if symbol:
                 query += ' AND symbol = ?';        params.append(symbol.upper())
             if source:
@@ -1950,10 +2107,31 @@ class DatabaseManager:
         if start_date:
             results = [r for r in results if r['exit_date'] >= start_date]
 
+        # Additional filters applied at result level (after FIFO matching)
+        if price_min is not None:
+            results = [r for r in results if r.get('avg_exit') is not None and r['avg_exit'] >= price_min]
+        if price_max is not None:
+            results = [r for r in results if r.get('avg_exit') is not None and r['avg_exit'] <= price_max]
+        if time_start_utc:
+            # exit_time is ISO datetime: YYYY-MM-DDTHH:MM:SS...
+            results = [r for r in results if r.get('exit_time', '')[11:16] >= time_start_utc]
+        if time_end_utc:
+            results = [r for r in results if r.get('exit_time', '')[11:16] <= time_end_utc]
+        if day_of_week:
+            from datetime import date as _dt_cls
+            def _sqlite_dow(d):
+                try:
+                    return (_dt_cls.fromisoformat(d).weekday() + 1) % 7
+                except Exception:
+                    return -1
+            results = [r for r in results if _sqlite_dow(r.get('exit_date', '')) in day_of_week]
+
         results.sort(key=lambda r: (r['exit_date'], r['exit_time']), reverse=True)
         return results[:limit]
 
-    def get_long_short_pnl_data(self, start_date=None, end_date=None):
+    def get_long_short_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                time_start_utc=None, time_end_utc=None,
+                                price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by Day vs Swing (BrownBot is long-only so Long/Short is meaningless)."""
         try:
             with self.get_connection() as conn:
@@ -1969,12 +2147,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY position_type ORDER BY total_pnl DESC'
                 cursor.execute(query, params)
                 return [{'position_type': r['position_type'], 'total_pnl': float(r['total_pnl']),
@@ -1983,7 +2158,9 @@ class DatabaseManager:
             print(f"Database error getting day/swing P&L data: {e}")
             return []
 
-    def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10):
+    def get_symbol_pnl_data(self, start_date=None, end_date=None, limit=10, user_id=None,
+                             time_start_utc=None, time_end_utc=None,
+                             price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by symbol for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2000,12 +2177,9 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY symbol ORDER BY total_pnl DESC LIMIT ?'
                 params.append(limit)
                 cursor.execute(query, params)
@@ -2016,7 +2190,9 @@ class DatabaseManager:
             print(f"Database error getting symbol P&L data: {e}")
             return []
 
-    def get_win_loss_pnl_data(self, start_date=None, end_date=None):
+    def get_win_loss_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                               time_start_utc=None, time_end_utc=None,
+                               price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by winning vs losing trades for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2035,12 +2211,9 @@ class DatabaseManager:
                       AND source = 'brownbot'
                 '''
                 params = []
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY trade_result ORDER BY total_pnl DESC'
                 cursor.execute(query, params)
                 return [{'trade_result': r['trade_result'], 'total_pnl': float(r['total_pnl']),
@@ -2049,7 +2222,9 @@ class DatabaseManager:
             print(f"Database error getting win/loss P&L data: {e}")
             return []
 
-    def get_monthly_pnl_data(self, start_date=None, end_date=None):
+    def get_monthly_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                              time_start_utc=None, time_end_utc=None,
+                              price_min=None, price_max=None, day_of_week=None):
         """P&L breakdown by month for pie chart."""
         try:
             with self.get_connection() as conn:
@@ -2065,18 +2240,127 @@ class DatabaseManager:
                       AND pnl != 0
                 '''
                 params = []
-                if start_date:
-                    query += ' AND trade_date >= ?'
-                    params.append(start_date)
-                if end_date:
-                    query += ' AND trade_date <= ?'
-                    params.append(end_date)
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, day_of_week)
                 query += ' GROUP BY month ORDER BY month ASC'
                 cursor.execute(query, params)
                 return [{'month': r['month'], 'total_pnl': float(r['total_pnl']),
                          'position_count': r['position_count']} for r in cursor.fetchall()]
         except Exception as e:
             print(f"Database error getting monthly P&L data: {e}")
+            return []
+
+    def get_time_of_day_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                   utc_offset_mins=-300,
+                                   price_min=None, price_max=None, day_of_week=None):
+        """P&L breakdown by 1-hour buckets starting at :30 (9:30, 10:30, … 3:30 ET).
+
+        utc_offset_mins: offset of ET from UTC in minutes — -240 (EDT) or -300 (EST).
+        trade_time is stored as UTC ISO string so we shift by this offset.
+        Market window: 9:30 (570 min) to 16:00 (960 min) ET → 7 buckets.
+        """
+        # 7 fixed market-hours buckets: bucket 0 = 9:30–10:30, …, bucket 6 = 3:30–4:00
+        MARKET_BUCKETS = [
+            (0, "9:30"), (1, "10:30"), (2, "11:30"), (3, "12:30"),
+            (4, "1:30"), (5, "2:30"),  (6, "3:30"),
+        ]
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Inner query computes ET minutes from midnight for each trade.
+                # Outer query filters to market hours and groups into hourly buckets.
+                inner = '''
+                    SELECT pnl,
+                           (CAST(strftime('%H', trade_time) AS INTEGER) * 60
+                            + CAST(strftime('%M', trade_time) AS INTEGER)
+                            + 1440 + ?) % 1440 AS et_mins
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
+                '''
+                params = [utc_offset_mins]
+                inner, params = self._apply_stats_filters(
+                    inner, params, user_id, start_date, end_date,
+                    None, None, price_min, price_max, day_of_week)
+
+                query = f'''
+                    SELECT (et_mins - 570) / 60 AS bucket,
+                           COALESCE(SUM(pnl), 0)                        AS total_pnl,
+                           COUNT(*)                                      AS trade_count,
+                           AVG(pnl)                                      AS avg_pnl,
+                           SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)     AS wins
+                    FROM ({inner}) sub
+                    WHERE et_mins >= 570 AND et_mins < 960
+                    GROUP BY bucket
+                    ORDER BY bucket
+                '''
+                cursor.execute(query, params)
+                by_bucket = {row['bucket']: row for row in cursor.fetchall()}
+
+                result = []
+                for bucket, label in MARKET_BUCKETS:
+                    row = by_bucket.get(bucket)
+                    if row:
+                        tc = row['trade_count'] or 0
+                        result.append({
+                            'bucket':      bucket,
+                            'label':       label,
+                            'total_pnl':   round(float(row['total_pnl']), 2),
+                            'trade_count': tc,
+                            'avg_pnl':     round(float(row['avg_pnl']), 2) if tc else 0.0,
+                            'wins':        row['wins'] or 0,
+                            'win_rate':    round((row['wins'] or 0) / tc * 100, 1) if tc else 0,
+                        })
+                    else:
+                        result.append({
+                            'bucket': bucket, 'label': label, 'total_pnl': 0.0,
+                            'trade_count': 0, 'avg_pnl': 0.0, 'wins': 0, 'win_rate': 0,
+                        })
+                return result
+        except Exception as e:
+            print(f"Database error getting time-of-day P&L data: {e}")
+            return []
+
+    def get_day_of_week_pnl_data(self, start_date=None, end_date=None, user_id=None,
+                                   time_start_utc=None, time_end_utc=None,
+                                   price_min=None, price_max=None):
+        """P&L breakdown by day of week (Mon–Fri), always returns all 5 trading days."""
+        DOW_LABELS = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri'}
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = '''
+                    SELECT
+                        CAST(strftime('%w', trade_date) AS INTEGER) AS dow,
+                        COALESCE(SUM(pnl), 0)  AS total_pnl,
+                        COUNT(*)               AS trade_count,
+                        AVG(pnl)               AS avg_pnl,
+                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins
+                    FROM trades
+                    WHERE side IN ('S', 'SS') AND source = 'brownbot'
+                '''
+                params = []
+                query, params = self._apply_stats_filters(
+                    query, params, user_id, start_date, end_date,
+                    time_start_utc, time_end_utc, price_min, price_max, None)
+                query += ' GROUP BY dow ORDER BY dow ASC'
+                cursor.execute(query, params)
+                rows_by_dow = {row['dow']: row for row in cursor.fetchall()}
+                return [
+                    {
+                        'dow':         d,
+                        'label':       DOW_LABELS[d],
+                        'total_pnl':   round(float(rows_by_dow[d]['total_pnl']), 2) if d in rows_by_dow else 0.0,
+                        'trade_count': rows_by_dow[d]['trade_count'] if d in rows_by_dow else 0,
+                        'avg_pnl':     round(float(rows_by_dow[d]['avg_pnl']), 2) if d in rows_by_dow else 0.0,
+                        'wins':        rows_by_dow[d]['wins'] if d in rows_by_dow else 0,
+                        'win_rate':    round(rows_by_dow[d]['wins'] / rows_by_dow[d]['trade_count'] * 100, 1)
+                                       if d in rows_by_dow and rows_by_dow[d]['trade_count'] else 0,
+                    }
+                    for d in [1, 2, 3, 4, 5]
+                ]
+        except Exception as e:
+            print(f"Database error getting day-of-week P&L data: {e}")
             return []
 
     def get_extended_stats(self, start_date=None, end_date=None):
@@ -2491,16 +2775,16 @@ class DatabaseManager:
         defaults = {
             'day_profit_target_pct': 5.0, 'day_stop_loss_pct': 2.5,
             'day_trailing_stop_enabled': False, 'day_trailing_stop_pct': 1.5,
-            'day_eod_exit_time': '15:45', 'day_breakeven_trigger_pct': 50.0,
+            'day_eod_exit_time': '15:55', 'day_breakeven_trigger_pct': 50.0,
             'day_time_gate_enabled': True, 'day_time_gate_start': '09:35', 'day_time_gate_end': '10:30',
             'swing_profit_target_pct': 15.0, 'swing_stop_loss_pct': 7.0,
             'swing_max_hold_days': 20, 'swing_earnings_protection_enabled': True,
             'swing_earnings_exit_days': 2, 'swing_breakeven_trigger_pct': 50.0,
-            'max_daily_loss': -500.0, 'max_concurrent_day': 3, 'max_concurrent_swing': 5,
-            'min_gap_pct': 10.0, 'min_price': 5.0, 'max_price': 500.0, 'min_volume_m': 0.5,
-            'max_float_m': 0.0, 'float_operator': '<=',
+            'max_daily_loss': -500.0, 'max_concurrent_day': 5, 'max_concurrent_swing': 3,
+            'min_gap_pct': 25.0, 'min_price': 1.0, 'max_price': 50.0, 'min_volume_m': 10.0,
+            'max_float_m': 5.0, 'float_operator': '>=',
             'day_check_vwap': False, 'day_check_candle': False,
-            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': True,
+            'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': False,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
             # Swing scanner filters
@@ -2510,7 +2794,7 @@ class DatabaseManager:
             'swing_min_market_cap_m': 200.0, 'swing_max_market_cap_m': 0.0,
             'swing_max_float_m': 0.0,
             # Swing entry signals
-            'swing_check_above_sma20': False, 'swing_check_ma_cross': False,
+            'swing_check_above_sma20': True, 'swing_check_ma_cross': True,
             'swing_check_rsi_range': False, 'swing_rsi_min': 40.0, 'swing_rsi_max': 70.0,
             'swing_check_rel_vol': False, 'swing_rel_vol_min': 1.2,
             # Swing trailing stop
@@ -2632,34 +2916,40 @@ class DatabaseManager:
 
     # ── BrownBot watchlist ────────────────────────────────────────────────────
 
-    def get_brown_watchlist(self) -> list:
+    def get_brown_watchlist(self, user_id: int = 1) -> list:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT symbol, note, trade_type, added_at FROM brown_watchlist ORDER BY added_at DESC')
+                cursor.execute(
+                    'SELECT symbol, note, trade_type, added_at FROM brown_watchlist WHERE user_id=? ORDER BY added_at DESC',
+                    (user_id,)
+                )
                 return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             print(f"Database error fetching brown_watchlist: {e}")
             return []
 
-    def add_to_brown_watchlist(self, symbol: str, note: str = '', trade_type: str = 'day') -> tuple:
+    def add_to_brown_watchlist(self, symbol: str, note: str = '', trade_type: str = 'day', user_id: int = 1) -> tuple:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'INSERT OR REPLACE INTO brown_watchlist (symbol, note, trade_type) VALUES (?, ?, ?)',
-                    (symbol.upper().strip(), note, trade_type)
+                    'INSERT OR REPLACE INTO brown_watchlist (symbol, note, trade_type, user_id) VALUES (?, ?, ?, ?)',
+                    (symbol.upper().strip(), note, trade_type, user_id)
                 )
                 conn.commit()
                 return True, "Added to watchlist"
         except Exception as e:
             return False, str(e)
 
-    def remove_from_brown_watchlist(self, symbol: str) -> tuple:
+    def remove_from_brown_watchlist(self, symbol: str, user_id: int = 1) -> tuple:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('DELETE FROM brown_watchlist WHERE symbol=?', (symbol.upper().strip(),))
+                cursor.execute(
+                    'DELETE FROM brown_watchlist WHERE symbol=? AND user_id=?',
+                    (symbol.upper().strip(), user_id)
+                )
                 conn.commit()
                 return True, "Removed from watchlist"
         except Exception as e:
@@ -3035,7 +3325,7 @@ class DatabaseManager:
     # BrownBot active position persistence
     # ------------------------------------------------------------------
 
-    def save_brown_position(self, position_id: str, position: dict) -> bool:
+    def save_brown_position(self, position_id: str, position: dict, user_id: int = 1) -> bool:
         """Upsert a BrownBot active position so it survives server restarts."""
         try:
             with self.get_connection() as conn:
@@ -3045,8 +3335,8 @@ class DatabaseManager:
                         profit_target, profit_target_pct, stop_loss, stop_loss_pct,
                         entry_time, entry_time_epoch, data_json,
                         status, trade_date, entry_order_id, avg_entry_price,
-                        current_price, unrealized_pnl, unrealized_pnl_pct)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        current_price, unrealized_pnl, unrealized_pnl_pct, user_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     (position_id,
                      position.get('symbol'),
                      position.get('position_type', 'day'),
@@ -3066,7 +3356,8 @@ class DatabaseManager:
                      position.get('avg_entry_price') or position.get('entry_price'),
                      position.get('_current_price'),
                      float(position.get('unrealized_pnl', 0) or 0),
-                     float(position.get('unrealized_pnl_pct', 0) or 0))
+                     float(position.get('unrealized_pnl_pct', 0) or 0),
+                     user_id)
                 )
                 conn.commit()
                 return True
@@ -3074,19 +3365,21 @@ class DatabaseManager:
             print(f'Database error saving brown_position: {e}')
             return False
 
-    def delete_brown_position(self, position_id: str) -> bool:
+    def delete_brown_position(self, position_id: str, user_id: int = 1) -> bool:
         """Remove a BrownBot position record after it has been closed."""
         try:
             with self.get_connection() as conn:
-                conn.execute('DELETE FROM brown_positions WHERE position_id = ?', (position_id,))
+                conn.execute(
+                    'DELETE FROM brown_positions WHERE position_id = ? AND user_id = ?',
+                    (position_id, user_id))
                 conn.commit()
                 return True
         except Exception as e:
             print(f'Database error deleting brown_position: {e}')
             return False
 
-    def get_brown_positions(self) -> list:
-        """Return active BrownBot positions (status open or legacy NULL), ordered by entry time.
+    def get_brown_positions(self, user_id: int = 1) -> list:
+        """Return active BrownBot positions for user_id (status open or legacy NULL), ordered by entry time.
 
         DB columns for avg_entry_price and trade_date are overlaid on the data_json blob
         so that targeted UPDATE calls (update_brown_position_entry) survive a crash that
@@ -3097,8 +3390,9 @@ class DatabaseManager:
                 rows = conn.execute(
                     "SELECT data_json, avg_entry_price, trade_date, stop_loss, profit_target "
                     "FROM brown_positions "
-                    "WHERE status IS NULL OR status = 'open' "
-                    "ORDER BY entry_time_epoch ASC"
+                    "WHERE (status IS NULL OR status = 'open') AND user_id = ? "
+                    "ORDER BY entry_time_epoch ASC",
+                    (user_id,)
                 ).fetchall()
                 positions = []
                 for row in rows:
@@ -3119,7 +3413,7 @@ class DatabaseManager:
             print(f'Database error fetching brown_positions: {e}')
             return []
 
-    def add_brown_order(self, order_data: dict) -> bool:
+    def add_brown_order(self, order_data: dict, user_id: int = 1) -> bool:
         """Insert a new BrownBot order record (immutable log entry)."""
         try:
             with self.get_connection() as conn:
@@ -3127,8 +3421,8 @@ class DatabaseManager:
                     '''INSERT OR IGNORE INTO brown_orders
                        (order_id, position_id, symbol, side, order_type, position_type,
                         submitted_qty, submitted_price, status, exit_reason,
-                        submitted_at, trade_date)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        submitted_at, trade_date, user_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     (str(order_data.get('order_id', '')),
                      order_data.get('position_id'),
                      order_data.get('symbol'),
@@ -3140,7 +3434,8 @@ class DatabaseManager:
                      order_data.get('status', 'pending'),
                      order_data.get('exit_reason'),
                      order_data.get('submitted_at'),
-                     order_data.get('trade_date'))
+                     order_data.get('trade_date'),
+                     user_id)
                 )
                 conn.commit()
                 return True
@@ -3225,12 +3520,16 @@ class DatabaseManager:
             print(f'Database error closing brown_position: {e}')
             return False
 
-    def get_brown_positions_pnl_by_ticker(self, trade_date: str = None) -> list:
+    def get_brown_positions_pnl_by_ticker(self, trade_date: str = None, user_id: int = 1) -> list:
         """Return per-ticker realized and unrealized P&L from brown_positions."""
         try:
             with self.get_connection() as conn:
-                params = (trade_date,) if trade_date else ()
-                where  = 'WHERE trade_date = ?' if trade_date else ''
+                params: list = [user_id]
+                where_clauses = ['user_id = ?']
+                if trade_date:
+                    where_clauses.append('trade_date = ?')
+                    params.append(trade_date)
+                where = 'WHERE ' + ' AND '.join(where_clauses)
                 rows = conn.execute(
                     f'''SELECT symbol,
                                ROUND(SUM(realized_pnl), 2)                                      AS realized_pnl,
@@ -3248,12 +3547,15 @@ class DatabaseManager:
             print(f'Database error fetching brown_positions_pnl_by_ticker: {e}')
             return []
 
-    def get_brown_daily_realized_pnl(self, trade_date: str = None) -> float:
+    def get_brown_daily_realized_pnl(self, trade_date: str = None, user_id: int = 1) -> float:
         """Return total realized P&L for closed BrownBot positions on a given trading date."""
         try:
             with self.get_connection() as conn:
-                params = (trade_date,) if trade_date else ()
-                where  = "AND trade_date = ?" if trade_date else ''
+                params: list = [user_id]
+                where = "AND user_id = ?"
+                if trade_date:
+                    where += " AND trade_date = ?"
+                    params.append(trade_date)
                 row = conn.execute(
                     f"SELECT COALESCE(SUM(realized_pnl), 0) AS total "
                     f"FROM brown_positions WHERE status = 'closed' {where}",

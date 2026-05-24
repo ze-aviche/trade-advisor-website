@@ -4,13 +4,16 @@ Authentication System for Trading Advisor
 Handles user registration, login, and session management using SQLite database
 """
 import hashlib
+import logging
 import re
 import secrets
 import time
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import request, jsonify, session
+from flask import request, jsonify, session, g
 from database import db_manager
+
+_auth_logger = logging.getLogger('auth')
 
 class AuthManager:
     def __init__(self):
@@ -177,9 +180,15 @@ def require_auth(f):
 
         valid, session_data = auth_manager.validate_session(session_token)
         if not valid:
+            token_hint = ('…' + session_token[-6:]) if session_token else 'none'
+            _auth_logger.warning(
+                f'401 {request.method} {request.path} '
+                f'token={token_hint} ip={request.remote_addr}'
+            )
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
 
         request.user = auth_manager.get_user_by_session(session_token)
+        _tag_request_context(request.user)
         return f(*args, **kwargs)
 
     return decorated_function
@@ -206,6 +215,24 @@ def require_role(*system_roles):
                 return jsonify({'success': False, 'error': 'Insufficient permissions'}), 403
 
             request.user = user
+            _tag_request_context(user)
             return f(*args, **kwargs)
         return decorated_function
-    return decorator 
+    return decorator
+
+
+def _tag_request_context(user: dict) -> None:
+    """Set Flask g and Sentry user context for the current request."""
+    if not user:
+        return
+    uid = user.get('id')
+    g.current_user_id = uid
+    try:
+        import sentry_sdk
+        sentry_sdk.set_user({
+            'id':       str(uid),
+            'username': user.get('username'),
+            'email':    user.get('email'),
+        })
+    except Exception:
+        pass 

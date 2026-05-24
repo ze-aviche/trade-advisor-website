@@ -1,0 +1,15 @@
+meta {
+  name: Day of Week PnL
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/positions/day-of-week
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

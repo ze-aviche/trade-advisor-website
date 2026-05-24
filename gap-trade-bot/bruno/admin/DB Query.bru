@@ -1,0 +1,22 @@
+meta {
+  name: DB Query
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{baseUrl}}/api/admin/db-query
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "query": "SELECT id, username, email, system_role, subscription_tier, is_active, created_at FROM users ORDER BY id DESC LIMIT 20"
+  }
+}

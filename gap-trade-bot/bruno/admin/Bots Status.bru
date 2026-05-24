@@ -1,0 +1,15 @@
+meta {
+  name: Bots Status
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{baseUrl}}/api/admin/bots/status
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

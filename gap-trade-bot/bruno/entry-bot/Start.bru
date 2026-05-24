@@ -1,0 +1,15 @@
+meta {
+  name: Start
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/entry-bot/start
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

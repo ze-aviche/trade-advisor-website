@@ -3,12 +3,13 @@ from datetime import datetime, timedelta
 
 
 class RiskManager:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, user_id: int = 1):
         # Always store as a negative threshold regardless of sign the user entered.
         # e.g. both 500 and -500 mean "halt if daily P&L drops below -$500".
         self.max_daily_loss = -abs(float(config.get('max_daily_loss', -500.0)))
         self.max_concurrent_day = int(config.get('max_concurrent_day', 3))
         self.max_concurrent_swing = int(config.get('max_concurrent_swing', 5))
+        self.user_id = user_id
 
     def can_enter(self, symbol: str, position_type: str,
                   active_positions: dict, unrealized_pnl: float = 0.0) -> tuple:
@@ -81,6 +82,6 @@ class RiskManager:
             while d.weekday() >= 5:  # roll back to last trading day (ET)
                 d -= timedelta(days=1)
             today = d.strftime('%Y-%m-%d')
-            return db_manager.get_brown_daily_realized_pnl(today)
+            return db_manager.get_brown_daily_realized_pnl(today, user_id=self.user_id)
         except Exception:
             return 0.0

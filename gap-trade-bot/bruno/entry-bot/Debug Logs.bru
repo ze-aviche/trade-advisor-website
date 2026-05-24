@@ -1,0 +1,15 @@
+meta {
+  name: Debug Logs
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/entry-bot/debug-logs
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

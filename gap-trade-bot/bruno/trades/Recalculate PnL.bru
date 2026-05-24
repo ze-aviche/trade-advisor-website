@@ -1,0 +1,15 @@
+meta {
+  name: Recalculate PnL
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/trades/recalculate-pnl
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

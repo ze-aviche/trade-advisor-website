@@ -1,0 +1,15 @@
+meta {
+  name: Time of Day PnL
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/positions/time-of-day
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

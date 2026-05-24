@@ -1,0 +1,15 @@
+meta {
+  name: Technicals
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/swing-technicals/NVDA
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

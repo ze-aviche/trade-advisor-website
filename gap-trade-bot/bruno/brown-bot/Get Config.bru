@@ -1,0 +1,15 @@
+meta {
+  name: Get Config
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/brown-bot/config
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}

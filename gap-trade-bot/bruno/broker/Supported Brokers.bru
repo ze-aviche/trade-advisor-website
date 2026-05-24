@@ -1,0 +1,15 @@
+meta {
+  name: Supported Brokers
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/broker/supported
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session_token}}
+}
