@@ -1148,6 +1148,27 @@ class DatabaseManager:
             print(f"Database error getting trades: {e}")
             return []
     
+    def get_trades_for_feedback(self, lookback_days: int = 30) -> list:
+        """Return completed trades (pnl != 0) for the past N days for feedback analysis."""
+        from datetime import date, timedelta
+        start = (date.today() - timedelta(days=lookback_days)).isoformat()
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT symbol, side, pnl, trade_time, trade_date,
+                              position_type, source
+                       FROM trades
+                       WHERE trade_date >= ?
+                         AND pnl != 0
+                       ORDER BY trade_date ASC, trade_time ASC''',
+                    (start,),
+                )
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            print(f'Database error in get_trades_for_feedback: {e}')
+            return []
+
     def get_trade_summary(self, symbol=None, start_date=None, end_date=None):
         """Get trade summary statistics"""
         try:

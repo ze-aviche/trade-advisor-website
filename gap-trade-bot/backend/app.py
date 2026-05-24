@@ -113,6 +113,18 @@ except Exception as e:
     _swing_agent  = None
     AI_AGENT_AVAILABLE = False
 
+# Purple Feedback Bot
+try:
+    from bot.feedback_bot import FeedbackAnalyzer
+    _feedback_analyzer = FeedbackAnalyzer()
+    FEEDBACK_BOT_AVAILABLE = True
+except Exception as _fb_err:
+    app_logger.warning(f'FeedbackBot unavailable: {_fb_err}')
+    _feedback_analyzer = None
+    FEEDBACK_BOT_AVAILABLE = False
+
+_latest_feedback: dict = {}   # in-memory cache of last analysis result
+
 # Feature flag: controls DAS Trader integration.
 # Set DAS_ENABLED=true in .env (or environment) to enable for local/mock testing.
 DAS_ENABLED = os.environ.get('DAS_ENABLED', 'false').lower() == 'true'
@@ -359,6 +371,152 @@ _brown_sessions_lock = threading.Lock()  # guards _brown_sessions dict mutations
 def _get_brown_session(user_id: int):
     """Return the BrownSession for user_id, or None if not running."""
     return _brown_sessions.get(user_id)
+
+# ── Market Regime Bot ──────────────────────────────────────────────────────────
+# Lightweight background signal: reads breadth, SPY slope, VIX and emits
+# BULL / NEUTRAL / BEAR. BrownBot reads this to scale position_pct.
+_market_regime: dict = {
+    'signal':        'NEUTRAL',   # 'BULL', 'NEUTRAL', 'BEAR'
+    'score':         0,           # sum of component scores
+    'gap_up_count':  0,
+    'spy_return_5d': 0.0,
+    'vix_level':     None,
+    'components':    {},          # per-component breakdown for UI
+    'last_updated':  None,
+    'adjustments':   {'position_pct_multiplier': 1.0, 'note': 'No adjustments'},
+}
+
+
+def _regime_compute() -> dict:
+    """Fetch SPY/VIX + gap-up breadth and return a fresh regime dict."""
+    import yfinance as _yf
+
+    score = 0
+    components = {}
+
+    # Component 1: breadth — quality-filtered gap-ups only.
+    # Micro-floats gap on tiny volume and inflate raw count meaninglessly.
+    # For regime detection we want mid/large-cap stocks (institutions buying),
+    # meaningful gap %, and real price — the opposite of BrownBot's entry filter.
+    quality_gaps = [
+        s for s in real_time_gap_ups
+        if float(s.get('gap_percent', 0))  >= 5.0           # real momentum, not noise
+        and float(s.get('price', 0))       >= 2.0           # no penny stocks
+        and float(s.get('market_cap', 0))  >= 300_000_000   # mid-cap+ only
+    ]
+    gap_up_count = len(quality_gaps)
+    if gap_up_count >= 10:
+        breadth_pts = 2
+    elif gap_up_count >= 5:
+        breadth_pts = 1
+    elif gap_up_count >= 2:
+        breadth_pts = 0
+    else:
+        breadth_pts = -1
+    score += breadth_pts
+    components['breadth'] = {'value': gap_up_count, 'points': breadth_pts,
+                              'label': f'{gap_up_count} quality gap-ups (≥5%, ≥$2, ≥$300M mcap)'}
+
+    # Component 2: SPY 5-day return
+    spy_return = 0.0
+    try:
+        _spy_hist = _yf.Ticker('SPY').history(period='5d', interval='1d')
+        if len(_spy_hist) >= 2:
+            spy_return = (
+                (_spy_hist['Close'].iloc[-1] - _spy_hist['Close'].iloc[0])
+                / _spy_hist['Close'].iloc[0] * 100
+            )
+            if spy_return > 1.0:
+                spy_pts = 2
+            elif spy_return > 0:
+                spy_pts = 1
+            elif spy_return > -1.0:
+                spy_pts = -1
+            else:
+                spy_pts = -2
+            score += spy_pts
+            components['spy'] = {'value': round(spy_return, 2), 'points': spy_pts,
+                                  'label': f'SPY {spy_return:+.1f}% (5d)'}
+    except Exception as _e:
+        app_logger.warning(f'[RegimeBot] SPY fetch failed: {_e}')
+
+    # Component 3: VIX level
+    vix_level = None
+    try:
+        _vix_hist = _yf.Ticker('^VIX').history(period='2d', interval='1d')
+        if len(_vix_hist) >= 1:
+            vix_level = round(float(_vix_hist['Close'].iloc[-1]), 2)
+            if vix_level < 15:
+                vix_pts = 2
+            elif vix_level < 20:
+                vix_pts = 1
+            elif vix_level < 25:
+                vix_pts = 0
+            elif vix_level < 30:
+                vix_pts = -1
+            else:
+                vix_pts = -2
+            score += vix_pts
+            components['vix'] = {'value': vix_level, 'points': vix_pts,
+                                  'label': f'VIX {vix_level:.1f}'}
+    except Exception as _e:
+        app_logger.warning(f'[RegimeBot] VIX fetch failed: {_e}')
+
+    if score >= 3:
+        signal = 'BULL'
+        adjustments = {'position_pct_multiplier': 1.2, 'note': 'Position size +20%'}
+    elif score < 0:
+        signal = 'BEAR'
+        adjustments = {'position_pct_multiplier': 0.7, 'note': 'Position size -30%'}
+    else:
+        signal = 'NEUTRAL'
+        adjustments = {'position_pct_multiplier': 1.0, 'note': 'No adjustments'}
+
+    return {
+        'signal':        signal,
+        'score':         score,
+        'gap_up_count':  gap_up_count,
+        'spy_return_5d': round(spy_return, 2),
+        'vix_level':     vix_level,
+        'components':    components,
+        'last_updated':  datetime.now(__import__('pytz').timezone('US/Eastern')).isoformat(),
+        'adjustments':   adjustments,
+    }
+
+
+def _regime_monitor_loop():
+    """Background daemon: recomputes market regime every 5 min (market hours) or 30 min (off-hours)."""
+    global _market_regime
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    app_logger.info('[RegimeBot] Monitor loop started')
+    # Compute once immediately on startup so the UI badge appears regardless of time
+    try:
+        _market_regime.update(_regime_compute())
+        socketio.emit('regime_update', _market_regime)
+    except Exception as _e:
+        app_logger.warning(f'[RegimeBot] Initial compute failed: {_e}')
+    while True:
+        try:
+            now_et = datetime.now(_et)
+            h = now_et.hour
+            if 6 <= h < 20:
+                new_regime = _regime_compute()
+                prev_signal = _market_regime.get('signal', 'NEUTRAL')
+                _market_regime.update(new_regime)
+                socketio.emit('regime_update', _market_regime)
+                if new_regime['signal'] != prev_signal:
+                    app_logger.info(
+                        f"[RegimeBot] {prev_signal} → {new_regime['signal']} "
+                        f"(score={new_regime['score']}, "
+                        f"gap-ups={new_regime['gap_up_count']}, "
+                        f"VIX={new_regime['vix_level']})"
+                    )
+            # 5 min during market hours, 30 min outside
+            time.sleep(300 if 9 <= h < 16 else 1800)
+        except Exception as _e:
+            app_logger.error(f'[RegimeBot] Monitor loop error: {_e}', exc_info=True)
+            time.sleep(60)
 
 
 class _DasDirectSocket:
@@ -10090,6 +10248,11 @@ def _start_background_tasks():
             target=_historical_prefetch_daemon, daemon=True, name='HistoricalPrefetch')
         prefetch_thread.start()
         app_logger.info("✅ [HistoricalPrefetch] started — pre-fetches historical data for gap-up tickers every 90s")
+
+        regime_thread = threading.Thread(
+            target=_regime_monitor_loop, daemon=True, name='RegimeBot')
+        regime_thread.start()
+        app_logger.info("✅ [RegimeBot]          started — recomputes market regime every 5 min")
 
         try:
             from ohlcv_fetcher import ohlcv_daemon
