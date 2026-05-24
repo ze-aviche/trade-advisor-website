@@ -2067,6 +2067,21 @@
                                           class="text-xs px-2 py-0.5 rounded-full border font-medium">
                                         {{ brownBotStatus?.running ? 'RUNNING' : 'STOPPED' }}
                                     </span>
+                                    <!-- Market Regime Badge -->
+                                    <span v-if="marketRegime.last_updated"
+                                          :class="{
+                                              'bg-green-500/20 text-green-300 border-green-500/40': marketRegime.signal === 'BULL',
+                                              'bg-gray-700/60 text-gray-400 border-gray-600':       marketRegime.signal === 'NEUTRAL',
+                                              'bg-red-500/20 text-red-300 border-red-500/40':       marketRegime.signal === 'BEAR'
+                                          }"
+                                          class="text-xs px-2 py-0.5 rounded-full border font-medium cursor-default"
+                                          :title="`Market Regime · Score: ${marketRegime.score} · ${marketRegime.adjustments?.note || ''} · VIX: ${marketRegime.vix_level ?? '–'} · SPY: ${marketRegime.spy_return_5d > 0 ? '+' : ''}${marketRegime.spy_return_5d?.toFixed(1)}% (5d) · ${marketRegime.gap_up_count} gap-ups`">
+                                        <i :class="{
+                                               'fas fa-arrow-trend-up':   marketRegime.signal === 'BULL',
+                                               'fas fa-minus':            marketRegime.signal === 'NEUTRAL',
+                                               'fas fa-arrow-trend-down': marketRegime.signal === 'BEAR'
+                                           }" class="mr-1 text-xs"></i>{{ marketRegime.signal }}
+                                    </span>
                                 </div>
                                 <div class="text-xs text-gray-400 mt-0.5">Autonomous day &amp; swing trading · Yogi tier</div>
                             </div>

@@ -343,6 +343,16 @@ const app = createApp({
                 skipped_symbols: [],
                 stats: { day_entered: 0, swing_entered: 0, day_exited: 0, swing_exited: 0 }
             },
+            marketRegime: {
+                signal: 'NEUTRAL',
+                score: 0,
+                gap_up_count: 0,
+                spy_return_5d: 0.0,
+                vix_level: null,
+                components: {},
+                last_updated: null,
+                adjustments: { position_pct_multiplier: 1.0, note: 'No adjustments' }
+            },
             brownBotConfig: {
                 day_profit_target_pct: 5.0,
                 day_stop_loss_pct: 2.5,
@@ -1022,6 +1032,10 @@ const app = createApp({
                     this.socketConnected = false;
                     console.log('[Socket] Disconnected');
                 });
+                this.socket.on('regime_update', (payload) => {
+                    this.marketRegime = payload;
+                    console.log(`[Socket] regime_update: ${payload.signal} (score=${payload.score})`);
+                });
                 this.socket.on('gap_ups_update', (payload) => {
                     const incoming = payload && payload.data;
                     if (!incoming || incoming.length === 0) return;
@@ -1202,6 +1216,7 @@ const app = createApp({
                     console.log('🤖 BrownBot tab selected - loading status...');
                     this.stopPositionHistoryUpdates();
 
+                    this.loadRegimeStatus();
                     this.loadBrownBotStatus();
                     this.loadBrownBotConfig();
                     this.fetchBrownBotLogs();
@@ -5939,6 +5954,17 @@ const app = createApp({
         },
         
         // ── BrownBot methods ───────────────────────────────────────────────
+        async loadRegimeStatus() {
+            try {
+                const response = await axios.get('/api/regime/status');
+                if (response.data && response.data.signal) {
+                    this.marketRegime = response.data;
+                }
+            } catch (error) {
+                console.error('Error loading regime status:', error);
+            }
+        },
+
         async loadBrownBotStatus() {
             try {
                 const response = await axios.get('/api/brown-bot/status');
