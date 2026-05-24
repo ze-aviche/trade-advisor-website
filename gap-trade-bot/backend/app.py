@@ -1190,6 +1190,105 @@ def _send_registration_welcome(to_email: str, first_name: str):
         </div>
       </td></tr>
 
+      <!-- Alpaca setup guide -->
+      <tr><td style="padding:28px 44px 0;">
+        <div style="font-size:13px;font-weight:700;color:#34d399;text-transform:uppercase;
+                    letter-spacing:0.08em;margin-bottom:16px;">🚀 Get started in 10 minutes — connect your broker</div>
+        <div style="background:#0d1f17;border:1px solid #1a4731;border-radius:10px;padding:24px;">
+          <p style="color:#9ca3af;font-size:13px;line-height:1.7;margin:0 0 20px;">
+            BrownBot places live trades through <strong style="color:#fff;">Alpaca Markets</strong> — a free, commission-free broker
+            with a paper trading environment. We strongly recommend starting with paper money to get comfortable
+            before risking real capital.
+          </p>
+
+          <!-- Step 1 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+            <tr>
+              <td width="32" valign="top">
+                <div style="background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;width:24px;height:24px;
+                            border-radius:50%;text-align:center;line-height:24px;">1</div>
+              </td>
+              <td style="padding-left:12px;">
+                <div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:3px;">Create a free Alpaca account</div>
+                <div style="color:#9ca3af;font-size:12px;line-height:1.6;">
+                  Go to <a href="https://alpaca.markets" style="color:#60a5fa;">alpaca.markets</a> and sign up — no minimums, no monthly fees.
+                  Alpaca offers both a <strong style="color:#fde68a;">Paper Trading</strong> account (virtual money) and a
+                  <strong style="color:#fca5a5;">Live</strong> account (real money). Start with paper.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Step 2 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+            <tr>
+              <td width="32" valign="top">
+                <div style="background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;width:24px;height:24px;
+                            border-radius:50%;text-align:center;line-height:24px;">2</div>
+              </td>
+              <td style="padding-left:12px;">
+                <div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:3px;">Generate your API keys</div>
+                <div style="color:#9ca3af;font-size:12px;line-height:1.6;">
+                  In your Alpaca dashboard: <strong style="color:#d1d5db;">Paper Trading → API Keys → Generate new key.</strong>
+                  Copy the <strong style="color:#d1d5db;">Key ID</strong> (starts with
+                  <span style="font-family:monospace;background:#111827;color:#fde68a;padding:1px 5px;border-radius:3px;">PK</span>)
+                  and the <strong style="color:#d1d5db;">Secret Key</strong> — the secret is shown only once.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Step 3 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px;">
+            <tr>
+              <td width="32" valign="top">
+                <div style="background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;width:24px;height:24px;
+                            border-radius:50%;text-align:center;line-height:24px;">3</div>
+              </td>
+              <td style="padding-left:12px;">
+                <div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:3px;">Connect to Accentor AI</div>
+                <div style="color:#9ca3af;font-size:12px;line-height:1.6;">
+                  In the platform: <strong style="color:#d1d5db;">My Account → Broker Connection → Alpaca → Configure.</strong>
+                  Paste your keys, select <strong style="color:#fde68a;">Paper</strong>, click Save then Test Connection.
+                  A green ✓ confirms you're live.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Step 4 -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+            <tr>
+              <td width="32" valign="top">
+                <div style="background:#1d4ed8;color:#fff;font-size:11px;font-weight:800;width:24px;height:24px;
+                            border-radius:50%;text-align:center;line-height:24px;">4</div>
+              </td>
+              <td style="padding-left:12px;">
+                <div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:3px;">Run BrownBot on paper for a week</div>
+                <div style="color:#9ca3af;font-size:12px;line-height:1.6;">
+                  Start BrownBot with your risk settings configured (daily loss limit, position size %).
+                  Watch the Logs tab, review the Stats charts after a few sessions, and build confidence in
+                  the strategy before touching real money.
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Paper → Live callout -->
+          <div style="background:#1c1c0a;border:1px solid #854d0e;border-radius:8px;padding:14px 16px;">
+            <div style="font-size:12px;font-weight:700;color:#fde68a;margin-bottom:6px;">
+              ⚠️ When you're ready to go live
+            </div>
+            <div style="color:#a3a300;font-size:12px;line-height:1.6;">
+              Generate a separate set of keys under your Alpaca <strong style="color:#fde68a;">Live Trading</strong> account,
+              update the Broker Settings, and switch the environment to <strong style="color:#fca5a5;">Live</strong>.
+              Fund your account first — Alpaca has no minimum but most traders start with $1,000–$5,000.
+              Always keep the daily loss limit set.
+            </div>
+          </div>
+        </div>
+      </td></tr>
+
       <!-- Why Accentor AI -->
       <tr><td style="padding:28px 44px 0;">
         <div style="font-size:13px;font-weight:700;color:#a78bfa;text-transform:uppercase;
