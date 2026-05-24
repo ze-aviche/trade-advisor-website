@@ -1155,6 +1155,17 @@ def register():
         )
         if success:
             _send_registration_welcome(email, first_name or data.get('username', ''))
+            # Seed BrownBot config row with platform defaults for new user
+            try:
+                new_user = db_manager.get_user_by_username(data.get('username', ''))
+                if new_user:
+                    uid = new_user['id']
+                    db_manager.update_brown_bot_config(
+                        db_manager.get_brown_bot_config(uid),
+                        uid,
+                    )
+            except Exception:
+                pass
             return jsonify({'success': True, 'message': message})
         return jsonify({'success': False, 'error': message}), 400
     except Exception as e:
