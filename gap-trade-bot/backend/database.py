@@ -275,7 +275,7 @@ class DatabaseManager:
                     day_stop_loss_pct REAL DEFAULT 2.5,
                     day_trailing_stop_enabled INTEGER DEFAULT 0,
                     day_trailing_stop_pct REAL DEFAULT 1.5,
-                    day_eod_exit_time TEXT DEFAULT '15:45',
+                    day_eod_exit_time TEXT DEFAULT '15:55',
                     day_breakeven_trigger_pct REAL DEFAULT 50.0,
                     swing_profit_target_pct REAL DEFAULT 15.0,
                     swing_stop_loss_pct REAL DEFAULT 7.0,
@@ -453,6 +453,43 @@ class DatabaseManager:
             cursor.execute(
                 'CREATE INDEX IF NOT EXISTS idx_ssh_date ON swing_screener_history(date)')
 
+            # swing_daily_bars: daily OHLCV cache used by the swing backtest to compute
+            # forward returns without hitting Alpaca on every backtest run.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_daily_bars (
+                    ticker TEXT    NOT NULL,
+                    date   TEXT    NOT NULL,
+                    open   REAL,
+                    high   REAL,
+                    low    REAL,
+                    close  REAL,
+                    volume INTEGER,
+                    PRIMARY KEY (ticker, date)
+                )
+            ''')
+
+            # brown_positions: active BrownBot positions persisted across server restarts.
+            # CREATE TABLE must come before the ALTER TABLE ADD COLUMN loop below so that
+            # fresh databases get all columns (ALTER TABLE silently fails if the table
+            # does not yet exist, leaving migration columns missing on first boot).
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS brown_positions (
+                    position_id TEXT PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    position_type TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    profit_target REAL,
+                    profit_target_pct REAL,
+                    stop_loss REAL,
+                    stop_loss_pct REAL,
+                    entry_time TEXT NOT NULL,
+                    entry_time_epoch REAL,
+                    data_json TEXT DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # brown_positions: additive P&L tracking columns
             for col, defn in [
                 ('status',             "TEXT DEFAULT 'open'"),
@@ -492,40 +529,6 @@ class DatabaseManager:
                     'ON brown_orders(user_id)')
             except sqlite3.OperationalError:
                 pass
-
-            # swing_daily_bars: daily OHLCV cache used by the swing backtest to compute
-            # forward returns without hitting Alpaca on every backtest run.
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS swing_daily_bars (
-                    ticker TEXT    NOT NULL,
-                    date   TEXT    NOT NULL,
-                    open   REAL,
-                    high   REAL,
-                    low    REAL,
-                    close  REAL,
-                    volume INTEGER,
-                    PRIMARY KEY (ticker, date)
-                )
-            ''')
-
-            # brown_positions: active BrownBot positions persisted across server restarts
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS brown_positions (
-                    position_id TEXT PRIMARY KEY,
-                    symbol TEXT NOT NULL,
-                    position_type TEXT NOT NULL,
-                    entry_price REAL NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    profit_target REAL,
-                    profit_target_pct REAL,
-                    stop_loss REAL,
-                    stop_loss_pct REAL,
-                    entry_time TEXT NOT NULL,
-                    entry_time_epoch REAL,
-                    data_json TEXT DEFAULT '{}',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
 
             # brown_orders: immutable per-order log (one row per BUY or SELL order placed by BrownBot)
             cursor.execute('''

@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Advisor – Beginner Deck</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f172a;
+    color: #f8fafc;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── slide container ── */
+  #deck { width: 100vw; height: 100vh; position: relative; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 60px 80px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.4s ease;
+    text-align: center;
+  }
+  .slide.active { opacity: 1; pointer-events: all; }
+
+  /* ── backgrounds ── */
+  .bg-hero    { background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 60%, #1a1a2e 100%); }
+  .bg-problem { background: linear-gradient(135deg, #2d1b1b 0%, #0f172a 60%); }
+  .bg-solution{ background: linear-gradient(135deg, #1b2d1b 0%, #0f172a 60%); }
+  .bg-feature { background: linear-gradient(135deg, #1e2a4a 0%, #0f172a 60%); }
+  .bg-ai      { background: linear-gradient(135deg, #2d1b3d 0%, #0f172a 60%); }
+  .bg-safety  { background: linear-gradient(135deg, #1b2d2d 0%, #0f172a 60%); }
+  .bg-cta     { background: linear-gradient(135deg, #1e3a1e 0%, #0f172a 60%); }
+
+  /* ── typography ── */
+  .eyebrow {
+    font-size: 0.8rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: #60a5fa; margin-bottom: 18px; font-weight: 600;
+  }
+  h1 { font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 800; line-height: 1.15; margin-bottom: 20px; }
+  h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 700; line-height: 1.2; margin-bottom: 16px; }
+  h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; color: #93c5fd; }
+  p  { font-size: clamp(1rem, 1.6vw, 1.2rem); line-height: 1.7; color: #cbd5e1; max-width: 820px; }
+  .big { font-size: clamp(1.2rem, 2.2vw, 1.5rem); color: #e2e8f0; max-width: 760px; line-height: 1.6; }
+
+  .accent { color: #60a5fa; }
+  .green  { color: #4ade80; }
+  .yellow { color: #fbbf24; }
+  .red    { color: #f87171; }
+  .purple { color: #c084fc; }
+
+  /* ── tag pill ── */
+  .tag {
+    display: inline-block; padding: 5px 14px;
+    border-radius: 99px; font-size: 0.8rem; font-weight: 600;
+    margin: 4px;
+  }
+  .tag-blue   { background: #1e40af22; border: 1px solid #3b82f6; color: #93c5fd; }
+  .tag-green  { background: #16653422; border: 1px solid #22c55e; color: #86efac; }
+  .tag-purple { background: #4c1d9522; border: 1px solid #a855f7; color: #d8b4fe; }
+  .tag-yellow { background: #78350f22; border: 1px solid #f59e0b; color: #fde68a; }
+
+  /* ── cards ── */
+  .cards { display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap; justify-content: center; width: 100%; }
+  .card {
+    background: #ffffff0a; border: 1px solid #ffffff18;
+    border-radius: 16px; padding: 28px 24px;
+    flex: 1; min-width: 200px; max-width: 280px;
+    text-align: left; backdrop-filter: blur(6px);
+  }
+  .card-icon { font-size: 2rem; margin-bottom: 12px; }
+  .card p { font-size: 0.9rem; color: #94a3b8; margin-top: 6px; }
+
+  /* ── step flow ── */
+  .steps { display: flex; gap: 0; align-items: flex-start; margin-top: 36px; flex-wrap: wrap; justify-content: center; }
+  .step { display: flex; flex-direction: column; align-items: center; max-width: 160px; }
+  .step-num {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: #3b82f6; color: white; font-weight: 800; font-size: 1.2rem;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 12px; flex-shrink: 0;
+  }
+  .step-label { font-size: 0.9rem; color: #cbd5e1; text-align: center; line-height: 1.4; }
+  .step-arrow { font-size: 1.5rem; color: #475569; margin: 0 8px; padding-top: 14px; flex-shrink: 0; }
+
+  /* ── comparison table ── */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; width: 100%; max-width: 800px; }
+  .compare-col { background: #ffffff08; border-radius: 16px; padding: 28px; text-align: left; }
+  .compare-col h3 { margin-bottom: 16px; }
+  .compare-col ul { list-style: none; }
+  .compare-col li { padding: 8px 0; border-bottom: 1px solid #ffffff10; font-size: 0.95rem; color: #94a3b8; }
+  .compare-col li:last-child { border-bottom: none; }
+  .compare-col li::before { margin-right: 8px; }
+  .col-bad  li::before { content: "✗"; color: #f87171; }
+  .col-good li::before { content: "✓"; color: #4ade80; }
+
+  /* ── stat blocks ── */
+  .stats { display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap; justify-content: center; }
+  .stat {
+    background: #ffffff0a; border: 1px solid #ffffff18;
+    border-radius: 16px; padding: 28px 32px; min-width: 160px;
+  }
+  .stat-num { font-size: 2.5rem; font-weight: 800; color: #60a5fa; }
+  .stat-label { font-size: 0.85rem; color: #64748b; margin-top: 4px; }
+
+  /* ── big quote ── */
+  .quote {
+    font-size: clamp(1.2rem, 2vw, 1.6rem); font-style: italic;
+    color: #e2e8f0; max-width: 760px; line-height: 1.7;
+    border-left: 4px solid #3b82f6; padding-left: 28px; text-align: left;
+    margin-top: 28px;
+  }
+
+  /* ── timeline ── */
+  .timeline { display: flex; flex-direction: column; gap: 16px; margin-top: 28px; width: 100%; max-width: 700px; text-align: left; }
+  .tl-row { display: flex; align-items: flex-start; gap: 20px; }
+  .tl-dot { width: 36px; height: 36px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; }
+  .tl-body h3 { margin-bottom: 4px; font-size: 1rem; color: #e2e8f0; }
+  .tl-body p  { font-size: 0.88rem; color: #64748b; margin: 0; }
+
+  /* ── pricing ── */
+  .pricing { display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap; justify-content: center; }
+  .plan {
+    background: #ffffff08; border: 1px solid #ffffff18;
+    border-radius: 20px; padding: 32px 28px; min-width: 220px; max-width: 260px;
+    text-align: left; position: relative;
+  }
+  .plan.featured { border-color: #3b82f6; background: #1e3a8a18; }
+  .plan-badge {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    background: #3b82f6; color: white; font-size: 0.75rem; font-weight: 700;
+    padding: 4px 14px; border-radius: 99px; white-space: nowrap;
+  }
+  .plan-name { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 8px; }
+  .plan-price { font-size: 2.4rem; font-weight: 800; color: #f8fafc; }
+  .plan-price span { font-size: 1rem; font-weight: 400; color: #64748b; }
+  .plan-features { list-style: none; margin-top: 20px; }
+  .plan-features li { padding: 7px 0; border-bottom: 1px solid #ffffff08; font-size: 0.88rem; color: #94a3b8; }
+  .plan-features li::before { content: "✓ "; color: #4ade80; }
+
+  /* ── nav ── */
+  #nav {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px;
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 99px; padding: 10px 20px;
+    backdrop-filter: blur(12px); z-index: 100;
+  }
+  #nav button {
+    background: none; border: none; color: #94a3b8;
+    font-size: 1.1rem; cursor: pointer; padding: 4px 10px; border-radius: 6px;
+    transition: color 0.2s, background 0.2s;
+  }
+  #nav button:hover { color: #f8fafc; background: #334155; }
+  #counter { font-size: 0.85rem; color: #64748b; min-width: 60px; text-align: center; }
+
+  .slide-num {
+    position: fixed; top: 24px; right: 32px;
+    font-size: 0.75rem; color: #334155; letter-spacing: 0.1em;
+  }
+
+  /* ── logo bar ── */
+  .logo-bar {
+    position: fixed; top: 24px; left: 32px;
+    font-size: 0.9rem; font-weight: 700; color: #3b82f6;
+    letter-spacing: 0.05em;
+  }
+
+  /* progress bar */
+  #progress {
+    position: fixed; top: 0; left: 0; height: 3px;
+    background: #3b82f6; transition: width 0.3s ease;
+  }
+
+  /* keyboard hint */
+  .hint { font-size: 0.75rem; color: #334155; margin-top: 48px; letter-spacing: 0.08em; }
+
+  /* ── visual blocks ── */
+  .icon-row { display: flex; gap: 32px; margin-top: 28px; flex-wrap: wrap; justify-content: center; }
+  .icon-block { text-align: center; }
+  .icon-block .big-icon { font-size: 3rem; margin-bottom: 10px; }
+  .icon-block p { font-size: 0.85rem; color: #64748b; max-width: 120px; margin: 0 auto; }
+
+  .highlight-box {
+    background: #1e3a8a22; border: 1px solid #3b82f640;
+    border-radius: 16px; padding: 28px 36px; margin-top: 28px;
+    max-width: 760px; text-align: left;
+  }
+  .highlight-box p { color: #93c5fd; font-size: 1.05rem; }
+
+  /* bot diagram */
+  .bot-diagram { display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .bot-box {
+    background: #ffffff0a; border: 2px solid;
+    border-radius: 16px; padding: 24px 20px; min-width: 180px; max-width: 200px;
+    text-align: center;
+  }
+  .bot-box.entry  { border-color: #3b82f6; }
+  .bot-box.exit   { border-color: #f59e0b; }
+  .bot-box.brown  { border-color: #4ade80; }
+  .bot-box .bot-icon { font-size: 2.2rem; margin-bottom: 10px; }
+  .bot-box h3 { font-size: 0.95rem; margin-bottom: 6px; }
+  .bot-box p { font-size: 0.8rem; color: #64748b; margin: 0; }
+  .bot-arrow { font-size: 1.8rem; color: #334155; }
+
+  @media (max-width: 700px) {
+    .slide { padding: 40px 28px; }
+    .compare { grid-template-columns: 1fr; }
+    .cards { flex-direction: column; align-items: center; }
+    .bot-diagram { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+<div class="logo-bar">Trade Advisor</div>
+<div class="slide-num" id="slide-num">01 / 18</div>
+
+<div id="deck">
+
+  <!-- ── 1. HERO ── -->
+  <div class="slide bg-hero active">
+    <div class="eyebrow">Welcome to the Future of Trading</div>
+    <h1>Your Money, Working<br><span class="accent">While You Sleep</span></h1>
+    <p class="big">An intelligent trading platform that scans the market, spots opportunities, and executes trades automatically — so you don't have to.</p>
+    <div class="hint">Press → or click Next to begin</div>
+  </div>
+
+  <!-- ── 2. WHAT IS THE STOCK MARKET ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Quick Context</div>
+    <h2>Stocks: A 30-Second Primer</h2>
+    <p class="big">When you buy a share of a company, you own a tiny piece of it. If the company grows, your share is worth more. People trade these shares every day to profit from price movements.</p>
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">🏢</div>
+        <h3>Companies list on exchanges</h3>
+        <p>Like Amazon, Apple, Tesla — all publicly traded</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📈</div>
+        <h3>Prices move constantly</h3>
+        <p>Driven by news, earnings, sentiment, supply & demand</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⏰</div>
+        <h3>Market hours matter</h3>
+        <p>US markets are open 9:30 AM – 4:00 PM EST, Monday–Friday</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3. THE PROBLEM ── -->
+  <div class="slide bg-problem">
+    <div class="eyebrow">The Challenge</div>
+    <h2>Why Most Retail Traders <span class="red">Struggle</span></h2>
+    <div class="compare">
+      <div class="compare-col col-bad">
+        <h3 class="red">Manual Trading Pitfalls</h3>
+        <ul>
+          <li>You can't watch 500 stocks at once</li>
+          <li>Emotions lead to poor decisions</li>
+          <li>Miss entries while at work</li>
+          <li>Forget to set stop-losses</li>
+          <li>No consistent system</li>
+          <li>Exhausting to track exits</li>
+        </ul>
+      </div>
+      <div class="compare-col col-good">
+        <h3 class="green">What You Actually Need</h3>
+        <ul>
+          <li>Scan the whole market instantly</li>
+          <li>Rules-based, emotion-free decisions</li>
+          <li>Execute trades even when you're away</li>
+          <li>Automatic stop-loss protection</li>
+          <li>A consistent, tested strategy</li>
+          <li>Auto-close positions at the right time</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4. WHAT IS AUTOMATED TRADING ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">The Concept</div>
+    <h2>What Is <span class="accent">Automated Trading?</span></h2>
+    <p class="big">It's software that watches the market, applies your rules, and places orders on your behalf — faster and more consistently than any human could.</p>
+    <div class="icon-row" style="margin-top: 40px;">
+      <div class="icon-block">
+        <div class="big-icon">👁️</div>
+        <p>Scans thousands of stocks in real time</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">🧠</div>
+        <p>Applies rules &amp; AI analysis</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">⚡</div>
+        <p>Executes orders in milliseconds</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">🛡️</div>
+        <p>Enforces your risk limits</p>
+      </div>
+    </div>
+    <div class="highlight-box">
+      <p>Think of it like a <strong>personal trading assistant</strong> that never sleeps, never panics, and never forgets your rules.</p>
+    </div>
+  </div>
+
+  <!-- ── 5. INTRODUCING TRADE ADVISOR ── -->
+  <div class="slide bg-solution">
+    <div class="eyebrow">Introducing the Platform</div>
+    <h2>Meet <span class="green">Trade Advisor</span></h2>
+    <p class="big">A cloud-based SaaS platform that gives regular investors access to professional-grade automated trading tools — without needing to write a single line of code.</p>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">3</div>
+        <div class="stat-label">Smart Trading Bots</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">24/7</div>
+        <div class="stat-label">Market Monitoring</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">AI</div>
+        <div class="stat-label">Powered Analysis</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num">1-click</div>
+        <div class="stat-label">Strategy Launch</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 6. THREE BOTS ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Platform Architecture — Simply Explained</div>
+    <h2>Three Bots, <span class="accent">One Platform</span></h2>
+    <p>Each bot handles a different job. Together they cover the complete trading cycle.</p>
+    <div class="bot-diagram">
+      <div class="bot-box entry">
+        <div class="bot-icon">🎯</div>
+        <h3 style="color:#60a5fa">Entry Bot</h3>
+        <p>Spots and enters opportunities you specify</p>
+      </div>
+      <div class="bot-arrow">→</div>
+      <div class="bot-box exit">
+        <div class="bot-icon">🚪</div>
+        <h3 style="color:#fbbf24">Exit Bot</h3>
+        <p>Monitors open trades and exits at the right moment</p>
+      </div>
+      <div class="bot-arrow">→</div>
+      <div class="bot-box brown">
+        <div class="bot-icon">🤖</div>
+        <h3 style="color:#4ade80">BrownBot</h3>
+        <p>Fully autonomous — finds, enters, and exits on its own</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 7. ENTRY BOT ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Bot #1</div>
+    <h2><span class="accent">Entry Bot</span> — Your Signal Executor</h2>
+    <p class="big">You tell it what stock you're watching and what price to enter at. It watches the market and pulls the trigger the moment conditions are right.</p>
+    <div class="cards" style="margin-top: 36px;">
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h3>You set the rules</h3>
+        <p>Symbol, entry price, position size, stop-loss, profit target</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">👁️</div>
+        <h3>It watches for you</h3>
+        <p>Checks volume, price action, and timing conditions every second</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">✅</div>
+        <h3>Executes precisely</h3>
+        <p>Places the order instantly when all conditions are met</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 8. EXIT BOT ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Bot #2</div>
+    <h2><span class="yellow">Exit Bot</span> — Your Trade Guardian</h2>
+    <p class="big">Once you're in a trade, the Exit Bot watches it non-stop. It automatically closes your position when you hit your target, your stop-loss, or end of day — whichever comes first.</p>
+    <div class="cards" style="margin-top: 36px;">
+      <div class="card">
+        <div class="card-icon">🎯</div>
+        <h3>Profit target hit</h3>
+        <p>Sells automatically when your price goal is reached</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🛑</div>
+        <h3>Stop-loss protection</h3>
+        <p>Cuts the loss before it gets worse — no hesitation</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌙</div>
+        <h3>End-of-day close</h3>
+        <p>Flattens all day trades before market closes — no overnight risk</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 9. BROWNBOT ── -->
+  <div class="slide bg-solution">
+    <div class="eyebrow">Bot #3 — The Star Feature</div>
+    <h2><span class="green">BrownBot</span> — Set It &amp; Forget It</h2>
+    <p class="big">BrownBot does everything on its own. It scans the market, finds the best opportunities, manages risk, enters trades, and exits them — all without you touching a button.</p>
+    <div class="highlight-box" style="margin-top: 32px; border-color: #4ade8040;">
+      <p style="color: #86efac;">Think of BrownBot like hiring a professional trader who works for you 24/7, never gets tired, never gets emotional, and follows your exact rules every single time.</p>
+    </div>
+    <div class="tags" style="margin-top: 24px;">
+      <span class="tag tag-green">Auto-scanning</span>
+      <span class="tag tag-green">AI-powered picks</span>
+      <span class="tag tag-green">Risk-managed</span>
+      <span class="tag tag-green">Day &amp; swing trades</span>
+      <span class="tag tag-green">Auto-exit</span>
+    </div>
+  </div>
+
+  <!-- ── 10. HOW BROWNBOT FINDS STOCKS ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Under the Hood — Simply Explained</div>
+    <h2>How BrownBot Finds <span class="green">Winning Stocks</span></h2>
+    <p>Every morning it runs through a multi-step filter to find the best candidates for the day.</p>
+    <div class="steps" style="margin-top: 36px;">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-label">📡 Scans thousands of stocks for <strong>big gap-ups</strong> at market open</div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-label">🔍 Applies your filters — price, volume, gap %</div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-label">🤖 AI checks if the trade has a good risk/reward</div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-label">✅ Enters the trade if everything checks out</div>
+      </div>
+    </div>
+    <div class="highlight-box" style="margin-top: 28px;">
+      <p><strong>Gap-up</strong> = a stock opens significantly higher than yesterday's close, often due to good earnings or news — historically a high-probability trade setup.</p>
+    </div>
+  </div>
+
+  <!-- ── 11. AI PLAYBOOK ── -->
+  <div class="slide bg-ai">
+    <div class="eyebrow">Powered by Claude AI</div>
+    <h2>The <span class="purple">AI Playbook</span></h2>
+    <p class="big">Before entering any trade, BrownBot can ask Claude (Anthropic's AI) to evaluate the stock's history, recent sentiment, and risk profile — and recommend whether to go long, short, or skip.</p>
+    <div class="cards" style="margin-top: 32px;">
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <h3>Historical pattern check</h3>
+        <p>Does this stock historically follow through after gap-ups?</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">💬</div>
+        <h3>Sentiment analysis</h3>
+        <p>Is the news genuinely bullish or just noise?</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎯</div>
+        <h3>Custom stop &amp; target</h3>
+        <p>AI suggests optimal risk/reward levels for this specific trade</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 12. SAFETY FEATURES ── -->
+  <div class="slide bg-safety">
+    <div class="eyebrow">Risk Management</div>
+    <h2>Built-In <span class="green">Safety Nets</span></h2>
+    <p class="big">You set your limits. The platform enforces them — automatically. No discipline needed from you.</p>
+    <div class="cards" style="margin-top: 32px;">
+      <div class="card">
+        <div class="card-icon">🔴</div>
+        <h3>Daily Loss Limit</h3>
+        <p>If losses reach your limit, the bot stops entering new trades for the day. Automatically.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔢</div>
+        <h3>Position Caps</h3>
+        <p>Set max open trades (e.g. 5 day trades, 3 swing trades). Never overexposed.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌅</div>
+        <h3>EOD Auto-Close</h3>
+        <p>All day trades are closed by 3:55 PM — no overnight surprises.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🛡️</div>
+        <h3>Breakeven Stop</h3>
+        <p>Once a trade is profitable enough, the stop-loss moves to your entry price. Locked-in profit.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 13. SWING TRADING ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Beyond Day Trading</div>
+    <h2><span class="accent">Swing Trading</span> — Hold for Days to Weeks</h2>
+    <p class="big">Not every opportunity is a same-day trade. BrownBot also manages swing positions — stocks held for 2–10 days — using AI-graded picks from our daily screening pipeline.</p>
+    <div class="cards" style="margin-top: 32px;">
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <h3>Daily AI-graded picks</h3>
+        <p>Claude grades each candidate A / B / C with a bullish, neutral, or bearish bias</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📅</div>
+        <h3>Multi-day management</h3>
+        <p>Monitors positions overnight, adjusts stops, exits on target</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🗓️</div>
+        <h3>Earnings protection</h3>
+        <p>Automatically exits before a company's earnings announcement to avoid binary risk</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 14. THE DASHBOARD ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">What You See Every Day</div>
+    <h2>A <span class="accent">Real-Time Dashboard</span> That Makes Sense</h2>
+    <p class="big">No confusing charts or jargon. Your dashboard shows exactly what's happening — positions, P&amp;L, bot status — updated live.</p>
+    <div class="icon-row" style="margin-top: 40px;">
+      <div class="icon-block">
+        <div class="big-icon">💰</div>
+        <p>Live P&amp;L — realized &amp; unrealized</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">📋</div>
+        <p>Open positions with stop &amp; target</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">📜</div>
+        <p>Activity log — every action explained</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">🔔</div>
+        <p>Risk status — daily limit usage</p>
+      </div>
+      <div class="icon-block">
+        <div class="big-icon">🕵️</div>
+        <p>Today's gap-up candidates</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 15. WHO IS THIS FOR ── -->
+  <div class="slide bg-solution">
+    <div class="eyebrow">Target Audience</div>
+    <h2>Who Is Trade Advisor <span class="green">Built For?</span></h2>
+    <div class="cards" style="margin-top: 32px;">
+      <div class="card">
+        <div class="card-icon">💼</div>
+        <h3>Busy Professionals</h3>
+        <p>Can't watch markets all day. Want their money working while they work.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📚</div>
+        <h3>Learning Traders</h3>
+        <p>Want to understand market mechanics while the bot executes real trades.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🏠</div>
+        <h3>Part-time Investors</h3>
+        <p>Serious about growing wealth but can't commit to full-time trading.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚙️</div>
+        <h3>Systematic Thinkers</h3>
+        <p>Love rules and data. Hate emotional, gut-feel decisions.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 16. GETTING STARTED ── -->
+  <div class="slide bg-feature">
+    <div class="eyebrow">Getting Started</div>
+    <h2>Up and Running in <span class="accent">Minutes</span></h2>
+    <div class="timeline">
+      <div class="tl-row">
+        <div class="tl-dot">1</div>
+        <div class="tl-body">
+          <h3>Create your account</h3>
+          <p>Sign up, choose your subscription plan, verify your email.</p>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-dot">2</div>
+        <div class="tl-body">
+          <h3>Connect your broker</h3>
+          <p>Link your Alpaca account — the platform handles order execution on your behalf.</p>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-dot">3</div>
+        <div class="tl-body">
+          <h3>Configure your risk limits</h3>
+          <p>Set max daily loss, max open positions, trade size. We'll default to conservative settings.</p>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-dot">4</div>
+        <div class="tl-body">
+          <h3>Start BrownBot</h3>
+          <p>Click "Start" and the bot begins scanning. No further action needed.</p>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-dot">5</div>
+        <div class="tl-body">
+          <h3>Watch and learn</h3>
+          <p>Monitor the activity log. Adjust settings over time as you get comfortable.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 17. PRICING ── -->
+  <div class="slide bg-hero">
+    <div class="eyebrow">Simple Pricing</div>
+    <h2>Plans That <span class="accent">Grow With You</span></h2>
+    <div class="pricing">
+      <div class="plan">
+        <div class="plan-name">Starter</div>
+        <div class="plan-price">Free <span>/ 14-day trial</span></div>
+        <ul class="plan-features">
+          <li>Gap-up scanner</li>
+          <li>Entry Bot (manual symbols)</li>
+          <li>Exit Bot</li>
+          <li>Basic dashboard</li>
+          <li>Community support</li>
+        </ul>
+      </div>
+      <div class="plan featured">
+        <div class="plan-badge">Most Popular</div>
+        <div class="plan-name">Yogi</div>
+        <div class="plan-price">Pro <span>/ month</span></div>
+        <ul class="plan-features">
+          <li>Everything in Starter</li>
+          <li>BrownBot (full autonomy)</li>
+          <li>AI Playbook</li>
+          <li>Swing trading module</li>
+          <li>Advanced risk controls</li>
+          <li>Priority support</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <div class="plan-name">Enterprise</div>
+        <div class="plan-price">Custom</div>
+        <ul class="plan-features">
+          <li>Everything in Yogi</li>
+          <li>Multi-account support</li>
+          <li>Custom strategy config</li>
+          <li>Dedicated onboarding</li>
+          <li>SLA guarantee</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 18. CTA ── -->
+  <div class="slide bg-cta">
+    <div class="eyebrow">Take the Next Step</div>
+    <h1>Ready to Let Your<br><span class="green">Money Work Harder?</span></h1>
+    <p class="big">Trade Advisor removes the complexity, the emotions, and the manual effort from trading. Start your free trial today — no code, no setup headaches.</p>
+    <div class="tags" style="margin-top: 32px;">
+      <span class="tag tag-green">✓ Free 14-day trial</span>
+      <span class="tag tag-green">✓ No credit card required</span>
+      <span class="tag tag-green">✓ Cancel anytime</span>
+    </div>
+    <div class="quote" style="margin-top: 36px; border-color: #4ade80;">
+      "The best trading system is the one you actually stick to." — and this one sticks to it for you.
+    </div>
+  </div>
+
+</div><!-- /deck -->
+
+<div id="nav">
+  <button id="prev" title="Previous (←)">&#8592;</button>
+  <span id="counter">1 / 18</span>
+  <button id="next" title="Next (→)">&#8594;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total  = slides.length;
+  let cur = 0;
+
+  function go(n) {
+    slides[cur].classList.remove('active');
+    cur = (n + total) % total;
+    slides[cur].classList.add('active');
+    document.getElementById('counter').textContent  = `${cur + 1} / ${total}`;
+    document.getElementById('slide-num').textContent = String(cur + 1).padStart(2,'0') + ' / ' + String(total).padStart(2,'0');
+    document.getElementById('progress').style.width = `${((cur + 1) / total) * 100}%`;
+  }
+
+  document.getElementById('next').onclick = () => go(cur + 1);
+  document.getElementById('prev').onclick = () => go(cur - 1);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')  { e.preventDefault(); go(cur - 1); }
+  });
+
+  // touch swipe
+  let tx = 0;
+  document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+  document.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) dx < 0 ? go(cur + 1) : go(cur - 1);
+  });
+
+  go(0);
+</script>
+</body>
+</html>
