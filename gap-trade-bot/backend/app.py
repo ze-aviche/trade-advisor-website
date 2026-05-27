@@ -9127,7 +9127,7 @@ def handle_connect():
     global websocket_connected, _ws_client_count
     _ws_client_count += 1
     websocket_connected = True
-    app_logger.info(f"WebSocket client connected ({_ws_client_count} total)")
+    app_logger.debug(f"WebSocket client connected ({_ws_client_count} total)")
     emit('status', {'message': 'Connected to gap-up detection server'})
 
 @socketio.on('disconnect')
@@ -9135,7 +9135,7 @@ def handle_disconnect():
     global websocket_connected, _ws_client_count
     _ws_client_count = max(0, _ws_client_count - 1)
     websocket_connected = _ws_client_count > 0
-    app_logger.info(f"WebSocket client disconnected ({_ws_client_count} remaining)")
+    app_logger.debug(f"WebSocket client disconnected ({_ws_client_count} remaining)")
 
 # Note: Stock subscriptions are handled by DAS integration, not WebSocket
 # WebSocket is only used for gap-up data broadcasts

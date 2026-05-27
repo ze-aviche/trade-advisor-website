@@ -1119,10 +1119,7 @@ const app = createApp({
                 console.warn('[Socket] init failed:', e.message);
             }
 
-            // Auto-refresh gap-ups every 2 minutes — silent so the table doesn't flash
-            this.gapUpRefreshInterval = setInterval(() => {
-                if (this.activeTab === 'gap-ups') this.loadGapUps(true);
-            }, 2 * 60 * 1000);
+            // Gap-up updates arrive via Socket.IO 'gap_ups_update' broadcast — no polling needed.
 
             // Add page load event listener for automatic refresh
             window.addEventListener('load', () => {
@@ -3477,25 +3474,24 @@ const app = createApp({
 
                 // Generate colors for pie chart
                 const colors = this.generatePieChartColors(data.length);
-                
+
                 // Prepare chart data
                 const labels = data.map(item => {
                     switch (this.pieChartType) {
-                        case 'longShort':
-                            return item.position_type;
-                        case 'symbols':
-                            return item.symbol;
-                        case 'winLoss':
-                            return item.trade_result;
-                        case 'monthly':
-                            return item.month;
-                        default:
-                            return item.label || 'Unknown';
+                        case 'longShort': return item.position_type;
+                        case 'symbols':  return item.symbol;
+                        case 'winLoss':  return item.trade_result;
+                        case 'monthly':  return item.month;
+                        default:         return item.label || 'Unknown';
                     }
                 });
 
-                const values = data.map(item => item.total_pnl);
-                const counts = data.map(item => item.position_count);
+                // actual P&L values (may be negative)
+                const actualValues = data.map(item => item.total_pnl);
+                // pie slices must be positive — use absolute values for sizing
+                const sliceSizes  = actualValues.map(v => Math.abs(v));
+                const counts      = data.map(item => item.position_count);
+                const absTotal    = sliceSizes.reduce((a, b) => a + b, 0) || 1; // guard /0
 
                 // Create new chart
                 this.pieCharts[this.pieChartType] = new Chart(ctx, {
@@ -3503,7 +3499,7 @@ const app = createApp({
                     data: {
                         labels: labels,
                         datasets: [{
-                            data: values,
+                            data: sliceSizes,
                             backgroundColor: colors,
                             borderColor: '#374151',
                             borderWidth: 2,
@@ -3522,14 +3518,14 @@ const app = createApp({
                                     padding: 20,
                                     usePointStyle: true,
                                     generateLabels: (chart) => {
-                                        const data = chart.data;
-                                        if (data.labels.length && data.datasets.length) {
-                                            return data.labels.map((label, i) => {
-                                                const value = data.datasets[0].data[i];
-                                                const count = counts[i];
-                                                const percentage = ((value / values.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+                                        const d = chart.data;
+                                        if (d.labels.length && d.datasets.length) {
+                                            return d.labels.map((label, i) => {
+                                                const pnl = actualValues[i];
+                                                const pct = ((sliceSizes[i] / absTotal) * 100).toFixed(1);
+                                                const sign = pnl >= 0 ? '+' : '';
                                                 return {
-                                                    text: `${label}: $${value.toLocaleString()} (${percentage}%)`,
+                                                    text: `${label}: ${sign}$${pnl.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2})} (${pct}%)`,
                                                     fillStyle: colors[i],
                                                     strokeStyle: colors[i],
                                                     lineWidth: 0,
@@ -3546,13 +3542,14 @@ const app = createApp({
                             tooltip: {
                                 callbacks: {
                                     label: (context) => {
-                                        const value = context.parsed;
+                                        const pnl = actualValues[context.dataIndex];
                                         const count = counts[context.dataIndex];
-                                        const percentage = ((value / values.reduce((a, b) => a + b, 0)) * 100).toFixed(1);
+                                        const pct = ((sliceSizes[context.dataIndex] / absTotal) * 100).toFixed(1);
+                                        const sign = pnl >= 0 ? '+' : '';
                                         return [
-                                            `${context.label}: $${value.toLocaleString()}`,
+                                            `${context.label}: ${sign}$${pnl.toFixed(2)}`,
                                             `Positions: ${count}`,
-                                            `Percentage: ${percentage}%`
+                                            `Share of total: ${pct}%`
                                         ];
                                     }
                                 }
