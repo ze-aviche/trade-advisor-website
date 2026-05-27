@@ -3789,6 +3789,7 @@ const app = createApp({
                         status:        'filled',
                         pnl:           trade.pnl || 0,
                         submitted_at:  trade.trade_date + ' ' + (trade.trade_time || ''),
+                        trade_time:    trade.trade_time || '',
                         route:         trade.route,
                         order_id:      trade.order_id,
                         ecn_fee:       trade.ecn_fee,
@@ -4615,11 +4616,23 @@ const app = createApp({
         formatDate(dateString) {
             if (!dateString) return 'N/A';
             try {
-                // Split directly to avoid timezone offset converting the date
-                const [year, month, day] = dateString.split('-');
+                // Take only the date portion before any space or T (handles "YYYY-MM-DD HH:MM..." or ISO strings)
+                const datePart = dateString.split(/[ T]/)[0];
+                const [year, month, day] = datePart.split('-');
                 return `${month}/${day}/${year}`;
             } catch (error) {
                 return dateString;
+            }
+        },
+
+        // Format trade execution time from a trade_time field (ISO string or HH:MM:SS)
+        formatTradeTime(tradeTime) {
+            if (!tradeTime) return '';
+            try {
+                const s = tradeTime.includes('T') ? tradeTime.split('T')[1] : tradeTime;
+                return s.substring(0, 8); // HH:MM:SS
+            } catch (e) {
+                return '';
             }
         },
         
