@@ -216,7 +216,17 @@ def _log_api_request(response):
 @app.errorhandler(Exception)
 def _handle_unhandled_exception(exc):
     """Catch any exception not handled by a route and log it with user context."""
+    from werkzeug.exceptions import HTTPException
     import traceback as _tb
+
+    # HTTP exceptions (404, 405, etc.) are expected — return their natural response,
+    # log at DEBUG only so favicon.ico / bad URLs don't spam ERROR logs.
+    if isinstance(exc, HTTPException):
+        app_logger.debug(
+            f"{request.method} {request.path} → {exc.code} {exc.name}"
+        )
+        return exc
+
     uid       = getattr(g, 'current_user_id', None)
     endpoint  = request.endpoint or request.path
     tb_str    = _tb.format_exc()

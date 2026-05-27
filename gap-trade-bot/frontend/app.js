@@ -877,6 +877,31 @@ const app = createApp({
                 });
             },
 
+            tradesSummary() {
+                const list = this.sortedTrades;
+                const totalPnl = list.reduce((s, t) => s + (t.pnl || 0), 0);
+                return {
+                    count: list.length,
+                    buys:  list.filter(t => t.direction === 'buy').length,
+                    sells: list.filter(t => t.direction === 'sell').length,
+                    totalPnl,
+                };
+            },
+
+            positionsSummaryComputed() {
+                const list = this.sortedPositions;
+                const totalPnl = list.reduce((s, p) => s + (p.pnl || 0), 0);
+                const wins     = list.filter(p => (p.pnl || 0) > 0).length;
+                const losses   = list.filter(p => (p.pnl || 0) <= 0).length;
+                return {
+                    count: list.length,
+                    totalPnl,
+                    wins,
+                    losses,
+                    winRate: list.length ? (wins / list.length) * 100 : 0,
+                };
+            },
+
             sortedActivePositions() {
                 const { key, dir } = this.activePositionsSort;
                 return [...this.activePositions].sort((a, b) => {

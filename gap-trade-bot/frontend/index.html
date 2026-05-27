@@ -2119,14 +2119,6 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <!-- Stats chips -->
-                            <div class="hidden sm:flex items-center gap-2 text-xs text-gray-400">
-                                <span class="bg-gray-700 px-2 py-1 rounded">
-                                    <i class="fas fa-sun text-yellow-400 mr-1"></i>Day: {{ brownBotStatus.stats?.day_entered || 0 }} in / {{ brownBotStatus.stats?.day_exited || 0 }} out
-                                </span>
-                                <span class="bg-gray-700 px-2 py-1 rounded">
-                                    <i class="fas fa-moon text-blue-400 mr-1"></i>Swing: {{ brownBotStatus.stats?.swing_entered || 0 }} in / {{ brownBotStatus.stats?.swing_exited || 0 }} out
-                                </span>
-                            </div>
                             <div v-if="brownBotStatus?.in_use_by_other" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-sm">
                                 <i class="fas fa-lock text-yellow-400"></i>
                                 Bot is running for another user
@@ -3316,7 +3308,29 @@
                         </div>
 
                     </div>
-                    
+
+                    <!-- Trades summary (shown once results load) -->
+                    <div v-if="!loading.trades && sortedTrades.length" class="flex flex-wrap gap-2 mb-5">
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Trades:</span>
+                            <span class="text-white font-semibold ml-1">{{ tradesSummary.count }}</span>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Buys:</span>
+                            <span class="text-green-400 font-semibold ml-1">{{ tradesSummary.buys }}</span>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Sells:</span>
+                            <span class="text-blue-400 font-semibold ml-1">{{ tradesSummary.sells }}</span>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-gray-400">Realized P&L:</span>
+                            <span class="font-semibold ml-1" :class="tradesSummary.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ tradesSummary.totalPnl >= 0 ? '+' : '' }}${{ tradesSummary.totalPnl.toFixed(2) }}
+                            </span>
+                        </div>
+                    </div>
+
                     <div v-if="loading.trades" class="text-center py-8">
                         <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
                         <p class="mt-2 text-gray-400">Loading trade history...</p>
@@ -3471,23 +3485,28 @@
                         </div>
                     </div>
 
-                    <!-- Summary chips -->
-                    <div v-if="positionsSummary.total_positions" class="flex flex-wrap gap-3 mb-5">
+                    <!-- Summary chips (computed from visible rows, reflects all filters including broker) -->
+                    <div v-if="!loading.positions && sortedPositions.length" class="flex flex-wrap gap-2 mb-5">
                         <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
                             <span class="text-gray-400">Positions:</span>
-                            <span class="text-white font-semibold ml-1">{{ positionsSummary.total_positions }}</span>
+                            <span class="text-white font-semibold ml-1">{{ positionsSummaryComputed.count }}</span>
                         </div>
                         <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
                             <span class="text-gray-400">Total P&L:</span>
-                            <span class="font-semibold ml-1" :class="positionsSummary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                {{ positionsSummary.total_pnl >= 0 ? '+' : '' }}${{ positionsSummary.total_pnl?.toFixed(2) }}
+                            <span class="font-semibold ml-1" :class="positionsSummaryComputed.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                {{ positionsSummaryComputed.totalPnl >= 0 ? '+' : '' }}${{ positionsSummaryComputed.totalPnl.toFixed(2) }}
                             </span>
                         </div>
                         <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
                             <span class="text-gray-400">Win Rate:</span>
-                            <span class="font-semibold ml-1" :class="positionsSummary.win_rate >= 50 ? 'text-green-400' : 'text-yellow-400'">
-                                {{ positionsSummary.win_rate?.toFixed(1) }}%
+                            <span class="font-semibold ml-1" :class="positionsSummaryComputed.winRate >= 50 ? 'text-green-400' : 'text-yellow-400'">
+                                {{ positionsSummaryComputed.winRate.toFixed(1) }}%
                             </span>
+                        </div>
+                        <div class="bg-gray-700 rounded-lg px-4 py-2 text-sm">
+                            <span class="text-green-400 font-semibold">{{ positionsSummaryComputed.wins }}W</span>
+                            <span class="text-gray-500 mx-1">/</span>
+                            <span class="text-red-400 font-semibold">{{ positionsSummaryComputed.losses }}L</span>
                         </div>
                     </div>
 
