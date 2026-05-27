@@ -4598,7 +4598,7 @@ def _brown_bot_scan_and_enter(user_id: int):
                 f'(realized ${_rs["realized_pnl"]:.0f} + unrealized ${_rs["unrealized_pnl"]:.0f}), '
                 f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}', user_id=user_id)
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%', user_id)
-        _brown_enter_position(user_id, symbol, 'day', config, s.get('price', 0), playbook_override=playbook_override)
+        _brown_enter_position(user_id, symbol, 'day', config, live_price, playbook_override=playbook_override)
         # Refresh active state after entry
         with sess.lock:
             active_symbols.add(symbol)
