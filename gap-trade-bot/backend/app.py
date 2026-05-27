@@ -3340,81 +3340,116 @@ def update_swing_bot_config():
 
 # ── BrownBot core logic ────────────────────────────────────────────────────
 
+# Per-symbol bar cache: (symbol.upper()) → {'bars': [...], 'cached_at': float}
+# TTL = 55 s (one scan cycle) so the same bars aren't re-fetched every 30 s.
+_intraday_bars_cache: dict = {}
+_INTRADAY_BARS_TTL = 55
+
+
 def _get_intraday_bars(symbol):
     """
-    Fetch 1-min bars from 09:30 ET to now for a symbol.
+    Fetch 1-min bars from 09:30 ET to the last *completed* minute for a symbol.
     Uses Alpaca Data API directly via HTTP — no broker connection required.
     Falls back to the broker SDK if direct HTTP fails.
     Returns list of {o, h, l, c, v, vw} dicts, or [] if unavailable.
+
+    Key design decisions:
+    - end is set to (now - 1 min), floor to the completed minute boundary.
+      Alpaca only commits bars after the minute closes; requesting the current
+      minute returns empty or stale data.
+    - Results are cached for ~55 s so repeated calls within the same scan
+      cycle don't hammer the API and trigger rate limits.
+    - Empty SIP response falls through to IEX (not break) because SIP can
+      legitimately lag a few seconds at session open.
     """
     import requests as _req
     import pytz as _pytz
+    from datetime import timedelta as _td
+
+    sym_up = symbol.upper()
+
+    # Return cached bars if fresh enough
+    _cached = _intraday_bars_cache.get(sym_up)
+    if _cached and time.time() - _cached['cached_at'] < _INTRADAY_BARS_TTL:
+        return _cached['bars']
+
     _et = _pytz.timezone('US/Eastern')
-    now_et = datetime.now(_et)
+    now_et   = datetime.now(_et)
+    # End at the last *completed* 1-min bar boundary (now minus 1 min, floor to minute)
+    end_et   = (now_et - _td(minutes=1)).replace(second=0, microsecond=0)
     start_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
 
-    ak = os.environ.get('ALPACA_API_KEY', '')
+    # Safety: if we haven't crossed 09:31 ET yet, bars won't exist
+    if end_et < start_et:
+        return []
+
+    ak  = os.environ.get('ALPACA_API_KEY', '')
     as_ = os.environ.get('ALPACA_API_SECRET', '')
 
+    bars: list = []
+
     # Primary: direct HTTP — works even when broker is not connected.
-    # Try SIP feed first (paid plan); fall back to IEX (free plan) on 403.
+    # Try SIP first (paid); fall through to IEX on 403 OR empty response.
     if ak and as_:
         for feed in ('sip', 'iex'):
             try:
                 resp = _req.get(
-                    f'https://data.alpaca.markets/v2/stocks/{symbol.upper()}/bars',
+                    f'https://data.alpaca.markets/v2/stocks/{sym_up}/bars',
                     headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': as_},
                     params={
                         'timeframe':  '1Min',
                         'start':      start_et.isoformat(),
-                        'end':        now_et.isoformat(),
+                        'end':        end_et.isoformat(),
                         'limit':      1000,
                         'adjustment': 'raw',
                         'feed':       feed,
                     },
-                    timeout=10,
+                    timeout=8,
                 )
                 if resp.status_code == 403:
-                    app_logger.debug(f'Alpaca bars {symbol}: {feed} feed not on plan, trying fallback')
+                    app_logger.debug(f'Alpaca bars {sym_up}: {feed} feed not on plan, trying next feed')
                     continue
                 if resp.status_code != 200:
-                    app_logger.warning(f'Alpaca bars {symbol} ({feed}): HTTP {resp.status_code} — {resp.text[:200]}')
+                    app_logger.warning(f'Alpaca bars {sym_up} ({feed}): HTTP {resp.status_code} — {resp.text[:200]}')
                     break
                 raw = resp.json().get('bars') or []
                 if raw:
-                    return [{'o': float(b['o']), 'h': float(b['h']),
+                    bars = [{'o': float(b['o']), 'h': float(b['h']),
                              'l': float(b['l']), 'c': float(b['c']),
                              'v': float(b['v']), 'vw': b.get('vw')}
                             for b in raw]
-                app_logger.debug(f'Alpaca bars {symbol} ({feed}): 200 OK but empty bars')
-                break
+                    break
+                # Empty on this feed — try next (SIP can lag at session open)
+                app_logger.debug(f'Alpaca bars {sym_up} ({feed}): empty response, trying next feed')
             except Exception as e:
-                app_logger.warning(f'Alpaca intraday bars {symbol} ({feed}): {e}')
+                app_logger.warning(f'Alpaca intraday bars {sym_up} ({feed}): {e}')
                 break
 
     # Fallback: broker SDK data client
-    broker = _get_broker()
-    if broker and hasattr(broker, '_data_client') and broker._data_client:
-        try:
-            from alpaca.data.requests import StockBarsRequest
-            from alpaca.data.timeframe import TimeFrame
-            req = StockBarsRequest(
-                symbol_or_symbols=symbol.upper(),
-                timeframe=TimeFrame.Minute,
-                start=start_et,
-                end=now_et,
-            )
-            data = broker._data_client.get_stock_bars(req)
-            bars = data.get(symbol.upper(), [])
-            if bars:
-                return [{'o': float(b.open), 'h': float(b.high),
-                         'l': float(b.low),  'c': float(b.close), 'v': float(b.volume),
-                         'vw': float(b.vwap) if b.vwap else None}
-                        for b in bars]
-        except Exception as e:
-            app_logger.debug(f'Alpaca intraday bars SDK {symbol}: {e}')
+    if not bars:
+        broker = _get_broker()
+        if broker and hasattr(broker, '_data_client') and broker._data_client:
+            try:
+                from alpaca.data.requests import StockBarsRequest
+                from alpaca.data.timeframe import TimeFrame
+                req = StockBarsRequest(
+                    symbol_or_symbols=sym_up,
+                    timeframe=TimeFrame.Minute,
+                    start=start_et,
+                    end=end_et,
+                )
+                data = broker._data_client.get_stock_bars(req)
+                sdk_bars = data.get(sym_up, [])
+                if sdk_bars:
+                    bars = [{'o': float(b.open), 'h': float(b.high),
+                             'l': float(b.low),  'c': float(b.close), 'v': float(b.volume),
+                             'vw': float(b.vwap) if b.vwap else None}
+                            for b in sdk_bars]
+            except Exception as e:
+                app_logger.debug(f'Alpaca intraday bars SDK {sym_up}: {e}')
 
-    return []
+    _intraday_bars_cache[sym_up] = {'bars': bars, 'cached_at': time.time()}
+    return bars
 
 
 def _check_day_entry_signal(symbol, current_price, gap_price, config):
@@ -3433,6 +3468,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         return True, [], 'No trend filters enabled'
 
     bars = _get_intraday_bars(symbol)
+    no_bars_detail = 'Bar data unavailable (Alpaca API) — will retry next scan'
     checks = []
     all_pass = True
 
@@ -3446,7 +3482,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
 
     if vwap_on:
         if vwap is None:
-            passed, detail, value = False, 'No bar data for VWAP', '—'
+            passed, detail, value = False, no_bars_detail, '—'
         else:
             passed = float(current_price) > vwap
             detail = f'${float(current_price):.2f} {">" if passed else "≤"} VWAP ${vwap:.2f}'
@@ -3459,7 +3495,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     # ── Last 1-min candle direction ──────────────────────────────────────
     if candle_on:
         if not bars:
-            passed, detail, value = False, 'No bar data', '—'
+            passed, detail, value = False, no_bars_detail, '—'
         else:
             last      = bars[-1]
             passed    = last['c'] >= last['o']
@@ -3488,7 +3524,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     # ── Volume surge on latest bar ───────────────────────────────────────
     if vol_on:
         if len(bars) < 3:
-            passed, detail, value = False, 'Not enough bars', '—'
+            passed, detail, value = False, f'Need ≥3 bars (have {len(bars)}) — will retry next scan', '—'
         else:
             vols     = [b['v'] for b in bars]
             avg_v    = sum(vols[:-1]) / (len(vols) - 1)
@@ -5432,7 +5468,35 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
             pass
 
         profit_target = position.get('profit_target')
-        stop_loss = position.get('stop_loss')
+        stop_loss     = position.get('stop_loss')
+
+        # Safety net: if either target is still None (race between order monitor and
+        # exit loop, or a position restored before the fill was confirmed), recalculate
+        # from the confirmed entry price + config pcts and write back so the position
+        # is not silently left without exit conditions.
+        if (profit_target is None or stop_loss is None) and entry_price:
+            _pos_type_key = position_type if position_type in ('day', 'swing') else 'day'
+            _tgt_pct = float(position.get('profit_target_pct') or
+                             config.get(f'{_pos_type_key}_profit_target_pct', 5.0))
+            _stp_pct = float(position.get('stop_loss_pct') or
+                             config.get(f'{_pos_type_key}_stop_loss_pct', 2.5))
+            profit_target = round(entry_price * (1 + _tgt_pct / 100), 2)
+            stop_loss     = round(entry_price * (1 - _stp_pct / 100), 2)
+            with lock:
+                if position_id in active_positions:
+                    active_positions[position_id]['profit_target']     = profit_target
+                    active_positions[position_id]['stop_loss']         = stop_loss
+                    active_positions[position_id]['profit_target_pct'] = _tgt_pct
+                    active_positions[position_id]['stop_loss_pct']     = _stp_pct
+            try:
+                db_manager.save_brown_position(position_id, active_positions.get(position_id, position), user_id=user_id)
+            except Exception:
+                pass
+            _add_brown_log('info',
+                f'{symbol}: recalculated missing targets — '
+                f'target ${profit_target:.2f} (+{_tgt_pct:.1f}%), '
+                f'stop ${stop_loss:.2f} (-{_stp_pct:.1f}%)',
+                user_id=user_id)
 
         # Breakeven stop: move stop to entry once price reaches halfway to target
         if (not position.get('_at_breakeven')
@@ -5900,22 +5964,33 @@ def start_brown_bot():
                         sess.entry_counts.pop(sym, None)
                         sess.attempted_symbols.discard(sym)
 
-                # 1b — patch missing avg_entry_price from broker
+                # 1b — patch missing avg_entry_price / profit_target / stop_loss from broker.
+                # Runs when avg_entry_price is missing OR when targets are None (both are
+                # possible if the fill was confirmed after the initial DB write).
                 with sess.lock:
                     for _pid, _pos in list(sess.active_positions.items()):
                         _sym = _pos.get('symbol', '').upper()
                         _bp  = broker_pos_map.get(_sym)
-                        if not _bp or _pos.get('avg_entry_price'):
+                        if not _bp:
+                            continue
+                        _needs_price   = not _pos.get('avg_entry_price')
+                        _needs_targets = (
+                            _pos.get('profit_target') is None or
+                            _pos.get('stop_loss') is None
+                        )
+                        if not (_needs_price or _needs_targets):
                             continue
                         _fp = float(_bp.avg_entry_price or _bp.current_price or 0)
                         if not _fp:
                             continue
-                        _tgt = float(_pos.get('profit_target_pct', 5.0))
-                        _stp = float(_pos.get('stop_loss_pct', 2.5))
-                        _pos['avg_entry_price'] = _fp
-                        _pos['entry_price']     = _fp
-                        _pos['profit_target']   = round(_fp * (1 + _tgt / 100), 2)
-                        _pos['stop_loss']       = round(_fp * (1 - _stp / 100), 2)
+                        _tgt = float(_pos.get('profit_target_pct') or 5.0)
+                        _stp = float(_pos.get('stop_loss_pct') or 2.5)
+                        if _needs_price:
+                            _pos['avg_entry_price'] = _fp
+                            _pos['entry_price']     = _fp
+                        _ep = float(_pos.get('avg_entry_price') or _fp)
+                        _pos['profit_target'] = round(_ep * (1 + _tgt / 100), 2)
+                        _pos['stop_loss']     = round(_ep * (1 - _stp / 100), 2)
                         try:
                             db_manager.update_brown_position_entry(
                                 _pid, _fp, int(abs(float(_bp.qty or 0))))

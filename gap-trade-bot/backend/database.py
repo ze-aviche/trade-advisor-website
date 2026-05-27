@@ -3503,11 +3503,18 @@ class DatabaseManager:
                         pos = json.loads(row['data_json'] or '{}')
                         if not pos:
                             continue
-                        # Overlay DB columns so confirmed fill prices survive partial updates
+                        # Overlay DB columns so confirmed fill prices survive partial updates.
+                        # stop_loss and profit_target are also overlaid: the DB column is
+                        # the source of truth when data_json was written before the fill
+                        # confirmed the final entry price.
                         if row['avg_entry_price'] is not None:
                             pos['avg_entry_price'] = row['avg_entry_price']
                         if row['trade_date'] is not None:
                             pos['trade_date'] = row['trade_date']
+                        if row['stop_loss'] is not None:
+                            pos['stop_loss'] = row['stop_loss']
+                        if row['profit_target'] is not None:
+                            pos['profit_target'] = row['profit_target']
                         positions.append(pos)
                     except Exception:
                         pass
