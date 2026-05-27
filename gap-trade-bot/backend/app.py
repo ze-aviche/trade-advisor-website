@@ -19,7 +19,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 from logging_config import (setup_logging, get_logger, log_api_request, log_performance, log_error,
-                            set_debug_user, is_debug_user, get_debug_users)
+                            set_debug_user, is_debug_user, get_debug_users, set_thread_user_id)
 
 # Load environment variables
 load_dotenv()
@@ -333,7 +333,7 @@ class BrownSession:
         'user_id', 'running', 'broker', 'risk_manager', 'lock',
         'active_positions', 'entry_counts', 'attempted_symbols',
         'eod_flattened_symbols', 'closing_positions', 'pending_orders',
-        'logs', 'log_id', 'stats',
+        'logs', 'log_id', 'stats', 'config', 'symbol_session_pnl',
         'scanner_thread', 'exit_thread', 'order_monitor_thread',
         'swing_candidates_cache', 'swing_ai_picks_cache',
         'playbook_cache', 'playbook_pending', 'playbook_failed',
@@ -348,6 +348,8 @@ class BrownSession:
         self.active_positions   = {}   # position_id -> position dict
         self.entry_counts: dict = {}   # symbol -> successful entries this session
         self.attempted_symbols: set = set()
+        self.symbol_session_pnl: dict = {}  # symbol -> cumulative realized P&L this session
+        self.config: dict = {}              # snapshot of brown_bot_config at start time
         self.eod_flattened_symbols: set = set()
         self.closing_positions: set = set()
         self.pending_orders: dict = {}  # order_id -> metadata
@@ -4393,15 +4395,17 @@ def _brown_bot_scan_and_enter(user_id: int):
     sess = _get_brown_session(user_id)
     if not sess or not sess.running:
         return
-    risk_manager     = sess.risk_manager
-    active_positions = sess.active_positions
+    risk_manager      = sess.risk_manager
+    active_positions  = sess.active_positions
     attempted_symbols = sess.attempted_symbols
+    entry_counts      = sess.entry_counts
 
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     now_et = datetime.now(_et)
 
     config = db_manager.get_brown_bot_config(user_id)
+    sess.config = config  # keep snapshot fresh so monitor thread sees current day_max_reentry etc.
 
     # Rebuild RiskManager from fresh config each iteration so UI config changes
     # (slot caps, loss limit) take effect immediately without restarting the bot.
@@ -4597,6 +4601,15 @@ def _brown_bot_scan_and_enter(user_id: int):
                 f'{symbol} risk OK — total P&L ${_rs["daily_pnl"]:.0f} '
                 f'(realized ${_rs["realized_pnl"]:.0f} + unrealized ${_rs["unrealized_pnl"]:.0f}), '
                 f'day slots {_rs["open_day"]}/{_rs["max_concurrent_day"]}', user_id=user_id)
+        # Re-entry cap: block the symbol for the rest of the session once the limit is hit.
+        max_reentry = int(config.get('day_max_reentry', 2))
+        current_entries = entry_counts.get(symbol, 0)
+        if current_entries >= max_reentry:
+            _add_brown_log('info',
+                f'SKIP {symbol}: re-entry cap reached ({current_entries}/{max_reentry} entries this session) — locked out', user_id)
+            attempted_symbols.add(symbol)
+            continue
+
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%', user_id)
         _brown_enter_position(user_id, symbol, 'day', config, live_price, playbook_override=playbook_override)
         # Refresh active state after entry
@@ -4730,6 +4743,7 @@ def _brown_bot_scan_and_enter(user_id: int):
 
 def _brown_bot_scanner_loop(user_id: int):
     """BrownBot daemon thread: scans and enters every 30 seconds."""
+    set_thread_user_id(user_id)
     _add_brown_log('info', 'BrownBot scanner loop started', user_id)
     sess = _get_brown_session(user_id)
     while sess and sess.running:
@@ -4923,12 +4937,6 @@ def _brown_monitor_finalize_exit(user_id: int, oid, meta, fill_price, fill_qty):
     except Exception as _e:
         _add_brown_log('warning', f'DB exit write failed for {symbol}: {_e}', user_id)
 
-    if sess:
-        if position_type == 'day':
-            sess.stats['day_exited'] += 1
-        else:
-            sess.stats['swing_exited'] += 1
-
     pnl_str  = f'+${realized_pnl:.2f}' if realized_pnl >= 0 else f'-${abs(realized_pnl):.2f}'
     exit_tag = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-exit ×{entry_num - 1})'
     _add_brown_log(
@@ -4939,8 +4947,30 @@ def _brown_monitor_finalize_exit(user_id: int, oid, meta, fill_price, fill_qty):
 
     if sess:
         with sess.lock:
-            sess.attempted_symbols.discard(symbol)
-    _add_brown_log('info', f'{symbol}: unlocked for re-entry (exit confirmed)', user_id)
+            sess.symbol_session_pnl[symbol] = round(
+                sess.symbol_session_pnl.get(symbol, 0.0) + realized_pnl, 2)
+            session_pnl = sess.symbol_session_pnl[symbol]
+            sess.stats['day_exited' if position_type == 'day' else 'swing_exited'] += 1
+
+            if position_type == 'day':
+                # Re-entry cap applies only to day trades.
+                max_reentry  = int((sess.config or {}).get('day_max_reentry', 2))
+                entries_used = sess.entry_counts.get(symbol, 0)
+                if entries_used < max_reentry:
+                    sess.attempted_symbols.discard(symbol)
+                    _add_brown_log('info',
+                        f'{symbol}: unlocked for re-entry ({entries_used}/{max_reentry} entries used, '
+                        f'session P&L ${session_pnl:+.2f})', user_id)
+                else:
+                    _add_brown_log('info',
+                        f'{symbol}: re-entry blocked — cap {max_reentry} entries reached '
+                        f'(session P&L ${session_pnl:+.2f})', user_id)
+            else:
+                # Swing exits always unlock — no re-entry cap on swing.
+                sess.attempted_symbols.discard(symbol)
+                _add_brown_log('info',
+                    f'{symbol}: swing exit — unlocked for re-entry '
+                    f'(session P&L ${session_pnl:+.2f})', user_id)
 
 
 def _brown_order_monitor_loop(user_id: int):
@@ -4948,6 +4978,7 @@ def _brown_order_monitor_loop(user_id: int):
     Background thread: polls sess.pending_orders every 2 s and writes to DB
     only after the broker confirms a fill.  Handles rejections and timeouts.
     """
+    set_thread_user_id(user_id)
     ORDER_TIMEOUT = 60  # seconds before a stuck order is cancelled
     _last_status_log: dict = {}  # oid → last logged status string
 
@@ -5466,6 +5497,7 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
 
 def _brown_bot_exit_loop(user_id: int):
     """BrownBot exit daemon: checks open positions for exit conditions every 2 seconds."""
+    set_thread_user_id(user_id)
     sess = _get_brown_session(user_id)
     _add_brown_log('info', 'BrownBot exit loop started', user_id=user_id)
     tick = 0
@@ -5802,6 +5834,7 @@ def start_brown_bot():
     if RISK_MANAGER_AVAILABLE:
         try:
             config = db_manager.get_brown_bot_config(user_id)
+            sess.config = config  # snapshot for use in entry/exit guards
             sess.risk_manager = RiskManager(config, user_id=user_id)
             _add_brown_log('info', f'RiskManager ready — max daily loss ${config.get("max_daily_loss", -500)}, '
                                    f'day limit {config.get("max_concurrent_day", 3)}, '
@@ -5817,6 +5850,7 @@ def start_brown_bot():
         saved = db_manager.get_brown_positions(user_id=user_id)
         restored, purged = 0, 0
 
+        restored_symbols: list = []
         with sess.lock:
             for pos in (saved or []):
                 pid = pos.get('position_id')
@@ -5836,12 +5870,16 @@ def start_brown_bot():
                 if sym:
                     sess.attempted_symbols.add(sym)
                     sess.entry_counts[sym] = sess.entry_counts.get(sym, 0) + 1
+                    restored_symbols.append(f'{sym} ({pos_type})')
                 restored += 1
 
         if purged:
             _add_brown_log('info', f'Purged {purged} stale day position(s) from previous session(s)', user_id=user_id)
         if restored:
-            _add_brown_log('info', f'Restored {restored} position(s) from DB — verifying with broker…', user_id=user_id)
+            _add_brown_log('info',
+                f'Restored {restored} position(s) from previous session — '
+                f'{", ".join(restored_symbols)} — verifying with broker…',
+                user_id=user_id)
 
         if sess.broker:
             try:

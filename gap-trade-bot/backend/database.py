@@ -374,6 +374,8 @@ class DatabaseManager:
                 ('swing_time_gate_enabled',     'INTEGER DEFAULT 0'),
                 ('swing_time_gate_start',       "TEXT DEFAULT '09:30'"),
                 ('swing_time_gate_end',         "TEXT DEFAULT '15:00'"),
+                # Re-entry cap: max times BrownBot may enter the same symbol per session
+                ('day_max_reentry',             'INTEGER DEFAULT 2'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -2893,6 +2895,7 @@ class DatabaseManager:
             'swing_min_market_cap_m': 200.0, 'swing_max_market_cap_m': 0.0,
             'swing_max_float_m': 0.0,
             # Swing entry signals
+            'day_max_reentry': 2,
             'swing_check_above_sma20': True, 'swing_check_ma_cross': True,
             'swing_check_rsi_range': False, 'swing_rsi_min': 40.0, 'swing_rsi_max': 70.0,
             'swing_check_rel_vol': False, 'swing_rel_vol_min': 1.2,
@@ -2954,6 +2957,7 @@ class DatabaseManager:
             'swing_check_rel_vol', 'swing_rel_vol_min',
             'swing_trailing_stop_enabled', 'swing_trailing_stop_pct',
             'swing_time_gate_enabled', 'swing_time_gate_start', 'swing_time_gate_end',
+            'day_max_reentry',
         ]
         try:
             with self.get_connection() as conn:

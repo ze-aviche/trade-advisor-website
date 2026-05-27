@@ -2232,11 +2232,20 @@
                             <!-- Position limit -->
                             <div class="border-t border-gray-700/60 pt-3">
                                 <span class="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Position Limit</span>
-                                <div>
-                                    <label class="block text-xs text-gray-400 mb-1">Max Open Positions</label>
-                                    <input v-model.number="brownBotConfig.max_concurrent_day" type="number" min="1" max="10"
-                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Max Open Positions</label>
+                                        <input v-model.number="brownBotConfig.max_concurrent_day" type="number" min="1" max="10"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-400 mb-1">Max Re-entries / Symbol</label>
+                                        <input v-model.number="brownBotConfig.day_max_reentry" type="number" min="1" max="10"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors"
+                                               title="Max times BrownBot may enter the same symbol per session. After this many exits, the symbol is locked out for the day.">
+                                    </div>
                                 </div>
+                                <p class="text-[10px] text-gray-600 mt-1.5">Re-entry cap: after N exits on the same stock it is blocked for the rest of the session regardless of scanner hits.</p>
                             </div>
                         </div>
 

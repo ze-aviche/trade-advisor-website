@@ -382,6 +382,7 @@ const app = createApp({
                 max_daily_loss: -500.0,
                 max_concurrent_day: 3,
                 max_concurrent_swing: 5,
+                day_max_reentry: 2,
                 min_gap_pct: 10.0,
                 min_price: 5.0,
                 max_price: 500.0,

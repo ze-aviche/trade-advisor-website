@@ -20,6 +20,21 @@ from pathlib import Path
 _debug_user_ids: set = set()
 _debug_lock = threading.Lock()
 
+# ── Thread-local user context (for background daemon threads) ──────────────────
+# Background threads (BrownBot scanner, exit loop, order monitor) have no Flask
+# request context, so UserContextFilter falls back to '-'.  Threads call
+# set_thread_user_id() at start so the filter picks up the real user_id.
+_thread_local = threading.local()
+
+
+def set_thread_user_id(user_id) -> None:
+    """Set the user_id for the current background thread's log records."""
+    _thread_local.user_id = str(user_id) if user_id is not None else '-'
+
+
+def clear_thread_user_id() -> None:
+    _thread_local.user_id = '-'
+
 
 def set_debug_user(user_id: int, enable: bool) -> None:
     """Enable or disable verbose debug logging for a specific user."""
@@ -43,19 +58,18 @@ def get_debug_users() -> list:
 class UserContextFilter(logging.Filter):
     """Inject user_id, ip, and endpoint into every log record.
 
-    Reads from Flask's g object when inside a request context.
-    Falls back to '-' in background threads and at startup.
+    Priority: Flask g (request threads) → thread-local (daemon threads) → '-'.
     """
     def filter(self, record):
         try:
             from flask import g, request as _req
-            record.user_id  = getattr(g, 'current_user_id', '-')
+            record.user_id  = getattr(g, 'current_user_id', None) or getattr(_thread_local, 'user_id', '-')
             record.ip       = _req.remote_addr or '-'
             record.endpoint = _req.endpoint or _req.path or '-'
         except RuntimeError:
-            record.user_id  = '-'
+            record.user_id  = getattr(_thread_local, 'user_id', '-')
             record.ip       = '-'
-            record.endpoint = '-'
+            record.endpoint = 'background'
         return True
 
 
