@@ -1008,10 +1008,11 @@ const app = createApp({
                 const map = {};
                 for (const t of (this.brownBotRiskStatus.pnl_by_ticker || [])) {
                     map[t.symbol] = {
-                        symbol: t.symbol,
-                        realized: t.realized_pnl || 0,
+                        symbol:     t.symbol,
+                        realized:   t.realized_pnl  || 0,
                         unrealized: t.unrealized_pnl || 0,
-                        trades: t.trades || 0,
+                        trades:     t.trades         || 0,
+                        shares:     t.shares         || 0,
                     };
                 }
                 // Override unrealized with live broker data where available
@@ -1019,7 +1020,7 @@ const app = createApp({
                     if (map[sym]) {
                         map[sym].unrealized = unr;
                     } else {
-                        map[sym] = { symbol: sym, realized: 0, unrealized: unr, trades: 0 };
+                        map[sym] = { symbol: sym, realized: 0, unrealized: unr, trades: 0, shares: 0 };
                     }
                 }
                 return Object.values(map).sort((a, b) => (b.realized + b.unrealized) - (a.realized + a.unrealized));

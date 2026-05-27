@@ -3645,7 +3645,8 @@ class DatabaseManager:
                                ROUND(SUM(realized_pnl), 2)                                      AS realized_pnl,
                                ROUND(SUM(CASE WHEN status IS NULL OR status = 'open'
                                               THEN unrealized_pnl ELSE 0 END), 2)               AS unrealized_pnl,
-                               COUNT(*)                                                          AS trades
+                               COUNT(*)                                                          AS trades,
+                               COALESCE(SUM(quantity), 0)                                        AS shares
                         FROM brown_positions
                         {where}
                         GROUP BY symbol

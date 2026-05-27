@@ -2937,8 +2937,8 @@
                                             {{ t.realized >= 0 ? '+' : '' }}${{ t.realized.toFixed(2) }}
                                         </td>
                                         <td class="px-4 py-2 text-right"
-                                            :class="t.unrealized >= 0 ? 'text-green-300' : 'text-red-300'">
-                                            {{ t.unrealized !== 0 ? (t.unrealized >= 0 ? '+' : '') + '$' + t.unrealized.toFixed(2) : '—' }}
+                                            :class="t.unrealized > 0 ? 'text-green-300' : t.unrealized < 0 ? 'text-red-300' : 'text-gray-500'">
+                                            {{ t.unrealized > 0 ? '+$' + t.unrealized.toFixed(2) : t.unrealized < 0 ? '-$' + Math.abs(t.unrealized).toFixed(2) : '$0.00' }}
                                         </td>
                                         <td class="px-4 py-2 text-right font-bold"
                                             :class="(t.realized + t.unrealized) >= 0 ? 'text-green-300' : 'text-red-300'">

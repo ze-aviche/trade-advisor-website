@@ -499,12 +499,15 @@ def _regime_compute() -> dict:
 
 
 def _regime_monitor_loop():
-    """Background daemon: recomputes market regime every 5 min (market hours) or 30 min (off-hours)."""
+    """Background daemon: recomputes market regime every 5 min during market hours only.
+    Outside 9:00–16:00 ET the last computed value is kept so AH/overnight breadth noise
+    (empty gap-up list) cannot flip a BULL day to NEUTRAL.
+    """
     global _market_regime
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     app_logger.info('[RegimeBot] Monitor loop started')
-    # Compute once immediately on startup so the UI badge appears regardless of time
+    # Compute once immediately on startup so the UI badge is populated on first load.
     try:
         _market_regime.update(_regime_compute())
         socketio.emit('regime_update', _market_regime)
@@ -514,7 +517,10 @@ def _regime_monitor_loop():
         try:
             now_et = datetime.now(_et)
             h = now_et.hour
-            if 6 <= h < 20:
+            # Only recompute during actual trading hours. After the close the gap-up list
+            # empties out, which would incorrectly drag the breadth score to -1 and flip
+            # a BULL day to NEUTRAL. Keeping the last value preserves the day's signal.
+            if 9 <= h < 16:
                 new_regime = _regime_compute()
                 prev_signal = _market_regime.get('signal', 'NEUTRAL')
                 _market_regime.update(new_regime)
@@ -526,7 +532,7 @@ def _regime_monitor_loop():
                         f"gap-ups={new_regime['gap_up_count']}, "
                         f"VIX={new_regime['vix_level']})"
                     )
-            # 5 min during market hours, 30 min outside
+            # 5 min during market hours, 30 min outside (keeps loop alive but skips compute)
             time.sleep(300 if 9 <= h < 16 else 1800)
         except Exception as _e:
             app_logger.error(f'[RegimeBot] Monitor loop error: {_e}', exc_info=True)
