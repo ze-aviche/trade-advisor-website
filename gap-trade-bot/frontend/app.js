@@ -6275,6 +6275,7 @@ const app = createApp({
                     await this.loadBrownBotStatus();
                     await this.fetchBrownBotLogs();
                     await this.loadBrownBotRiskStatus();
+                    this.loadCandidateSignals();
                     if (this.brownBotStatus.running) {
                         this.startSessionKeepalive();
                         await this.pingSessionOnce();
@@ -6500,6 +6501,13 @@ const app = createApp({
                     this.loadBrownBotSwingCandidates();
                 }
             }, 60000);
+            // Candle/VWAP/vol signals are based on 1-min bars — refresh every 60 s
+            // so the display stays in sync with the bar that the scanner sees.
+            this.brownSignalsInterval = setInterval(() => {
+                if (this.activeTab === 'brown-bot') {
+                    this.loadCandidateSignals();
+                }
+            }, 60000);
         },
 
         stopBrownBotPolling() {
@@ -6510,6 +6518,10 @@ const app = createApp({
             if (this.brownSwingCandInterval) {
                 clearInterval(this.brownSwingCandInterval);
                 this.brownSwingCandInterval = null;
+            }
+            if (this.brownSignalsInterval) {
+                clearInterval(this.brownSignalsInterval);
+                this.brownSignalsInterval = null;
             }
         },
 
