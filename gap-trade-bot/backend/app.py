@@ -6086,6 +6086,62 @@ def start_brown_bot():
     except Exception as _e:
         _add_brown_log('warning', f'Position restore from DB failed: {_e}', user_id=user_id)
 
+    # Restore today's trade history so entry_counts, symbol_session_pnl, and the
+    # re-entry cap are accurate after a mid-session restart.  Without this:
+    #   - entry_counts only reflects currently-open positions → cap bypassed
+    #   - symbol_session_pnl starts at {} → log messages show $0 session P&L
+    try:
+        with db_manager.get_connection() as _tc:
+            _today_rows = _tc.execute(
+                '''SELECT symbol, side, COALESCE(pnl, 0) AS pnl
+                   FROM trades
+                   WHERE trade_date = ? AND source = 'brownbot' AND user_id = ?
+                   ORDER BY trade_time ASC''',
+                (today_et, user_id)
+            ).fetchall()
+
+        if _today_rows:
+            _rebuilt_entry_counts: dict = {}
+            _rebuilt_session_pnl:  dict = {}
+            for _tr in _today_rows:
+                _sym  = (_tr['symbol'] or '').upper()
+                _side = (_tr['side']   or '').upper()
+                _pnl  = float(_tr['pnl'] or 0)
+                if not _sym:
+                    continue
+                if _side == 'B':
+                    _rebuilt_entry_counts[_sym] = _rebuilt_entry_counts.get(_sym, 0) + 1
+                elif _side in ('S', 'SS'):
+                    _rebuilt_session_pnl[_sym] = round(
+                        _rebuilt_session_pnl.get(_sym, 0.0) + _pnl, 2)
+
+            _max_reentry = int((sess.config or {}).get('day_max_reentry', 2))
+            _locked_syms: list = []
+            with sess.lock:
+                # Use trade history as source of truth; open-position counts
+                # from the restore loop are a lower bound — take the max.
+                for _sym, _cnt in _rebuilt_entry_counts.items():
+                    sess.entry_counts[_sym] = max(sess.entry_counts.get(_sym, 0), _cnt)
+                # Lock symbols that have hit or exceeded the re-entry cap.
+                for _sym, _cnt in sess.entry_counts.items():
+                    if _cnt >= _max_reentry:
+                        sess.attempted_symbols.add(_sym)
+                        _locked_syms.append(_sym)
+                # Restore per-symbol session P&L for activity log messages.
+                sess.symbol_session_pnl = _rebuilt_session_pnl
+
+            _total_rpnl = sum(_rebuilt_session_pnl.values())
+            _msg_parts  = [f'{len(_rebuilt_entry_counts)} symbol(s) traded today']
+            if _locked_syms:
+                _msg_parts.append(f're-entry cap locks: {", ".join(sorted(_locked_syms))}')
+            if _rebuilt_session_pnl:
+                _msg_parts.append(f'realized P&L ${_total_rpnl:+.2f}')
+            _add_brown_log('info',
+                f'Trade history restored — {"; ".join(_msg_parts)}',
+                user_id=user_id)
+    except Exception as _the:
+        app_logger.warning(f'[BrownBot start] Trade history restore failed: {_the}')
+
     sess.running = True
     sess.scanner_thread = threading.Thread(
         target=_brown_bot_scanner_loop, args=(user_id,), daemon=True, name=f'BrownBotScanner-{user_id}'

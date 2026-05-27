@@ -6274,6 +6274,7 @@ const app = createApp({
                 if (response.data.success) {
                     await this.loadBrownBotStatus();
                     await this.fetchBrownBotLogs();
+                    await this.loadBrownBotRiskStatus();
                     if (this.brownBotStatus.running) {
                         this.startSessionKeepalive();
                         await this.pingSessionOnce();
