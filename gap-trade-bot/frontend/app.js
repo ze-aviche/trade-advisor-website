@@ -4650,12 +4650,27 @@ const app = createApp({
             }
         },
 
-        // Format trade execution time from a trade_time field (ISO string or HH:MM:SS)
+        // Format trade execution time from a trade_time field (ISO UTC string) → ET display
         formatTradeTime(tradeTime) {
             if (!tradeTime) return '';
             try {
-                const s = tradeTime.includes('T') ? tradeTime.split('T')[1] : tradeTime;
-                return s.substring(0, 8); // HH:MM:SS
+                let iso = tradeTime.trim();
+                // trade_time is datetime.now().isoformat() from the server (UTC, no Z marker).
+                // Without the Z, JS Date parses as local time — append it to force UTC.
+                if (iso.includes('T') && !iso.endsWith('Z') && !/[+\-]\d{2}:?\d{2}$/.test(iso)) {
+                    iso += 'Z';
+                }
+                if (!iso.includes('T')) {
+                    // Bare HH:MM:SS — no date context, can't convert; show as-is
+                    return iso.substring(0, 8);
+                }
+                return new Date(iso).toLocaleTimeString('en-US', {
+                    timeZone: 'America/New_York',
+                    hour:   '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                }) + ' ET';
             } catch (e) {
                 return '';
             }
