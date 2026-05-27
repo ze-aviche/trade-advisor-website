@@ -132,11 +132,15 @@ def check_market_timing():
     else:
         return "closed"
 
-# Ticker suffixes that reliably indicate non-common-stock instruments
-_NON_CS_SUFFIXES = ('W', 'WS', 'R', 'U', 'Z')
+# Ticker suffixes that reliably indicate non-common-stock instruments (dotless form)
+_NON_CS_SUFFIXES = ('W', 'WS', 'R', 'RT', 'U', 'Z')
 
 def _ticker_looks_non_cs(ticker):
-    t = ticker.upper().replace('.', '')
+    # Any dot in the symbol means rights (.RT), class shares (.A/.B/.C), units (.U), etc.
+    # Alpaca uses dot notation for these — yfinance does not recognise them.
+    if '.' in ticker:
+        return True
+    t = ticker.upper()
     return any(t.endswith(s) for s in _NON_CS_SUFFIXES)
 
 
@@ -759,6 +763,8 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
         return
 
     def _fetch(ticker: str):
+        if '.' in ticker or _ticker_looks_non_cs(ticker):
+            return ticker, None  # rights, class shares, warrants — yfinance won't find them
         try:
             info = yf.Ticker(ticker).info
             if not info or not isinstance(info, dict):

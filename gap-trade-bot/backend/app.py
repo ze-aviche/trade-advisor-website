@@ -9226,6 +9226,9 @@ def update_real_time_gap_ups():
 _swing_cache: dict = {}
 _SWING_TTL = 2 * 3600  # 2-hour TTL — intraday technicals change often
 
+_swing_fundamentals_cache: dict = {}
+_SWING_FUNDAMENTALS_TTL = 6 * 3600  # 6 hours — fundamentals change slowly
+
 _daily_picks_cache: dict = {}  # keyed by YYYY-MM-DD, one entry per trading day
 
 
@@ -10089,6 +10092,89 @@ def swing_technicals(ticker):
 
     except Exception as exc:
         app_logger.error(f"swing-technicals error for {ticker}: {exc}")
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/swing-fundamentals/<ticker>')
+def swing_fundamentals(ticker):
+    """Return key fundamental data for a ticker via yfinance. 6-hour cache."""
+    ticker = ticker.upper().strip()
+    cached = _cache_get(_swing_fundamentals_cache, ticker, _SWING_FUNDAMENTALS_TTL)
+    if cached:
+        return jsonify(cached)
+
+    try:
+        import yfinance as yf
+
+        info = yf.Ticker(ticker).info
+
+        def _fmt_m(v):
+            """Return value in millions, rounded to 1 dp, or None."""
+            return round(v / 1_000_000, 1) if v else None
+
+        def _fmt_b(v):
+            """Return value in billions, rounded to 2 dp, or None."""
+            return round(v / 1_000_000_000, 2) if v else None
+
+        def _pct(v):
+            return round(v * 100, 2) if v is not None else None
+
+        mktcap      = info.get('marketCap')
+        float_sh    = info.get('floatShares')
+        shares_out  = info.get('sharesOutstanding')
+        inst_pct    = info.get('heldPercentInstitutions')
+        insider_pct = info.get('heldPercentInsiders')
+        short_pct   = info.get('shortPercentOfFloat')
+        short_ratio = info.get('shortRatio')          # days-to-cover
+        beta        = info.get('beta')
+        pe_ttm      = info.get('trailingPE')
+        pe_fwd      = info.get('forwardPE')
+        eps_ttm     = info.get('trailingEps')
+        div_yield   = info.get('dividendYield')
+        week52_hi   = info.get('fiftyTwoWeekHigh')
+        week52_lo   = info.get('fiftyTwoWeekLow')
+        avg_vol_30  = info.get('averageVolume')
+        avg_vol_10  = info.get('averageDailyVolume10Day')
+        sector      = info.get('sector')
+        industry    = info.get('industry')
+        employees   = info.get('fullTimeEmployees')
+        country     = info.get('country')
+        exchange    = info.get('exchange')
+        currency    = info.get('currency', 'USD')
+        name        = info.get('longName') or info.get('shortName')
+
+        result = {
+            'success': True,
+            'ticker': ticker,
+            'name': name,
+            'exchange': exchange,
+            'currency': currency,
+            'sector': sector,
+            'industry': industry,
+            'country': country,
+            'employees': employees,
+            'market_cap_b': _fmt_b(mktcap),
+            'float_m': _fmt_m(float_sh),
+            'shares_out_m': _fmt_m(shares_out),
+            'inst_pct': _pct(inst_pct),
+            'insider_pct': _pct(insider_pct),
+            'short_pct': _pct(short_pct),
+            'short_ratio': round(short_ratio, 1) if short_ratio else None,
+            'beta': round(beta, 2) if beta else None,
+            'pe_ttm': round(pe_ttm, 1) if pe_ttm else None,
+            'pe_fwd': round(pe_fwd, 1) if pe_fwd else None,
+            'eps_ttm': round(eps_ttm, 2) if eps_ttm else None,
+            'div_yield_pct': _pct(div_yield),
+            'week52_hi': round(week52_hi, 2) if week52_hi else None,
+            'week52_lo': round(week52_lo, 2) if week52_lo else None,
+            'avg_vol_30_m': _fmt_m(avg_vol_30),
+            'avg_vol_10_m': _fmt_m(avg_vol_10),
+        }
+        _cache_set(_swing_fundamentals_cache, ticker, result)
+        return jsonify(result)
+
+    except Exception as exc:
+        app_logger.warning(f'swing-fundamentals {ticker}: {exc}')
         return jsonify({'success': False, 'error': str(exc)}), 500
 
 

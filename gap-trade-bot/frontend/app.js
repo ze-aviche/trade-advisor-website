@@ -83,6 +83,7 @@ const app = createApp({
                     swingTechnicals: false,
                     swingRecommendation: false,
                     swingNews: false,
+                    swingFundamentals: false,
                     swingDailyPicks: false,
                     swingBacktest: false,
                     // BrownBot loading states
@@ -265,11 +266,10 @@ const app = createApp({
                 swingSectorPerf: null,
                 swingRecommendation: null,
                 swingNews: null,
+                swingFundamentals: null,
                 swingTechnicalsCached: false,
                 swingDailyPicks: null,
                 swingDailyPicksDate: null,
-                swingSourceExpanded: null,
-                
                 // Trade History
                 tradeHistoryTicker: '',
                 tradeHistoryStartDate: '',
@@ -5362,6 +5362,7 @@ const app = createApp({
             this.swingSectorPerf = null;
             this.swingRecommendation = null;
             this.swingNews = null;
+            this.swingFundamentals = null;
             this.swingTechnicalsCached = false;
             this.loading.swingTechnicals = true;
             try {
@@ -5372,7 +5373,8 @@ const app = createApp({
                 this.swingSectorInfo = data.sector_info;
                 this.swingSectorPerf = data.sector_perf;
                 this.swingTechnicalsCached = !!data.cached;
-                // Also load news
+                // Fire fundamentals and news in parallel — neither blocks the technicals display
+                this.loadSwingFundamentals(ticker);
                 this.loadSwingNews(ticker);
             } catch (e) {
                 this.showNotification(`Swing data error: ${e.message}`, 'error');
@@ -5391,6 +5393,18 @@ const app = createApp({
                 if (data.success) this.swingNews = data;
             } catch (e) { /* silent */ }
             finally { this.loading.swingNews = false; }
+        },
+
+        async loadSwingFundamentals(ticker) {
+            ticker = (ticker || this.swingTicker).trim().toUpperCase();
+            if (!ticker) return;
+            this.loading.swingFundamentals = true;
+            try {
+                const res  = await fetch(`/api/swing-fundamentals/${ticker}`);
+                const data = await res.json();
+                if (data.success) this.swingFundamentals = data;
+            } catch (e) { /* silent — fundamentals are supplementary */ }
+            finally { this.loading.swingFundamentals = false; }
         },
 
         async loadSwingRecommendation() {
@@ -5561,6 +5575,7 @@ const app = createApp({
             this.swingTechnicals = null;
             this.swingRecommendation = null;
             this.swingNews = null;
+            this.swingFundamentals = null;
             this.loadSwingData();
         },
 

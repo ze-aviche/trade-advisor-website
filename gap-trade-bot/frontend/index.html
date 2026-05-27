@@ -1574,62 +1574,11 @@
                                 {{ swingDailyPicks.date }}
                                 <span v-if="swingDailyPicks.is_today === false" class="ml-1 bg-amber-900/40 text-amber-300 border border-amber-700/40 px-1.5 py-0.5 rounded text-[10px] font-medium">prev session</span>
                             </span>
-                            <template v-if="swingDailyPicks?.source_counts">
-                                <button @click="swingSourceExpanded = swingSourceExpanded === 'movers' ? null : 'movers'"
-                                        :class="swingSourceExpanded === 'movers' ? 'bg-orange-800/50 border-orange-600/60' : 'bg-orange-900/30 border-orange-800/30'"
-                                        class="text-xs px-2 py-0.5 rounded text-orange-300/80 border transition-colors cursor-pointer">
-                                    <i class="fas fa-chart-bar mr-1 text-[10px]"></i>{{ swingDailyPicks.source_counts.movers }} movers
-                                    <i :class="swingSourceExpanded === 'movers' ? 'fa-chevron-up' : 'fa-chevron-down'" class="fas text-[9px] ml-1 opacity-60"></i>
-                                </button>
-                                <button @click="swingSourceExpanded = swingSourceExpanded === 'gap_ups' ? null : 'gap_ups'"
-                                        :class="swingSourceExpanded === 'gap_ups' ? 'bg-green-800/50 border-green-600/60' : 'bg-green-900/30 border-green-800/30'"
-                                        class="text-xs px-2 py-0.5 rounded text-green-300/80 border transition-colors cursor-pointer">
-                                    <i class="fas fa-arrow-up mr-1 text-[10px]"></i>{{ swingDailyPicks.source_counts.gap_ups }} gap-ups
-                                    <i :class="swingSourceExpanded === 'gap_ups' ? 'fa-chevron-up' : 'fa-chevron-down'" class="fas text-[9px] ml-1 opacity-60"></i>
-                                </button>
-                                <button @click="swingSourceExpanded = swingSourceExpanded === 'vol_surge' ? null : 'vol_surge'"
-                                        :class="swingSourceExpanded === 'vol_surge' ? 'bg-blue-800/50 border-blue-600/60' : 'bg-blue-900/30 border-blue-800/30'"
-                                        class="text-xs px-2 py-0.5 rounded text-blue-300/80 border transition-colors cursor-pointer">
-                                    <i class="fas fa-water mr-1 text-[10px]"></i>{{ swingDailyPicks.source_counts.vol_surge }} vol-surge
-                                    <i :class="swingSourceExpanded === 'vol_surge' ? 'fa-chevron-up' : 'fa-chevron-down'" class="fas text-[9px] ml-1 opacity-60"></i>
-                                </button>
-                            </template>
                         </div>
                         <button @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
                             title="Refresh" class="text-xs text-gray-400 hover:text-white flex items-center gap-1 disabled:opacity-40 transition-colors">
                             <i :class="loading.swingDailyPicks ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-right'" class="text-[11px]"></i>
                         </button>
-                    </div>
-
-                    <!-- Expandable ticker list for each source -->
-                    <div v-if="swingSourceExpanded && swingDailyPicks?.sources_tickers"
-                         class="px-5 py-3 bg-gray-900/50 border-b border-gray-700">
-                        <div class="flex flex-wrap gap-1.5">
-                            <template v-if="swingSourceExpanded === 'movers'">
-                                <span class="text-xs text-gray-500 mr-1 self-center">Top movers:</span>
-                                <button v-for="t in swingDailyPicks.sources_tickers.movers" :key="t"
-                                        @click="selectSwingPick(t)"
-                                        class="font-mono text-xs px-2 py-0.5 rounded bg-orange-900/20 text-orange-300 border border-orange-800/40 hover:bg-orange-800/40 transition-colors">
-                                    {{ t }}
-                                </button>
-                            </template>
-                            <template v-if="swingSourceExpanded === 'gap_ups'">
-                                <span class="text-xs text-gray-500 mr-1 self-center">Gap-up stocks:</span>
-                                <button v-for="t in swingDailyPicks.sources_tickers.gap_ups" :key="t"
-                                        @click="selectSwingPick(t)"
-                                        class="font-mono text-xs px-2 py-0.5 rounded bg-green-900/20 text-green-300 border border-green-800/40 hover:bg-green-800/40 transition-colors">
-                                    {{ t }}
-                                </button>
-                            </template>
-                            <template v-if="swingSourceExpanded === 'vol_surge'">
-                                <span class="text-xs text-gray-500 mr-1 self-center">Volume surge:</span>
-                                <button v-for="t in swingDailyPicks.sources_tickers.vol_surge" :key="t"
-                                        @click="selectSwingPick(t)"
-                                        class="font-mono text-xs px-2 py-0.5 rounded bg-blue-900/20 text-blue-300 border border-blue-800/40 hover:bg-blue-800/40 transition-colors">
-                                    {{ t }}
-                                </button>
-                            </template>
-                        </div>
                     </div>
 
                     <!-- Loading -->
@@ -1675,12 +1624,6 @@
                                     <span class="font-bold text-white text-base group-hover:text-blue-400 transition-colors font-mono">
                                         {{ pick.ticker }}
                                     </span>
-                                    <span v-if="pick.source === 'gainer' || pick.source === 'loser'"
-                                          class="text-[10px] px-1.5 py-0.5 rounded bg-orange-900/40 text-orange-300/80 border border-orange-800/40">mover</span>
-                                    <span v-else-if="pick.source === 'gap-up'"
-                                          class="text-[10px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-300/80 border border-green-800/40">gap-up</span>
-                                    <span v-else-if="pick.source === 'vol-surge'"
-                                          class="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300/80 border border-blue-800/40">vol-surge</span>
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <span :class="swingBiasColor(pick.bias)" class="text-xs font-medium">{{ pick.bias }}</span>
@@ -1802,6 +1745,94 @@
                         <span class="ml-auto text-gray-500 text-xs">
                             Trend: <span class="text-gray-300">{{ swingSectorPerf?.trend || '—' }}</span>
                         </span>
+                    </div>
+
+                    <!-- ── Fundamentals pill ──────────────────────────────────── -->
+                    <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-700/60">
+                            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fas fa-building-columns text-indigo-400"></i> Fundamentals
+                            </span>
+                            <span v-if="loading.swingFundamentals" class="text-xs text-gray-500 flex items-center gap-1">
+                                <i class="fas fa-circle-notch fa-spin text-indigo-400"></i> loading…
+                            </span>
+                            <span v-else-if="swingFundamentals?.name" class="text-xs text-gray-500 truncate max-w-[200px]">{{ swingFundamentals.name }}</span>
+                        </div>
+                        <div v-if="swingFundamentals && !loading.swingFundamentals" class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <tbody>
+                                    <!-- Row 1: Valuation -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap w-1/4">Market Cap</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.market_cap_b != null ? swingFundamentals.market_cap_b + 'B' : '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap w-1/4">Float</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.float_m != null ? swingFundamentals.float_m + 'M' : '—' }}</td>
+                                    </tr>
+                                    <!-- Row 2: Shares & Institutional -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Shares Out</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.shares_out_m != null ? swingFundamentals.shares_out_m + 'M' : '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Inst. Own</td>
+                                        <td class="px-4 py-2.5 font-mono"
+                                            :class="swingFundamentals.inst_pct != null ? (swingFundamentals.inst_pct > 70 ? 'text-green-400' : swingFundamentals.inst_pct > 40 ? 'text-yellow-300' : 'text-gray-300') : 'text-gray-500'">
+                                            {{ swingFundamentals.inst_pct != null ? swingFundamentals.inst_pct + '%' : '—' }}
+                                        </td>
+                                    </tr>
+                                    <!-- Row 3: Short interest -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Short % Float</td>
+                                        <td class="px-4 py-2.5 font-mono"
+                                            :class="swingFundamentals.short_pct != null ? (swingFundamentals.short_pct > 20 ? 'text-red-400' : swingFundamentals.short_pct > 10 ? 'text-orange-400' : 'text-gray-300') : 'text-gray-500'">
+                                            {{ swingFundamentals.short_pct != null ? swingFundamentals.short_pct + '%' : '—' }}
+                                        </td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Days to Cover</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.short_ratio != null ? swingFundamentals.short_ratio + 'd' : '—' }}</td>
+                                    </tr>
+                                    <!-- Row 4: Valuation ratios -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">P/E (TTM)</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.pe_ttm ?? '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Fwd P/E</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.pe_fwd ?? '—' }}</td>
+                                    </tr>
+                                    <!-- Row 5: EPS / Beta -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">EPS (TTM)</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.eps_ttm != null ? '$' + swingFundamentals.eps_ttm : '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Beta</td>
+                                        <td class="px-4 py-2.5 font-mono"
+                                            :class="swingFundamentals.beta != null ? (swingFundamentals.beta > 1.5 ? 'text-orange-400' : swingFundamentals.beta < 0.5 ? 'text-blue-400' : 'text-gray-300') : 'text-gray-500'">
+                                            {{ swingFundamentals.beta ?? '—' }}
+                                        </td>
+                                    </tr>
+                                    <!-- Row 6: 52-week range -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">52W High</td>
+                                        <td class="px-4 py-2.5 font-mono text-green-400">{{ swingFundamentals.week52_hi != null ? '$' + swingFundamentals.week52_hi : '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">52W Low</td>
+                                        <td class="px-4 py-2.5 font-mono text-red-400">{{ swingFundamentals.week52_lo != null ? '$' + swingFundamentals.week52_lo : '—' }}</td>
+                                    </tr>
+                                    <!-- Row 7: Volume & Insider -->
+                                    <tr class="border-b border-gray-700/40">
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Avg Vol 30d</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.avg_vol_30_m != null ? swingFundamentals.avg_vol_30_m + 'M' : '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Insider Own</td>
+                                        <td class="px-4 py-2.5 font-mono text-white">{{ swingFundamentals.insider_pct != null ? swingFundamentals.insider_pct + '%' : '—' }}</td>
+                                    </tr>
+                                    <!-- Row 8: Sector / Industry -->
+                                    <tr>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Sector</td>
+                                        <td class="px-4 py-2.5 text-gray-300">{{ swingFundamentals.sector || '—' }}</td>
+                                        <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">Industry</td>
+                                        <td class="px-4 py-2.5 text-gray-300">{{ swingFundamentals.industry || '—' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Skeleton while loading -->
+                        <div v-else-if="loading.swingFundamentals" class="px-4 py-4 grid grid-cols-4 gap-2 animate-pulse">
+                            <div v-for="i in 8" :key="i" class="h-3 bg-gray-700 rounded"></div>
+                        </div>
                     </div>
 
                     <!-- ── Active signals chips ────────────────────────────────── -->
