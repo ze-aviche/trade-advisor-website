@@ -337,6 +337,7 @@ class BrownSession:
         'scanner_thread', 'exit_thread', 'order_monitor_thread',
         'swing_candidates_cache', 'swing_ai_picks_cache',
         'playbook_cache', 'playbook_pending', 'playbook_failed',
+        'circuit_breaker_triggered',
     ]
 
     def __init__(self, user_id: int):
@@ -364,6 +365,7 @@ class BrownSession:
         self.playbook_cache:   dict = {}
         self.playbook_pending: set  = set()
         self.playbook_failed:  set  = set()
+        self.circuit_breaker_triggered: bool = False
 
 
 _brown_sessions: dict = {}           # user_id (int) -> BrownSession
@@ -3343,7 +3345,7 @@ def update_swing_bot_config():
 # Per-symbol bar cache: (symbol.upper()) → {'bars': [...], 'cached_at': float}
 # TTL = 55 s (one scan cycle) so the same bars aren't re-fetched every 30 s.
 _intraday_bars_cache: dict = {}
-_INTRADAY_BARS_TTL = 55
+_INTRADAY_BARS_TTL = 25  # seconds — scanner runs every 30 s, so bars refresh each cycle
 
 
 def _get_intraday_bars(symbol):
@@ -3409,6 +3411,11 @@ def _get_intraday_bars(symbol):
                 if resp.status_code == 403:
                     app_logger.debug(f'Alpaca bars {sym_up}: {feed} feed not on plan, trying next feed')
                     continue
+                if resp.status_code == 429:
+                    # Rate limited — brief backoff then try IEX (separate quota bucket)
+                    app_logger.debug(f'Alpaca bars {sym_up} ({feed}): 429 rate limit, trying next feed')
+                    time.sleep(0.25)
+                    continue
                 if resp.status_code != 200:
                     app_logger.warning(f'Alpaca bars {sym_up} ({feed}): HTTP {resp.status_code} — {resp.text[:200]}')
                     break
@@ -3421,6 +3428,13 @@ def _get_intraday_bars(symbol):
                     break
                 # Empty on this feed — try next (SIP can lag at session open)
                 app_logger.debug(f'Alpaca bars {sym_up} ({feed}): empty response, trying next feed')
+            except _req.exceptions.SSLError as _ssl_e:
+                # Transient SSL EOF — try next feed rather than aborting entirely
+                app_logger.debug(f'Alpaca bars {sym_up} ({feed}): SSL error, trying next feed — {_ssl_e}')
+                continue
+            except _req.exceptions.Timeout:
+                app_logger.debug(f'Alpaca bars {sym_up} ({feed}): timeout, trying next feed')
+                continue
             except Exception as e:
                 app_logger.warning(f'Alpaca intraday bars {sym_up} ({feed}): {e}')
                 break
@@ -4431,6 +4445,9 @@ def _brown_bot_scan_and_enter(user_id: int):
     sess = _get_brown_session(user_id)
     if not sess or not sess.running:
         return
+    if sess.circuit_breaker_triggered:
+        _brown_debug(user_id, 'Circuit breaker active — skipping entry scan')
+        return
     risk_manager      = sess.risk_manager
     active_positions  = sess.active_positions
     attempted_symbols = sess.attempted_symbols
@@ -4775,6 +4792,130 @@ def _brown_bot_scan_and_enter(user_id: int):
         with sess.lock:
             active_symbols.add(symbol)
             active_copy = dict(active_positions)
+
+
+def _brown_trigger_circuit_breaker(user_id: int, risk_status: dict):
+    """Close all open BrownBot positions and lock out new entries for the session.
+
+    Called automatically when total P&L (realized + unrealized) crosses max_daily_loss.
+    Sets sess.circuit_breaker_triggered so the scanner skips all future entries.
+    """
+    sess = _get_brown_session(user_id)
+    if not sess:
+        return
+    if sess.circuit_breaker_triggered:
+        return  # already triggered — don't fire twice
+
+    sess.circuit_breaker_triggered = True
+
+    total_pnl  = risk_status.get('daily_pnl', 0)
+    max_loss   = risk_status.get('max_daily_loss', 0)
+    realized   = risk_status.get('realized_pnl', 0)
+    unrealized = risk_status.get('unrealized_pnl', 0)
+
+    _add_brown_log('error',
+        f'CIRCUIT BREAKER TRIGGERED — total P&L ${total_pnl:.2f} '
+        f'(realized ${realized:.2f} + unrealized ${unrealized:.2f}) '
+        f'hit limit ${max_loss:.2f} — closing all positions and halting new entries',
+        user_id=user_id)
+    app_logger.error(
+        f'[BrownBot] Circuit breaker triggered for user {user_id}: '
+        f'total P&L ${total_pnl:.2f} <= limit ${max_loss:.2f}')
+
+    # ── Close all open positions via broker bulk close ──────────────────────
+    broker = sess.broker or _get_broker(user_id)
+    if not broker:
+        _add_brown_log('error', 'Circuit breaker: no broker available — positions NOT closed', user_id=user_id)
+        return
+
+    try:
+        closed = broker.close_all_positions()
+    except Exception as _e:
+        _add_brown_log('error', f'Circuit breaker: broker close-all failed: {_e}', user_id=user_id)
+        return
+
+    closed_symbols = [c['symbol'] for c in closed]
+    closeall_order_map = {c['symbol']: c.get('order_id') for c in closed}
+
+    _add_brown_log('warning',
+        f'Circuit breaker: {len(closed)} close order(s) submitted — '
+        f'{", ".join(closed_symbols) or "none"}',
+        user_id=user_id)
+
+    # Write exit records for every non-pending position
+    now_str    = datetime.now().isoformat()
+    _trade_date = _last_trading_date()
+    with sess.lock:
+        _snapshot = {pid: pos for pid, pos in sess.active_positions.items()
+                     if not pos.get('_exit_pending')}
+
+    for pid, pos in _snapshot.items():
+        sym        = pos.get('symbol', '').upper()
+        exit_price = float(pos.get('_current_price') or pos.get('entry_price', 0))
+        avg_entry  = float(pos.get('avg_entry_price') or pos.get('entry_price', 0))
+        quantity   = int(pos.get('quantity', 0))
+        pos_type   = pos.get('position_type', 'day')
+        order_id   = closeall_order_map.get(sym)
+        realized_p = round((exit_price - avg_entry) * quantity, 2) if avg_entry else round(pos.get('unrealized_pnl', 0), 2)
+        realized_pct = round((exit_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+
+        if order_id:
+            try:
+                db_manager.add_brown_order({
+                    'order_id':        str(order_id),
+                    'position_id':     pid,
+                    'symbol':          sym,
+                    'side':            'S',
+                    'order_type':      'exit',
+                    'position_type':   pos_type,
+                    'submitted_qty':   quantity,
+                    'submitted_price': exit_price,
+                    'status':          'pending',
+                    'exit_reason':     'CIRCUIT_BREAKER',
+                    'submitted_at':    now_str,
+                    'trade_date':      _trade_date,
+                }, user_id=user_id)
+            except Exception:
+                pass
+
+        try:
+            db_manager.add_trade({
+                'trade_id':      f'BROWN_CB_{sym}_{int(time.time())}',
+                'symbol':        sym,
+                'side':          'S',
+                'quantity':      quantity,
+                'price':         exit_price,
+                'route':         'SMAT',
+                'trade_time':    now_str,
+                'order_id':      order_id,
+                'liquidity':     None,
+                'ecn_fee':       0.0,
+                'pnl':           realized_p,
+                'trade_date':    _trade_date,
+                'position_type': pos_type,
+                'days_held':     None,
+                'source':        'brownbot',
+                'broker':        broker.name if broker else None,
+                'user_id':       user_id,
+            })
+        except Exception as _e:
+            app_logger.debug(f'[CB] DB trade write failed for {sym}: {_e}')
+
+        try:
+            db_manager.close_brown_position(
+                pid, exit_price, order_id, 'CIRCUIT_BREAKER',
+                realized_p, realized_pct, now_str)
+        except Exception as _e:
+            app_logger.debug(f'[CB] DB position close failed for {sym}: {_e}')
+
+    with sess.lock:
+        for pos in sess.active_positions.values():
+            pos['_exit_pending'] = True
+
+    _add_brown_log('error',
+        f'Circuit breaker: all positions marked for exit — '
+        f'no new entries will be placed this session',
+        user_id=user_id)
 
 
 def _brown_bot_scanner_loop(user_id: int):
@@ -5391,6 +5532,23 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
     _active_symbols = [p['symbol'] for p in positions_snapshot.values()
                        if not p.get('_exit_pending')]
     _price_cache = _brown_get_prices_batch(user_id, _active_symbols) if _active_symbols else {}
+
+    # Broker position fallback: Alpaca marks every held position with current_price
+    # even for OTC / pink-sheet stocks that have no snapshot or IEX quote data.
+    # Without this, stop/target checks are silently skipped for those symbols.
+    _missing_syms = [s for s in _active_symbols if s not in _price_cache]
+    if _missing_syms and sess.broker:
+        try:
+            for _bp in sess.broker.get_positions():
+                _bsym = (_bp.symbol or '').upper()
+                if _bsym in _missing_syms and _bp.current_price:
+                    _price_cache[_bsym] = float(_bp.current_price)
+                    app_logger.debug(
+                        f'[BrownBot] {_bsym}: price from broker position '
+                        f'(snapshot unavailable) ${_bp.current_price:.4f}')
+        except Exception as _pfe:
+            app_logger.debug(f'[BrownBot] broker position price fallback failed: {_pfe}')
+
     if _active_symbols and verbose:
         app_logger.info(
             f'[BrownBot exits] monitoring {len(_active_symbols)} position(s): '
@@ -5534,6 +5692,13 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
         # ── Exit condition checks ──
         exit_reason = None
 
+        _stop_val   = stop_loss   if stop_loss   else '—'
+        _target_val = profit_target if profit_target else '—'
+        _brown_debug(user_id,
+            f'{symbol}: price=${current_price:.4f} stop={_stop_val} target={_target_val} '
+            f'→ stop_hit={bool(stop_loss and current_price <= stop_loss)} '
+            f'target_hit={bool(profit_target and current_price >= profit_target)}')
+
         if profit_target and current_price >= profit_target:
             exit_reason = 'PROFIT_TARGET'
         elif stop_loss and current_price <= stop_loss:
@@ -5557,6 +5722,23 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
         if exit_reason:
             position_with_price = {**position, '_current_price': current_price}
             _brown_close_position(user_id, position_id, position_with_price, exit_reason)
+
+    # ── Circuit breaker check ──────────────────────────────────────────────
+    # After every exit tick, re-evaluate total P&L with the freshest unrealized
+    # values. If the limit is crossed and the breaker hasn't fired yet, trigger it.
+    if not sess.circuit_breaker_triggered and sess.risk_manager:
+        try:
+            with lock:
+                _unrealized_total = sum(
+                    p.get('unrealized_pnl', 0) for p in active_positions.values()
+                    if not p.get('_exit_pending')
+                )
+                _active_snap = dict(active_positions)
+            _rs = sess.risk_manager.status(_active_snap, unrealized_pnl=_unrealized_total)
+            if _rs.get('circuit_breaker_open'):
+                _brown_trigger_circuit_breaker(user_id, _rs)
+        except Exception as _cbe:
+            app_logger.debug(f'[BrownBot] Circuit breaker check failed: {_cbe}')
 
 
 def _brown_bot_exit_loop(user_id: int):
@@ -6460,6 +6642,11 @@ def get_brown_bot_risk_status():
             'max_concurrent_swing': int(config.get('max_concurrent_swing', 5)),
             'circuit_breaker_open': total_pnl <= max_loss,
         }
+    # Surface whether the circuit breaker has already been triggered this session
+    snapshot['circuit_breaker_triggered'] = bool(
+        sess.circuit_breaker_triggered if sess else False
+    )
+
     # Per-ticker P&L breakdown for today
     try:
         _today = _last_trading_date()
@@ -7014,7 +7201,7 @@ def get_brown_bot_candidate_signals():
     results = {}
     for i, sym in enumerate(symbols):
         if i > 0:
-            time.sleep(0.15)  # 150 ms between intraday-bar fetches to stay under rate limit
+            time.sleep(0.05)  # 50 ms between bar fetches — Algo Trader Plus, no hard cap
         try:
             price = float((batch_prices.get(sym) or {}).get('price') or 0.0)
             if not price:

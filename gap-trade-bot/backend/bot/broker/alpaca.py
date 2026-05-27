@@ -21,11 +21,11 @@ from .base import (
 logger = get_logger(__name__)
 
 # Rate limiter for Alpaca data API calls (snapshot, latest trade).
-# historical_data.py has its own throttle at ~3 req/s; this caps the broker's
-# data calls at 1 req/2 s so both modules combined stay under the 200 req/min limit.
+# Algo Trader Plus tier — no meaningful data rate cap. 100 ms floor prevents
+# accidental burst from concurrent callers while keeping latency negligible.
 _data_rate_lock  = threading.Lock()
 _data_last_call  = 0.0
-_DATA_MIN_INTERVAL = 2.0  # seconds between broker data API calls
+_DATA_MIN_INTERVAL = 0.1  # seconds between broker data API calls (10 req/s)
 
 
 def _data_throttle():
@@ -395,8 +395,8 @@ class AlpacaBroker(BrokerBase):
             err = str(e)
             if 'too many requests' in err.lower():
                 # Back off and retry once before giving up
-                logger.warning(f'get_quotes_batch: 429 — backing off 5 s then retrying')
-                time.sleep(5)
+                logger.warning(f'get_quotes_batch: 429 — backing off 1 s then retrying')
+                time.sleep(1)
                 try:
                     from alpaca.data.requests import StockSnapshotRequest
                     snap_req = StockSnapshotRequest(symbol_or_symbols=syms)

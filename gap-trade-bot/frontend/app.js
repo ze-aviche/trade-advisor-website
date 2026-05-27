@@ -464,6 +464,7 @@ const app = createApp({
                 open_swing: 0,
                 max_concurrent_swing: 5,
                 circuit_breaker_open: false,
+                circuit_breaker_triggered: false,
             },
             brownBotConfigCollapsed: false,
             brownBotOrdersCollapsed: false,
@@ -6401,14 +6402,21 @@ const app = createApp({
             if (!tickers.length) return;
             try {
                 this.loading.brownBotSignals = true;
-                // Reset so stale data doesn't linger for symbols no longer in list
-                this.brownBotSignals = Object.fromEntries(tickers.map(t => [t, { loading: true }]));
+                // Keep existing signal values visible during refresh — no per-row spinner reset.
+                // Only the button icon changes to indicate a background fetch is in progress.
                 const response = await axios.get(
                     `/api/brown-bot/candidate-signals?symbols=${tickers.join(',')}`,
                     { headers: this.authHeaders() }
                 );
                 if (response.data.success) {
-                    this.brownBotSignals = response.data.signals || {};
+                    const fresh = response.data.signals || {};
+                    // Prune stale entries for symbols no longer in the scanner list
+                    const tickerSet = new Set(tickers);
+                    const kept = {};
+                    for (const t of Object.keys(this.brownBotSignals)) {
+                        if (tickerSet.has(t)) kept[t] = this.brownBotSignals[t];
+                    }
+                    this.brownBotSignals = { ...kept, ...fresh };
                 }
             } catch (error) {
                 console.error('Error loading candidate signals:', error);

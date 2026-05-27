@@ -30,7 +30,7 @@ _ET_TZ = pytz.timezone('America/New_York')
 # stays well inside both limits and prevents 429s from parallel prefetch.
 _alpaca_rate_lock = threading.Lock()
 _alpaca_last_call_ts: float = 0.0
-_ALPACA_MIN_INTERVAL = 0.34  # seconds between calls → ~3 req/s
+_ALPACA_MIN_INTERVAL = 0.1  # seconds between calls → ~10 req/s (Algo Trader Plus)
 
 
 def _alpaca_throttle():
