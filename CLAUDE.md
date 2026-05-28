@@ -330,6 +330,59 @@ The backend monitor loop (`update_real_time_gap_ups`) broadcasts `gap_ups_update
 ### Adding new data sources
 Any new gap-up data source must be added **inside** `get_gap_up_stocks_for_frontend()` as a supplemental — do not create parallel fetch paths in `app.py` or BrownBot. The monitor loop and BrownBot will pick it up automatically.
 
+### Monitoring the gap-up pipeline in Render logs
+
+**Important:** all log timestamps are **UTC**. Subtract 4 h (EDT) or 5 h (EST) to get ET. A log line at `23:28 UTC` is `19:28 ET` (7:28 PM) — still inside the after_hours window.
+
+**GapUpMonitor thread** (`update_real_time_gap_ups` in `app.py`):
+- Startup: `🔄 [GapUpMonitor] Thread started`
+- Every cycle: `Gap-up monitor: N stocks (market=open, next refresh in 120s)`
+- Sleeps 900 s during `closed` window (20:00–04:00 ET) — no log emitted during that window
+
+**Alpaca movers fetch** (fires each monitor cycle when market is `open`):
+- `[AlpacaMovers] Calling movers endpoint at HH:MM:SS ET`
+- `[AlpacaMovers] N raw gainers received at HH:MM:SS ET (top ticker: XYZ)` — "top ticker" is Alpaca's raw #1 gainer before your non-CS filter runs; SPAC warrants/rights can appear here
+- `[AlpacaMovers] HTTP 4xx from movers endpoint` — Alpaca key issue
+
+**Universe scan** (supplemental, non-blocking, ~10 k symbols batched via Alpaca snapshots endpoint):
+- Cache HIT: `[GapScanner] Universe scan cache HIT: 947 stocks` — served from 120 s cache, no API call
+- Cache MISS: `[GapScanner] Universe scan cache MISS — scheduling background pre-warm (skipping for this request)` — `UniversePrewarm` daemon thread fires; current request gets no universe data; next request (≥ 30 s later) will hit the cache
+- Pre-warm done: `[GapScanner] Universe pre-warm done: 947 stocks cached`
+- Universe scan exists to catch micro-cap/low-float runners that Alpaca's curated top-50 movers list excludes
+
+**After-hours behaviour** (16:00–20:00 ET):
+- Monitor still runs every 300 s but skips live API calls
+- `[GapScanner] [after_hours] Loading today's DB snapshot as primary...`
+- `[GapScanner] AH DB snapshot: N stocks loaded` — N can be large (includes universe scan results merged earlier in the day)
+- This is expected — no actionable intraday data in AH; DB snapshot is served to clients and BrownBot
+
+**EOD snapshot save** (first after_hours cycle, ~16:05 ET):
+- `📸 Gap-up snapshot saved for YYYY-MM-DD: N stocks` — written to `gap_up_snapshots` table once per day
+- `📡 Background: caching N gappers in historical_data_cache for YYYY-MM-DD` — fires a thread to populate the Historical tab cache
+- **Bug note (fixed 2026-05-28):** snapshot save was gated on `hour >= 20` which can never fire because the `closed` branch does `continue` before reaching that code. Fixed to `hour >= 16 and market_status == 'after_hours'`.
+
+**Historical prefetch daemon** (`_historical_prefetch_daemon` in `app.py`, polls every 90 s):
+- Startup: `📚 Historical prefetch daemon started`
+- New tickers to fetch: `[HistoricalPrefetch] N new ticker(s) to pre-fetch: [...]`
+- Per ticker done: `[HistoricalPrefetch] NVDA done — 48 gap-up days cached`
+- Per ticker error: `[HistoricalPrefetch] Failed to pre-fetch TSLA: <reason>` — usually Polygon rate limit
+- All cached (DEBUG level, not visible unless debug mode on): `[HistoricalPrefetch] All N gap-up ticker(s) already cached — sleeping 90s`
+- Live status endpoint (no auth): `GET /api/historical-prefetch/status` → `{"prefetched": {"NVDA": {"records": 48, "fetched_at": "..."}}, "total": 12}`
+
+**Force-refresh** (user clicks refresh button in Gap-Ups tab):
+- `[ForceRefresh] Done — N stocks returned, real_time_gap_ups updated`
+
+**Nightly historical cache thread** (`cache_gap_up_day_for_tickers` in `historical_data.py`, spawned by the EOD snapshot save):
+- The thread only starts if `📸 Gap-up snapshot saved` fires first. If you see no cache logs, check for the snapshot log before investigating the thread.
+- Kick-off (logged by `app.py`): `📡 Background: caching N gappers in historical_data_cache for YYYY-MM-DD`
+- Per-ticker success: `💾 Snapshot→cache: stored YYYY-MM-DD data for NVDA`
+- Per-ticker error (Alpaca rate limit, missing data, etc.): `❌ Snapshot→cache error for TSLA on YYYY-MM-DD: <reason>`
+- Thread completion summary: `✅ Nightly historical cache update for YYYY-MM-DD: 31 stored, 4 already cached` — "already cached" = tickers the `HistoricalPrefetch` daemon fetched earlier in the day
+- Thread crash: `❌ cache_gap_up_day_for_tickers failed for YYYY-MM-DD: <reason>`
+- Thread sleeps 0.5 s between tickers so ~15 s for 30 gappers; most AH universe stocks are skipped by the existing-cache check
+- Verify DB was populated: `GET /api/backtest/info` — if today's date appears with a non-zero ticker count, the thread succeeded
+- **Missing logs for a past date = that date's data is not in the backtest DB** and will not self-heal; the nightly thread only processes the current day's snapshot
+
 ---
 
 ## Key constraints

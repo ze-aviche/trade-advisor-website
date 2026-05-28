@@ -376,7 +376,7 @@
                                 </div>
                                 <div class="text-right">
                                     <p class="text-blue-400 text-sm font-semibold">Tracking</p>
-                                    <p class="text-gray-500 text-xs">Entry Bot</p>
+                                    <p class="text-gray-500 text-xs">BrownBot</p>
                                 </div>
                             </div>
                             <div class="flex items-center justify-between bg-gray-900/70 rounded-xl px-4 py-3">
@@ -486,15 +486,15 @@
                 <div class="flex gap-5 sm:gap-8 items-start bg-gray-800/40 border border-gray-700/50 rounded-2xl p-6">
                     <div class="w-10 h-10 rounded-xl bg-purple-500 text-white font-bold text-sm flex items-center justify-center flex-shrink-0 shadow-lg shadow-purple-500/25">3</div>
                     <div>
-                        <h3 class="text-white font-semibold mb-1.5">Set Up Your Entry Strategy</h3>
-                        <p class="text-gray-400 text-sm leading-relaxed">In the Entry Bot tab, configure entry parameters: symbol, volume requirements, and your preferred entry time window. The bot monitors and enters positions automatically when all conditions are met.</p>
+                        <h3 class="text-white font-semibold mb-1.5">Configure BrownBot</h3>
+                        <p class="text-gray-400 text-sm leading-relaxed">In the BrownBot tab, set your gap %, price range, volume filters, position size, and risk limits. BrownBot automatically scans gap-up candidates and applies your AI Playbook to grade each one before entering.</p>
                     </div>
                 </div>
                 <div class="flex gap-5 sm:gap-8 items-start bg-gray-800/40 border border-gray-700/50 rounded-2xl p-6">
                     <div class="w-10 h-10 rounded-xl bg-yellow-500 text-white font-bold text-sm flex items-center justify-center flex-shrink-0 shadow-lg shadow-yellow-500/25">4</div>
                     <div>
-                        <h3 class="text-white font-semibold mb-1.5">Configure Your Exit Strategy</h3>
-                        <p class="text-gray-400 text-sm leading-relaxed">In the Exit Bot tab, define profit targets, stop-losses, and trailing stops for open positions. This is the most important step — never enter a trade without a defined exit.</p>
+                        <h3 class="text-white font-semibold mb-1.5">Launch BrownBot & Let It Trade</h3>
+                        <p class="text-gray-400 text-sm leading-relaxed">Hit Start in the BrownBot tab. It finds candidates, enters positions through your broker, and exits them automatically using your configured profit targets, stop-losses, and EOD flatten time — no manual intervention needed.</p>
                     </div>
                 </div>
                 <div class="flex gap-5 sm:gap-8 items-start bg-gray-800/40 border border-gray-700/50 rounded-2xl p-6">
@@ -523,14 +523,14 @@
                     <p class="text-gray-500 text-xs leading-relaxed">Real-time scan of stocks gapping up above your threshold. Updates every 5 minutes during market hours.</p>
                 </div>
                 <div class="bg-gray-800/40 border-l-4 border-yellow-500 rounded-r-2xl p-5">
-                    <i class="fas fa-play text-yellow-400 text-xl mb-3"></i>
-                    <h4 class="text-white font-semibold mb-1.5">Entry Bot</h4>
-                    <p class="text-gray-500 text-xs leading-relaxed">Define entry conditions and let the bot execute when volume and price conditions are met.</p>
+                    <i class="fas fa-robot text-yellow-400 text-xl mb-3"></i>
+                    <h4 class="text-white font-semibold mb-1.5">BrownBot (Day)</h4>
+                    <p class="text-gray-500 text-xs leading-relaxed">Fully autonomous intraday bot — scans gap-up candidates, enters positions, and exits with profit targets, stop-losses, and EOD flattening.</p>
                 </div>
                 <div class="bg-gray-800/40 border-l-4 border-purple-500 rounded-r-2xl p-5">
-                    <i class="fas fa-robot text-purple-400 text-xl mb-3"></i>
-                    <h4 class="text-white font-semibold mb-1.5">Exit Bot</h4>
-                    <p class="text-gray-500 text-xs leading-relaxed">Manage open positions with automated profit targets and stop-losses. Trailing stops supported.</p>
+                    <i class="fas fa-moon text-purple-400 text-xl mb-3"></i>
+                    <h4 class="text-white font-semibold mb-1.5">BrownBot (Swing)</h4>
+                    <p class="text-gray-500 text-xs leading-relaxed">Holds positions overnight using AI-graded swing picks. Manages entries, trailing exits, and earnings protection automatically.</p>
                 </div>
                 <div class="bg-gray-800/40 border-l-4 border-blue-500 rounded-r-2xl p-5">
                     <i class="fas fa-history text-blue-400 text-xl mb-3"></i>
@@ -716,7 +716,7 @@
                         </div>
                         <div class="space-y-3 text-sm">
                             <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Pre-Market Scan</p><p class="text-gray-500">Accentor scans for stocks gapping above your minimum threshold (default 25%) before and at market open.</p></div>
-                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Volume Confirmation</p><p class="text-gray-500">Entry Bot only triggers when intraday volume confirms institutional participation.</p></div>
+                            <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Volume Confirmation</p><p class="text-gray-500">BrownBot only triggers when intraday volume confirms institutional participation.</p></div>
                             <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Automated Entry Window</p><p class="text-gray-500">Define exact entry time windows (e.g. 9:35–10:00 AM ET) to catch the strongest early momentum.</p></div>
                             <div class="bg-gray-900/60 rounded-xl p-3"><p class="text-blue-300 font-medium mb-0.5">Historical Gap Analysis</p><p class="text-gray-500">Browse years of gap-up data to refine your gap threshold and entry timing.</p></div>
                         </div>
@@ -949,7 +949,7 @@
                         <i class="fas fa-chevron-down faq-chevron text-gray-400 text-sm flex-shrink-0"></i>
                     </button>
                     <div class="faq-answer px-6 pb-5">
-                        <p class="text-gray-400 text-sm leading-relaxed">You configure your entry and exit parameters (symbol, volume thresholds, time window, profit target, stop-loss) and the bots continuously monitor the market. When all conditions are met, the trade is placed automatically. You can view the status in real-time from the Entry Bot and Exit Bot tabs.</p>
+                        <p class="text-gray-400 text-sm leading-relaxed">You configure BrownBot's gap %, price range, volume thresholds, position size, and risk limits — then hit Start. BrownBot continuously scans the market, enters positions when conditions are met, and exits them automatically using your profit targets, stop-losses, and EOD flatten time. Status updates in real-time from the BrownBot tab.</p>
                     </div>
                 </div>
                 <div class="faq-item bg-gray-800/40 border border-gray-700/50 rounded-2xl overflow-hidden">
