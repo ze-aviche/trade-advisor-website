@@ -6299,13 +6299,18 @@ const app = createApp({
         },
 
         async loadBrownBotStatus() {
+            if (!localStorage.getItem('session_token')) return;
             try {
                 const response = await axios.get('/api/brown-bot/status', { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownBotStatus = response.data;
                 }
             } catch (error) {
-                console.error('Error loading BrownBot status:', error);
+                if (error.response && error.response.status === 401) {
+                    this.stopBrownBotPolling();
+                } else {
+                    console.error('Error loading BrownBot status:', error);
+                }
             }
         },
 

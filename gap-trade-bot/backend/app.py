@@ -203,10 +203,10 @@ def _log_api_request(response):
 
     if response.status_code >= 500:
         app_logger.error(msg)
-    elif response.status_code >= 400:
-        app_logger.warning(msg)
     elif request.path in _POLLING_PATHS:
         app_logger.debug(msg)
+    elif response.status_code >= 400:
+        app_logger.warning(msg)
     else:
         app_logger.info(msg)
 

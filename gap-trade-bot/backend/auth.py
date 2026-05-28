@@ -181,7 +181,12 @@ def require_auth(f):
         valid, session_data = auth_manager.validate_session(session_token)
         if not valid:
             token_hint = ('…' + session_token[-6:]) if session_token else 'none'
-            _auth_logger.warning(
+            _POLLING_PATHS = {
+                '/api/brown-bot/status', '/api/brown-bot/logs', '/api/brown-bot/risk-status',
+                '/api/bot/status', '/api/entry-bot/status', '/api/session/ping', '/api/health',
+            }
+            log_fn = _auth_logger.debug if request.path in _POLLING_PATHS else _auth_logger.warning
+            log_fn(
                 f'401 {request.method} {request.path} '
                 f'token={token_hint} ip={request.remote_addr}'
             )
