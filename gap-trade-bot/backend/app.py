@@ -9198,9 +9198,10 @@ def update_real_time_gap_ups():
                 real_time_gap_ups = latest_gap_ups
                 broadcast_gap_ups()
 
-                # Save end-of-day snapshot once per day after 8 PM ET
+                # Save end-of-day snapshot once per day — must fire during after_hours
+                # (16:00–20:00 ET) because the closed window does `continue` before here.
                 _today = _now_et.date().isoformat()
-                if _now_et.hour >= 20 and _today not in _snapshot_saved_dates and latest_gap_ups:
+                if _now_et.hour >= 16 and market_status == 'after_hours' and _today not in _snapshot_saved_dates and latest_gap_ups:
                     try:
                         from database import db_manager as _db
                         saved = _db.save_gap_up_snapshot(_today, latest_gap_ups)
