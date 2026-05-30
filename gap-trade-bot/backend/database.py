@@ -1270,12 +1270,12 @@ class DatabaseManager:
         history = self.get_feedback_history(limit=1, user_id=user_id)
         return history[0]['analysis'] if history else None
 
-    def get_trade_summary(self, symbol=None, start_date=None, end_date=None):
+    def get_trade_summary(self, symbol=None, start_date=None, end_date=None, user_id=None):
         """Get trade summary statistics"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 query = '''
                     SELECT
                         COALESCE(SUM(CASE WHEN side IN ('S', 'SS') THEN 1 ELSE 0 END), 0) as total_trades,
@@ -1289,15 +1289,19 @@ class DatabaseManager:
                     WHERE 1=1
                 '''
                 params = []
-                
+
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
+
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
-                
+
                 if start_date:
                     query += ' AND trade_date >= ?'
                     params.append(start_date)
-                
+
                 if end_date:
                     query += ' AND trade_date <= ?'
                     params.append(end_date)
@@ -1645,7 +1649,7 @@ class DatabaseManager:
             print(f"Error getting available dates: {e}")
             return []
 
-    def get_positions_pnl_history(self, symbol=None, start_date=None, end_date=None, limit=100):
+    def get_positions_pnl_history(self, symbol=None, start_date=None, end_date=None, limit=100, user_id=None):
         """Get closed-trade PnL history for charting, sourced from the trades table."""
         try:
             with self.get_connection() as conn:
@@ -1665,6 +1669,9 @@ class DatabaseManager:
                     WHERE pnl != 0
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())
@@ -1695,7 +1702,7 @@ class DatabaseManager:
             _db_logger.error(f"Database error getting positions PnL history: {e}")
             return []
 
-    def get_positions_pnl_summary(self, symbol=None, start_date=None, end_date=None):
+    def get_positions_pnl_summary(self, symbol=None, start_date=None, end_date=None, user_id=None):
         """Get closed-trade PnL summary statistics, sourced from the trades table."""
         _empty = {
             'total_positions': 0, 'profitable_positions': 0, 'losing_positions': 0,
@@ -1716,6 +1723,9 @@ class DatabaseManager:
                     WHERE side IN ('S', 'SS')
                 '''
                 params = []
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
                 if symbol:
                     query += ' AND symbol = ?'
                     params.append(symbol.upper())

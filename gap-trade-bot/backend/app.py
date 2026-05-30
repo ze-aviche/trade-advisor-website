@@ -183,13 +183,20 @@ def _log_api_request(response):
 
     user = getattr(request, 'user', None)
     if user:
-        who = user.get('username') or user.get('email') or f"uid:{user.get('id', '?')}"
+        name = user.get('username') or user.get('email') or '?'
+        uid  = user.get('id', '?')
+        who  = f"{name}/{uid}"
     else:
         # Not a protected endpoint — try session token lookup for context
         token = request.headers.get('Authorization', '').replace('Bearer ', '') or request.cookies.get('session_token')
         if token and auth_manager:
             u = auth_manager.get_user_by_session(token)
-            who = (u.get('username') or u.get('email')) if u else 'anonymous'
+            if u:
+                name = u.get('username') or u.get('email') or '?'
+                uid  = u.get('id', '?')
+                who  = f"{name}/{uid}"
+            else:
+                who = 'anonymous'
         else:
             who = 'anonymous'
 
@@ -3230,6 +3237,7 @@ def get_cache_status():
         }), 500
 
 @app.route('/api/cache/clear/<ticker>')
+@require_auth
 def clear_cache_for_ticker(ticker):
     """Clear cache for a specific ticker"""
     try:
@@ -3258,6 +3266,7 @@ def clear_cache_for_ticker(ticker):
         }), 500
 
 @app.route('/api/cache/clear')
+@require_auth
 def clear_all_cache():
     """Clear all historical data cache"""
     try:
@@ -3349,6 +3358,7 @@ def get_bot_status():
         }), 500
 
 @app.route('/api/bot/start', methods=['POST'])
+@require_auth
 def start_bot():
     """Start the trading bot"""
     try:
@@ -3386,6 +3396,7 @@ def start_bot():
         }), 500
 
 @app.route('/api/bot/stop', methods=['POST'])
+@require_auth
 def stop_bot():
     """Stop the trading bot"""
     try:
@@ -3415,6 +3426,7 @@ def stop_bot():
         }), 500
 
 @app.route('/api/bot/update-strategies', methods=['POST'])
+@require_auth
 def update_strategies():
     """Update day bot strategies"""
     try:
@@ -3432,10 +3444,11 @@ def update_strategies():
 
 
 @app.route('/api/swing-bot/config', methods=['GET'])
+@require_auth
 def get_swing_bot_config():
     """Return current swing bot config."""
     try:
-        cfg = db_manager.get_swing_bot_config()
+        cfg = db_manager.get_swing_bot_config(user_id=request.user.get('id'))
         return jsonify({'success': True, 'data': cfg, 'timestamp': datetime.now().isoformat()})
     except Exception as e:
         app_logger.error(f"Error fetching swing config: {e}")
@@ -3443,6 +3456,7 @@ def get_swing_bot_config():
 
 
 @app.route('/api/swing-bot/update-config', methods=['POST'])
+@require_auth
 def update_swing_bot_config():
     """Update swing bot config and apply to running bot."""
     try:
@@ -3451,7 +3465,7 @@ def update_swing_bot_config():
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
         # Persist to DB
-        ok, msg = db_manager.update_swing_bot_config(data)
+        ok, msg = db_manager.update_swing_bot_config(data, user_id=request.user.get('id'))
         if not ok:
             return jsonify({'success': False, 'error': msg}), 500
 
@@ -7427,6 +7441,7 @@ def remove_brown_bot_watchlist(symbol):
 
 
 @app.route('/api/bot/unsubscribe-stocks', methods=['POST'])
+@require_auth
 def unsubscribe_stocks():
     """Unsubscribe from stock updates"""
     try:
@@ -7486,6 +7501,7 @@ def get_bot_positions():
         }), 500
 
 @app.route('/api/bot/config', methods=['GET', 'POST'])
+@require_auth
 def manage_bot_config():
     """Get or update bot configuration"""
     try:
@@ -7539,6 +7555,7 @@ def manage_bot_config():
         }), 500
 
 @app.route('/api/bot/validate-config', methods=['GET'])
+@require_auth
 def validate_bot_config():
     """Validate current bot configuration"""
     try:
@@ -7573,6 +7590,7 @@ def validate_bot_config():
         }), 500
 
 @app.route('/api/bot/discover-positions', methods=['POST'])
+@require_auth
 def discover_positions():
     """Manually trigger position discovery"""
     try:
@@ -7601,6 +7619,7 @@ def discover_positions():
         }), 500
 
 @app.route('/api/bot/panic-exit', methods=['POST'])
+@require_auth
 def panic_exit_all_positions():
     """Emergency panic exit - close all positions at market price"""
     try:
@@ -7639,6 +7658,7 @@ def panic_exit_all_positions():
         }), 500
 
 @app.route('/api/bot/das-connection', methods=['GET', 'POST'])
+@require_auth
 def manage_das_connection():
     """Manage DAS connection - GET to check status, POST to force reconnect"""
     try:
@@ -7698,6 +7718,7 @@ def manage_das_connection():
 
 # Cache endpoints
 @app.route('/api/cache/invalidate-gap-ups', methods=['POST'])
+@require_auth
 def invalidate_gap_ups_cache():
     """Invalidate gap-ups cache"""
     try:
@@ -7720,6 +7741,7 @@ def invalidate_gap_ups_cache():
         }), 500
 
 @app.route('/api/debug/config', methods=['GET'])
+@require_auth
 def debug_config():
     """Debug endpoint to check current config values"""
     try:
@@ -7835,6 +7857,7 @@ def clear_ai_history():
 
 # Strategies endpoints
 @app.route('/api/strategies/get')
+@require_auth
 def get_strategies():
     """Get available strategies"""
     try:
@@ -7909,29 +7932,22 @@ def get_trades():
         }), 500
 
 @app.route('/api/trades', methods=['POST'])
+@require_auth
 def add_trade():
     """Add a new trade to the database"""
     try:
         from database import db_manager
-        
+        user_id = request.user.get('id')
         data = request.get_json()
         if not data:
-            return jsonify({
-                'success': False,
-                'error': 'No data provided'
-            }), 400
-        
-        # Validate required fields
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
         required_fields = ['trade_id', 'symbol', 'side', 'quantity', 'price']
         for field in required_fields:
             if field not in data:
-                return jsonify({
-                    'success': False,
-                    'error': f'Missing required field: {field}'
-                }), 400
-        
-        # Add trade to database
-        success, message = db_manager.add_trade(data)
+                return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+
+        success, message = db_manager.add_trade(data, user_id=user_id)
         
         if success:
             return jsonify({
@@ -7952,6 +7968,7 @@ def add_trade():
         }), 500
 
 @app.route('/api/trades/import-das', methods=['POST'])
+@require_auth
 def import_das_trades():
     """Import trades from DAS trades data"""
     if not DAS_ENABLED:
@@ -7976,12 +7993,12 @@ def import_das_trades():
                 'error': 'No valid trades found in the provided data'
             }), 400
         
-        # Add trades to database
+        user_id = request.user.get('id')
         added_count = 0
         errors = []
-        
+
         for trade in trades:
-            success, message = db_manager.add_trade(trade)
+            success, message = db_manager.add_trade(trade, user_id=user_id)
             if success:
                 added_count += 1
             else:
@@ -8005,21 +8022,21 @@ def import_das_trades():
         }), 500
 
 @app.route('/api/trades/summary', methods=['GET'])
+@require_auth
 def get_trade_summary():
     """Get trade summary statistics"""
     try:
         from database import db_manager
-        
-        # Get query parameters
-        symbol = request.args.get('symbol')
+        user_id    = request.user.get('id')
+        symbol     = request.args.get('symbol')
         start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        # Get summary from database
+        end_date   = request.args.get('end_date')
+
         summary = db_manager.get_trade_summary(
             symbol=symbol,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            user_id=user_id,
         )
         
         return jsonify({
@@ -8035,34 +8052,24 @@ def get_trade_summary():
         }), 500
 
 @app.route('/api/positions/pnl-history', methods=['GET'])
+@require_auth
 def get_positions_pnl_history():
     """Get positions-based PnL history for charting"""
     try:
         from database import db_manager
-        
-        # Get query parameters
-        symbol = request.args.get('symbol')
+        user_id    = request.user.get('id')
+        symbol     = request.args.get('symbol')
         start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        limit = int(request.args.get('limit', 100))
-        
-        # Validate limit
-        if limit > 1000:
-            limit = 1000
-        
-        # Get positions PnL history from database
+        end_date   = request.args.get('end_date')
+        limit      = min(int(request.args.get('limit', 100)), 1000)
+
         positions = db_manager.get_positions_pnl_history(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-            limit=limit
+            symbol=symbol, start_date=start_date, end_date=end_date,
+            limit=limit, user_id=user_id,
         )
-        
-        # Get summary statistics
         summary = db_manager.get_positions_pnl_summary(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date
+            symbol=symbol, start_date=start_date, end_date=end_date,
+            user_id=user_id,
         )
         
         return jsonify({
@@ -8082,6 +8089,7 @@ def get_positions_pnl_history():
         }), 500
 
 @app.route('/api/trades/recalculate-pnl', methods=['POST'])
+@require_role('super_admin', 'dev_master', 'bot_admin')
 def recalculate_trade_pnl():
     """Recalculate PnL for all existing trades in the database"""
     try:
@@ -8114,6 +8122,7 @@ def recalculate_trade_pnl():
         }), 500
 
 @app.route('/api/trades/sync-das', methods=['POST'])
+@require_auth
 def sync_trades_from_das():
     """Sync trades from DAS Trader"""
     if not DAS_ENABLED:
@@ -8149,6 +8158,7 @@ def sync_trades_from_das():
 
 # Scheduled DAS Sync endpoints
 @app.route('/api/scheduled-sync/status', methods=['GET'])
+@require_auth
 def get_scheduled_sync_status():
     """Get scheduled sync service status"""
     try:
@@ -8172,6 +8182,7 @@ def get_scheduled_sync_status():
         }), 500
 
 @app.route('/api/scheduled-sync/start', methods=['POST'])
+@require_auth
 def start_scheduled_sync_service():
     """Start the scheduled sync service"""
     try:
@@ -8195,6 +8206,7 @@ def start_scheduled_sync_service():
         }), 500
 
 @app.route('/api/scheduled-sync/stop', methods=['POST'])
+@require_auth
 def stop_scheduled_sync_service():
     """Stop the scheduled sync service"""
     try:
@@ -8218,6 +8230,7 @@ def stop_scheduled_sync_service():
         }), 500
 
 @app.route('/api/scheduled-sync/manual', methods=['POST'])
+@require_auth
 def trigger_manual_sync():
     """Trigger a manual sync"""
     try:
@@ -8245,6 +8258,7 @@ def trigger_manual_sync():
 
 # Position Sync Status endpoint
 @app.route('/api/positions/sync-status', methods=['GET'])
+@require_auth
 def get_position_sync_status():
     """Get position sync status"""
     try:
@@ -8311,6 +8325,7 @@ def get_daily_positions():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/positions/daily/<date>', methods=['GET'])
+@require_auth
 def get_positions_by_date(date):
     """Get all positions for a specific date"""
     try:
@@ -8363,6 +8378,7 @@ def get_positions_by_date(date):
         }), 500
 
 @app.route('/api/positions/daily/range', methods=['GET'])
+@require_auth
 def get_positions_by_date_range():
     """Get positions within a date range"""
     try:
@@ -8408,6 +8424,7 @@ def get_positions_by_date_range():
         }), 500
 
 @app.route('/api/positions/daily/dates', methods=['GET'])
+@require_auth
 def get_available_dates():
     """Get list of available dates in daily positions"""
     try:
@@ -8432,6 +8449,7 @@ def get_available_dates():
 
 # Entry Bot API endpoints
 @app.route('/api/entry-bot/status', methods=['GET'])
+@require_auth
 def get_entry_bot_status():
     """Get Entry Bot status"""
     try:
@@ -8459,6 +8477,7 @@ def get_entry_bot_status():
         }), 500
 
 @app.route('/api/entry-bot/start', methods=['POST'])
+@require_auth
 def start_entry_bot():
     """Start Entry Bot"""
     try:
@@ -8486,6 +8505,7 @@ def start_entry_bot():
         }), 500
 
 @app.route('/api/entry-bot/stop', methods=['POST'])
+@require_auth
 def stop_entry_bot():
     """Stop Entry Bot"""
     try:
@@ -8513,6 +8533,7 @@ def stop_entry_bot():
         }), 500
 
 @app.route('/api/entry-bot/submit-parameters', methods=['POST'])
+@require_auth
 def submit_entry_parameters():
     """Submit Entry Bot parameters"""
     if not DAS_ENABLED:
@@ -8622,6 +8643,7 @@ def submit_entry_parameters():
         }), 500
 
 @app.route('/api/entry-bot/tracking-status', methods=['GET'])
+@require_auth
 def get_tracking_status():
     """Get tracking status for all symbols"""
     try:
@@ -8712,6 +8734,7 @@ def get_tracking_status():
         }), 500
 
 @app.route('/api/entry-bot/stop-tracking', methods=['POST'])
+@require_auth
 def stop_tracking_symbol():
     """Stop tracking a specific symbol"""
     try:
@@ -8755,6 +8778,7 @@ def stop_tracking_symbol():
         }), 500
 
 @app.route('/api/entry-bot/active-positions', methods=['GET'])
+@require_auth
 def get_active_positions():
     """Get active positions entered by the Entry Bot"""
     try:
@@ -8787,6 +8811,7 @@ def get_active_positions():
         }), 500
 
 @app.route('/api/entry-bot/debug-logs', methods=['GET'])
+@require_auth
 def get_debug_logs():
     """Get debug logs for Entry Bot"""
     try:
@@ -9007,14 +9032,17 @@ def get_extended_stats():
 
 # Keep old single-stat endpoints as thin shims so nothing else breaks
 @app.route('/api/positions/total_positions', methods=['GET'])
+@require_auth
 def get_total_positions():
     return get_positions_summary()
 
 @app.route('/api/positions/total_pnl', methods=['GET'])
+@require_auth
 def get_total_pnl():
     return get_positions_summary()
 
 @app.route('/api/positions/winrate', methods=['GET'])
+@require_auth
 def get_winrate():
     return get_positions_summary()
 
@@ -9157,21 +9185,6 @@ def get_open_positions():
             broker = _get_broker(user_id)
             if broker:
                 app_logger.info(f'get_open_positions: using DB broker config (user {user_id})')
-
-        # Fallback: build AlpacaBroker directly from env vars
-        if broker is None:
-            import os as _os
-            api_key    = _os.environ.get('ALPACA_API_KEY') or _os.environ.get('ALPACA_KEY')
-            api_secret = _os.environ.get('ALPACA_API_SECRET')
-            if api_key and api_secret:
-                from bot.broker.alpaca import AlpacaBroker
-                paper  = _os.environ.get('ALPACA_PAPER', 'true').lower() != 'false'
-                broker = AlpacaBroker(api_key, api_secret, paper=paper)
-                if not broker.connect():
-                    broker = None
-                    app_logger.warning('get_open_positions: env-var Alpaca credentials failed to connect')
-                else:
-                    app_logger.info('get_open_positions: using env-var Alpaca credentials')
 
         if broker is None:
             app_logger.info('get_open_positions: no broker available — DB config missing and no ALPACA_API_KEY env var')
