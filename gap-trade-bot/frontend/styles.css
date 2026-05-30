@@ -146,6 +146,18 @@ html.light .bg-gray-800.border-gray-700 {
     color: #1e3048 !important;
 }
 
+/* ── Sector panel fade transition (Vue <transition name="fade">) ── */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.fade-enter-from, .fade-leave-to       { opacity: 0; transform: translateY(-4px); }
+
+/* line-clamp utility for sector news headlines */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 /* ═══════════════════════════════════════════════════════
    LANDING PAGE STYLE CARD IMPROVEMENTS (dark mode only)
    ═══════════════════════════════════════════════════════ */

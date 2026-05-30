@@ -270,6 +270,9 @@ const app = createApp({
                 swingTechnicalsCached: false,
                 swingDailyPicks: null,
                 swingDailyPicksDate: null,
+                sectorStrength: [],
+                sectorStrengthLoading: false,
+                activeSector: null,
                 // Trade History
                 tradeHistoryTicker: '',
                 tradeHistoryStartDate: '',
@@ -1258,6 +1261,7 @@ const app = createApp({
                     this.stopPositionHistoryUpdates();
 
                     this.loadSwingDailyPicks();
+                    if (!this.sectorStrength.length) this.loadSectorStrength();
                 } else if (tabName === 'stats') {
                     this.stopPositionHistoryUpdates();
                     this.loadStats();
@@ -5563,6 +5567,22 @@ const app = createApp({
             if (type === 'bullish') return 'bg-green-900/60 text-green-300 border border-green-700';
             if (type === 'bearish') return 'bg-red-900/60 text-red-300 border border-red-700';
             return 'bg-gray-700 text-gray-300 border border-gray-600';
+        },
+
+        async loadSectorStrength() {
+            this.sectorStrengthLoading = true;
+            try {
+                const res = await axios.get('/api/sector-strength');
+                if (res.data.success) this.sectorStrength = res.data.sectors;
+            } catch (e) {
+                console.error('Sector strength fetch failed:', e);
+            } finally {
+                this.sectorStrengthLoading = false;
+            }
+        },
+
+        toggleSector(sector) {
+            this.activeSector = this.activeSector?.etf === sector.etf ? null : sector;
         },
 
         async loadSwingDailyPicks(force = false) {

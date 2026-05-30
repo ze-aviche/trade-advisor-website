@@ -265,6 +265,114 @@ real_time_gap_ups = []  # Store real-time detected gap-ups
 _hist_prefetch_status = {}   # {ticker: {'date': str, 'records': int, 'fetched_at': str}}
 _hist_prefetch_lock = threading.Lock()
 
+# S&P 500 sector component cache (refreshed every 24 h from Wikipedia)
+_sp500_sector_cache = {'sectors': None, 'ts': 0.0}
+_SP500_SECTOR_TTL   = 86400  # 24 hours
+
+_GICS_TO_ETF = {
+    'Information Technology': ('Technology',       'XLK'),
+    'Financials':             ('Financials',       'XLF'),
+    'Health Care':            ('Healthcare',       'XLV'),
+    'Consumer Discretionary': ('Consumer Discr.', 'XLY'),
+    'Energy':                 ('Energy',           'XLE'),
+    'Industrials':            ('Industrials',      'XLI'),
+    'Communication Services': ('Comm. Services',  'XLC'),
+    'Consumer Staples':       ('Consumer Staples','XLP'),
+    'Materials':              ('Materials',        'XLB'),
+    'Real Estate':            ('Real Estate',      'XLRE'),
+    'Utilities':              ('Utilities',        'XLU'),
+}
+
+def _get_sp500_sector_map():
+    """
+    Fetch the live S&P 500 component list from Wikipedia, grouped by GICS sector.
+    Cached for 24 h. Returns None on failure so callers can fall back gracefully.
+    """
+    import time as _t
+    global _sp500_sector_cache
+
+    if _sp500_sector_cache['sectors'] and _t.time() - _sp500_sector_cache['ts'] < _SP500_SECTOR_TTL:
+        return _sp500_sector_cache['sectors']
+
+    try:
+        import urllib.request as _ur
+        from html.parser import HTMLParser as _HP
+
+        req = _ur.Request(
+            'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; TradeAdvisorBot/1.0)'},
+        )
+        with _ur.urlopen(req, timeout=30) as _resp:
+            _html = _resp.read().decode('utf-8')
+
+        class _WikiParser(_HP):
+            def __init__(self):
+                super().__init__()
+                self.in_wikitable = False; self.done = False; self.table_depth = 0
+                self.in_row = False; self.in_cell = False; self.is_header = False
+                self.cell_text = ''; self.current_row = []; self.headers = []; self.rows = []
+            def handle_starttag(self, tag, attrs):
+                if self.done: return
+                d = dict(attrs)
+                if tag == 'table' and not self.in_wikitable:
+                    if 'wikitable' in d.get('class', ''):
+                        self.in_wikitable = True; self.table_depth = 1; return
+                if not self.in_wikitable: return
+                if tag == 'table': self.table_depth += 1
+                elif tag == 'tr': self.in_row = True; self.current_row = []; self.is_header = False
+                elif tag in ('th', 'td'): self.in_cell = True; self.cell_text = ''; self.is_header = tag == 'th'
+            def handle_endtag(self, tag):
+                if self.done or not self.in_wikitable: return
+                if tag == 'table':
+                    self.table_depth -= 1
+                    if self.table_depth == 0: self.done = True
+                elif tag == 'tr':
+                    if self.current_row:
+                        if self.is_header and not self.headers: self.headers = self.current_row[:]
+                        elif not self.is_header: self.rows.append(self.current_row[:])
+                    self.in_row = False
+                elif tag in ('th', 'td'):
+                    if self.in_cell: self.current_row.append(self.cell_text.strip())
+                    self.in_cell = False
+            def handle_data(self, data):
+                if self.in_cell and not self.done: self.cell_text += data
+
+        parser = _WikiParser()
+        parser.feed(_html)
+
+        if not parser.headers or not parser.rows:
+            app_logger.warning('[SectorStrength] Wikipedia: no table rows parsed')
+            return None
+
+        hdrs = [h.lower() for h in parser.headers]
+        sym_idx = next((i for i, h in enumerate(hdrs) if 'symbol' in h), None)
+        sec_idx = next((i for i, h in enumerate(hdrs) if 'gics sector' in h or ('sector' in h and 'sub' not in h)), None)
+        if sym_idx is None or sec_idx is None:
+            app_logger.warning(f'[SectorStrength] Wikipedia: unexpected columns {parser.headers}')
+            return None
+
+        by_etf = {}
+        for row in parser.rows:
+            if len(row) <= max(sym_idx, sec_idx): continue
+            sym  = row[sym_idx].strip()
+            gics = row[sec_idx].strip()
+            if not sym or not gics or '.' in sym: continue
+            mapping = _GICS_TO_ETF.get(gics)
+            if not mapping: continue
+            name, etf = mapping
+            if etf not in by_etf:
+                by_etf[etf] = {'name': name, 'etf': etf, 'stocks': []}
+            by_etf[etf]['stocks'].append(sym)
+
+        sectors = list(by_etf.values())
+        total   = sum(len(s['stocks']) for s in sectors)
+        app_logger.info(f'[SectorStrength] Wikipedia: {total} components across {len(sectors)} sectors')
+        _sp500_sector_cache = {'sectors': sectors, 'ts': _t.time()}
+        return sectors
+
+    except Exception as e:
+        app_logger.warning(f'[SectorStrength] Wikipedia fetch failed ({e}) — will use fallback')
+
 # Entry Bot global variables and data structures
 entry_bot_running = False
 entry_bot_stats = {
@@ -9517,6 +9625,145 @@ def _filter_candidates(all_movers, min_vol=300_000, min_chg=0.5, max_chg=22,
         if len(candidates) >= 30:
             break
     return candidates
+
+
+@app.route('/api/sector-strength')
+def get_sector_strength():
+    """
+    Return sector ETF performance + top-stock up/down breadth + recent news.
+    No auth required — used by Swing tab and landing page.
+    Cached 5 min so multiple tab opens don't hammer Alpaca.
+    """
+    import time as _time
+
+    _SECTOR_CACHE_TTL = 300
+    force = request.args.get('force') == '1'
+    _cache = getattr(get_sector_strength, '_cache', None)
+    if not force and _cache and _time.time() - _cache['ts'] < _SECTOR_CACHE_TTL:
+        return jsonify(_cache['data'])
+
+    # Live S&P 500 components from Wikipedia (cached 24 h), no hardcoded list
+    SECTORS = _get_sp500_sector_map()
+    if not SECTORS:
+        return jsonify({'success': False, 'error': 'Sector component data unavailable'}), 503
+
+    import requests as _req
+
+    alpaca_key    = os.environ.get('ALPACA_API_KEY', '')
+    alpaca_secret = os.environ.get('ALPACA_API_SECRET', '')
+    alpaca_headers = {
+        'APCA-API-KEY-ID':     alpaca_key,
+        'APCA-API-SECRET-KEY': alpaca_secret,
+    }
+
+    # ── 1. Fetch ETF + all sector stocks in one snapshot call ──────────────
+    all_symbols = []
+    for s in SECTORS:
+        all_symbols.append(s['etf'])
+        all_symbols.extend(s['stocks'])
+
+    import re as _re
+    app_logger.info(f'[SectorStrength] Fetching snapshots for {len(all_symbols)} symbols')
+    snapshots = {}
+    symbols_to_fetch = list(all_symbols)
+    for _feed in ('sip', 'iex'):
+        _retries = 0
+        while _retries < 10:
+            try:
+                resp = _req.get(
+                    'https://data.alpaca.markets/v2/stocks/snapshots',
+                    headers=alpaca_headers,
+                    params={'symbols': ','.join(symbols_to_fetch), 'feed': _feed},
+                    timeout=15,
+                )
+                if resp.ok:
+                    snapshots = resp.json()
+                    app_logger.info(f'[SectorStrength] Snapshot ({_feed}): {len(snapshots)} symbols returned')
+                    break
+                if resp.status_code == 403:
+                    break  # Not on SIP plan — fall through to IEX
+                if resp.status_code == 400:
+                    # Extract the bad symbol from the error and retry without it
+                    bad = _re.search(r'invalid symbol:\s*(\S+)', resp.text)
+                    if bad:
+                        bad_sym = bad.group(1).strip('"\'}')
+                        app_logger.warning(f'[SectorStrength] Removing invalid symbol: {bad_sym}')
+                        symbols_to_fetch = [s for s in symbols_to_fetch if s != bad_sym]
+                        _retries += 1
+                        continue
+                app_logger.warning(f'[SectorStrength] Snapshot ({_feed}): HTTP {resp.status_code} — {resp.text[:120]}')
+                break
+            except Exception as e:
+                app_logger.warning(f'[SectorStrength] Snapshot fetch ({_feed}) failed: {e}')
+                break
+        if snapshots:
+            break
+    app_logger.info(f'[SectorStrength] Got snapshots for {len(snapshots)} symbols')
+
+    def _chg(snap):
+        """Compute today's % change. Works during market hours and after hours."""
+        try:
+            prev_bar  = snap.get('prevDailyBar') or {}
+            day_bar   = snap.get('dailyBar') or {}
+            prev      = prev_bar.get('c')
+            # Prefer day bar close (always present after hours); fall back to latest trade
+            price     = day_bar.get('c') or (snap.get('latestTrade') or {}).get('p')
+            if prev and price and prev > 0:
+                return round((price - prev) / prev * 100, 2)
+        except Exception:
+            pass
+        return None
+
+    # ── 2. Fetch news for each ETF (last 3 headlines) ──────────────────────
+    def _fetch_news(ticker):
+        try:
+            r = _req.get(
+                'https://data.alpaca.markets/v1beta1/news',
+                headers=alpaca_headers,
+                params={'symbols': ticker, 'limit': 3, 'sort': 'desc'},
+                timeout=8,
+            )
+            if r.ok:
+                return [
+                    {'headline': n.get('headline',''), 'url': n.get('url',''),
+                     'published_at': n.get('created_at','')}
+                    for n in r.json().get('news', [])
+                ]
+        except Exception:
+            pass
+        return []
+
+    # ── 3. Build result ─────────────────────────────────────────────────────
+    result = []
+    for s in SECTORS:
+        etf_snap  = snapshots.get(s['etf'], {})
+        etf_chg   = _chg(etf_snap)
+
+        up, down = 0, 0
+        for sym in s['stocks']:
+            chg = _chg(snapshots.get(sym, {}))
+            if chg is None:
+                continue
+            if chg >= 0:
+                up += 1
+            else:
+                down += 1
+
+        news = _fetch_news(s['etf'])
+
+        result.append({
+            'name':       s['name'],
+            'etf':        s['etf'],
+            'change_pct': etf_chg,
+            'up':         up,
+            'down':       down,
+            'total':      up + down,
+            'news':       news,
+        })
+
+    payload = {'success': True, 'sectors': result}
+    get_sector_strength._cache = {'ts': _time.time(), 'data': payload}
+    return jsonify(payload)
 
 
 @app.route('/api/swing-daily-picks/latest')
