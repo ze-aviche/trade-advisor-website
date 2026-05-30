@@ -2204,11 +2204,12 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <!-- Stats chips -->
-                            <div v-if="brownBotStatus?.in_use_by_other" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-sm">
-                                <i class="fas fa-lock text-yellow-400"></i>
-                                Bot is running for another user
+                            <!-- Loading state — don't render until both status and broker configs are known -->
+                            <div v-if="!brownBotStatusLoaded || !brokerConfigsLoaded"
+                                 class="flex items-center gap-2 px-5 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-500 text-sm">
+                                <i class="fas fa-spinner fa-spin text-xs"></i> Loading…
                             </div>
-                            <!-- No broker configured -->
+                            <!-- No broker configured (only shown after configs are loaded) -->
                             <div v-else-if="!brownBotStatus?.running && !hasActiveBroker"
                                  class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 text-sm cursor-default"
                                  title="Go to Account Settings → Broker to connect Alpaca">
@@ -2216,6 +2217,7 @@
                                 No broker connected —
                                 <button @click="onTabChange('account')" class="text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors">set up in Account Settings</button>
                             </div>
+                            <!-- Start / Stop button — only appears when loaded and broker is configured -->
                             <button v-else @click="toggleBrownBot" :disabled="loading.brownBotToggle"
                                     :class="brownBotStatus?.running ? 'bg-green-600 hover:bg-green-700 ring-2 ring-green-400/40' : 'bg-amber-600 hover:bg-amber-700'"
                                     class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50">

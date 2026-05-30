@@ -479,6 +479,8 @@ const app = createApp({
             // Broker connection settings
             supportedBrokers: [],
             brokerConfigs: [],
+            brokerConfigsLoaded: false,
+            brownBotStatusLoaded: false,
             brokerCardExpanded: null,
             brokerCardForms: {
                 alpaca:     { api_key: '', api_secret: '', paper_trading: true },
@@ -1290,6 +1292,7 @@ const app = createApp({
                     console.log('🤖 BrownBot tab selected - loading status...');
                     this.stopPositionHistoryUpdates();
 
+                    this.loadBrokerConfigs();
                     this.loadRegimeStatus();
                     this.loadBrownBotStatus();
                     this.loadBrownBotConfig();
@@ -1777,6 +1780,10 @@ const app = createApp({
                     if (response.ok) {
                         const userData = await response.json();
                         this.user = userData.data;
+                        // Silently pre-fetch broker configs so hasActiveBroker is ready on any tab
+                        this.loadBrokerConfigs();
+                        // Pre-fetch bot status so the BrownBot button is correct on refresh
+                        this.loadBrownBotStatus();
                         // Silently pre-fetch positions so the tab opens instantly
                         if (this.positions.length === 0) this.loadPositionsHistory(true);
                         // Pre-fill contact form with user info
@@ -6334,6 +6341,8 @@ const app = createApp({
                 } else {
                     console.error('Error loading BrownBot status:', error);
                 }
+            } finally {
+                this.brownBotStatusLoaded = true;
             }
         },
 
@@ -6612,6 +6621,9 @@ const app = createApp({
                 clearInterval(this.brownSignalsInterval);
                 this.brownSignalsInterval = null;
             }
+            // Reset bot status flag so next tab visit gets a fresh running state
+            // (broker configs are stable — no need to re-fetch them every tab switch)
+            this.brownBotStatusLoaded = false;
         },
 
         startSessionKeepalive() {
@@ -6673,6 +6685,8 @@ const app = createApp({
                 }
             } catch (e) {
                 console.error('loadBrokerConfigs error', e);
+            } finally {
+                this.brokerConfigsLoaded = true;
             }
         },
 
