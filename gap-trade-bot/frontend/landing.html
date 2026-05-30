@@ -1219,37 +1219,44 @@
     })();
 
     // ── Swing Picks Bar ──────────────────────────────────────────────
-    (function() {
-        const swingPicks = [
-            { sym: 'AAPL',  grade: 'BUY',  info: 'Bull flag on daily · EMA crossover · Target $205' },
-            { sym: 'NVDA',  grade: 'BUY',  info: 'AI momentum · Breakout above $870 resistance' },
-            { sym: 'MSFT',  grade: 'BUY',  info: 'Cup & handle forming · Strong sector tailwind' },
-            { sym: 'META',  grade: 'BUY',  info: 'Volume surge · RSI 58 · Above 50-day SMA' },
-            { sym: 'AMZN',  grade: 'BUY',  info: 'AWS growth catalyst · Ascending triangle' },
-            { sym: 'GOOGL', grade: 'HOLD', info: 'Tight consolidation · Watch $175 breakout level' },
-            { sym: 'TSLA',  grade: 'BUY',  info: 'Oversold bounce · Key support held · High vol' },
-            { sym: 'JPM',   grade: 'BUY',  info: 'Financials rotation · Above all major SMAs' },
-            { sym: 'UNH',   grade: 'HOLD', info: 'Sector defensive play · Tight range · Basing' },
-            { sym: 'V',     grade: 'BUY',  info: 'Consumer spend resilience · ATH breakout watch' },
-            { sym: 'HD',    grade: 'BUY',  info: 'Housing recovery play · MACD bullish cross' },
-            { sym: 'COST',  grade: 'BUY',  info: 'Retail strength · New 52-week high territory' },
-        ];
-
+    (async function initSwingBar() {
         const swingTrack = document.getElementById('swing-track');
         if (!swingTrack) return;
 
+        let picks = [];
+        try {
+            const res  = await fetch('/api/swing-daily-picks/latest', { cache: 'no-store' });
+            const json = await res.json();
+            if (json.success && Array.isArray(json.picks) && json.picks.length > 0) {
+                // Only bullish A/B grades — same filter BrownBot uses
+                picks = json.picks.filter(p =>
+                    ['A', 'B'].includes(p.grade) && (p.bias || '').toLowerCase() === 'bullish'
+                );
+                // Fall back to all picks if filter leaves nothing (e.g. mixed day)
+                if (picks.length === 0) picks = json.picks;
+            }
+        } catch (_) {}
+
+        if (picks.length === 0) {
+            document.getElementById('swing-bar').style.display = 'none';
+            return;
+        }
+
         function buildSwingItems(list) {
-            return list.map(s => {
-                const gradeClass = s.grade === 'BUY' ? 'buy' : 'hold';
+            return list.map(p => {
+                const grade     = (p.grade || '').toUpperCase();
+                const gradeClass = grade === 'A' ? 'buy' : grade === 'B' ? 'buy' : 'hold';
+                const label     = grade === 'A' ? 'A · Bullish' : grade === 'B' ? 'B · Bullish' : grade;
+                const reason    = (p.reason || '').replace(/\.$/, '').substring(0, 60);
                 return `<span class="swing-item">
-                    <span class="s-sym">${s.sym}</span>
-                    <span class="s-grade ${gradeClass}">${s.grade}</span>
-                    <span class="s-info">${s.info}</span>
+                    <span class="s-sym">${p.ticker}</span>
+                    <span class="s-grade ${gradeClass}">${label}</span>
+                    ${reason ? `<span class="s-info">${reason}</span>` : ''}
                 </span><span class="swing-sep">◆</span>`;
             }).join('');
         }
 
-        const swingHtml = buildSwingItems(swingPicks);
+        const swingHtml = buildSwingItems(picks);
         swingTrack.innerHTML = swingHtml + swingHtml;
 
         const swingWidth = swingTrack.scrollWidth / 2;
