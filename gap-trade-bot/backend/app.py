@@ -1286,6 +1286,13 @@ def serve_login():
     resp.headers['Expires'] = '0'
     return resp
 
+@app.route('/verify-email')
+def serve_verify_email():
+    """Email verification link — serves login.html; JS reads ?token= and calls /api/auth/verify-email."""
+    resp = send_from_directory(FRONTEND_DIR, 'login.html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
+
 @app.route('/unsubscribe/<token>')
 def unsubscribe_digest(token):
     """One-click digest unsubscribe — no auth required, linked from email footer."""
@@ -1433,21 +1440,54 @@ def register():
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
-        email      = (data.get('email') or '').strip()
+        email      = (data.get('email') or '').strip().lower()
+        username   = (data.get('username') or '').strip()
         first_name = (data.get('first_name') or '').strip() or None
 
-        success, message = auth_manager.register_user(
-            data.get('username', ''),
+        # ── Resend verification if account exists but not yet verified ──────
+        _existing = db_manager.get_user_by_email(email) if email else None
+        if not _existing:
+            _existing = db_manager.get_user_by_username(username) if username else None
+        if _existing:
+            if _existing.get('email_verified'):
+                return jsonify({'success': False, 'error': 'An account with that email or username already exists'}), 400
+            # Unverified — generate fresh token and resend
+            _new_token = db_manager.renew_verification_token(_existing['id'])
+            _fname = _existing.get('first_name') or _existing.get('username', 'there')
+            _send_verification_email(_existing['email'], _fname, _new_token, request.url_root)
+            return jsonify({
+                'success': True,
+                'message': 'A new verification link has been sent to your email.',
+                'requires_verification': True,
+            })
+
+        last_name            = (data.get('last_name') or '').strip() or None
+        address              = (data.get('address') or '').strip() or None
+        profession_raw       = (data.get('profession') or '').strip()
+        annual_income_range  = (data.get('annual_income_range') or '').strip() or None
+
+        # All personal info fields are required
+        missing = []
+        if not first_name:           missing.append('First name')
+        if not last_name:            missing.append('Last name')
+        if not address:              missing.append('Address')
+        if not profession_raw:       missing.append('Profession')
+        if not annual_income_range:  missing.append('Annual income range')
+        if missing:
+            return jsonify({'success': False, 'error': f'{", ".join(missing)} {"is" if len(missing)==1 else "are"} required'}), 400
+
+        success, token_or_msg = auth_manager.register_user(
+            username,
             email,
             data.get('password', ''),
             first_name=first_name,
-            last_name=(data.get('last_name') or '').strip() or None,
-            address=(data.get('address') or '').strip() or None,
-            profession=(data.get('profession') or '').strip() or None,
-            annual_income_range=(data.get('annual_income_range') or '').strip() or None,
+            last_name=last_name,
+            address=address,
+            profession=profession_raw or None,
+            annual_income_range=annual_income_range,
         )
         if success:
-            _send_registration_welcome(email, first_name or data.get('username', ''))
+            verification_token = token_or_msg
             # Seed BrownBot config row with platform defaults for new user
             try:
                 new_user = db_manager.get_user_by_username(data.get('username', ''))
@@ -1459,8 +1499,14 @@ def register():
                     )
             except Exception:
                 pass
-            return jsonify({'success': True, 'message': message})
-        return jsonify({'success': False, 'error': message}), 400
+            # Send verification email (replaces welcome email — user must verify first)
+            _send_verification_email(email, first_name, verification_token, request.url_root)
+            return jsonify({
+                'success': True,
+                'message': 'Account created! Please check your email to verify your account before logging in.',
+                'requires_verification': True,
+            })
+        return jsonify({'success': False, 'error': token_or_msg}), 400
     except Exception as e:
         app_logger.error(f"Error registering user: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1732,6 +1778,147 @@ def _send_registration_welcome(to_email: str, first_name: str):
         app_logger.warning(f"Registration welcome email failed for {to_email}: {e}")
 
 
+def _send_verification_email(to_email: str, first_name: str, token: str, base_url: str = ''):
+    """Send an email-verification link. Fire-and-forget (runs in background thread)."""
+    from_email   = os.getenv('CONTACT_EMAIL_FROM', '')
+    app_password = os.getenv('GMAIL_APP_PASSWORD', '')
+    # base_url is captured from request.url_root at call site so it's always the real domain.
+    # Fallback order: RENDER_EXTERNAL_URL (auto-set by Render) → BASE_URL (manual override)
+    if not base_url:
+        base_url = (os.getenv('RENDER_EXTERNAL_URL') or os.getenv('BASE_URL') or '').rstrip('/')
+    base_url = base_url.rstrip('/')
+    if not from_email or not app_password or not to_email:
+        app_logger.warning(f'[EmailVerify] SMTP not configured — skipping verification email to {to_email}')
+        return
+
+    verify_url = f'{base_url}/verify-email?token={token}'
+
+    def _send():
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = 'Verify your Accentor AI email address'
+            msg['From']    = from_email
+            msg['To']      = to_email
+
+            html = f"""
+<html><body style="margin:0;padding:0;background:#0d1117;font-family:Arial,sans-serif;color:#e2e8f0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0d1117;padding:40px 0;">
+  <tr><td align="center">
+    <table width="560" cellpadding="0" cellspacing="0"
+           style="background:#161b22;border:1px solid #30363d;border-radius:14px;overflow:hidden;max-width:560px;">
+      <tr><td style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);padding:28px 40px;text-align:center;">
+        <div style="font-size:26px;font-weight:800;color:#fff;">Accentor <span style="color:#93c5fd;">AI</span></div>
+        <div style="color:#bfdbfe;font-size:12px;margin-top:4px;">AI-Powered Gap-Up Trading Intelligence</div>
+      </td></tr>
+      <tr><td style="padding:36px 40px;">
+        <h2 style="color:#fff;font-size:20px;margin:0 0 12px;">Hi {first_name}, confirm your email</h2>
+        <p style="color:#9ca3af;font-size:14px;line-height:1.7;margin:0 0 28px;">
+          Click the button below to verify your email address and activate your free trial.
+          This link expires in <strong style="color:#fff;">24 hours</strong>.
+        </p>
+        <div style="text-align:center;margin-bottom:28px;">
+          <a href="{verify_url}"
+             style="display:inline-block;background:#2563eb;color:#fff;font-size:15px;font-weight:700;
+                    padding:14px 36px;border-radius:10px;text-decoration:none;">
+            Verify Email &amp; Activate Trial
+          </a>
+        </div>
+        <p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0;">
+          Or copy and paste this link into your browser:<br>
+          <a href="{verify_url}" style="color:#60a5fa;word-break:break-all;">{verify_url}</a>
+        </p>
+        <hr style="border:none;border-top:1px solid #21262d;margin:28px 0;">
+        <p style="color:#4b5563;font-size:11px;margin:0;">
+          If you did not create an Accentor AI account, you can safely ignore this email.
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>"""
+
+            msg.attach(MIMEText(html, 'html'))
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(from_email, app_password)
+                server.sendmail(from_email, to_email, msg.as_string())
+            app_logger.info(f'[EmailVerify] Sent verification email to {to_email}')
+        except Exception as exc:
+            app_logger.warning(f'[EmailVerify] Failed to send to {to_email}: {exc}')
+
+    import threading as _t
+    _t.Thread(target=_send, daemon=True, name='EmailVerifySend').start()
+
+
+@app.route('/api/auth/verify-email', methods=['GET'])
+def verify_email():
+    """Verify a user's email address via the token sent on registration."""
+    token = request.args.get('token', '').strip()
+    if not token:
+        return jsonify({'success': False, 'error': 'Missing verification token'}), 400
+    user = db_manager.get_user_by_verification_token(token)
+    if not user:
+        return jsonify({'success': False, 'error': 'Invalid or expired verification link'}), 400
+    if user.get('email_verified'):
+        return jsonify({'success': True, 'message': 'Email already verified. You can log in.', 'already_verified': True})
+    ok = db_manager.verify_user_email(token)
+    if ok:
+        app_logger.info(f'[EmailVerify] Email verified for user {user["id"]} ({user["email"]})')
+        return jsonify({'success': True, 'message': 'Email verified! Your free trial is now active. You can log in.'})
+    return jsonify({'success': False, 'error': 'Verification failed — please try again or contact support'}), 500
+
+
+@app.route('/api/auth/update-unverified-email', methods=['POST'])
+def update_unverified_email():
+    """
+    Let an unverified user correct their email address.
+    Requires username + password to prove identity.
+    Sends a fresh verification link to the new address.
+    """
+    try:
+        data     = request.get_json() or {}
+        username = (data.get('username') or '').strip()
+        password = (data.get('password') or '')
+        new_email = (data.get('new_email') or '').strip().lower()
+
+        if not username or not password or not new_email:
+            return jsonify({'success': False, 'error': 'username, password and new_email are required'}), 400
+        if '@' not in new_email:
+            return jsonify({'success': False, 'error': 'Invalid email address'}), 400
+
+        user = db_manager.get_user_by_username(username)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+
+        # Check password
+        from auth import auth_manager as _am
+        if _am.hash_password(password) != user.get('password_hash'):
+            return jsonify({'success': False, 'error': 'Invalid username or password'}), 401
+
+        # Only allow on unverified accounts
+        if user.get('email_verified'):
+            return jsonify({'success': False, 'error': 'This account is already verified — use the login page'}), 400
+
+        # Check new email not already in use by someone else
+        existing = db_manager.get_user_by_email(new_email)
+        if existing and existing['id'] != user['id']:
+            return jsonify({'success': False, 'error': 'That email is already registered to another account'}), 400
+
+        # Update email and generate new verification token
+        with db_manager.get_connection() as conn:
+            conn.execute('UPDATE users SET email=?, email_verified=0 WHERE id=?', (new_email, user['id']))
+            conn.commit()
+
+        new_token = db_manager.renew_verification_token(user['id'])
+        first_name = user.get('first_name') or username
+        _send_verification_email(new_email, first_name, new_token, request.url_root)
+
+        app_logger.info(f'[EmailVerify] Email updated for user {user["id"]}: {user["email"]} → {new_email}')
+        return jsonify({'success': True, 'message': 'Email updated. Check your new inbox for the verification link.'})
+    except Exception as e:
+        app_logger.error(f'[EmailVerify] update_unverified_email error: {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Login a user and return a session token"""
@@ -1746,6 +1933,14 @@ def login():
         )
         if success:
             return jsonify({'success': True, 'data': result})
+        if result == 'EMAIL_NOT_VERIFIED':
+            _u = db_manager.get_user_by_username(data.get('username', ''))
+            return jsonify({
+                'success': False,
+                'error': 'Please verify your email before logging in. Check your inbox for the verification link.',
+                'email_not_verified': True,
+                'email': _u.get('email', '') if _u else '',
+            }), 401
         return jsonify({'success': False, 'error': result}), 401
     except Exception as e:
         app_logger.error(f"Error logging in: {e}")
@@ -1843,6 +2038,27 @@ def admin_list_users():
     try:
         from database import db_manager
         users = db_manager.get_all_users()
+        now = datetime.now()
+        for u in users:
+            trial_expires_raw = u.get('trial_expires_at')
+            trial_active = False
+            trial_days_left = 0
+            if trial_expires_raw:
+                try:
+                    trial_exp = datetime.fromisoformat(str(trial_expires_raw))
+                    delta = trial_exp - now
+                    if delta.total_seconds() > 0:
+                        trial_active = True
+                        trial_days_left = max(1, delta.days + 1)
+                except Exception:
+                    pass
+            base_tier = u.get('subscription_tier', 'basic')
+            u['trial_active'] = trial_active
+            u['trial_days_left'] = trial_days_left
+            u['trial_expires_at'] = str(trial_expires_raw) if trial_expires_raw else None
+            # effective_tier: what the user actually experiences right now
+            u['effective_tier'] = 'yogi' if (trial_active and base_tier == 'basic') else base_tier
+            u['has_paid_subscription'] = bool(u.get('stripe_subscription_id'))
         return jsonify({'success': True, 'data': users})
     except Exception as e:
         app_logger.error(f"Error listing users: {e}")
@@ -6199,19 +6415,12 @@ def start_brown_bot():
         sess = BrownSession(user_id)
         _brown_sessions[user_id] = sess
 
-    # Require a configured broker
+    # Require a configured broker — no fallback to admin account
     sess.broker = _get_broker(user_id)
-    if not sess.broker and user_id != 1:
-        sess.broker = _get_broker(1)
-        if sess.broker:
-            _add_brown_log('warning',
-                'Using broker config from admin account (migration fallback). '
-                'Re-save your broker credentials in Account Settings to assign them to your account.',
-                user_id=user_id)
     if not sess.broker:
         with _brown_sessions_lock:
             _brown_sessions.pop(user_id, None)
-        return jsonify({'success': False, 'error': 'No broker configured. Set up a broker in Account Settings before starting BrownBot.'})
+        return jsonify({'success': False, 'error': 'No broker configured. Add your Alpaca API keys in Account Settings → Broker before starting BrownBot.'})
     _add_brown_log('info', f'Broker ready: {sess.broker.name}', user_id=user_id)
 
     # Instantiate risk manager from saved config
@@ -6846,7 +7055,13 @@ def run_feedback_analysis():
     lookback_days = int(data.get('lookback_days', 30))
     lookback_days = max(7, min(lookback_days, 180))
     try:
-        trades     = db_manager.get_trades_for_feedback(lookback_days)
+        trades = db_manager.get_trades_for_feedback(lookback_days, user_id=uid)
+        if not trades:
+            return jsonify({
+                'success': False,
+                'error': f'No completed trades found in the last {lookback_days} days. '
+                         'Execute some trades first — the AI advisor needs real trade data to analyse.'
+            }), 400
         history    = db_manager.get_feedback_history(limit=3, user_id=uid)
         prior_runs = [h['analysis'] for h in history]
         result  = _feedback_analyzer.analyze(trades, lookback_days, prior_runs=prior_runs)
@@ -10890,7 +11105,7 @@ def _send_trial_expiry_reminders():
           </td></tr>
           <tr><td style="padding:9px 0;border-bottom:1px solid #21262d;">
             <span style="color:#f87171;font-size:13px;">✗</span>
-            <span style="color:#d1d5db;font-size:13px;margin-left:10px;">Entry Bot &amp; Exit Bot automation</span>
+            <span style="color:#d1d5db;font-size:13px;margin-left:10px;">BrownBot autonomous trading — day &amp; swing</span>
           </td></tr>
           <tr><td style="padding:9px 0;">
             <span style="color:#f87171;font-size:13px;">✗</span>

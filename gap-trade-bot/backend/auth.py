@@ -55,7 +55,7 @@ class AuthManager:
             annual_income_range=annual_income_range
         )
         if success:
-            return True, "User registered successfully"
+            return True, message  # message is the verification token UUID
         return False, message
     
     def login_user(self, username, password):
@@ -77,6 +77,10 @@ class AuthManager:
         # Check account is active
         if not user.get('is_active', 1):
             return False, "Account is deactivated. Contact an administrator."
+
+        # Block login until email is verified
+        if not user.get('email_verified', 0):
+            return False, "EMAIL_NOT_VERIFIED"
 
         # Update last login
         db_manager.update_last_login(username)

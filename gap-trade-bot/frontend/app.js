@@ -673,6 +673,9 @@ const app = createApp({
             isAdmin() {
                 return this.isSuperAdmin;
             },
+            hasActiveBroker() {
+                return this.brokerConfigs.some(c => c.is_active);
+            },
             trialActive() {
                 return this.user && this.user.trial_active === true;
             },

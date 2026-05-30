@@ -2208,6 +2208,14 @@
                                 <i class="fas fa-lock text-yellow-400"></i>
                                 Bot is running for another user
                             </div>
+                            <!-- No broker configured -->
+                            <div v-else-if="!brownBotStatus?.running && !hasActiveBroker"
+                                 class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 text-sm cursor-default"
+                                 title="Go to Account Settings → Broker to connect Alpaca">
+                                <i class="fas fa-plug text-gray-600"></i>
+                                No broker connected —
+                                <button @click="onTabChange('account')" class="text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors">set up in Account Settings</button>
+                            </div>
                             <button v-else @click="toggleBrownBot" :disabled="loading.brownBotToggle"
                                     :class="brownBotStatus?.running ? 'bg-green-600 hover:bg-green-700 ring-2 ring-green-400/40' : 'bg-amber-600 hover:bg-amber-700'"
                                     class="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50">
@@ -5433,7 +5441,7 @@
                                         class="text-blue-400 hover:text-blue-300 text-sm border border-blue-800 hover:border-blue-600 px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
                                     <i class="fas fa-credit-card mr-1.5"></i>Manage Billing
                                 </button>
-                                <button v-if="user && user.subscription_tier !== 'basic'" @click="cancelSubscription()"
+                                <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) !== 'basic' && !user.trial_active" @click="cancelSubscription()"
                                         :disabled="subscriptionLoading"
                                         class="text-red-400 hover:text-red-300 text-sm border border-red-800 hover:border-red-600 px-4 py-2 rounded-lg transition-colors disabled:opacity-50">
                                     Cancel Subscription
@@ -5442,10 +5450,10 @@
                         </div>
                     </div>
 
-                    <!-- Plan cards -->
+                    <!-- Plan cards — highlight/buttons use actual DB tier, not effective trial tier -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <!-- Basic -->
-                        <div :class="user && user.subscription_tier === 'basic' ? 'ring-2 ring-gray-400' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                        <div :class="user && (user.subscription_tier_actual || user.subscription_tier) === 'basic' ? 'ring-2 ring-gray-400' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
                             <div class="mb-4">
                                 <span class="bg-gray-600 text-gray-200 text-xs px-2 py-1 rounded-full font-medium">Basic</span>
                                 <div class="mt-3 text-2xl font-bold text-white">Free</div>
@@ -5456,10 +5464,11 @@
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>AI Chat</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Help</li>
                             </ul>
-                            <div v-if="user && user.subscription_tier === 'basic'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg">Current Plan</div>
+                            <div v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'basic' && !user.trial_active"
+                                 class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg">Current Plan</div>
                         </div>
                         <!-- Beginner -->
-                        <div :class="user && user.subscription_tier === 'beginner' ? 'ring-2 ring-green-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                        <div :class="user && (user.subscription_tier_actual || user.subscription_tier) === 'beginner' ? 'ring-2 ring-green-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
                             <div class="mb-4">
                                 <span class="bg-green-700 text-white text-xs px-2 py-1 rounded-full font-medium">Beginner Trader</span>
                                 <div class="mt-3 text-2xl font-bold text-white">$5<span class="text-sm text-gray-400 font-normal">/mo</span></div>
@@ -5468,11 +5477,11 @@
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Basic</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Historical Data</li>
                             </ul>
-                            <button v-if="user && user.subscription_tier === 'beginner'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
-                            <button v-else-if="user && ['basic'].includes(user.subscription_tier)" @click="upgradeSubscription('beginner')" :disabled="subscriptionLoading" class="bg-green-700 hover:bg-green-600 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
+                            <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'beginner'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
+                            <button v-else-if="user && ['basic'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('beginner')" :disabled="subscriptionLoading" class="bg-green-700 hover:bg-green-600 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
                         </div>
                         <!-- Advanced -->
-                        <div :class="user && user.subscription_tier === 'advanced' ? 'ring-2 ring-blue-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col relative">
+                        <div :class="user && (user.subscription_tier_actual || user.subscription_tier) === 'advanced' ? 'ring-2 ring-blue-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col relative">
                             <div class="absolute -top-3 left-1/2 -translate-x-1/2"><span class="bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-semibold">Popular</span></div>
                             <div class="mb-4">
                                 <span class="bg-blue-700 text-white text-xs px-2 py-1 rounded-full font-medium">Advanced Trader</span>
@@ -5484,11 +5493,11 @@
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Trade History</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Positions & Stats</li>
                             </ul>
-                            <button v-if="user && user.subscription_tier === 'advanced'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
-                            <button v-else-if="user && ['basic','beginner'].includes(user.subscription_tier)" @click="upgradeSubscription('advanced')" :disabled="subscriptionLoading" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
+                            <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'advanced'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
+                            <button v-else-if="user && ['basic','beginner'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('advanced')" :disabled="subscriptionLoading" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
                         </div>
                         <!-- Yogi -->
-                        <div :class="user && user.subscription_tier === 'yogi' ? 'ring-2 ring-yellow-500' : ''" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
+                        <div :class="user && (user.subscription_tier_actual || user.subscription_tier) === 'yogi' ? 'ring-2 ring-yellow-500' : (user && user.trial_active ? 'ring-2 ring-amber-700/60' : '')" class="bg-gray-800 rounded-xl p-5 shadow-lg flex flex-col">
                             <div class="mb-4">
                                 <span class="bg-yellow-600 text-white text-xs px-2 py-1 rounded-full font-medium">Yogi Trader</span>
                                 <div class="mt-3 text-2xl font-bold text-white">$25<span class="text-sm text-gray-400 font-normal">/mo</span></div>
@@ -5497,8 +5506,14 @@
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Advanced</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Backtest Engine</li>
                             </ul>
-                            <button v-if="user && user.subscription_tier === 'yogi'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
-                            <button v-else-if="user && ['basic','beginner','advanced'].includes(user.subscription_tier)" @click="upgradeSubscription('yogi')" :disabled="subscriptionLoading" class="bg-yellow-600 hover:bg-yellow-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
+                            <!-- Paid Yogi subscriber -->
+                            <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'yogi'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
+                            <!-- Trial user — show subscribe CTA -->
+                            <button v-else-if="user && user.trial_active" @click="upgradeSubscription('yogi')" :disabled="subscriptionLoading" class="bg-amber-600 hover:bg-amber-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">
+                                Subscribe to Keep Access
+                            </button>
+                            <!-- Regular user upgrading -->
+                            <button v-else-if="user && ['basic','beginner','advanced'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('yogi')" :disabled="subscriptionLoading" class="bg-yellow-600 hover:bg-yellow-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
                         </div>
                     </div>
                 </div>
@@ -5715,17 +5730,34 @@
                                     </td>
                                     <td class="py-3 px-3">
                                         <div v-if="!u.system_role">
-                                            <select v-if="isSuperAdmin"
-                                                    :value="u.subscription_tier || 'basic'"
-                                                    @change="adminUpdateSubscriptionTier(u.id, $event.target.value); u.subscription_tier = $event.target.value"
-                                                    class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                                                <option value="basic">Basic (Free)</option>
-                                                <option value="beginner">Beginner ($5)</option>
-                                                <option value="advanced">Advanced ($10)</option>
-                                                <option value="yogi">Yogi ($25)</option>
-                                            </select>
-                                            <span v-else class="text-gray-300 text-xs capitalize">{{ u.subscription_tier || 'basic' }}</span>
-                                            <div class="text-xs mt-0.5" :class="u.subscription_status === 'active' ? 'text-green-500' : 'text-gray-500'">{{ u.subscription_status || 'active' }}</div>
+                                            <div class="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                                <select v-if="isSuperAdmin"
+                                                        :value="u.subscription_tier || 'basic'"
+                                                        @change="adminUpdateSubscriptionTier(u.id, $event.target.value); u.subscription_tier = $event.target.value"
+                                                        class="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                                    <option value="basic">Basic (Free)</option>
+                                                    <option value="beginner">Beginner ($5)</option>
+                                                    <option value="advanced">Advanced ($10)</option>
+                                                    <option value="yogi">Yogi ($25)</option>
+                                                </select>
+                                                <span v-else class="text-gray-300 text-xs capitalize">{{ u.subscription_tier || 'basic' }}</span>
+                                                <span v-if="u.trial_active"
+                                                      class="bg-amber-800/60 text-amber-300 border border-amber-700/50 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                                                    FREE TRIAL · {{ u.trial_days_left }}d left
+                                                </span>
+                                                <span v-else-if="u.has_paid_subscription"
+                                                      class="bg-green-900/50 text-green-400 border border-green-700/40 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                                                    PAID
+                                                </span>
+                                            </div>
+                                            <div class="text-[10px] mt-0.5">
+                                                <span v-if="u.trial_active" class="text-amber-500">
+                                                    Access: {{ u.effective_tier }} (trial)
+                                                </span>
+                                                <span v-else :class="u.subscription_status === 'active' ? 'text-green-600' : 'text-gray-500'">
+                                                    {{ u.subscription_status || 'active' }}
+                                                </span>
+                                            </div>
                                         </div>
                                         <span v-else class="text-gray-500 text-xs">N/A</span>
                                     </td>
@@ -5736,7 +5768,7 @@
                                     <td v-if="isSuperAdmin || isBotAdmin" class="py-3 px-3">
                                         <div v-if="!(user && u.id === user.id)" class="flex gap-2 flex-wrap">
                                             <!-- super_admin only actions -->
-                                            <button v-if="isSuperAdmin && !u.system_role && u.subscription_tier !== 'basic'" @click="adminCancelUserSubscription(u.id)"
+                                            <button v-if="isSuperAdmin && !u.system_role && u.has_paid_subscription && !u.trial_active" @click="adminCancelUserSubscription(u.id)"
                                                     class="bg-orange-800 hover:bg-orange-700 text-white text-xs px-2 py-1 rounded transition-colors">Cancel Sub</button>
                                             <button v-if="isSuperAdmin" @click="toggleUserActive(u.id, !!u.is_active)"
                                                     :class="u.is_active ? 'bg-red-800 hover:bg-red-700' : 'bg-green-800 hover:bg-green-700'"

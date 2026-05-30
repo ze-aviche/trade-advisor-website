@@ -611,6 +611,22 @@ class DatabaseManager:
             cursor.execute(
                 'CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp)')
 
+            # Email verification columns
+            for col_sql in [
+                'ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0',
+                'ALTER TABLE users ADD COLUMN email_verification_token TEXT',
+                'ALTER TABLE users ADD COLUMN email_verification_expires_at TEXT',
+            ]:
+                try:
+                    cursor.execute(col_sql)
+                except sqlite3.OperationalError:
+                    pass  # already exists
+
+            # Auto-verify existing users so they aren't locked out after migration
+            cursor.execute(
+                "UPDATE users SET email_verified=1 WHERE email_verified=0 AND created_at < datetime('now', '-1 minute')"
+            )
+
             conn.commit()
 
     def _get_user_count(self):
@@ -691,7 +707,11 @@ class DatabaseManager:
 
         trial_expires_at = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
         import uuid as _uuid
-        unsubscribe_token = str(_uuid.uuid4())
+        unsubscribe_token    = str(_uuid.uuid4())
+        verification_token   = str(_uuid.uuid4())
+        verification_expires = (datetime.now() + timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        # First-ever user (super_admin) is auto-verified so they're never locked out
+        auto_verified = 1 if system_role == 'super_admin' else 0
 
         try:
             with self.get_connection() as conn:
@@ -700,18 +720,63 @@ class DatabaseManager:
                     INSERT INTO users (username, email, password_hash, system_role, subscription_tier,
                                        subscription_status, is_active, preferences,
                                        first_name, last_name, address, profession, annual_income_range,
-                                       trial_expires_at, email_digest_unsubscribe_token)
-                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       trial_expires_at, email_digest_unsubscribe_token,
+                                       email_verified, email_verification_token,
+                                       email_verification_expires_at)
+                    VALUES (?, ?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (username, email, password_hash, system_role, subscription_tier, json.dumps(preferences),
                       first_name, last_name, address, profession, annual_income_range, trial_expires_at,
-                      unsubscribe_token))
+                      unsubscribe_token, auto_verified, verification_token, verification_expires))
                 conn.commit()
-                return True, "User created successfully"
+                return True, verification_token
         except sqlite3.IntegrityError:
             return False, "Username or email already exists"
         except Exception as e:
             return False, f"Database error: {str(e)}"
     
+    def get_user_by_verification_token(self, token: str):
+        """Return the user row for a given email verification token, or None if not found or expired."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT id, username, email, email_verified, email_verification_expires_at
+                       FROM users WHERE email_verification_token = ?''',
+                    (token,)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                user = dict(row)
+                # Check expiry
+                expires_raw = user.get('email_verification_expires_at')
+                if expires_raw:
+                    try:
+                        if datetime.fromisoformat(str(expires_raw)) < datetime.now():
+                            return None  # expired
+                    except Exception:
+                        pass
+                return user
+        except Exception as e:
+            print(f"Database error in get_user_by_verification_token: {e}")
+            return None
+
+    def verify_user_email(self, token: str) -> bool:
+        """Mark email as verified and clear the token. Returns True on success."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''UPDATE users SET email_verified=1, email_verification_token=NULL,
+                       email_verification_expires_at=NULL WHERE email_verification_token=?''',
+                    (token,)
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Database error in verify_user_email: {e}")
+            return False
+
     def get_user_by_id(self, user_id):
         """Get user by ID"""
         try:
@@ -722,7 +787,7 @@ class DatabaseManager:
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
                            preferences, stripe_customer_id, stripe_subscription_id,
                            first_name, last_name, address, profession, annual_income_range,
-                           trial_expires_at
+                           trial_expires_at, email_verified
                     FROM users WHERE id = ?
                 ''', (user_id,))
                 row = cursor.fetchone()
@@ -745,7 +810,7 @@ class DatabaseManager:
                            subscription_status, subscription_expires_at, is_active, created_at, last_login,
                            preferences, stripe_customer_id, stripe_subscription_id,
                            first_name, last_name, address, profession, annual_income_range,
-                           trial_expires_at
+                           trial_expires_at, email_verified
                     FROM users WHERE username = ?
                 ''', (username,))
                 row = cursor.fetchone()
@@ -876,7 +941,8 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, username, email, system_role, subscription_tier,
-                           subscription_status, is_active, created_at, last_login
+                           subscription_status, is_active, created_at, last_login,
+                           trial_expires_at, stripe_customer_id, stripe_subscription_id
                     FROM users ORDER BY created_at ASC
                 ''')
                 return [dict(row) for row in cursor.fetchall()]
@@ -916,12 +982,32 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT id, username, email, is_active FROM users WHERE email = ?', (email,))
+                cursor.execute(
+                    'SELECT id, username, email, is_active, email_verified, first_name FROM users WHERE email = ?',
+                    (email.lower().strip(),)
+                )
                 row = cursor.fetchone()
                 return dict(row) if row else None
         except Exception as e:
             _db_logger.error(f"Database error getting user by email: {e}", exc_info=True)
             return None
+
+    def renew_verification_token(self, user_id: int) -> str:
+        """Generate and store a fresh email verification token (24 h expiry). Returns the new token."""
+        import uuid as _uuid
+        token   = str(_uuid.uuid4())
+        expires = (datetime.now() + timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    '''UPDATE users SET email_verification_token=?,
+                       email_verification_expires_at=?, email_verified=0 WHERE id=?''',
+                    (token, expires, user_id)
+                )
+                conn.commit()
+        except Exception as e:
+            _db_logger.error(f"renew_verification_token failed for user {user_id}: {e}")
+        return token
 
     def set_reset_token(self, user_id, token, expires_at):
         """Store a password-reset token for a user"""
@@ -1188,22 +1274,24 @@ class DatabaseManager:
             print(f"Database error getting trades: {e}")
             return []
     
-    def get_trades_for_feedback(self, lookback_days: int = 30) -> list:
+    def get_trades_for_feedback(self, lookback_days: int = 30, user_id: int = None) -> list:
         """Return completed trades (pnl != 0) for the past N days for feedback analysis."""
         from datetime import date, timedelta
         start = (date.today() - timedelta(days=lookback_days)).isoformat()
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    '''SELECT symbol, side, pnl, trade_time, trade_date,
-                              position_type, source
-                       FROM trades
-                       WHERE trade_date >= ?
-                         AND pnl != 0
-                       ORDER BY trade_date ASC, trade_time ASC''',
-                    (start,),
-                )
+                query  = '''SELECT symbol, side, pnl, trade_time, trade_date,
+                                   position_type, source
+                            FROM trades
+                            WHERE trade_date >= ?
+                              AND pnl != 0'''
+                params = [start]
+                if user_id is not None:
+                    query += ' AND user_id = ?'
+                    params.append(user_id)
+                query += ' ORDER BY trade_date ASC, trade_time ASC'
+                cursor.execute(query, params)
                 return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
             print(f'Database error in get_trades_for_feedback: {e}')
@@ -2762,7 +2850,9 @@ class DatabaseManager:
                        FROM users
                        WHERE trial_expires_at BETWEEN ? AND ?
                          AND trial_reminder_sent = 0
-                         AND is_active = 1''',
+                         AND is_active = 1
+                         AND (subscription_tier = 'basic' OR subscription_tier IS NULL)
+                         AND (stripe_subscription_id IS NULL OR stripe_subscription_id = '')''',
                     (lo, hi)
                 )
                 return [dict(row) for row in cursor.fetchall()]
