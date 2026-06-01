@@ -5461,10 +5461,9 @@
                                 <div class="mt-3 text-2xl font-bold text-white">Free</div>
                             </div>
                             <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>About</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Gap-Ups</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>AI Chat</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Help</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Real-time gap-up scanner</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>AI Chat (market questions)</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Morning trading digest email</li>
                             </ul>
                             <div v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'basic' && !user.trial_active"
                                  class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg">Current Plan</div>
@@ -5477,7 +5476,9 @@
                             </div>
                             <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Basic</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Historical Data</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Months of historical gap-up data</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Filter by date, gap %, price, volume</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Export to CSV / Excel</li>
                             </ul>
                             <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'beginner'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
                             <button v-else-if="user && ['basic'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('beginner')" :disabled="subscriptionLoading" class="bg-green-700 hover:bg-green-600 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
@@ -5491,9 +5492,9 @@
                             </div>
                             <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Beginner</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Trade History, Positions & Stats</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Trade History</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Positions & Stats</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Daily AI-graded swing picks (Grade A/B/C)</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Full technicals — RSI, MACD, Bollinger, ATR</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Sector strength + live sector news</li>
                             </ul>
                             <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'advanced'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
                             <button v-else-if="user && ['basic','beginner'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('advanced')" :disabled="subscriptionLoading" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
@@ -5506,7 +5507,10 @@
                             </div>
                             <ul class="text-gray-400 text-sm space-y-2 flex-1 mb-4">
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Everything in Advanced</li>
-                                <li><i class="fas fa-check text-green-400 mr-2"></i>Backtest Engine</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>BrownBot — autonomous day & swing trading</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>AI Playbook, risk manager, circuit breaker</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Trade history, positions & stats</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Backtest engine with equity curve</li>
                             </ul>
                             <!-- Paid Yogi subscriber -->
                             <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'yogi'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>

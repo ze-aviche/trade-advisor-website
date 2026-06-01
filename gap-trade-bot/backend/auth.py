@@ -203,6 +203,52 @@ def require_auth(f):
     return decorated_function
 
 
+_TIER_ORDER = {'basic': 0, 'beginner': 1, 'advanced': 2, 'yogi': 3}
+
+
+def _get_effective_tier(user: dict) -> str:
+    """Return the user's effective subscription tier, honouring active free trials."""
+    from datetime import datetime as _dt
+    base = user.get('subscription_tier', 'basic') or 'basic'
+    trial_raw = user.get('trial_expires_at')
+    if trial_raw and base == 'basic':
+        try:
+            if _dt.fromisoformat(str(trial_raw)) > _dt.now():
+                return 'yogi'
+        except Exception:
+            pass
+    return base
+
+
+def require_tier(*min_tiers):
+    """Decorator: require the user to be on at least one of the given tiers (or higher).
+    Staff accounts (system_role set) bypass the check.
+    Usage: @require_tier('beginner')  or  @require_tier('yogi')
+    """
+    min_rank = min(_TIER_ORDER.get(t, 0) for t in min_tiers)
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = getattr(request, 'user', None)
+            if not user:
+                return jsonify({'success': False, 'error': 'Authentication required'}), 401
+            # Staff always bypass tier checks
+            if user.get('system_role'):
+                return f(*args, **kwargs)
+            effective = _get_effective_tier(user)
+            if _TIER_ORDER.get(effective, 0) < min_rank:
+                return jsonify({
+                    'success': False,
+                    'error': f'This feature requires a {min_tiers[0].capitalize()} Trader subscription or higher.',
+                    'upgrade_required': True,
+                    'required_tier': min_tiers[0],
+                }), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
 def require_role(*system_roles):
     """Decorator to require one of the given system_roles (super_admin, dev_master)"""
     def decorator(f):

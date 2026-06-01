@@ -57,7 +57,7 @@ from database import db_manager
 
 # Import auth functions (these should always be available)
 try:
-    from auth import auth_manager, require_auth, require_role
+    from auth import auth_manager, require_auth, require_role, require_tier
 except ImportError as e:
     app_logger.warning(f"Warning: Could not import auth: {e}")
     auth_manager = None
@@ -2779,6 +2779,8 @@ def get_gap_up_snapshot(date):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/gap-ups/history/<ticker>')
+@require_auth
+@require_tier('beginner')
 def get_gap_up_ticker_history(ticker):
     """Return all gap-up snapshot records for a ticker from the local database."""
     try:
@@ -2796,6 +2798,8 @@ def get_gap_up_ticker_history(ticker):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/historical-data/<ticker>')
+@require_auth
+@require_tier('beginner')
 def get_historical_data(ticker):
     """Get historical data for a specific ticker"""
     try:
@@ -3130,6 +3134,8 @@ def _get_sector_context(ticker):
 # ── Historical AI analysis endpoint ───────────────────────────────────────────
 
 @app.route('/api/historical-analysis/<ticker>', methods=['POST'])
+@require_auth
+@require_tier('beginner')
 def get_historical_analysis(ticker):
     """Use Claude AI to analyze historical gap-up patterns and predict next gap-up day behavior."""
     try:
@@ -3661,6 +3667,7 @@ def update_strategies():
 
 @app.route('/api/swing-bot/config', methods=['GET'])
 @require_auth
+@require_tier('advanced')
 def get_swing_bot_config():
     """Return current swing bot config."""
     try:
@@ -3673,6 +3680,7 @@ def get_swing_bot_config():
 
 @app.route('/api/swing-bot/update-config', methods=['POST'])
 @require_auth
+@require_tier('advanced')
 def update_swing_bot_config():
     """Update swing bot config and apply to running bot."""
     try:
@@ -6130,6 +6138,7 @@ def get_backtest_info():
 
 @app.route('/api/backtest/run', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def run_backtest():
     """Run a gap-up backtest simulation and return trades + stats + equity curve."""
     try:
@@ -6192,6 +6201,7 @@ def seed_gap_data():
 
 @app.route('/api/brown-bot/status', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_status():
     """Return BrownBot running state, stats, and active position count."""
     current_user_id = request.user.get('id', 1)
@@ -6336,6 +6346,7 @@ def get_brown_bot_status():
 
 @app.route('/api/brown-bot/broker-orders', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_broker_orders():
     """Return filled/closed orders directly from the broker (Alpaca).
 
@@ -6374,6 +6385,7 @@ def get_brown_bot_broker_orders():
 
 @app.route('/api/brown-bot/broker-activities', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_broker_activities():
     """Return account activities directly from the broker (Alpaca).
 
@@ -6404,6 +6416,7 @@ def get_brown_bot_broker_activities():
 
 @app.route('/api/brown-bot/start', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def start_brown_bot():
     """Start BrownBot for the requesting user — each user gets an isolated session."""
     user_id = request.user.get('id', 1)
@@ -6765,6 +6778,7 @@ def start_brown_bot():
 
 @app.route('/api/brown-bot/stop', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def stop_brown_bot():
     """Stop the requesting user's BrownBot session."""
     user_id = request.user.get('id', 1)
@@ -6800,6 +6814,7 @@ def stop_brown_bot():
 
 @app.route('/api/brown-bot/close-all', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def brown_bot_close_all():
     """Close every position in the Alpaca account using the bulk endpoint.
     Marks positions _exit_pending and writes exit trades to DB.
@@ -6917,6 +6932,7 @@ def brown_bot_close_all():
 
 @app.route('/api/brown-bot/config', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_config_endpoint():
     """Return current BrownBot config."""
     try:
@@ -6928,6 +6944,7 @@ def get_brown_bot_config_endpoint():
 
 @app.route('/api/brown-bot/config', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def update_brown_bot_config_endpoint():
     """Persist BrownBot config."""
     try:
@@ -6944,6 +6961,7 @@ def update_brown_bot_config_endpoint():
 
 @app.route('/api/brown-bot/logs', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_logs():
     """Return recent BrownBot activity logs for the requesting user's session."""
     user_id = request.user.get('id', 1)
@@ -6954,6 +6972,7 @@ def get_brown_bot_logs():
 
 @app.route('/api/brown-bot/risk-status', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_risk_status():
     """Return live risk snapshot: daily P&L, open positions, circuit breaker state."""
     current_user_id = request.user.get('id', 1)
@@ -7045,6 +7064,7 @@ def admin_bots_status():
 
 @app.route('/api/feedback/analyze', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def run_feedback_analysis():
     """Run the Purple Feedback Bot: query trades, compute stats, call Claude."""
     global _latest_feedback
@@ -7078,6 +7098,7 @@ def run_feedback_analysis():
 
 @app.route('/api/feedback/latest', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_feedback_latest():
     """Return the most recent feedback analysis for the current user."""
     global _latest_feedback
@@ -7104,6 +7125,7 @@ def get_feedback_latest():
 
 @app.route('/api/feedback/history/<int:run_id>', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_feedback_run(run_id):
     """Return a specific historical feedback run, scoped to the current user."""
     import json as _json
@@ -7231,6 +7253,7 @@ def get_broker_candidates():
 
 @app.route('/api/brown-bot/swing-backtest', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def swing_backtest():
     """
     Run a swing trade backtest over collected screener history (Option B).
@@ -7431,6 +7454,7 @@ def swing_backtest():
 
 @app.route('/api/brown-bot/candidates', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_candidates():
     """Return gap-up scanner results filtered by config thresholds, merged with watchlist."""
     try:
@@ -7491,6 +7515,7 @@ def get_brown_bot_candidates():
 
 @app.route('/api/brown-bot/swing-candidates', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_swing_candidates():
     """Return the latest BrownBot swing scanner AI picks, enriched with technicals."""
     try:
@@ -7534,6 +7559,7 @@ def get_brown_bot_swing_candidates():
 
 @app.route('/api/brown-bot/candidate-signals', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_candidate_signals():
     """Run intraday trend checks for a comma-separated list of symbols."""
     symbols_param = request.args.get('symbols', '')
@@ -7602,6 +7628,7 @@ def _alpaca_snapshots(tickers: list) -> dict:
 
 @app.route('/api/brown-bot/live-prices', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_live_prices():
     """Return current price + session VWAP for a comma-separated list of tickers."""
     symbols_param = request.args.get('symbols', '')
@@ -7614,6 +7641,7 @@ def get_brown_bot_live_prices():
 
 @app.route('/api/brown-bot/watchlist', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_brown_bot_watchlist():
     """Return current BrownBot watchlist."""
     try:
@@ -7624,6 +7652,7 @@ def get_brown_bot_watchlist():
 
 @app.route('/api/brown-bot/watchlist', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def add_brown_bot_watchlist():
     """Add a symbol to the BrownBot watchlist."""
     data = request.get_json() or {}
@@ -7644,6 +7673,7 @@ def add_brown_bot_watchlist():
 
 @app.route('/api/brown-bot/watchlist/<symbol>', methods=['DELETE'])
 @require_auth
+@require_tier('yogi')
 def remove_brown_bot_watchlist(symbol):
     """Remove a symbol from the BrownBot watchlist."""
     symbol = symbol.strip().upper()
@@ -8098,6 +8128,7 @@ def get_strategies():
 # Trade History API endpoints
 @app.route('/api/trades', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_trades():
     """Get trade history with optional filtering"""
     try:
@@ -8148,6 +8179,7 @@ def get_trades():
 
 @app.route('/api/trades', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def add_trade():
     """Add a new trade to the database"""
     try:
@@ -8238,6 +8270,7 @@ def import_das_trades():
 
 @app.route('/api/trades/summary', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_trade_summary():
     """Get trade summary statistics"""
     try:
@@ -8268,6 +8301,7 @@ def get_trade_summary():
 
 @app.route('/api/positions/pnl-history', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_positions_pnl_history():
     """Get positions-based PnL history for charting"""
     try:
@@ -8338,6 +8372,7 @@ def recalculate_trade_pnl():
 
 @app.route('/api/trades/sync-das', methods=['POST'])
 @require_auth
+@require_tier('yogi')
 def sync_trades_from_das():
     """Sync trades from DAS Trader"""
     if not DAS_ENABLED:
@@ -8474,6 +8509,7 @@ def trigger_manual_sync():
 # Position Sync Status endpoint
 @app.route('/api/positions/sync-status', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_position_sync_status():
     """Get position sync status"""
     try:
@@ -8502,6 +8538,7 @@ def get_position_sync_status():
 # Daily Position History API endpoints
 @app.route('/api/positions/daily', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_daily_positions():
     """Return consolidated closed positions for the Positions tab.
 
@@ -8541,6 +8578,7 @@ def get_daily_positions():
 
 @app.route('/api/positions/daily/<date>', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_positions_by_date(date):
     """Get all positions for a specific date"""
     try:
@@ -8594,6 +8632,7 @@ def get_positions_by_date(date):
 
 @app.route('/api/positions/daily/range', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_positions_by_date_range():
     """Get positions within a date range"""
     try:
@@ -8640,6 +8679,7 @@ def get_positions_by_date_range():
 
 @app.route('/api/positions/daily/dates', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_available_dates():
     """Get list of available dates in daily positions"""
     try:
@@ -9093,6 +9133,7 @@ def _parse_stats_filters(req):
 
 @app.route('/api/positions/summary', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_positions_summary():
     """Return total_positions, total_pnl, and win_rate using the same FIFO-consolidated
     round-trip logic as the Positions tab, so Stats and Positions always agree."""
@@ -9130,6 +9171,7 @@ def get_positions_summary():
 
 @app.route('/api/positions/extended-stats', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_extended_stats():
     """Compute all Stats-tab metrics from the same FIFO-consolidated positions as the Positions tab."""
     try:
@@ -9248,21 +9290,25 @@ def get_extended_stats():
 # Keep old single-stat endpoints as thin shims so nothing else breaks
 @app.route('/api/positions/total_positions', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_total_positions():
     return get_positions_summary()
 
 @app.route('/api/positions/total_pnl', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_total_pnl():
     return get_positions_summary()
 
 @app.route('/api/positions/winrate', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_winrate():
     return get_positions_summary()
 
 @app.route('/api/positions/daily-pnl', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_daily_pnl():
     try:
         uid = request.user.get('id', 1)
@@ -9278,6 +9324,7 @@ def get_daily_pnl():
 
 @app.route('/api/positions/cumulative-pnl', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_cumulative_pnl():
     try:
         uid = request.user.get('id', 1)
@@ -9293,6 +9340,7 @@ def get_cumulative_pnl():
 
 @app.route('/api/positions/pie-chart/long-short', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_long_short_pnl():
     try:
         uid = request.user.get('id', 1)
@@ -9308,6 +9356,7 @@ def get_long_short_pnl():
 
 @app.route('/api/positions/pie-chart/symbols', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_symbol_pnl():
     try:
         uid   = request.user.get('id', 1)
@@ -9324,6 +9373,7 @@ def get_symbol_pnl():
 
 @app.route('/api/positions/pie-chart/win-loss', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_win_loss_pnl():
     try:
         uid = request.user.get('id', 1)
@@ -9339,6 +9389,7 @@ def get_win_loss_pnl():
 
 @app.route('/api/positions/pie-chart/monthly', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_monthly_pnl():
     try:
         uid = request.user.get('id', 1)
@@ -9354,6 +9405,7 @@ def get_monthly_pnl():
 
 @app.route('/api/positions/time-of-day', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_time_of_day_pnl():
     """P&L grouped by exit hour (ET). Respects date, price, and day-of-week filters."""
     try:
@@ -9370,6 +9422,7 @@ def get_time_of_day_pnl():
 
 @app.route('/api/positions/day-of-week', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_day_of_week_pnl():
     """P&L grouped by day of week (Mon–Fri ET). Respects date, price, and time filters."""
     try:
@@ -9386,6 +9439,7 @@ def get_day_of_week_pnl():
 
 @app.route('/api/positions/open', methods=['GET'])
 @require_auth
+@require_tier('yogi')
 def get_open_positions():
     """Return live open positions from Alpaca.
     Priority: running BrownBot broker → DB config → ALPACA_API_KEY env var."""
@@ -10217,6 +10271,8 @@ def _compute_and_save_swing_picks(session_date: str,
 
 
 @app.route('/api/swing-daily-picks')
+@require_auth
+@require_tier('advanced')
 def swing_daily_picks():
     """
     Return cached swing picks for today's session (memory → DB → compute).
@@ -10522,6 +10578,8 @@ def _compute_technicals(bars: list) -> dict:
 
 
 @app.route('/api/swing-technicals/<ticker>')
+@require_auth
+@require_tier('advanced')
 def swing_technicals(ticker):
     """
     Return technical indicators + sector context for swing analysis.
@@ -10588,6 +10646,8 @@ def swing_technicals(ticker):
 
 
 @app.route('/api/swing-fundamentals/<ticker>')
+@require_auth
+@require_tier('advanced')
 def swing_fundamentals(ticker):
     """Return key fundamental data for a ticker via yfinance. 6-hour cache."""
     ticker = ticker.upper().strip()
@@ -10671,6 +10731,8 @@ def swing_fundamentals(ticker):
 
 
 @app.route('/api/swing-recommendation/<ticker>', methods=['POST'])
+@require_auth
+@require_tier('advanced')
 def swing_recommendation(ticker):
     """
     Claude AI swing setup analysis.
@@ -10844,7 +10906,7 @@ def _build_digest_html(date_str, name, movers, earnings_data, ai_summary, unsub_
   </td></tr>
   <tr><td style="padding:28px 40px 0;">
     <p style="color:#e2e8f0;font-size:15px;margin:0 0 4px;">Good morning, <strong>{name}</strong> &#128075;</p>
-    <p style="color:#9ca3af;font-size:13px;margin:0;">Here's what's moving before the bell. Log in to act on these setups.</p>
+    <p style="color:#9ca3af;font-size:13px;margin:0;">Here's what's gapping up at today's open. Log in to act on these setups.</p>
   </td></tr>
   <tr><td style="padding:20px 40px 0;">
     <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px 20px;">
@@ -10902,23 +10964,27 @@ def _send_daily_digest():
     now_et   = datetime.now(_et)
     date_str = now_et.strftime('%A, %B %d, %Y')
 
-    # 1. Premarket movers — reuse existing gap-up detector
+    # 1. Live gap-ups from today's open — use real_time_gap_ups already populated
+    #    by GapUpMonitor (runs every 2 min). At 09:40 this has Alpaca movers + universe scan.
     premarket_movers = []
     try:
-        from gap_up_detector import fetch_gap_up_stocks
-        premarket_movers = sorted(
-            fetch_gap_up_stocks(min_price=2.0) or [],
-            key=lambda s: s.get('gap_percent', 0), reverse=True
-        )[:15]
-        app_logger.info(f'[DailyDigest] Got {len(premarket_movers)} premarket movers from scanner')
-    except Exception as _e:
-        app_logger.warning(f'[DailyDigest] Premarket scan failed ({_e}), falling back to DB snapshot')
-        try:
-            yesterday = (now_et.date() - timedelta(days=1)).isoformat()
+        live = list(real_time_gap_ups)
+        if live:
             premarket_movers = sorted(
-                db_manager.get_gap_up_snapshot(yesterday) or [],
+                live, key=lambda s: float(s.get('gap_percent', 0)), reverse=True
+            )[:15]
+            app_logger.info(f'[DailyDigest] Using {len(premarket_movers)} live gap-ups from real_time_gap_ups')
+        else:
+            raise ValueError('real_time_gap_ups is empty')
+    except Exception as _e:
+        app_logger.warning(f'[DailyDigest] Live data unavailable ({_e}), falling back to DB snapshot')
+        try:
+            today = now_et.date().isoformat()
+            premarket_movers = sorted(
+                db_manager.get_gap_up_snapshot(today) or [],
                 key=lambda s: s.get('gap_percent', 0), reverse=True
             )[:15]
+            app_logger.info(f'[DailyDigest] Fallback: {len(premarket_movers)} from today\'s DB snapshot')
         except Exception:
             pass
 
@@ -11013,24 +11079,30 @@ def _send_daily_digest():
 
 
 def _daily_digest_scheduler():
-    """Daemon thread — fires _send_daily_digest() every day at 06:00 ET."""
+    """Daemon thread — fires _send_daily_digest() every weekday at 09:40 ET.
+    09:40 is chosen so Alpaca movers data has settled (stale-data guard lifts at 09:32)
+    and real_time_gap_ups has been populated by the GapUpMonitor for today's open."""
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     app_logger.info('[DailyDigest] Scheduler started')
     while True:
         try:
             now_et    = datetime.now(_et)
-            target_et = now_et.replace(hour=6, minute=0, second=0, microsecond=0)
+            target_et = now_et.replace(hour=9, minute=40, second=0, microsecond=0)
             if now_et >= target_et:
                 target_et = target_et + timedelta(days=1)
+            # Skip weekends
+            while target_et.weekday() >= 5:  # 5=Sat, 6=Sun
+                target_et += timedelta(days=1)
             sleep_s = (target_et - now_et).total_seconds()
             app_logger.info(
                 f'[DailyDigest] Next digest at {target_et.strftime("%Y-%m-%d %H:%M %Z")} '
                 f'(in {sleep_s/3600:.1f}h)'
             )
             time.sleep(sleep_s)
-            # Confirm we're in the right window before firing
-            if datetime.now(_et).hour == 6:
+            # Confirm we're in the right window (09:38-09:42) on a weekday before firing
+            now_check = datetime.now(_et)
+            if now_check.weekday() < 5 and now_check.hour == 9 and 38 <= now_check.minute <= 42:
                 _send_daily_digest()
         except Exception as _exc:
             app_logger.error(f'[DailyDigest] Scheduler error: {_exc}', exc_info=True)
