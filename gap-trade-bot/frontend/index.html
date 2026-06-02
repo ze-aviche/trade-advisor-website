@@ -1650,20 +1650,38 @@
                 <!-- ── Daily Picks ─────────────────────────────────────────────── -->
                 <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
                     <!-- Header -->
-                    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between">
+                    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between gap-3 flex-wrap">
                         <div class="flex items-center gap-2 flex-wrap">
                             <i class="fas fa-fire text-orange-400 text-sm"></i>
                             <span class="font-semibold text-white text-sm">Hot Swing Picks</span>
                             <span v-if="swingDailyPicks" class="text-xs font-normal"
-                                  :class="swingDailyPicks.is_today === false ? 'text-amber-400' : 'text-gray-500'">
+                                  :class="swingDailyPicks.is_today === false || swingPicksSelectedDate ? 'text-amber-400' : 'text-gray-500'">
                                 {{ swingDailyPicks.date }}
-                                <span v-if="swingDailyPicks.is_today === false" class="ml-1 bg-amber-900/40 text-amber-300 border border-amber-700/40 px-1.5 py-0.5 rounded text-[10px] font-medium">prev session</span>
+                                <span v-if="swingPicksSelectedDate" class="ml-1 bg-amber-900/40 text-amber-300 border border-amber-700/40 px-1.5 py-0.5 rounded text-[10px] font-medium">historical</span>
+                                <span v-else-if="swingDailyPicks.is_today === false" class="ml-1 bg-amber-900/40 text-amber-300 border border-amber-700/40 px-1.5 py-0.5 rounded text-[10px] font-medium">prev session</span>
                             </span>
                         </div>
-                        <button @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
-                            title="Refresh" class="text-xs text-gray-400 hover:text-white flex items-center gap-1 disabled:opacity-40 transition-colors">
-                            <i :class="loading.swingDailyPicks ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-right'" class="text-[11px]"></i>
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <!-- Date picker -->
+                            <div class="flex items-center gap-1.5">
+                                <i class="fas fa-calendar-alt text-gray-500 text-xs"></i>
+                                <select v-if="swingPicksDates.length"
+                                        v-model="swingPicksSelectedDate"
+                                        @change="selectSwingDate(swingPicksSelectedDate)"
+                                        class="bg-gray-900 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    <option value="">Today / Latest</option>
+                                    <option v-for="d in swingPicksDates" :key="d.date" :value="d.date">
+                                        {{ d.date }}{{ d.count ? ' (' + d.count + ' picks)' : '' }}
+                                    </option>
+                                </select>
+                            </div>
+                            <!-- Refresh (only for today) -->
+                            <button v-if="!swingPicksSelectedDate"
+                                    @click="loadSwingDailyPicks(true)" :disabled="loading.swingDailyPicks"
+                                    title="Refresh today's picks" class="text-xs text-gray-400 hover:text-white flex items-center gap-1 disabled:opacity-40 transition-colors">
+                                <i :class="loading.swingDailyPicks ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-right'" class="text-[11px]"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Loading -->

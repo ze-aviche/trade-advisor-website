@@ -10048,15 +10048,45 @@ def get_sector_strength():
     return jsonify(payload)
 
 
+@app.route('/api/swing-daily-picks/dates')
+def swing_daily_picks_dates():
+    """Return all dates for which swing picks are stored in the DB (newest first)."""
+    try:
+        with db_manager.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT date, candidates_scanned FROM swing_daily_picks "
+                "WHERE picks_json != '[]' AND picks_json IS NOT NULL "
+                "ORDER BY date DESC"
+            ).fetchall()
+        dates = [{'date': r['date'], 'count': r['candidates_scanned'] or 0} for r in rows]
+        return jsonify({'success': True, 'dates': dates})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/swing-daily-picks/latest')
 def swing_daily_picks_latest():
     """
-    Return the most recently stored swing picks instantly from DB — no computation.
-    Used by the frontend on tab load to show the last known picks immediately.
-    Includes 'is_today' flag so the UI can prompt a refresh on a new trading day.
+    Return swing picks for a specific date (?date=YYYY-MM-DD) or the most recent session.
+    No computation — DB only. Includes 'is_today' flag.
     """
     market_open  = _is_market_open()
     session_date = _last_trading_date()
+
+    # Historical date requested
+    requested_date = request.args.get('date', '').strip()
+    if requested_date and requested_date != session_date:
+        db_row = db_manager.get_swing_picks(requested_date)
+        if not db_row:
+            return jsonify({'success': False, 'error': f'No picks stored for {requested_date}'}), 404
+        return jsonify({
+            'success': True, 'picks': db_row['picks'],
+            'market_note': db_row['market_note'], 'date': db_row['date'],
+            'is_today': False, 'cached': True, 'market_open': market_open,
+            'candidates_scanned': db_row['candidates_scanned'],
+            'source_counts': db_row['source_counts'],
+            'sources_tickers': db_row['sources_tickers'],
+        })
     app_logger.info(f'swing-daily-picks/latest: session_date={session_date} market_open={market_open}')
 
     # Seed memory cache from DB if cold start

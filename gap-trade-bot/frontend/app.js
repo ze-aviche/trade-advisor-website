@@ -270,6 +270,8 @@ const app = createApp({
                 swingTechnicalsCached: false,
                 swingDailyPicks: null,
                 swingDailyPicksDate: null,
+                swingPicksDates: [],
+                swingPicksSelectedDate: '',
                 sectorStrength: [],
                 sectorStrengthLoading: false,
                 activeSector: null,
@@ -1267,6 +1269,7 @@ const app = createApp({
 
                     this.loadSwingDailyPicks();
                     if (!this.sectorStrength.length) this.loadSectorStrength();
+                    if (!this.swingPicksDates.length) this.loadSwingPicksDates();
                 } else if (tabName === 'stats') {
                     this.stopPositionHistoryUpdates();
                     this.loadStats();
@@ -5595,25 +5598,59 @@ const app = createApp({
             this.activeSector = this.activeSector?.etf === sector.etf ? null : sector;
         },
 
+        async loadSwingPicksDates() {
+            try {
+                const res = await this.authFetch('/api/swing-daily-picks/dates');
+                const data = await res.json();
+                if (data.success) this.swingPicksDates = data.dates;
+            } catch (_) {}
+        },
+
+        async selectSwingDate(date) {
+            this.swingPicksSelectedDate = date;
+            if (!date) {
+                // Reset to latest
+                this.swingDailyPicks = null;
+                this.swingDailyPicksDate = null;
+                this.loadSwingDailyPicks(true);
+                return;
+            }
+            this.loading.swingDailyPicks = true;
+            try {
+                const res = await this.authFetch(`/api/swing-daily-picks/latest?date=${date}`);
+                const data = await res.json();
+                if (data.success) {
+                    this.swingDailyPicks = data;
+                    this.swingDailyPicksDate = data.date;
+                } else {
+                    this.showNotification(data.error || 'No picks for that date', 'error');
+                }
+            } catch (_) {
+                this.showNotification('Failed to load picks for that date', 'error');
+            } finally {
+                this.loading.swingDailyPicks = false;
+            }
+        },
+
         async loadSwingDailyPicks(force = false) {
             const today = new Date().toISOString().slice(0, 10);
 
+            // If a historical date is selected, load that instead
+            if (this.swingPicksSelectedDate && this.swingPicksSelectedDate !== today) {
+                return this.selectSwingDate(this.swingPicksSelectedDate);
+            }
+
             // Step 1: fast-path — always try the DB first (previous session or today)
-            // No early-exit guard here: the endpoint is a memory-cache read (~1 ms) and
-            // BrownBot may have written fresher picks since the last tab visit.
             try {
                 const snap = await fetch('/api/swing-daily-picks/latest');
                 const snapData = await snap.json();
                 if (snapData.success && snapData.picks?.length) {
                     this.swingDailyPicks = snapData;
-                    // Market closed: show last session data, mark as "loaded for today"
-                    // so repeated tab switches don't keep retrying
                     if (!snapData.market_open && !force) {
                         this.swingDailyPicksDate = today;
                         return;
                     }
                     this.swingDailyPicksDate = snapData.date;
-                    // Today's picks already in DB — done
                     if (snapData.is_today && !force) return;
                 }
             } catch (_) { /* silent — fall through to full fetch */ }
