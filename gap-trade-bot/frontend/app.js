@@ -5421,7 +5421,7 @@ const app = createApp({
             this.swingTechnicalsCached = false;
             this.loading.swingTechnicals = true;
             try {
-                const res  = await fetch(`/api/swing-technicals/${ticker}`);
+                const res  = await this.authFetch(`/api/swing-technicals/${ticker}`);
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Failed');
                 this.swingTechnicals = data.technicals;
@@ -5455,7 +5455,7 @@ const app = createApp({
             if (!ticker) return;
             this.loading.swingFundamentals = true;
             try {
-                const res  = await fetch(`/api/swing-fundamentals/${ticker}`);
+                const res  = await this.authFetch(`/api/swing-fundamentals/${ticker}`);
                 const data = await res.json();
                 if (data.success) this.swingFundamentals = data;
             } catch (e) { /* silent — fundamentals are supplementary */ }
@@ -5471,7 +5471,7 @@ const app = createApp({
             this.loading.swingRecommendation = true;
             const ticker = this.swingTicker.trim().toUpperCase();
             try {
-                const res  = await fetch(`/api/swing-recommendation/${ticker}`, {
+                const res  = await this.authFetch(`/api/swing-recommendation/${ticker}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
