@@ -3351,14 +3351,75 @@
             <!-- Earnings Research Tab -->
             <div v-if="activeTab === 'earnings' && canAccessTab('earnings')" class="space-y-5">
 
-                <!-- Search bar -->
+                <!-- Upcoming earnings calendar -->
+                <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-calendar-alt text-blue-400 text-sm"></i>
+                            <span class="text-white font-semibold text-sm">Upcoming Earnings</span>
+                            <span v-if="erCalendar.length" class="text-gray-500 text-xs">next {{ erCalendarDays }} days</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button @click="loadErCalendar(14)"
+                                :class="erCalendarDays === 14 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'"
+                                class="text-xs px-2.5 py-1 rounded-lg transition-colors">2 weeks</button>
+                            <button @click="loadErCalendar(30)"
+                                :class="erCalendarDays === 30 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'"
+                                class="text-xs px-2.5 py-1 rounded-lg transition-colors">1 month</button>
+                            <button @click="loadErCalendar(erCalendarDays)" :disabled="erCalendarLoading"
+                                class="text-xs px-2 py-1 rounded-lg bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white transition-colors disabled:opacity-40">
+                                <i :class="erCalendarLoading ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-right'" class="text-[11px]"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Calendar loading -->
+                    <div v-if="erCalendarLoading" class="flex items-center justify-center gap-2 py-8 text-gray-400 text-sm">
+                        <i class="fas fa-spinner fa-spin text-blue-400"></i>
+                        <span>Loading earnings calendar...</span>
+                    </div>
+
+                    <!-- Calendar empty -->
+                    <div v-if="!erCalendarLoading && !erCalendar.length" class="py-8 text-center text-gray-500 text-sm">
+                        No upcoming earnings found. Try refreshing.
+                    </div>
+
+                    <!-- Calendar rows grouped by date -->
+                    <div v-if="!erCalendarLoading && erCalendar.length" class="divide-y divide-gray-700/50">
+                        <div v-for="day in erCalendar" :key="day.date">
+                            <!-- Date header -->
+                            <div class="px-5 py-2 bg-gray-900/40 flex items-center gap-2">
+                                <i class="fas fa-calendar text-gray-600 text-xs"></i>
+                                <span class="text-gray-300 text-xs font-semibold">{{ day.date }}</span>
+                                <span class="text-gray-600 text-xs">{{ day.entries.length }} companies</span>
+                            </div>
+                            <!-- Entries for that date -->
+                            <div class="divide-y divide-gray-700/30">
+                                <div v-for="e in day.entries" :key="e.symbol"
+                                    @click="goToEarnings(e.symbol)"
+                                    class="px-5 py-2.5 flex items-center gap-3 hover:bg-gray-700/40 cursor-pointer transition-colors group">
+                                    <span class="font-mono font-bold text-sm text-white group-hover:text-blue-400 transition-colors w-16 shrink-0">{{ e.symbol }}</span>
+                                    <span class="text-gray-400 text-xs flex-1 truncate">{{ e.company }}</span>
+                                    <span v-if="e.time" :class="e.time === 'Before Market Open' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/40' : e.time === 'After Market Close' ? 'bg-purple-900/40 text-purple-300 border-purple-700/40' : 'bg-gray-700 text-gray-400 border-gray-600'"
+                                        class="text-[10px] font-semibold border rounded px-1.5 py-0.5 shrink-0">
+                                        {{ e.time === 'Before Market Open' ? 'BMO' : e.time === 'After Market Close' ? 'AMC' : e.time }}
+                                    </span>
+                                    <span v-if="e.eps_forecast" class="text-gray-400 text-xs font-mono shrink-0">Est: ${{ e.eps_forecast }}</span>
+                                    <i class="fas fa-chevron-right text-gray-600 group-hover:text-blue-400 text-xs shrink-0 transition-colors"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ticker lookup -->
                 <div class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
                     <div class="flex items-center gap-3 mb-4">
                         <div class="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0">
-                            <i class="fas fa-calendar-alt text-blue-400 text-sm"></i>
+                            <i class="fas fa-search text-blue-400 text-sm"></i>
                         </div>
                         <div>
-                            <h2 class="text-white font-semibold text-base">Earnings Research</h2>
+                            <h2 class="text-white font-semibold text-base">Ticker Lookup</h2>
                             <p class="text-gray-400 text-xs">Next report date, EPS estimates, analyst ratings</p>
                         </div>
                     </div>

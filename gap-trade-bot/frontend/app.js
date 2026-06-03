@@ -279,6 +279,9 @@ const app = createApp({
                 // Earnings tab
                 erTicker: '',
                 erData: null,
+                erCalendar: [],
+                erCalendarDays: 14,
+                erCalendarLoading: false,
                 erRatingRows: [
                     { key: 'strong_buy',  label: 'Strong Buy',  bar: 'bg-green-500', txt: 'text-green-400' },
                     { key: 'buy',         label: 'Buy',         bar: 'bg-green-400', txt: 'text-green-400' },
@@ -1338,6 +1341,8 @@ const app = createApp({
                     this.loadBrownBotSwingCandidates();
                     this.loadBrownBotBrokerOrders();
                     this.startBrownBotPolling();
+                } else if (tabName === 'earnings') {
+                    if (!this.erCalendar.length) this.loadErCalendar();
                 }
             },
 
@@ -5558,6 +5563,19 @@ const app = createApp({
             }
         },
 
+        async loadErCalendar(days) {
+            this.erCalendarLoading = true;
+            if (days) this.erCalendarDays = days;
+            try {
+                const res = await this.authFetch('/api/earnings/calendar?days=' + this.erCalendarDays);
+                const data = await res.json();
+                if (data.success) this.erCalendar = data.calendar || [];
+            } catch (e) {
+                this.erCalendar = [];
+            } finally {
+                this.erCalendarLoading = false;
+            }
+        },
         erDaysFromNow(erDate) {
             if (!erDate) return -1;
             const today = new Date(); today.setHours(0,0,0,0);

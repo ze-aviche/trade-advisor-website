@@ -10765,6 +10765,79 @@ def swing_fundamentals(ticker):
 _earnings_cache: dict = {}
 _EARNINGS_TTL = 3600
 
+_calendar_cache: dict = {}
+_CALENDAR_TTL = 1800  # 30 minutes
+
+
+@app.route('/api/earnings/calendar')
+@require_auth
+def earnings_calendar():
+    """
+    Upcoming earnings for the next N calendar days (default 14, max 30).
+    Results grouped by date, fetched from Nasdaq public calendar API in parallel.
+    """
+    import requests as _req
+    import concurrent.futures as _cf2
+    from datetime import date as _date, timedelta as _td
+
+    try:
+        days = min(int(request.args.get('days', 14)), 30)
+    except (ValueError, TypeError):
+        days = 14
+
+    cache_key = f'calendar_{days}'
+    cached = _cache_get(_calendar_cache, cache_key, _CALENDAR_TTL)
+    if cached:
+        return jsonify(cached)
+
+    _hdrs = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json, text/plain, */*',
+    }
+
+    def _fetch_day(date_str):
+        try:
+            r = _req.get(
+                'https://api.nasdaq.com/api/calendar/earnings',
+                params={'date': date_str},
+                headers=_hdrs,
+                timeout=8,
+            )
+            if r.status_code == 200:
+                rows = r.json().get('data', {}).get('rows') or []
+                return date_str, [
+                    {
+                        'symbol':        row.get('symbol', ''),
+                        'company':       row.get('name', ''),
+                        'time':          row.get('time', ''),
+                        'eps_forecast':  row.get('epsForecast'),
+                        'last_year_eps': row.get('lastYearEPS'),
+                        'fiscal_qtr':    row.get('fiscalQuarterEnding', ''),
+                    }
+                    for row in rows
+                    if row.get('symbol')
+                ]
+        except Exception:
+            pass
+        return date_str, []
+
+    today = _date.today()
+    dates = [(today + _td(days=i)).isoformat() for i in range(days)]
+
+    grouped = []
+    with _cf2.ThreadPoolExecutor(max_workers=5) as pool:
+        results = dict(pool.map(_fetch_day, dates))
+
+    for d in dates:
+        entries = results.get(d, [])
+        if entries:
+            grouped.append({'date': d, 'entries': entries})
+
+    result = {'success': True, 'days': days, 'calendar': grouped}
+    _cache_set(_calendar_cache, cache_key, result)
+    return jsonify(result)
+
+
 @app.route('/api/earnings/<ticker>')
 @require_auth
 def earnings_research(ticker):
