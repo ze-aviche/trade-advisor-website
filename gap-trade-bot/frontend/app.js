@@ -282,6 +282,7 @@ const app = createApp({
                 erCalendar: [],
                 erCalendarDays: 14,
                 erCalendarLoading: false,
+                erSelectedDate: '',
                 erRatingRows: [
                     { key: 'strong_buy',  label: 'Strong Buy',  bar: 'bg-green-500', txt: 'text-green-400' },
                     { key: 'buy',         label: 'Buy',         bar: 'bg-green-400', txt: 'text-green-400' },
@@ -634,6 +635,11 @@ const app = createApp({
 
         
         computed: {
+            erSelectedDayEntries() {
+                if (!this.erSelectedDate || !this.erCalendar.length) return [];
+                const day = this.erCalendar.find(d => d.date === this.erSelectedDate);
+                return day ? day.entries : [];
+            },
             erTotalRecs() {
                 if (!this.erData || !this.erData.recommendations) return 0;
                 const r = this.erData.recommendations;
@@ -5569,12 +5575,26 @@ const app = createApp({
             try {
                 const res = await this.authFetch('/api/earnings/calendar?days=' + this.erCalendarDays);
                 const data = await res.json();
-                if (data.success) this.erCalendar = data.calendar || [];
+                if (data.success) {
+                    this.erCalendar = data.calendar || [];
+                    // Auto-select the first date with entries
+                    if (this.erCalendar.length && !this.erCalendar.find(d => d.date === this.erSelectedDate)) {
+                        this.erSelectedDate = this.erCalendar[0].date;
+                    }
+                }
             } catch (e) {
                 this.erCalendar = [];
             } finally {
                 this.erCalendarLoading = false;
             }
+        },
+        erDayLabel(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { weekday: 'short' });
+        },
+        erShortDate(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         },
         erDaysFromNow(erDate) {
             if (!erDate) return -1;

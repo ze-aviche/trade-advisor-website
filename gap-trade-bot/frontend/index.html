@@ -3353,11 +3353,11 @@
 
                 <!-- Upcoming earnings calendar -->
                 <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
-                    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between flex-wrap gap-2">
+                    <!-- Header -->
+                    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-calendar-alt text-blue-400 text-sm"></i>
                             <span class="text-white font-semibold text-sm">Upcoming Earnings</span>
-                            <span v-if="erCalendar.length" class="text-gray-500 text-xs">next {{ erCalendarDays }} days</span>
                         </div>
                         <div class="flex items-center gap-1.5">
                             <button @click="loadErCalendar(14)"
@@ -3373,42 +3373,53 @@
                         </div>
                     </div>
 
-                    <!-- Calendar loading -->
+                    <!-- Loading -->
                     <div v-if="erCalendarLoading" class="flex items-center justify-center gap-2 py-8 text-gray-400 text-sm">
                         <i class="fas fa-spinner fa-spin text-blue-400"></i>
                         <span>Loading earnings calendar...</span>
                     </div>
 
-                    <!-- Calendar empty -->
-                    <div v-if="!erCalendarLoading && !erCalendar.length" class="py-8 text-center text-gray-500 text-sm">
-                        No upcoming earnings found. Try refreshing.
-                    </div>
+                    <div v-if="!erCalendarLoading && erCalendar.length">
+                        <!-- Date pills row -->
+                        <div class="px-4 py-3 border-b border-gray-700 flex gap-1.5 overflow-x-auto scrollbar-hide">
+                            <button v-for="day in erCalendar" :key="day.date"
+                                @click="erSelectedDate = day.date"
+                                :class="erSelectedDate === day.date
+                                    ? 'bg-blue-600 text-white border-blue-500'
+                                    : 'bg-gray-900/60 text-gray-400 border-gray-700 hover:border-blue-500/50 hover:text-gray-200'"
+                                class="shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border text-xs transition-all min-w-[64px]">
+                                <span class="font-semibold">{{ erDayLabel(day.date) }}</span>
+                                <span class="text-[10px] mt-0.5 opacity-80">{{ erShortDate(day.date) }}</span>
+                                <span class="mt-1 text-[10px] font-bold"
+                                    :class="erSelectedDate === day.date ? 'text-blue-200' : 'text-gray-500'">
+                                    {{ day.entries.length }}
+                                </span>
+                            </button>
+                        </div>
 
-                    <!-- Calendar rows grouped by date -->
-                    <div v-if="!erCalendarLoading && erCalendar.length" class="divide-y divide-gray-700/50">
-                        <div v-for="day in erCalendar" :key="day.date">
-                            <!-- Date header -->
-                            <div class="px-5 py-2 bg-gray-900/40 flex items-center gap-2">
-                                <i class="fas fa-calendar text-gray-600 text-xs"></i>
-                                <span class="text-gray-300 text-xs font-semibold">{{ day.date }}</span>
-                                <span class="text-gray-600 text-xs">{{ day.entries.length }} companies</span>
-                            </div>
-                            <!-- Entries for that date -->
-                            <div class="divide-y divide-gray-700/30">
-                                <div v-for="e in day.entries" :key="e.symbol"
-                                    @click="goToEarnings(e.symbol)"
-                                    class="px-5 py-2.5 flex items-center gap-3 hover:bg-gray-700/40 cursor-pointer transition-colors group">
-                                    <span class="font-mono font-bold text-sm text-white group-hover:text-blue-400 transition-colors w-16 shrink-0">{{ e.symbol }}</span>
-                                    <span class="text-gray-400 text-xs flex-1 truncate">{{ e.company }}</span>
-                                    <span v-if="e.time" :class="e.time === 'Before Market Open' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/40' : e.time === 'After Market Close' ? 'bg-purple-900/40 text-purple-300 border-purple-700/40' : 'bg-gray-700 text-gray-400 border-gray-600'"
-                                        class="text-[10px] font-semibold border rounded px-1.5 py-0.5 shrink-0">
-                                        {{ e.time === 'Before Market Open' ? 'BMO' : e.time === 'After Market Close' ? 'AMC' : e.time }}
-                                    </span>
-                                    <span v-if="e.eps_forecast" class="text-gray-400 text-xs font-mono shrink-0">Est: ${{ e.eps_forecast }}</span>
-                                    <i class="fas fa-chevron-right text-gray-600 group-hover:text-blue-400 text-xs shrink-0 transition-colors"></i>
-                                </div>
+                        <!-- Companies for selected date -->
+                        <div v-if="erSelectedDayEntries.length" class="overflow-y-auto" style="max-height: 320px">
+                            <div v-for="e in erSelectedDayEntries" :key="e.symbol"
+                                @click="goToEarnings(e.symbol)"
+                                class="px-5 py-2.5 flex items-center gap-3 border-b border-gray-700/40 hover:bg-gray-700/40 cursor-pointer transition-colors group">
+                                <span class="font-mono font-bold text-sm text-white group-hover:text-blue-400 transition-colors w-16 shrink-0">{{ e.symbol }}</span>
+                                <span class="text-gray-400 text-xs flex-1 truncate">{{ e.company }}</span>
+                                <span v-if="e.time"
+                                    :class="e.time === 'Before Market Open' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/40' : e.time === 'After Market Close' ? 'bg-purple-900/40 text-purple-300 border-purple-700/40' : 'bg-gray-700 text-gray-400 border-gray-600'"
+                                    class="text-[10px] font-semibold border rounded px-1.5 py-0.5 shrink-0">
+                                    {{ e.time === 'Before Market Open' ? 'BMO' : e.time === 'After Market Close' ? 'AMC' : e.time }}
+                                </span>
+                                <span v-if="e.eps_forecast" class="text-gray-500 text-xs font-mono shrink-0">${{ e.eps_forecast }}</span>
+                                <i class="fas fa-chevron-right text-gray-600 group-hover:text-blue-400 text-xs shrink-0 transition-colors"></i>
                             </div>
                         </div>
+                        <div v-if="!erSelectedDayEntries.length" class="py-6 text-center text-gray-500 text-sm">
+                            Select a date above to view earnings.
+                        </div>
+                    </div>
+
+                    <div v-if="!erCalendarLoading && !erCalendar.length" class="py-8 text-center text-gray-500 text-sm">
+                        No upcoming earnings found.
                     </div>
                 </div>
 
