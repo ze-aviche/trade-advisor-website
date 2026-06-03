@@ -10760,6 +10760,159 @@ def swing_fundamentals(ticker):
         return jsonify({'success': False, 'error': str(exc)}), 500
 
 
+# ── Earnings Research ─────────────────────────────────────────────────────────
+
+_earnings_cache: dict = {}
+_EARNINGS_TTL = 3600
+
+@app.route('/api/earnings/<ticker>')
+@require_auth
+def earnings_research(ticker):
+    """Next ER date, EPS history, revenue, analyst data via yfinance. 1-hour cache."""
+    ticker = ticker.upper().strip()
+    cached = _cache_get(_earnings_cache, ticker, _EARNINGS_TTL)
+    if cached:
+        return jsonify(cached)
+    try:
+        import yfinance as yf
+        import math as _math
+        from datetime import date as _date
+
+        t = yf.Ticker(ticker)
+
+        name = ticker
+        try:
+            info = t.info
+            name = info.get('longName') or info.get('shortName') or ticker
+        except Exception:
+            pass
+
+        next_er = None
+        eps_est_avg = eps_est_low = eps_est_high = None
+        rev_est_avg = rev_est_low = rev_est_high = None
+        try:
+            cal = t.calendar
+            if cal:
+                dates = cal.get('Earnings Date') or []
+                today_d = _date.today()
+                future = [d for d in dates if d >= today_d]
+                if future:
+                    next_er = min(future).isoformat()
+                eps_est_avg  = cal.get('Earnings Average')
+                eps_est_low  = cal.get('Earnings Low')
+                eps_est_high = cal.get('Earnings High')
+                def _bil(v): return round(v / 1e9, 2) if v else None
+                rev_est_avg  = _bil(cal.get('Revenue Average'))
+                rev_est_low  = _bil(cal.get('Revenue Low'))
+                rev_est_high = _bil(cal.get('Revenue High'))
+        except Exception:
+            pass
+
+        def _safe(v, dec=2):
+            try:
+                f = float(v)
+                return round(f, dec) if not _math.isnan(f) else None
+            except Exception:
+                return None
+
+        history = []
+        try:
+            ed = t.earnings_dates
+            if ed is not None and not ed.empty:
+                reported = ed.dropna(subset=['Reported EPS'])
+                for ts, row in reported.head(12).iterrows():
+                    dt_str = ts.date().isoformat() if hasattr(ts, 'date') else str(ts)[:10]
+                    history.append({
+                        'date':         dt_str,
+                        'eps_estimate': _safe(row['EPS Estimate']),
+                        'eps_actual':   _safe(row['Reported EPS']),
+                        'surprise_pct': _safe(row['Surprise(%)']),
+                    })
+        except Exception:
+            pass
+
+        if not history:
+            try:
+                eh = t.earnings_history
+                if eh is not None and not eh.empty:
+                    for qdt, row in eh.iloc[::-1].iterrows():
+                        dt_str = qdt.date().isoformat() if hasattr(qdt, 'date') else str(qdt)[:10]
+                        sp = _safe(row.get('surprisePercent'))
+                        history.append({
+                            'date':         dt_str,
+                            'eps_estimate': _safe(row.get('epsEstimate')),
+                            'eps_actual':   _safe(row.get('epsActual')),
+                            'surprise_pct': round(sp * 100, 2) if sp is not None else None,
+                        })
+            except Exception:
+                pass
+
+        quarterly_revenue = []
+        try:
+            qi = t.quarterly_income_stmt
+            if qi is not None and not qi.empty and 'Total Revenue' in qi.index:
+                rev_row = qi.loc['Total Revenue']
+                for col in rev_row.index[:4]:
+                    val = rev_row[col]
+                    dt_str = col.date().isoformat() if hasattr(col, 'date') else str(col)[:10]
+                    try:
+                        quarterly_revenue.append({'date': dt_str, 'revenue_b': _safe(float(val) / 1e9)})
+                    except Exception:
+                        quarterly_revenue.append({'date': dt_str, 'revenue_b': None})
+        except Exception:
+            pass
+
+        price_targets = {}
+        try:
+            pt = t.analyst_price_targets
+            if pt:
+                def _p(v): return round(float(v), 2) if v else None
+                price_targets = {
+                    'current': _p(pt.get('current')),
+                    'mean':    _p(pt.get('mean')),
+                    'median':  _p(pt.get('median')),
+                    'high':    _p(pt.get('high')),
+                    'low':     _p(pt.get('low')),
+                }
+        except Exception:
+            pass
+
+        recommendations = {}
+        try:
+            rs = t.recommendations_summary
+            if rs is not None and not rs.empty:
+                row0 = rs.iloc[0]
+                recommendations = {
+                    'strong_buy':  int(row0.get('strongBuy', 0)),
+                    'buy':         int(row0.get('buy', 0)),
+                    'hold':        int(row0.get('hold', 0)),
+                    'sell':        int(row0.get('sell', 0)),
+                    'strong_sell': int(row0.get('strongSell', 0)),
+                }
+        except Exception:
+            pass
+
+        result = {
+            'success': True, 'ticker': ticker, 'name': name,
+            'next_er': next_er,
+            'eps_est_avg':    round(eps_est_avg, 4) if eps_est_avg else None,
+            'eps_est_low':    round(eps_est_low, 4) if eps_est_low else None,
+            'eps_est_high':   round(eps_est_high, 4) if eps_est_high else None,
+            'rev_est_avg_b':  rev_est_avg,
+            'rev_est_low_b':  rev_est_low,
+            'rev_est_high_b': rev_est_high,
+            'history':           history,
+            'quarterly_revenue': quarterly_revenue,
+            'price_targets':     price_targets,
+            'recommendations':   recommendations,
+        }
+        _cache_set(_earnings_cache, ticker, result)
+        return jsonify(result)
+    except Exception as exc:
+        app_logger.warning(f'earnings-research {ticker}: {exc}')
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 @app.route('/api/swing-recommendation/<ticker>', methods=['POST'])
 @require_auth
 @require_tier('advanced')

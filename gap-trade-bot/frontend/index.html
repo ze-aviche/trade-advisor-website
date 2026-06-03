@@ -159,6 +159,11 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-wave-square text-xs"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
+                <button @click="handleTabClick('earnings')"
+                    :class="activeTab === 'earnings' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('earnings') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-calendar-alt text-xs"></i>Earnings<i v-if="!canAccessTab('earnings')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
                 <button @click="handleTabClick('brown-bot')"
                     :class="activeTab === 'brown-bot' ? 'bg-amber-600 border-amber-600 text-white shadow-md shadow-amber-600/20' : canAccessTab('brown-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-amber-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
@@ -210,7 +215,7 @@
             <div class="flex md:hidden items-center justify-between py-1">
                 <span class="text-blue-400 text-sm font-medium">
                     <i class="fas fa-layer-group mr-2 text-gray-400"></i>
-                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account','brown-bot':'BrownBot'}[activeTab] || 'Menu' }}
+                    {{ {'gap-ups':'Gap-Ups','historical':'Historical','swing':'Swing Trading','earnings':'Earnings','trades':'Trade History','positions':'Positions','stats':'Stats','backtest':'Backtest','ai-chat':'AI Chat','help':'Help','contact':'Contact Us','admin':'Admin','account':'My Account','brown-bot':'BrownBot'}[activeTab] || 'Menu' }}
                 </span>
                 <button @click="mobileMenuOpen = !mobileMenuOpen" class="text-gray-400 hover:text-white p-1 rounded">
                     <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'" class="text-lg"></i>
@@ -222,6 +227,7 @@
                 <button @click="handleTabClick('gap-ups')" :class="activeTab === 'gap-ups' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-arrow-up mr-2 w-4"></i>Gap-Ups</button>
                 <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('earnings')" :class="activeTab === 'earnings' ? 'bg-blue-600 text-white' : canAccessTab('earnings') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-calendar-alt mr-2 w-4"></i>Earnings<i v-if="!canAccessTab('earnings')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -1747,9 +1753,16 @@
                             <div v-if="pick.watch_for" class="mt-1.5 text-[11px] text-gray-600 truncate">
                                 <i class="fas fa-eye text-[10px] mr-1"></i>{{ pick.watch_for }}
                             </div>
-                            <!-- Click hint -->
-                            <div class="mt-2.5 text-[11px] text-blue-600 group-hover:text-blue-400 transition-colors flex items-center gap-1">
-                                <i class="fas fa-chart-mixed text-[10px]"></i> Load full analysis
+                            <!-- Bottom row: analyze hint + ER link -->
+                            <div class="mt-2.5 flex items-center justify-between">
+                                <div class="text-[11px] text-blue-600 group-hover:text-blue-400 transition-colors flex items-center gap-1">
+                                    <i class="fas fa-chart-mixed text-[10px]"></i> Load full analysis
+                                </div>
+                                <span @click.stop="goToEarnings(pick.ticker)"
+                                    :title="'Earnings research for ' + pick.ticker"
+                                    class="cursor-pointer text-gray-500 hover:text-blue-400 hover:bg-blue-400/10 p-1 rounded transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
+                                </span>
                             </div>
                         </button>
                     </div>
@@ -3334,6 +3347,211 @@
 
             </div>
             <!-- /BrownBot Tab -->
+
+            <!-- Earnings Research Tab -->
+            <div v-if="activeTab === 'earnings' && canAccessTab('earnings')" class="space-y-5">
+
+                <!-- Search bar -->
+                <div class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0">
+                            <i class="fas fa-calendar-alt text-blue-400 text-sm"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-white font-semibold text-base">Earnings Research</h2>
+                            <p class="text-gray-400 text-xs">Next report date, EPS estimates, analyst ratings</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <input v-model="erTicker" @keyup.enter="loadEarnings" placeholder="Ticker (e.g. NVDA)"
+                            class="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 uppercase font-mono" />
+                        <button @click="loadEarnings" :disabled="!erTicker.trim() || loading.earnings"
+                            class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all shrink-0">
+                            <i :class="loading.earnings ? 'fas fa-spinner fa-spin' : 'fas fa-search'"></i>
+                            <span>{{ loading.earnings ? 'Loading' : 'Look Up' }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div v-if="loading.earnings" class="flex items-center justify-center gap-3 py-12 text-gray-400 text-sm">
+                    <i class="fas fa-spinner fa-spin text-blue-400 text-lg"></i>
+                    <span>Fetching earnings data...</span>
+                </div>
+
+                <!-- Error -->
+                <div v-if="erData && !erData.success && !loading.earnings"
+                    class="bg-red-900/20 border border-red-700/40 rounded-2xl p-4 text-red-300 text-sm">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <span>{{ erData.error || 'Failed to load earnings data.' }}</span>
+                </div>
+
+                <!-- Results -->
+                <div v-if="erData && erData.success && !loading.earnings" class="space-y-4">
+
+                    <!-- Company + next ER -->
+                    <div class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
+                        <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+                            <div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-white font-black text-2xl font-mono">{{ erData.ticker }}</span>
+                                    <span v-if="erData.next_er"
+                                        :class="erDaysFromNow(erData.next_er) <= 3 ? 'bg-red-900/60 border-red-600/60 text-red-300' : erDaysFromNow(erData.next_er) <= 14 ? 'bg-amber-900/60 border-amber-600/60 text-amber-300' : 'bg-blue-900/40 border-blue-700/40 text-blue-300'"
+                                        class="text-xs font-semibold border rounded-lg px-2 py-1">
+                                        ER in {{ erDaysFromNow(erData.next_er) }}d
+                                    </span>
+                                </div>
+                                <p v-if="erData.name && erData.name !== erData.ticker" class="text-gray-400 text-sm mt-0.5">{{ erData.name }}</p>
+                            </div>
+                            <div v-if="erData.next_er" class="text-right">
+                                <p class="text-gray-500 text-xs">Next Earnings</p>
+                                <p class="text-white font-semibold font-mono text-sm">{{ erData.next_er }}</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-gray-900/60 rounded-xl p-3">
+                                <p class="text-gray-500 text-xs mb-1">EPS Estimate</p>
+                                <p class="text-white font-bold text-lg font-mono">{{ erData.eps_est_avg != null ? '$' + erData.eps_est_avg : 'N/A' }}</p>
+                                <p v-if="erData.eps_est_low != null && erData.eps_est_high != null" class="text-gray-500 text-xs mt-0.5">
+                                    Range: ${{ erData.eps_est_low }} - ${{ erData.eps_est_high }}
+                                </p>
+                            </div>
+                            <div class="bg-gray-900/60 rounded-xl p-3">
+                                <p class="text-gray-500 text-xs mb-1">Revenue Estimate</p>
+                                <p class="text-white font-bold text-lg font-mono">{{ erData.rev_est_avg_b != null ? '$' + erData.rev_est_avg_b + 'B' : 'N/A' }}</p>
+                                <p v-if="erData.rev_est_low_b != null && erData.rev_est_high_b != null" class="text-gray-500 text-xs mt-0.5">
+                                    Range: ${{ erData.rev_est_low_b }}B - ${{ erData.rev_est_high_b }}B
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- EPS History -->
+                    <div v-if="erData.history && erData.history.length" class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-gray-700 flex items-center gap-2">
+                            <i class="fas fa-chart-bar text-purple-400 text-sm"></i>
+                            <span class="text-white font-semibold text-sm">EPS History</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-gray-500 text-xs border-b border-gray-700">
+                                        <th class="px-4 py-2.5 text-left font-medium">Date</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">Estimate</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">Actual</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">Surprise</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(q, i) in erData.history" :key="i" class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                                        <td class="px-4 py-2.5 font-mono text-gray-300 text-xs">{{ q.date }}</td>
+                                        <td class="px-4 py-2.5 text-right font-mono text-gray-400">{{ q.eps_estimate != null ? '$' + q.eps_estimate : 'N/A' }}</td>
+                                        <td class="px-4 py-2.5 text-right font-mono font-semibold"
+                                            :class="q.eps_actual > q.eps_estimate ? 'text-green-400' : q.eps_actual < q.eps_estimate ? 'text-red-400' : 'text-gray-300'">
+                                            {{ q.eps_actual != null ? '$' + q.eps_actual : 'N/A' }}
+                                        </td>
+                                        <td class="px-4 py-2.5 text-right font-mono"
+                                            :class="q.surprise_pct > 0 ? 'text-green-400' : q.surprise_pct < 0 ? 'text-red-400' : 'text-gray-400'">
+                                            {{ q.surprise_pct != null ? (q.surprise_pct > 0 ? '+' : '') + q.surprise_pct + '%' : 'N/A' }}
+                                        </td>
+                                        <td class="px-4 py-2.5 text-right">
+                                            <span v-if="q.surprise_pct > 0" class="text-[10px] font-semibold bg-green-900/40 text-green-400 border border-green-700/40 px-1.5 py-0.5 rounded">BEAT</span>
+                                            <span v-else-if="q.surprise_pct < 0" class="text-[10px] font-semibold bg-red-900/40 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">MISS</span>
+                                            <span v-else-if="q.surprise_pct != null" class="text-[10px] font-semibold bg-gray-700 text-gray-400 border border-gray-600 px-1.5 py-0.5 rounded">INLINE</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Quarterly Revenue -->
+                    <div v-if="erData.quarterly_revenue && erData.quarterly_revenue.length" class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                        <div class="px-5 py-3 border-b border-gray-700 flex items-center gap-2">
+                            <i class="fas fa-dollar-sign text-green-400 text-sm"></i>
+                            <span class="text-white font-semibold text-sm">Quarterly Revenue</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-gray-500 text-xs border-b border-gray-700">
+                                        <th class="px-4 py-2.5 text-left font-medium">Quarter End</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">Revenue</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">QoQ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(q, i) in erData.quarterly_revenue" :key="i" class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                                        <td class="px-4 py-2.5 font-mono text-gray-300 text-xs">{{ q.date }}</td>
+                                        <td class="px-4 py-2.5 text-right font-mono text-white font-semibold">{{ q.revenue_b != null ? '$' + q.revenue_b + 'B' : 'N/A' }}</td>
+                                        <td class="px-4 py-2.5 text-right font-mono text-xs"
+                                            :class="erRevQoQ(erData.quarterly_revenue, i) > 0 ? 'text-green-400' : erRevQoQ(erData.quarterly_revenue, i) < 0 ? 'text-red-400' : 'text-gray-500'">
+                                            {{ erRevQoQ(erData.quarterly_revenue, i) !== null ? (erRevQoQ(erData.quarterly_revenue, i) > 0 ? '+' : '') + erRevQoQ(erData.quarterly_revenue, i) + '%' : 'N/A' }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Analyst targets + ratings -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div v-if="erData.price_targets && erData.price_targets.mean" class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
+                            <div class="flex items-center gap-2 mb-4">
+                                <i class="fas fa-bullseye text-blue-400 text-sm"></i>
+                                <span class="text-white font-semibold text-sm">Price Targets</span>
+                            </div>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500 text-xs">Current</span>
+                                    <span class="font-mono text-white">{{ erData.price_targets.current ? '$' + erData.price_targets.current : 'N/A' }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500 text-xs">Mean Target</span>
+                                    <span class="font-mono text-blue-300 font-semibold">${{ erData.price_targets.mean }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500 text-xs">Median</span>
+                                    <span class="font-mono text-gray-300">${{ erData.price_targets.median }}</span>
+                                </div>
+                                <div class="flex justify-between pt-1 border-t border-gray-700">
+                                    <span class="text-gray-500 text-xs">Range</span>
+                                    <span class="font-mono text-gray-400 text-xs">${{ erData.price_targets.low }} - ${{ erData.price_targets.high }}</span>
+                                </div>
+                                <div v-if="erData.price_targets.current && erData.price_targets.mean" class="mt-2 text-center">
+                                    <span :class="erData.price_targets.mean > erData.price_targets.current ? 'text-green-400 bg-green-900/30 border-green-700/40' : 'text-red-400 bg-red-900/30 border-red-700/40'"
+                                        class="text-xs font-semibold border rounded-lg px-2 py-1">
+                                        {{ erData.price_targets.mean > erData.price_targets.current ? '+' : '' }}{{ (((erData.price_targets.mean - erData.price_targets.current) / erData.price_targets.current) * 100).toFixed(1) }}% upside
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="erData.recommendations && erTotalRecs > 0" class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
+                            <div class="flex items-center gap-2 mb-4">
+                                <i class="fas fa-users text-purple-400 text-sm"></i>
+                                <span class="text-white font-semibold text-sm">Analyst Ratings</span>
+                                <span class="ml-auto text-gray-500 text-xs">{{ erTotalRecs }} analysts</span>
+                            </div>
+                            <div class="space-y-2">
+                                <div v-for="r in erRatingRows" :key="r.key" class="flex items-center gap-2">
+                                    <span class="text-xs w-20 text-right shrink-0" :class="r.txt">{{ r.label }}</span>
+                                    <div class="flex-1 bg-gray-700 rounded-full h-2 overflow-hidden">
+                                        <div class="h-full rounded-full" :class="r.bar"
+                                            :style="{width: ((erData.recommendations[r.key]||0) / erTotalRecs * 100) + '%'}"></div>
+                                    </div>
+                                    <span class="text-xs text-gray-400 w-5 text-right shrink-0">{{ erData.recommendations[r.key]||0 }}</span>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-center">
+                                <span :class="erConsensusBadgeClass" class="text-xs font-bold border rounded-lg px-3 py-1">{{ erConsensusLabel }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- /Earnings Research Tab -->
 
             <!-- Trade History Tab -->
             <div v-if="activeTab === 'trades' && canAccessTab('trades')" class="space-y-6">
@@ -6047,7 +6265,7 @@
     </div><!-- /#app -->
 
     <!-- Scripts -->
-    <script src="app.js?v=20260518003"></script>
+    <script src="app.js?v=20260602002"></script>
     <script>
         // Simple test to verify HTML is loading
         console.log('📄 HTML loaded successfully');
