@@ -1753,15 +1753,9 @@
                             <div v-if="pick.watch_for" class="mt-1.5 text-[11px] text-gray-600 truncate">
                                 <i class="fas fa-eye text-[10px] mr-1"></i>{{ pick.watch_for }}
                             </div>
-                            <!-- Bottom row -->
-                            <div class="mt-2.5 flex items-center justify-between">
-                                <div class="text-[11px] text-blue-600 group-hover:text-blue-400 transition-colors flex items-center gap-1">
-                                    <i class="fas fa-chart-mixed text-[10px]"></i> Load full analysis
-                                </div>
-                                <button @click.stop="goToEarnings(pick.ticker)"
-                                    class="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-gray-700/60 border-gray-600/40 text-gray-400 hover:bg-blue-900/40 hover:border-blue-600/50 hover:text-blue-300 transition-colors leading-none">
-                                    <i class="fas fa-calendar-alt mr-0.5"></i>ER
-                                </button>
+                            <!-- Click hint -->
+                            <div class="mt-2.5 text-[11px] text-blue-600 group-hover:text-blue-400 transition-colors flex items-center gap-1">
+                                <i class="fas fa-chart-mixed text-[10px]"></i> Load full analysis
                             </div>
                         </button>
                     </div>
