@@ -86,6 +86,7 @@ const app = createApp({
                     swingFundamentals: false,
                     swingDailyPicks: false,
                     swingBacktest: false,
+                    earnings: false,
                     // BrownBot loading states
                     brownBotToggle: false,
                     brownBotConfig: false,
@@ -275,6 +276,16 @@ const app = createApp({
                 sectorStrength: [],
                 sectorStrengthLoading: false,
                 activeSector: null,
+                // Earnings tab
+                erTicker: '',
+                erData: null,
+                erRatingRows: [
+                    { key: 'strong_buy',  label: 'Strong Buy',  bar: 'bg-green-500', txt: 'text-green-400' },
+                    { key: 'buy',         label: 'Buy',         bar: 'bg-green-400', txt: 'text-green-400' },
+                    { key: 'hold',        label: 'Hold',        bar: 'bg-yellow-400',txt: 'text-yellow-400' },
+                    { key: 'sell',        label: 'Sell',        bar: 'bg-red-400',   txt: 'text-red-400' },
+                    { key: 'strong_sell', label: 'Strong Sell', bar: 'bg-red-600',   txt: 'text-red-400' },
+                ],
                 // Trade History
                 tradeHistoryTicker: '',
                 tradeHistoryStartDate: '',
@@ -620,6 +631,28 @@ const app = createApp({
 
         
         computed: {
+            erTotalRecs() {
+                if (!this.erData || !this.erData.recommendations) return 0;
+                const r = this.erData.recommendations;
+                return (r.strong_buy||0)+(r.buy||0)+(r.hold||0)+(r.sell||0)+(r.strong_sell||0);
+            },
+            erConsensusLabel() {
+                if (!this.erData || !this.erData.recommendations || !this.erTotalRecs) return '';
+                const r = this.erData.recommendations;
+                const bull = ((r.strong_buy||0)+(r.buy||0)) / this.erTotalRecs;
+                const bear = ((r.sell||0)+(r.strong_sell||0)) / this.erTotalRecs;
+                if (bull >= 0.70) return 'Strong Buy';
+                if (bull >= 0.50) return 'Buy';
+                if (bear >= 0.40) return 'Sell';
+                return 'Hold';
+            },
+            erConsensusBadgeClass() {
+                const l = this.erConsensusLabel;
+                if (l === 'Strong Buy') return 'bg-green-900/50 border-green-600/60 text-green-300';
+                if (l === 'Buy')        return 'bg-green-900/30 border-green-700/40 text-green-400';
+                if (l === 'Sell')       return 'bg-red-900/40 border-red-600/50 text-red-300';
+                return 'bg-yellow-900/30 border-yellow-700/40 text-yellow-300';
+            },
             bestHour() {
                 if (!this.timeOfDayData.length) return null;
                 return this.timeOfDayData.reduce((a, b) => b.total_pnl > a.total_pnl ? b : a);
@@ -1316,9 +1349,9 @@ const app = createApp({
                 if (tab === 'admin') return false;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
-                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings', 'swing'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings', 'swing', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -5525,6 +5558,39 @@ const app = createApp({
             }
         },
 
+        erDaysFromNow(erDate) {
+            if (!erDate) return -1;
+            const today = new Date(); today.setHours(0,0,0,0);
+            const er = new Date(erDate + 'T00:00:00');
+            return Math.round((er - today) / 86400000);
+        },
+        async loadEarnings() {
+            const sym = this.erTicker.trim().toUpperCase();
+            if (!sym) return;
+            this.erData = null;
+            this.loading.earnings = true;
+            try {
+                const res = await this.authFetch('/api/earnings/' + sym);
+                this.erData = await res.json();
+            } catch (e) {
+                this.erData = { success: false, error: 'Network error — please try again.' };
+            } finally {
+                this.loading.earnings = false;
+            }
+        },
+        goToEarnings(ticker) {
+            if (!this.canAccessTab('earnings')) return;
+            this.erTicker = ticker;
+            this.erData = null;
+            this.handleTabClick('earnings');
+            this.$nextTick(() => this.loadEarnings());
+        },
+        erRevQoQ(quarters, i) {
+            if (i >= quarters.length - 1) return null;
+            const curr = quarters[i].revenue_b, prev = quarters[i+1].revenue_b;
+            if (curr == null || prev == null || prev === 0) return null;
+            return ((curr - prev) / prev * 100).toFixed(1);
+        },
         swingGradeColor(grade) {
             if (!grade) return 'text-gray-400';
             const g = grade.toUpperCase();
