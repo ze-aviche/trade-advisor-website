@@ -483,6 +483,37 @@
                     </div>
                 </div>
 
+                <!-- ── EARNINGS TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-blue-900/20">
+                        <i class="fas fa-calendar-alt text-xl text-blue-400"></i>
+                        <h3 class="text-lg font-bold text-white">Earnings Tab</h3>
+                        <span class="ml-auto text-xs text-blue-400 bg-blue-900/40 px-2 py-0.5 rounded-full border border-blue-700/50">Advanced Trader</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">The Earnings tab gives you two tools in one place: an upcoming earnings calendar so you always know what's reporting next, and a deep per-ticker research view with historical EPS data, analyst consensus, and price targets.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-calendar text-blue-400"></i> Upcoming Earnings Calendar</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Date pills</span> — click any day to instantly see all companies reporting that day, no scrolling.</li>
+                                <li><span class="text-white font-medium">BMO / AMC badges</span> — Before Market Open or After Market Close, so you know when the report hits.</li>
+                                <li><span class="text-white font-medium">EPS estimate</span> — analyst consensus shown inline for a quick expectations check.</li>
+                                <li><span class="text-white font-medium">2 weeks / 1 month</span> — toggle how far out you want to look.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-search text-blue-400"></i> Ticker Lookup</h5>
+                            <p class="text-gray-300 text-sm">Type any ticker to pull the full earnings dossier: next report date, EPS and revenue estimate range, 12-quarter EPS beat/miss history, quarterly revenue with QoQ growth, analyst price targets with upside %, and a breakdown of Buy / Hold / Sell ratings from all covering analysts.</p>
+                        </div>
+
+                        <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-700/40">
+                            <p class="text-blue-200 text-sm"><strong class="text-blue-300">Tip:</strong> Click the <i class="fas fa-calendar-alt mx-1"></i> icon on any Swing pick card to jump directly to the Earnings tab pre-loaded with that ticker's data.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ── POSITIONS TAB ── -->
                 <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
                     <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-pink-900/20">
@@ -3351,14 +3382,86 @@
             <!-- Earnings Research Tab -->
             <div v-if="activeTab === 'earnings' && canAccessTab('earnings')" class="space-y-5">
 
-                <!-- Search bar -->
+                <!-- Upcoming earnings calendar -->
+                <div class="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                    <!-- Header -->
+                    <div class="px-5 py-3 border-b border-gray-700 flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-calendar-alt text-blue-400 text-sm"></i>
+                            <span class="text-white font-semibold text-sm">Upcoming Earnings</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button @click="loadErCalendar(14)"
+                                :class="erCalendarDays === 14 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'"
+                                class="text-xs px-2.5 py-1 rounded-lg transition-colors">2 weeks</button>
+                            <button @click="loadErCalendar(30)"
+                                :class="erCalendarDays === 30 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'"
+                                class="text-xs px-2.5 py-1 rounded-lg transition-colors">1 month</button>
+                            <button @click="loadErCalendar(erCalendarDays)" :disabled="erCalendarLoading"
+                                class="text-xs px-2 py-1 rounded-lg bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white transition-colors disabled:opacity-40">
+                                <i :class="erCalendarLoading ? 'fas fa-spinner fa-spin' : 'fas fa-rotate-right'" class="text-[11px]"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Loading -->
+                    <div v-if="erCalendarLoading" class="flex items-center justify-center gap-2 py-8 text-gray-400 text-sm">
+                        <i class="fas fa-spinner fa-spin text-blue-400"></i>
+                        <span>Loading earnings calendar...</span>
+                    </div>
+
+                    <div v-if="!erCalendarLoading && erCalendar.length">
+                        <!-- Date pills row -->
+                        <div class="px-4 py-3 border-b border-gray-700 flex gap-1.5 overflow-x-auto scrollbar-hide">
+                            <button v-for="day in erCalendar" :key="day.date"
+                                @click="erSelectedDate = day.date"
+                                :class="erSelectedDate === day.date
+                                    ? 'bg-blue-600 text-white border-blue-500'
+                                    : 'bg-gray-900/60 text-gray-400 border-gray-700 hover:border-blue-500/50 hover:text-gray-200'"
+                                class="shrink-0 flex flex-col items-center px-3 py-2 rounded-xl border text-xs transition-all min-w-[64px]">
+                                <span class="font-semibold">{{ erDayLabel(day.date) }}</span>
+                                <span class="text-[10px] mt-0.5 opacity-80">{{ erShortDate(day.date) }}</span>
+                                <span class="mt-1 text-[10px] font-bold"
+                                    :class="erSelectedDate === day.date ? 'text-blue-200' : 'text-gray-500'">
+                                    {{ day.entries.length }}
+                                </span>
+                            </button>
+                        </div>
+
+                        <!-- Companies for selected date -->
+                        <div v-if="erSelectedDayEntries.length" class="overflow-y-auto" style="max-height: 320px">
+                            <div v-for="e in erSelectedDayEntries" :key="e.symbol"
+                                @click="goToEarnings(e.symbol)"
+                                class="px-5 py-2.5 flex items-center gap-3 border-b border-gray-700/40 hover:bg-gray-700/40 cursor-pointer transition-colors group">
+                                <span class="font-mono font-bold text-sm text-white group-hover:text-blue-400 transition-colors w-16 shrink-0">{{ e.symbol }}</span>
+                                <span class="text-gray-400 text-xs flex-1 truncate">{{ e.company }}</span>
+                                <span v-if="e.time"
+                                    :class="e.time === 'Before Market Open' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/40' : e.time === 'After Market Close' ? 'bg-purple-900/40 text-purple-300 border-purple-700/40' : 'bg-gray-700 text-gray-400 border-gray-600'"
+                                    class="text-[10px] font-semibold border rounded px-1.5 py-0.5 shrink-0">
+                                    {{ e.time === 'Before Market Open' ? 'BMO' : e.time === 'After Market Close' ? 'AMC' : e.time }}
+                                </span>
+                                <span v-if="e.eps_forecast" class="text-gray-500 text-xs font-mono shrink-0">${{ e.eps_forecast }}</span>
+                                <i class="fas fa-chevron-right text-gray-600 group-hover:text-blue-400 text-xs shrink-0 transition-colors"></i>
+                            </div>
+                        </div>
+                        <div v-if="!erSelectedDayEntries.length" class="py-6 text-center text-gray-500 text-sm">
+                            Select a date above to view earnings.
+                        </div>
+                    </div>
+
+                    <div v-if="!erCalendarLoading && !erCalendar.length" class="py-8 text-center text-gray-500 text-sm">
+                        No upcoming earnings found.
+                    </div>
+                </div>
+
+                <!-- Ticker lookup -->
                 <div class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
                     <div class="flex items-center gap-3 mb-4">
                         <div class="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0">
-                            <i class="fas fa-calendar-alt text-blue-400 text-sm"></i>
+                            <i class="fas fa-search text-blue-400 text-sm"></i>
                         </div>
                         <div>
-                            <h2 class="text-white font-semibold text-base">Earnings Research</h2>
+                            <h2 class="text-white font-semibold text-base">Ticker Lookup</h2>
                             <p class="text-gray-400 text-xs">Next report date, EPS estimates, analyst ratings</p>
                         </div>
                     </div>
@@ -5731,6 +5834,7 @@
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Daily AI-graded swing picks (Grade A/B/C)</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Full technicals — RSI, MACD, Bollinger, ATR</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Sector strength + live sector news</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Earnings calendar + EPS history &amp; analyst ratings</li>
                             </ul>
                             <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'advanced'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
                             <button v-else-if="user && ['basic','beginner'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('advanced')" :disabled="subscriptionLoading" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>

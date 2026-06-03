@@ -279,6 +279,10 @@ const app = createApp({
                 // Earnings tab
                 erTicker: '',
                 erData: null,
+                erCalendar: [],
+                erCalendarDays: 14,
+                erCalendarLoading: false,
+                erSelectedDate: '',
                 erRatingRows: [
                     { key: 'strong_buy',  label: 'Strong Buy',  bar: 'bg-green-500', txt: 'text-green-400' },
                     { key: 'buy',         label: 'Buy',         bar: 'bg-green-400', txt: 'text-green-400' },
@@ -631,6 +635,11 @@ const app = createApp({
 
         
         computed: {
+            erSelectedDayEntries() {
+                if (!this.erSelectedDate || !this.erCalendar.length) return [];
+                const day = this.erCalendar.find(d => d.date === this.erSelectedDate);
+                return day ? day.entries : [];
+            },
             erTotalRecs() {
                 if (!this.erData || !this.erData.recommendations) return 0;
                 const r = this.erData.recommendations;
@@ -751,6 +760,16 @@ const app = createApp({
                             { icon: 'fa-chart-mixed',   text: 'Full technicals — RSI, MACD, Bollinger Bands, ATR, SMA/EMA' },
                             { icon: 'fa-layer-group',   text: 'Sector strength pills with S&P 500 breadth and sector news' },
                             { icon: 'fa-newspaper',     text: 'Live news headlines + AI market summary for each pick' },
+                        ],
+                    },
+                    earnings: {
+                        label: 'Earnings', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-calendar-alt', color: 'blue',
+                        tagline: 'Upcoming earnings calendar + full per-ticker ER research.',
+                        features: [
+                            { icon: 'fa-calendar-alt',  text: 'Upcoming earnings calendar — next 2 weeks or 1 month, grouped by date' },
+                            { icon: 'fa-chart-bar',     text: 'EPS history — 12 quarters of estimate vs actual vs surprise %' },
+                            { icon: 'fa-dollar-sign',   text: 'Quarterly revenue with QoQ growth' },
+                            { icon: 'fa-bullseye',      text: 'Analyst price targets and consensus ratings breakdown' },
                         ],
                     },
                     trades: {
@@ -1338,6 +1357,8 @@ const app = createApp({
                     this.loadBrownBotSwingCandidates();
                     this.loadBrownBotBrokerOrders();
                     this.startBrownBotPolling();
+                } else if (tabName === 'earnings') {
+                    if (!this.erCalendar.length) this.loadErCalendar();
                 }
             },
 
@@ -1349,9 +1370,9 @@ const app = createApp({
                 if (tab === 'admin') return false;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
-                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings', 'swing'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings', 'swing', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -4999,7 +5020,7 @@ const app = createApp({
                 console.log(`📈 Loading historical data for ${this.historicalTicker}...`);
                 this.loading.historical = true;
 
-                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}&_t=${Date.now()}`, { cache: 'no-store' });
+                const response = await this.authFetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}&_t=${Date.now()}`, { cache: 'no-store' });
                 const data = await response.json();
 
                 if (data.success) {
@@ -5558,6 +5579,33 @@ const app = createApp({
             }
         },
 
+        async loadErCalendar(days) {
+            this.erCalendarLoading = true;
+            if (days) this.erCalendarDays = days;
+            try {
+                const res = await this.authFetch('/api/earnings/calendar?days=' + this.erCalendarDays);
+                const data = await res.json();
+                if (data.success) {
+                    this.erCalendar = data.calendar || [];
+                    // Auto-select the first date with entries
+                    if (this.erCalendar.length && !this.erCalendar.find(d => d.date === this.erSelectedDate)) {
+                        this.erSelectedDate = this.erCalendar[0].date;
+                    }
+                }
+            } catch (e) {
+                this.erCalendar = [];
+            } finally {
+                this.erCalendarLoading = false;
+            }
+        },
+        erDayLabel(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { weekday: 'short' });
+        },
+        erShortDate(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        },
         erDaysFromNow(erDate) {
             if (!erDate) return -1;
             const today = new Date(); today.setHours(0,0,0,0);
