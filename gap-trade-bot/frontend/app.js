@@ -4999,7 +4999,7 @@ const app = createApp({
                 console.log(`📈 Loading historical data for ${this.historicalTicker}...`);
                 this.loading.historical = true;
 
-                const response = await fetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}&_t=${Date.now()}`, { cache: 'no-store' });
+                const response = await this.authFetch(`/api/historical-data/${this.historicalTicker.toUpperCase()}?period=${this.selectedPeriod}&min_gap=${this.minGapPercent}&_t=${Date.now()}`, { cache: 'no-store' });
                 const data = await response.json();
 
                 if (data.success) {
