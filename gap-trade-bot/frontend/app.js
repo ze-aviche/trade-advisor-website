@@ -762,6 +762,16 @@ const app = createApp({
                             { icon: 'fa-newspaper',     text: 'Live news headlines + AI market summary for each pick' },
                         ],
                     },
+                    earnings: {
+                        label: 'Earnings', plan: 'Advanced Trader', price: '$10/mo', tier: 'advanced', icon: 'fa-calendar-alt', color: 'blue',
+                        tagline: 'Upcoming earnings calendar + full per-ticker ER research.',
+                        features: [
+                            { icon: 'fa-calendar-alt',  text: 'Upcoming earnings calendar — next 2 weeks or 1 month, grouped by date' },
+                            { icon: 'fa-chart-bar',     text: 'EPS history — 12 quarters of estimate vs actual vs surprise %' },
+                            { icon: 'fa-dollar-sign',   text: 'Quarterly revenue with QoQ growth' },
+                            { icon: 'fa-bullseye',      text: 'Analyst price targets and consensus ratings breakdown' },
+                        ],
+                    },
                     trades: {
                         label: 'Trade History', plan: 'Yogi Trader', price: '$25/mo', tier: 'yogi', icon: 'fa-exchange-alt', color: 'yellow',
                         tagline: 'Every trade logged, analyzed, and actionable.',
@@ -1360,9 +1370,9 @@ const app = createApp({
                 if (tab === 'admin') return false;
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
-                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings', 'swing'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'earnings', 'swing', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },

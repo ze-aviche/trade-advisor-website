@@ -483,6 +483,37 @@
                     </div>
                 </div>
 
+                <!-- ── EARNINGS TAB ── -->
+                <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
+                    <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-blue-900/20">
+                        <i class="fas fa-calendar-alt text-xl text-blue-400"></i>
+                        <h3 class="text-lg font-bold text-white">Earnings Tab</h3>
+                        <span class="ml-auto text-xs text-blue-400 bg-blue-900/40 px-2 py-0.5 rounded-full border border-blue-700/50">Advanced Trader</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-300 text-sm">The Earnings tab gives you two tools in one place: an upcoming earnings calendar so you always know what's reporting next, and a deep per-ticker research view with historical EPS data, analyst consensus, and price targets.</p>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-calendar text-blue-400"></i> Upcoming Earnings Calendar</h5>
+                            <ul class="text-gray-300 text-sm space-y-2">
+                                <li><span class="text-white font-medium">Date pills</span> — click any day to instantly see all companies reporting that day, no scrolling.</li>
+                                <li><span class="text-white font-medium">BMO / AMC badges</span> — Before Market Open or After Market Close, so you know when the report hits.</li>
+                                <li><span class="text-white font-medium">EPS estimate</span> — analyst consensus shown inline for a quick expectations check.</li>
+                                <li><span class="text-white font-medium">2 weeks / 1 month</span> — toggle how far out you want to look.</li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-gray-700/60 rounded-lg p-4">
+                            <h5 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i class="fas fa-search text-blue-400"></i> Ticker Lookup</h5>
+                            <p class="text-gray-300 text-sm">Type any ticker to pull the full earnings dossier: next report date, EPS and revenue estimate range, 12-quarter EPS beat/miss history, quarterly revenue with QoQ growth, analyst price targets with upside %, and a breakdown of Buy / Hold / Sell ratings from all covering analysts.</p>
+                        </div>
+
+                        <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-700/40">
+                            <p class="text-blue-200 text-sm"><strong class="text-blue-300">Tip:</strong> Click the <i class="fas fa-calendar-alt mx-1"></i> icon on any Swing pick card to jump directly to the Earnings tab pre-loaded with that ticker's data.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ── POSITIONS TAB ── -->
                 <div class="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
                     <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-pink-900/20">
@@ -5803,6 +5834,7 @@
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Daily AI-graded swing picks (Grade A/B/C)</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Full technicals — RSI, MACD, Bollinger, ATR</li>
                                 <li><i class="fas fa-check text-green-400 mr-2"></i>Sector strength + live sector news</li>
+                                <li><i class="fas fa-check text-green-400 mr-2"></i>Earnings calendar + EPS history &amp; analyst ratings</li>
                             </ul>
                             <button v-if="user && (user.subscription_tier_actual || user.subscription_tier) === 'advanced'" class="text-center text-gray-500 text-sm py-2 border border-gray-700 rounded-lg w-full cursor-default">Current Plan</button>
                             <button v-else-if="user && ['basic','beginner'].includes(user.subscription_tier_actual || user.subscription_tier)" @click="upgradeSubscription('advanced')" :disabled="subscriptionLoading" class="bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition-colors w-full disabled:opacity-50">Upgrade</button>
