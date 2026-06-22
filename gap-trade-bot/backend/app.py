@@ -7594,6 +7594,32 @@ def get_brown_bot_candidates():
                 'on_watchlist': True,
             })
 
+        # Annotate with re-entry block status from the live session
+        _uid = request.user.get('id', 1)
+        _sess = _brown_sessions.get(_uid)
+        _attempted   = _sess.attempted_symbols if _sess else set()
+        _entry_counts = _sess.entry_counts     if _sess else {}
+        _active_syms  = set(_sess.active_positions.keys()) if _sess else set()
+        # Extract plain symbol from position_id keys (format: BROWN_{SYM}_{ts})
+        _active_ticker_set = {pid.split('_')[1] for pid in _active_syms if '_' in pid}
+        _cfg = db_manager.get_brown_bot_config(_uid)
+        _max_reentry = int(_cfg.get('day_max_reentry', 2))
+
+        def _reentry_status(ticker):
+            count = _entry_counts.get(ticker, 0)
+            if ticker in _attempted and ticker not in _active_ticker_set:
+                if count >= _max_reentry:
+                    return 'capped'      # hit max re-entry limit
+                return 'attempted'       # attempted (order placed/failed) this session
+            return None
+
+        for s in scanner_hits:
+            s['reentry_status'] = _reentry_status(s['ticker'])
+            s['entry_count']    = _entry_counts.get(s['ticker'], 0)
+        for s in wl_entries:
+            s['reentry_status'] = _reentry_status(s['ticker'])
+            s['entry_count']    = _entry_counts.get(s['ticker'], 0)
+
         return jsonify({'success': True, 'scanner': scanner_hits, 'watchlist': wl_entries})
     except Exception as e:
         app_logger.error(f'Error fetching BrownBot candidates: {e}')

@@ -2899,7 +2899,19 @@
                                 <tbody>
                                     <tr v-for="s in brownBotCandidates.scanner" :key="s.ticker"
                                         class="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
-                                        <td class="px-4 py-2 font-mono font-bold text-white">{{ s.ticker }}</td>
+                                        <td class="px-4 py-2 font-mono font-bold text-white">
+                                            {{ s.ticker }}
+                                            <span v-if="s.reentry_status === 'capped'"
+                                                  class="ml-1.5 inline-flex items-center gap-0.5 bg-red-900/50 text-red-400 border border-red-700/50 rounded px-1.5 py-0.5 text-[9px] font-sans font-semibold uppercase tracking-wide cursor-default"
+                                                  :title="'Re-entry cap reached (' + (s.entry_count || 0) + ' entries this session)'">
+                                                <i class="fas fa-ban text-[8px]"></i> capped
+                                            </span>
+                                            <span v-else-if="s.reentry_status === 'attempted'"
+                                                  class="ml-1.5 inline-flex items-center gap-0.5 bg-gray-700/60 text-gray-400 border border-gray-600/50 rounded px-1.5 py-0.5 text-[9px] font-sans font-semibold uppercase tracking-wide cursor-default"
+                                                  title="Already attempted this session — waiting for re-entry slot">
+                                                <i class="fas fa-clock text-[8px]"></i> attempted
+                                            </span>
+                                        </td>
                                         <td class="px-4 py-2 text-right font-semibold" :class="s.gap_percent >= 0 ? 'text-green-400' : 'text-red-400'">{{ s.gap_percent >= 0 ? '+' : '' }}{{ s.gap_percent?.toFixed(1) }}%</td>
                                         <td class="px-4 py-2 text-right">
                                             <span :class="brownBotLivePrices[s.ticker]?.price ? 'text-white' : 'text-gray-400'">
@@ -6425,7 +6437,7 @@
     </div><!-- /#app -->
 
     <!-- Scripts -->
-    <script src="app.js?v=20260622001"></script>
+    <script src="app.js?v=20260622002"></script>
     <script>
         // Simple test to verify HTML is loading
         console.log('📄 HTML loaded successfully');
