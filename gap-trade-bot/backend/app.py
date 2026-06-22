@@ -4194,12 +4194,19 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
                     user_id=user_id)
             else:
                 atr_stp_pct = max(atr_stp_pct, 0.5)
+                # Scale target to maintain the same RR ratio as originally configured
+                # so widening the stop doesn't silently collapse the risk/reward.
+                cfg_rr  = cfg_tgt / cfg_stp if cfg_stp > 0 else 2.0
+                atr_tgt_pct = round(atr_stp_pct * cfg_rr, 2)
                 _add_brown_log('info',
                     f'{symbol}: ATR stop — ATR=${atr_val:.3f} × {atr_mult} → '
-                    f'stop ${atr_stop_dollar:.2f} ({atr_stp_pct:.2f}% vs fixed {stp_pct:.2f}%)',
+                    f'stop {atr_stp_pct:.2f}% / target {atr_tgt_pct:.2f}% '
+                    f'(RR {cfg_rr:.1f}× maintained, was fixed {stp_pct:.2f}%/{tgt_pct:.2f}%)',
                     user_id=user_id)
                 stp_pct = atr_stp_pct
+                tgt_pct = atr_tgt_pct
                 stp_src = f'ATR×{atr_mult}'
+                tgt_src = f'ATR×{atr_mult}×RR{cfg_rr:.1f}'
         else:
             _add_brown_log('warning',
                 f'{symbol}: ATR fetch failed — using fixed stop {stp_pct:.2f}%', user_id=user_id)
