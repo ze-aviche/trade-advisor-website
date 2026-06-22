@@ -3293,7 +3293,13 @@
                                         <span v-if="pos._broker_synced" class="text-gray-600 text-[9px] ml-0.5" title="Live from broker">●</span>
                                     </td>
                                     <td class="px-4 py-3 text-right font-mono text-green-400">${{ pos.profit_target?.toFixed(2) ?? '—' }}</td>
-                                    <td class="px-4 py-3 text-right font-mono text-red-400">${{ pos.stop_loss?.toFixed(2) ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-red-400"
+                                        :title="pos.atr_value ? 'ATR-based stop: entry − (' + pos.atr_value.toFixed(3) + ' × multiplier) | ATR=' + pos.atr_value.toFixed(3) : 'Fixed % stop'">
+                                        ${{ pos.stop_loss?.toFixed(2) ?? '—' }}
+                                        <div v-if="pos.atr_value" class="text-[9px] text-gray-500 font-sans font-normal leading-tight mt-0.5">
+                                            ATR ${{ pos.atr_value.toFixed(3) }}
+                                        </div>
+                                    </td>
                                     <td class="px-4 py-3 text-right font-mono"
                                         :class="(pos.unrealized_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
                                         {{ (pos.unrealized_pnl || 0) >= 0 ? '+' : '' }}${{ (pos.unrealized_pnl || 0).toFixed(2) }}
@@ -6437,7 +6443,7 @@
     </div><!-- /#app -->
 
     <!-- Scripts -->
-    <script src="app.js?v=20260622002"></script>
+    <script src="app.js?v=20260622003"></script>
     <script>
         // Simple test to verify HTML is loading
         console.log('📄 HTML loaded successfully');

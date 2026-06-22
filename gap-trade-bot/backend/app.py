@@ -4177,6 +4177,7 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     tgt_src = stp_src = 'config'
     tgt_pct = cfg_tgt
     stp_pct = cfg_stp
+    _atr_value = None  # stored on position so UI can display stop calculation
 
     # ATR-based dynamic stop: override fixed % stop with entry - (multiplier × ATR).
     # Falls back to the fixed % stop if ATR fetch fails, so entry is never blocked.
@@ -4203,10 +4204,11 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
                     f'stop {atr_stp_pct:.2f}% / target {atr_tgt_pct:.2f}% '
                     f'(RR {cfg_rr:.1f}× maintained, was fixed {stp_pct:.2f}%/{tgt_pct:.2f}%)',
                     user_id=user_id)
-                stp_pct = atr_stp_pct
-                tgt_pct = atr_tgt_pct
-                stp_src = f'ATR×{atr_mult}'
-                tgt_src = f'ATR×{atr_mult}×RR{cfg_rr:.1f}'
+                stp_pct    = atr_stp_pct
+                tgt_pct    = atr_tgt_pct
+                stp_src    = f'ATR×{atr_mult}'
+                tgt_src    = f'ATR×{atr_mult}×RR{cfg_rr:.1f}'
+                _atr_value = round(atr_val, 4)
         else:
             _add_brown_log('warning',
                 f'{symbol}: ATR fetch failed — using fixed stop {stp_pct:.2f}%', user_id=user_id)
@@ -4321,6 +4323,8 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         'playbook_stop_pct':   stp_pct if playbook_override else None,
         'playbook_target_pct': tgt_pct if playbook_override else None,
         'playbook_summary':    playbook_summary,
+        'atr_value':           _atr_value,
+        'stop_source':         stp_src,
     }
     with lock:
         active_positions[position_id] = position
