@@ -4007,16 +4007,16 @@ def _fetch_atr(symbol: str, period: int = 14) -> float | None:
                     'limit': period + 5, 'feed': 'sip', 'adjustment': 'raw'},
             timeout=6,
         )
-        bars = (resp.json().get('bars') or [])[-period - 1:]
+        bars = (resp.json().get('bars') or [])[-period:]
         if len(bars) < 2:
             return None
-        trs = []
-        for i in range(1, len(bars)):
-            h, l, pc = bars[i]['h'], bars[i]['l'], bars[i - 1]['c']
-            trs.append(max(h - l, abs(h - pc), abs(l - pc)))
-        if not trs:
+        # Use intraday high-low range instead of True Range (which includes the
+        # overnight gap). Gap-up stocks have outsized gaps that would inflate ATR
+        # by 5-10× and produce negative or tiny stop prices.
+        ranges = [b['h'] - b['l'] for b in bars if b['h'] > b['l']]
+        if not ranges:
             return None
-        return sum(trs) / len(trs)
+        return sum(ranges) / len(ranges)
     except Exception:
         return None
 
@@ -4184,13 +4184,22 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         atr_val = _fetch_atr(symbol)
         if atr_val and atr_val > 0:
             atr_stop_dollar = price - (atr_mult * atr_val)
-            atr_stp_pct     = max((price - atr_stop_dollar) / price * 100, 0.5)
-            _add_brown_log('info',
-                f'{symbol}: ATR stop — ATR=${atr_val:.3f} × {atr_mult} → '
-                f'stop ${atr_stop_dollar:.2f} ({atr_stp_pct:.2f}% vs fixed {stp_pct:.2f}%)',
-                user_id=user_id)
-            stp_pct = atr_stp_pct
-            stp_src = f'ATR×{atr_mult}'
+            atr_stp_pct     = (price - atr_stop_dollar) / price * 100
+            # Sanity bounds: stop must be positive and the pct must be reasonable.
+            # If ATR is corrupted (e.g. data spike) fall back to fixed stop.
+            if atr_stop_dollar <= 0 or atr_stp_pct > 25:
+                _add_brown_log('warning',
+                    f'{symbol}: ATR stop out of bounds (ATR=${atr_val:.3f}, '
+                    f'stop=${atr_stop_dollar:.2f}, {atr_stp_pct:.1f}%) — using fixed {stp_pct:.2f}%',
+                    user_id=user_id)
+            else:
+                atr_stp_pct = max(atr_stp_pct, 0.5)
+                _add_brown_log('info',
+                    f'{symbol}: ATR stop — ATR=${atr_val:.3f} × {atr_mult} → '
+                    f'stop ${atr_stop_dollar:.2f} ({atr_stp_pct:.2f}% vs fixed {stp_pct:.2f}%)',
+                    user_id=user_id)
+                stp_pct = atr_stp_pct
+                stp_src = f'ATR×{atr_mult}'
         else:
             _add_brown_log('warning',
                 f'{symbol}: ATR fetch failed — using fixed stop {stp_pct:.2f}%', user_id=user_id)
