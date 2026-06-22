@@ -2390,6 +2390,34 @@
                                        type="number" step="0.5" min="0.5" max="10" placeholder="%"
                                        class="w-16 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500 ml-auto">
                             </label>
+                            <!-- ATR-based stop -->
+                            <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-2">
+                                <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_use_atr_stop" type="checkbox" id="bb-day-atr" class="rounded border-gray-600 accent-yellow-400">
+                                    <span class="text-xs text-gray-300">ATR-Based Stop</span>
+                                    <span class="text-[10px] text-gray-500 ml-1">— widens stop with market volatility</span>
+                                </label>
+                                <div v-if="brownBotConfig.day_use_atr_stop" class="flex items-center gap-2 mt-1">
+                                    <label class="text-xs text-gray-400 shrink-0">ATR Multiplier</label>
+                                    <input v-model.number="brownBotConfig.day_atr_multiplier" type="number" step="0.1" min="0.5" max="5"
+                                           class="w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
+                                    <span class="text-[10px] text-gray-500">stop = entry − (ATR×multiplier)</span>
+                                </div>
+                                <p v-if="!brownBotConfig.day_use_atr_stop" class="text-[10px] text-gray-600">When off, uses fixed Stop Loss % above. Enable to adapt stop width to each stock's true daily range — avoids shakeouts in volatile openers.</p>
+                            </div>
+                            <!-- Min Risk/Reward Gate -->
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Min Risk/Reward Ratio
+                                    <span class="text-gray-600 ml-1">— skip entry if RR below this (0 = off)</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.day_min_rr" type="number" step="0.1" min="0" max="10"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">:1</span>
+                                </div>
+                                <p class="text-[10px] text-gray-600 mt-1">e.g. set 2.5 → only enters if target is ≥2.5× the stop distance. At 23% win rate you need ≥3.3 to break even.</p>
+                            </div>
                             <!-- Time Gate -->
                             <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-2">
                                 <label class="flex items-center gap-2.5 cursor-pointer select-none">
@@ -2623,6 +2651,34 @@
                                     <span class="text-xs text-gray-500 shrink-0">% trail</span>
                                 </div>
                                 <p class="text-[10px] text-gray-600 mt-1">Ratchets stop up as price rises — never lowers it</p>
+                            </div>
+                            <!-- ATR-Based Stop (Swing) -->
+                            <div class="border-t border-gray-700/60 pt-3 flex flex-col gap-2">
+                                <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.swing_use_atr_stop" type="checkbox" id="bb-swing-atr" class="rounded border-gray-600 accent-purple-400">
+                                    <span class="text-xs text-gray-300">ATR-Based Stop</span>
+                                    <span class="text-[10px] text-gray-500 ml-1">— widens stop with market volatility</span>
+                                </label>
+                                <div v-if="brownBotConfig.swing_use_atr_stop" class="flex items-center gap-2 mt-1">
+                                    <label class="text-xs text-gray-400 shrink-0">ATR Multiplier</label>
+                                    <input v-model.number="brownBotConfig.swing_atr_multiplier" type="number" step="0.1" min="0.5" max="5"
+                                           class="w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500">
+                                    <span class="text-[10px] text-gray-500">stop = entry − (ATR×multiplier)</span>
+                                </div>
+                                <p v-if="!brownBotConfig.swing_use_atr_stop" class="text-[10px] text-gray-600">When off, uses fixed Stop Loss % above. Enable to set stop based on each stock's actual daily range.</p>
+                            </div>
+                            <!-- Min Risk/Reward Gate (Swing) -->
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <label class="block text-xs text-gray-400 mb-1">
+                                    Min Risk/Reward Ratio
+                                    <span class="text-gray-600 ml-1">— skip entry if RR below this (0 = off)</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.swing_min_rr" type="number" step="0.1" min="0" max="10"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">:1</span>
+                                </div>
+                                <p class="text-[10px] text-gray-600 mt-1">e.g. set 2.5 → only enters if target is ≥2.5× the stop distance.</p>
                             </div>
                             <!-- Entry Time Gate -->
                             <div class="border-t border-gray-700/60 pt-3">
@@ -6369,7 +6425,7 @@
     </div><!-- /#app -->
 
     <!-- Scripts -->
-    <script src="app.js?v=20260602002"></script>
+    <script src="app.js?v=20260622001"></script>
     <script>
         // Simple test to verify HTML is loading
         console.log('📄 HTML loaded successfully');

@@ -435,6 +435,14 @@ const app = createApp({
                 swing_rsi_max: 70.0,
                 swing_check_rel_vol: false,
                 swing_rel_vol_min: 1.2,
+                // ATR-based dynamic stops
+                day_use_atr_stop: false,
+                day_atr_multiplier: 1.5,
+                swing_use_atr_stop: false,
+                swing_atr_multiplier: 2.0,
+                // Minimum risk/reward gate (0 = disabled)
+                day_min_rr: 0.0,
+                swing_min_rr: 0.0,
             },
             brownBotLogs: [],
             brownBotPollingInterval: null,

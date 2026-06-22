@@ -376,6 +376,14 @@ class DatabaseManager:
                 ('swing_time_gate_end',         "TEXT DEFAULT '15:00'"),
                 # Re-entry cap: max times BrownBot may enter the same symbol per session
                 ('day_max_reentry',             'INTEGER DEFAULT 2'),
+                # ATR-based dynamic stops (replaces fixed % when enabled)
+                ('day_use_atr_stop',            'INTEGER DEFAULT 0'),
+                ('day_atr_multiplier',          'REAL DEFAULT 1.5'),
+                ('swing_use_atr_stop',          'INTEGER DEFAULT 0'),
+                ('swing_atr_multiplier',        'REAL DEFAULT 2.0'),
+                # Minimum risk/reward gate — skip entry if RR < this value (0 = disabled)
+                ('day_min_rr',                  'REAL DEFAULT 0.0'),
+                ('swing_min_rr',                'REAL DEFAULT 0.0'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -3003,6 +3011,11 @@ class DatabaseManager:
             'swing_trailing_stop_enabled': False, 'swing_trailing_stop_pct': 5.0,
             # Swing entry time gate
             'swing_time_gate_enabled': False, 'swing_time_gate_start': '09:30', 'swing_time_gate_end': '15:00',
+            # ATR-based dynamic stops
+            'day_use_atr_stop': False, 'day_atr_multiplier': 1.5,
+            'swing_use_atr_stop': False, 'swing_atr_multiplier': 2.0,
+            # Minimum risk/reward gate
+            'day_min_rr': 0.0, 'swing_min_rr': 0.0,
         }
         try:
             with self.get_connection() as conn:
@@ -3031,6 +3044,8 @@ class DatabaseManager:
                     cfg['swing_check_rel_vol']          = bool(cfg.get('swing_check_rel_vol', 0))
                     cfg['swing_trailing_stop_enabled']  = bool(cfg.get('swing_trailing_stop_enabled', 0))
                     cfg['swing_time_gate_enabled']      = bool(cfg.get('swing_time_gate_enabled', 0))
+                    cfg['day_use_atr_stop']             = bool(cfg.get('day_use_atr_stop', 0))
+                    cfg['swing_use_atr_stop']           = bool(cfg.get('swing_use_atr_stop', 0))
                     return cfg
         except Exception as e:
             print(f"Database error fetching brown_bot_config: {e}")
@@ -3058,6 +3073,9 @@ class DatabaseManager:
             'swing_trailing_stop_enabled', 'swing_trailing_stop_pct',
             'swing_time_gate_enabled', 'swing_time_gate_start', 'swing_time_gate_end',
             'day_max_reentry',
+            'day_use_atr_stop', 'day_atr_multiplier',
+            'swing_use_atr_stop', 'swing_atr_multiplier',
+            'day_min_rr', 'swing_min_rr',
         ]
         try:
             with self.get_connection() as conn:

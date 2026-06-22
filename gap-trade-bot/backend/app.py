@@ -3988,6 +3988,39 @@ def _compute_stats_from_rows(rows: list, min_gap: float = 5.0) -> dict:
     }
 
 
+def _fetch_atr(symbol: str, period: int = 14) -> float | None:
+    """Fetch ATR(period) for symbol using recent 1-day bars from Alpaca.
+    Returns ATR as a dollar value, or None if unavailable."""
+    try:
+        import requests as _req
+        from datetime import date, timedelta
+        _ak = os.environ.get('ALPACA_API_KEY', '')
+        _as = os.environ.get('ALPACA_API_SECRET', '')
+        if not _ak or not _as:
+            return None
+        end   = date.today().isoformat()
+        start = (date.today() - timedelta(days=period * 3)).isoformat()
+        resp = _req.get(
+            f'https://data.alpaca.markets/v2/stocks/{symbol}/bars',
+            headers={'APCA-API-KEY-ID': _ak, 'APCA-API-SECRET-KEY': _as},
+            params={'timeframe': '1Day', 'start': start, 'end': end,
+                    'limit': period + 5, 'feed': 'sip', 'adjustment': 'raw'},
+            timeout=6,
+        )
+        bars = (resp.json().get('bars') or [])[-period - 1:]
+        if len(bars) < 2:
+            return None
+        trs = []
+        for i in range(1, len(bars)):
+            h, l, pc = bars[i]['h'], bars[i]['l'], bars[i - 1]['c']
+            trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+        if not trs:
+            return None
+        return sum(trs) / len(trs)
+    except Exception:
+        return None
+
+
 def _parse_playbook_pcts(playbook: dict):
     """
     Extract (stop_pct, target_pct) floats from the playbook string fields.
@@ -4178,11 +4211,17 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
             app_logger.debug(f'BrownBot fill check {symbol}: {_fe}')
 
     if position_type == 'day':
-        cfg_tgt = float(config.get('day_profit_target_pct', 5.0))
-        cfg_stp = float(config.get('day_stop_loss_pct', 2.5))
+        cfg_tgt      = float(config.get('day_profit_target_pct', 5.0))
+        cfg_stp      = float(config.get('day_stop_loss_pct', 2.5))
+        use_atr_stop = bool(config.get('day_use_atr_stop', False))
+        atr_mult     = float(config.get('day_atr_multiplier', 1.5))
+        min_rr       = float(config.get('day_min_rr', 0.0))
     else:
-        cfg_tgt = float(config.get('swing_profit_target_pct', 15.0))
-        cfg_stp = float(config.get('swing_stop_loss_pct', 7.0))
+        cfg_tgt      = float(config.get('swing_profit_target_pct', 15.0))
+        cfg_stp      = float(config.get('swing_stop_loss_pct', 7.0))
+        use_atr_stop = bool(config.get('swing_use_atr_stop', False))
+        atr_mult     = float(config.get('swing_atr_multiplier', 2.0))
+        min_rr       = float(config.get('swing_min_rr', 0.0))
 
     # Apply playbook stop/target with safety bounds so we never chase a tiny
     # target or risk more than 1.5× the configured stop.
@@ -4206,6 +4245,35 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     else:
         tgt_pct = cfg_tgt
         stp_pct = cfg_stp
+
+    # ATR-based dynamic stop: override fixed % stop with entry - (multiplier × ATR).
+    # Falls back to the fixed % stop if ATR fetch fails, so entry is never blocked.
+    if use_atr_stop and price > 0:
+        atr_val = _fetch_atr(symbol)
+        if atr_val and atr_val > 0:
+            atr_stop_dollar = price - (atr_mult * atr_val)
+            atr_stp_pct     = max((price - atr_stop_dollar) / price * 100, 0.5)
+            _add_brown_log('info',
+                f'{symbol}: ATR stop — ATR=${atr_val:.3f} × {atr_mult} → '
+                f'stop ${atr_stop_dollar:.2f} ({atr_stp_pct:.2f}% vs fixed {stp_pct:.2f}%)',
+                user_id=user_id)
+            stp_pct = atr_stp_pct
+            stp_src = f'ATR×{atr_mult}'
+        else:
+            _add_brown_log('warning',
+                f'{symbol}: ATR fetch failed — using fixed stop {stp_pct:.2f}%', user_id=user_id)
+
+    # Minimum risk/reward gate: skip entry if (target% / stop%) < min_rr.
+    # Logged at WARNING so it appears in the activity log without being DEBUG-only.
+    if min_rr > 0 and stp_pct > 0:
+        actual_rr = tgt_pct / stp_pct
+        if actual_rr < min_rr:
+            _add_brown_log('warning',
+                f'SKIP {symbol}: RR {actual_rr:.2f} < minimum {min_rr:.2f} '
+                f'(target {tgt_pct:.1f}% / stop {stp_pct:.1f}%) — trade skipped',
+                user_id=user_id)
+            attempted_symbols.discard(symbol)  # allow retry if config changes
+            return
 
     profit_target = round(price * (1 + tgt_pct / 100), 2) if price else None
     stop_loss = round(price * (1 - stp_pct / 100), 2) if price else None
