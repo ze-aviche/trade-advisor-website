@@ -7600,8 +7600,12 @@ def get_brown_bot_candidates():
         _attempted   = _sess.attempted_symbols if _sess else set()
         _entry_counts = _sess.entry_counts     if _sess else {}
         _active_syms  = set(_sess.active_positions.keys()) if _sess else set()
-        # Extract plain symbol from position_id keys (format: BROWN_{SYM}_{ts})
-        _active_ticker_set = {pid.split('_')[1] for pid in _active_syms if '_' in pid}
+        # Extract plain symbol from position_id keys (format: BROWN_{SYM}_{ts}).
+        # Strip leading "BROWN_" and trailing "_{epoch}" to handle symbols with underscores (e.g. BRK_B).
+        def _pid_to_ticker(pid):
+            s = pid[6:] if pid.startswith('BROWN_') else pid  # strip "BROWN_"
+            return s.rsplit('_', 1)[0]                         # strip trailing _{epoch}
+        _active_ticker_set = {_pid_to_ticker(pid) for pid in _active_syms}
         _cfg = db_manager.get_brown_bot_config(_uid)
         _max_reentry = int(_cfg.get('day_max_reentry', 2))
 
