@@ -239,14 +239,20 @@ def _fetch_from_alpaca_universe_scan(min_price: float, min_gap_pct: float = 2.0)
                     prev  = snap.get('prevDailyBar') or {}
                     trade = snap.get('latestTrade') or {}
 
-                    price      = float(trade.get('p') or daily.get('c') or 0)
+                    # Prefer dailyBar.c (today's price) over latestTrade.p — latestTrade
+                    # can be from a prior session for illiquid stocks, producing fake gaps.
+                    price      = float(daily.get('c') or trade.get('p') or 0)
                     prev_close = float(prev.get('c') or 0)
+                    volume     = int(daily.get('v') or 0)
                     if price <= 0 or prev_close <= 0 or price < min_price:
+                        continue
+                    # Require the stock actually traded today
+                    if volume == 0:
                         continue
 
                     gap_pct = ((price - prev_close) / prev_close) * 100
-                    if gap_pct < min_gap_pct:
-                        continue
+                    if gap_pct < min_gap_pct or gap_pct > 500:
+                        continue  # skip stale/bogus data producing absurd gap%
 
                     hits.append({
                         'ticker':         ticker,
@@ -256,7 +262,7 @@ def _fetch_from_alpaca_universe_scan(min_price: float, min_gap_pct: float = 2.0)
                         'change':         round(price - prev_close, 2),
                         'change_percent': round(gap_pct, 2),
                         'gap_percent':    round(gap_pct, 2),
-                        'volume':         int(daily.get('v') or 0),
+                        'volume':         volume,
                         'market_cap':     0,
                         'float_shares':   0,
                         'sector':         'Unknown',
@@ -435,17 +441,18 @@ def _fetch_from_alpaca_most_actives(min_price: float) -> list:
             daily_bar = snap.get('dailyBar') or {}
             prev_bar  = snap.get('prevDailyBar') or {}
 
-            price      = float(trade.get('p') or daily_bar.get('c') or item.get('price') or 0)
+            price      = float(daily_bar.get('c') or trade.get('p') or item.get('price') or 0)
             prev_close = float(prev_bar.get('c') or 0)
+            volume     = int(daily_bar.get('v') or item.get('volume') or 0)
 
             if price <= 0 or prev_close <= 0 or price < min_price:
                 continue
+            if volume == 0:
+                continue  # hasn't traded today — latestTrade would be stale
 
             gap_pct = ((price - prev_close) / prev_close) * 100
-            if gap_pct <= 0:
-                continue  # only gainers
-
-            volume = int(daily_bar.get('v') or item.get('volume') or 0)
+            if gap_pct <= 0 or gap_pct > 500:
+                continue  # only gainers; >500% indicates stale/bad data
 
             results.append({
                 'ticker':         ticker,
@@ -740,7 +747,10 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
             stock['market_cap'] = data['market_cap']
         if data.get('float_shares'):
             stock['float_shares'] = data['float_shares']
-        if data.get('volume'):
+        # Only fill volume when the primary source has none — yfinance info['volume']
+        # is the 3-month average daily volume, not today's, so we must not overwrite
+        # a real intraday volume from Alpaca with a stale average.
+        if data.get('volume') and not stock.get('volume'):
             stock['volume'] = data['volume']
         if data.get('sector') and data['sector'] != 'Unknown':
             stock['sector'] = data['sector']
