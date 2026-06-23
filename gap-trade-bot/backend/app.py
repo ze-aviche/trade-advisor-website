@@ -4276,6 +4276,8 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
 
     # Apply playbook stop/target with safety bounds so we never chase a tiny
     # target or risk more than 1.5× the configured stop.
+    # NOTE: tgt_pct/stp_pct are already initialised to cfg_tgt/cfg_stp above and
+    # may have been updated by the ATR block — do NOT reset them in the else branch.
     playbook_bias = None
     playbook_summary = None
     if playbook_override:
@@ -4285,16 +4287,9 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         if pb_tgt is not None:
             tgt_pct = max(pb_tgt, cfg_tgt * 0.5)
             tgt_src = 'playbook'
-        else:
-            tgt_pct = cfg_tgt
         if pb_stp is not None:
             stp_pct = min(pb_stp, cfg_stp * 1.5)
             stp_src = 'playbook'
-        else:
-            stp_pct = cfg_stp
-    else:
-        tgt_pct = cfg_tgt
-        stp_pct = cfg_stp
 
     profit_target = round(price * (1 + tgt_pct / 100), 2) if price else None
     stop_loss = round(price * (1 - stp_pct / 100), 2) if price else None
