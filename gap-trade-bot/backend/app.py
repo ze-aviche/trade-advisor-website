@@ -5304,8 +5304,8 @@ def _brown_trigger_circuit_breaker(user_id: int, risk_status: dict):
         quantity   = int(pos.get('quantity', 0))
         pos_type   = pos.get('position_type', 'day')
         order_id   = closeall_order_map.get(sym)
-        realized_p = round((exit_price - avg_entry) * quantity, 2) if avg_entry else round(pos.get('unrealized_pnl', 0), 2)
-        realized_pct = round((exit_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+        realized_p = round((exit_price - avg_entry) * quantity, 2) if avg_entry > 0 else round(pos.get('unrealized_pnl', 0), 2)
+        realized_pct = round((exit_price - avg_entry) / avg_entry * 100, 2) if avg_entry > 0 else 0.0
 
         if order_id:
             try:
@@ -5521,8 +5521,8 @@ def _brown_monitor_finalize_exit(user_id: int, oid, meta, fill_price, fill_qty):
         with sess.lock:
             sess.pending_orders.pop(oid, None)
 
-    realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry else 0.0
-    realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+    realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry > 0 else 0.0
+    realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry > 0 else 0.0
 
     try:
         db_manager.update_brown_order_fill(oid, fill_price, fill_qty)
@@ -5857,7 +5857,13 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
         _add_brown_log('warning', f'DB exit order log failed for {symbol}: {_e}', user_id=user_id)
 
     # Queue the exit for the monitor thread — DB write happens after confirmed fill.
-    _avg_entry_for_meta = position.get('avg_entry_price') or entry_price
+    # Prefer broker's confirmed avg_entry_price over the stored approx so realized
+    # P&L is computed from the actual fill cost, not the scanner estimate.
+    _avg_entry_for_meta = (
+        (float(bp.avg_entry_price) if bp and bp.avg_entry_price else None)
+        or position.get('avg_entry_price')
+        or entry_price
+    )
     with lock:
         pending_orders[str(order_id)] = {
             'type':            'exit',
@@ -6657,8 +6663,8 @@ def start_brown_bot():
                                 fill_qty         = int(sell_order.get('filled_qty') or sell_order.get('qty') or 0)
                                 fill_date        = str(sell_order.get('filled_at', '') or '')[:10] or entry_date
                                 avg_entry        = float(stale_pos.get('avg_entry_price') or entry_price or 0)
-                                realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry else 0.0
-                                realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+                                realized_pnl     = round((fill_price - avg_entry) * fill_qty, 2) if avg_entry > 0 else 0.0
+                                realized_pnl_pct = round((fill_price - avg_entry) / avg_entry * 100, 2) if avg_entry > 0 else 0.0
                                 fill_time_str    = str(sell_order.get('filled_at') or datetime.now().isoformat())
                                 db_manager.add_trade({
                                     'trade_id':      f'BROWN_EXIT_{sym}_{sell_order["order_id"]}',
