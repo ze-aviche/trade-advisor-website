@@ -5971,13 +5971,14 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
                 continue
             _tgt_pct = _day_tgt_pct if _ptype == 'day' else _swing_tgt_pct
             _stp_pct = _day_stp_pct if _ptype == 'day' else _swing_stp_pct
-            # Profit target: only sync if no playbook override
-            if _pos.get('playbook_target_pct') is None:
+            # Profit target: only sync if no playbook override and no ATR-derived target
+            if _pos.get('playbook_target_pct') is None and _pos.get('stop_source') != 'atr':
                 _pos['profit_target']     = round(_entry * (1 + _tgt_pct / 100), 2)
                 _pos['profit_target_pct'] = _tgt_pct
-            # Stop loss: only sync if no playbook override AND stop hasn't been
-            # moved to a more-favourable level by breakeven or trailing
+            # Stop loss: only sync if no playbook override, no ATR-derived stop, AND
+            # stop hasn't been moved to a more-favourable level by breakeven or trailing
             if (_pos.get('playbook_stop_pct') is None
+                    and _pos.get('stop_source') != 'atr'
                     and not _pos.get('_at_breakeven')
                     and not _pos.get('_trail_high')):
                 _pos['stop_loss']     = round(_entry * (1 - _stp_pct / 100), 2)
