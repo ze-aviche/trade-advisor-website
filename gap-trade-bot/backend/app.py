@@ -6374,6 +6374,8 @@ def get_brown_bot_status():
                     '_broker_synced':     True,
                     '_at_breakeven':      bb.get('_at_breakeven', False),
                     '_exit_pending':      sym in pending_exit_syms or bb.get('_exit_pending', False),
+                    'atr_value':          bb.get('atr_value'),
+                    'stop_source':        bb.get('stop_source'),
                 })
             positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
