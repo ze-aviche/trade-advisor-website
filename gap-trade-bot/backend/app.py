@@ -5088,7 +5088,8 @@ def _brown_bot_scan_and_enter(user_id: int):
             break
 
         if risk_manager:
-            _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
+            _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values()
+                              if not p.get('_exit_pending'))
             _rs = risk_manager.status(active_copy, unrealized_pnl=_unrealized)
             allowed, reason = risk_manager.can_enter(symbol, 'day', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
@@ -5208,7 +5209,8 @@ def _brown_bot_scan_and_enter(user_id: int):
             break
 
         if risk_manager:
-            _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values())
+            _unrealized = sum(p.get('unrealized_pnl', 0) for p in active_copy.values()
+                              if not p.get('_exit_pending'))
             _rs = risk_manager.status(active_copy, unrealized_pnl=_unrealized)
             allowed, reason = risk_manager.can_enter(symbol, 'swing', active_copy, unrealized_pnl=_unrealized)
             if not allowed:
@@ -6059,10 +6061,10 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
 
         entry_price = float(position.get('avg_entry_price') or position.get('entry_price', 0))
         quantity = int(position.get('quantity', 0))
-        unrealized_pnl = round((current_price - entry_price) * quantity, 2) if entry_price else 0.0
+        unrealized_pnl = round((current_price - entry_price) * quantity, 2) if entry_price > 0 else 0.0
         unrealized_pnl_pct = round(
             (current_price - entry_price) / entry_price * 100, 2
-        ) if entry_price else 0.0
+        ) if entry_price > 0 else 0.0
 
         # Update unrealized P&L and current price in shared state
         with lock:
@@ -6954,8 +6956,8 @@ def brown_bot_close_all():
         quantity    = int(pos.get('quantity', 0))
         pos_type    = pos.get('position_type', 'day')
         order_id    = closeall_order_map.get(sym)
-        realized    = round((exit_price - avg_entry) * quantity, 2) if avg_entry else round(pos.get('unrealized_pnl', 0), 2)
-        realized_pct = round((exit_price - avg_entry) / avg_entry * 100, 2) if avg_entry else 0.0
+        realized    = round((exit_price - avg_entry) * quantity, 2) if avg_entry > 0 else round(pos.get('unrealized_pnl', 0), 2)
+        realized_pct = round((exit_price - avg_entry) / avg_entry * 100, 2) if avg_entry > 0 else 0.0
 
         # Log exit order in the immutable orders table
         if order_id:
@@ -7073,7 +7075,10 @@ def get_brown_bot_risk_status():
     if sess and sess.risk_manager is not None:
         with sess.lock:
             positions = dict(sess.active_positions)
-        unrealized_total = sum(p.get('unrealized_pnl', 0) for p in positions.values())
+        unrealized_total = sum(
+            p.get('unrealized_pnl', 0) for p in positions.values()
+            if not p.get('_exit_pending')
+        )
         snapshot = sess.risk_manager.status(positions, unrealized_pnl=unrealized_total)
     else:
         # Bot not running for this user — return defaults from their config
