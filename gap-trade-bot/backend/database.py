@@ -384,6 +384,10 @@ class DatabaseManager:
                 # Minimum risk/reward gate — skip entry if RR < this value (0 = disabled)
                 ('day_min_rr',                  'REAL DEFAULT 0.0'),
                 ('swing_min_rr',                'REAL DEFAULT 0.0'),
+                # Breakeven stop toggle (default on — move stop to entry once price
+                # reaches day_breakeven_trigger_pct % of the way to profit target)
+                ('day_breakeven_enabled',       'INTEGER DEFAULT 1'),
+                ('swing_breakeven_enabled',     'INTEGER DEFAULT 1'),
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_bot_config ADD COLUMN {col} {defn}')
@@ -3016,6 +3020,8 @@ class DatabaseManager:
             'swing_use_atr_stop': False, 'swing_atr_multiplier': 2.0,
             # Minimum risk/reward gate
             'day_min_rr': 0.0, 'swing_min_rr': 0.0,
+            # Breakeven stop toggle
+            'day_breakeven_enabled': True, 'swing_breakeven_enabled': True,
         }
         try:
             with self.get_connection() as conn:
@@ -3046,6 +3052,8 @@ class DatabaseManager:
                     cfg['swing_time_gate_enabled']      = bool(cfg.get('swing_time_gate_enabled', 0))
                     cfg['day_use_atr_stop']             = bool(cfg.get('day_use_atr_stop', 0))
                     cfg['swing_use_atr_stop']           = bool(cfg.get('swing_use_atr_stop', 0))
+                    cfg['day_breakeven_enabled']        = bool(cfg.get('day_breakeven_enabled', 1))
+                    cfg['swing_breakeven_enabled']      = bool(cfg.get('swing_breakeven_enabled', 1))
                     return cfg
         except Exception as e:
             print(f"Database error fetching brown_bot_config: {e}")
@@ -3076,6 +3084,7 @@ class DatabaseManager:
             'day_use_atr_stop', 'day_atr_multiplier',
             'swing_use_atr_stop', 'swing_atr_multiplier',
             'day_min_rr', 'swing_min_rr',
+            'day_breakeven_enabled', 'swing_breakeven_enabled',
         ]
         try:
             with self.get_connection() as conn:

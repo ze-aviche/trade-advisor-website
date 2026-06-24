@@ -6113,19 +6113,24 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
                 f'stop ${stop_loss:.2f} (-{_stp_pct:.1f}%)',
                 user_id=user_id)
 
-        # Breakeven stop: move stop to entry once price reaches halfway to target
+        # Breakeven stop: move stop to entry once price reaches the trigger % toward target.
+        # Gated by day_breakeven_enabled / swing_breakeven_enabled config flag (default on).
+        _be_enabled_key = f'{position_type}_breakeven_enabled'
+        _be_enabled = config.get(_be_enabled_key, True)
         if (not position.get('_at_breakeven')
+                and _be_enabled
                 and profit_target and entry_price
                 and profit_target > entry_price):
             breakeven_pct = float(config.get(f'{position_type}_breakeven_trigger_pct', 50.0))
-            progress = (current_price - entry_price) / (profit_target - entry_price) * 100
-            if progress >= breakeven_pct:
-                with lock:
-                    if position_id in active_positions:
-                        active_positions[position_id]['stop_loss'] = entry_price
-                        active_positions[position_id]['_at_breakeven'] = True
-                stop_loss = entry_price
-                _add_brown_log('info', f'{symbol}: stop moved to breakeven ${entry_price:.2f} ({progress:.0f}% to target)', user_id=user_id)
+            if breakeven_pct > 0:
+                progress = (current_price - entry_price) / (profit_target - entry_price) * 100
+                if progress >= breakeven_pct:
+                    with lock:
+                        if position_id in active_positions:
+                            active_positions[position_id]['stop_loss'] = entry_price
+                            active_positions[position_id]['_at_breakeven'] = True
+                    stop_loss = entry_price
+                    _add_brown_log('info', f'{symbol}: stop moved to breakeven ${entry_price:.2f} ({progress:.0f}% to target)', user_id=user_id)
 
         # ── Trailing stop: ratchet stop_loss up as price rises ──
         trail_key = f'{position_type}_trailing_stop_enabled'

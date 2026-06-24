@@ -2368,14 +2368,20 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1">
-                                    Breakeven Trigger
-                                    <span class="text-gray-600 ml-1">— % of target reached → move stop to entry</span>
-                                </label>
-                                <div class="flex items-center gap-2">
-                                    <input v-model.number="brownBotConfig.day_breakeven_trigger_pct" type="number" step="5" min="0" max="100"
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-xs text-gray-400">
+                                        Breakeven Stop
+                                        <span class="text-gray-600 ml-1">— move stop to entry once price reaches trigger % toward target</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input v-model="brownBotConfig.day_breakeven_enabled" type="checkbox" id="bb-day-be" class="rounded border-gray-600 accent-yellow-400">
+                                        <span class="text-xs text-gray-400">Enabled</span>
+                                    </label>
+                                </div>
+                                <div v-if="brownBotConfig.day_breakeven_enabled" class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.day_breakeven_trigger_pct" type="number" step="5" min="1" max="100"
                                            class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500 transition-colors">
-                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                    <span class="text-xs text-gray-500 shrink-0">% to target</span>
                                 </div>
                             </div>
                             <div>
@@ -2611,14 +2617,20 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1">
-                                    Breakeven Trigger
-                                    <span class="text-gray-600 ml-1">— % of target reached → move stop to entry</span>
-                                </label>
-                                <div class="flex items-center gap-2">
-                                    <input v-model.number="brownBotConfig.swing_breakeven_trigger_pct" type="number" step="5" min="0" max="100"
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-xs text-gray-400">
+                                        Breakeven Stop
+                                        <span class="text-gray-600 ml-1">— move stop to entry once price reaches trigger % toward target</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input v-model="brownBotConfig.swing_breakeven_enabled" type="checkbox" id="bb-swing-be" class="rounded border-gray-600 accent-purple-400">
+                                        <span class="text-xs text-gray-400">Enabled</span>
+                                    </label>
+                                </div>
+                                <div v-if="brownBotConfig.swing_breakeven_enabled" class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.swing_breakeven_trigger_pct" type="number" step="5" min="1" max="100"
                                            class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
-                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                    <span class="text-xs text-gray-500 shrink-0">% to target</span>
                                 </div>
                             </div>
                             <div>
@@ -6451,7 +6463,7 @@
     </div><!-- /#app -->
 
     <!-- Scripts -->
-    <script src="app.js?v=20260623002"></script>
+    <script src="app.js?v=20260624001"></script>
     <script>
         // Simple test to verify HTML is loading
         console.log('📄 HTML loaded successfully');
