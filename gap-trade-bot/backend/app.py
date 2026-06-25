@@ -11689,6 +11689,167 @@ def _historical_prefetch_daemon():
         time.sleep(90)  # poll for new tickers every 90 s
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Fundamentals Screener (FMP) — fetch fundamentals for the US equity universe
+# into the local `fundamentals` table for Finviz-style client-side filtering.
+# ═══════════════════════════════════════════════════════════════════════════
+import fmp_screener
+
+# Live progress so the UI / admin can watch a refresh run.
+_screener_refresh_state = {
+    'running': False,
+    'processed': 0,
+    'total': 0,
+    'stored': 0,
+    'started_at': None,
+    'finished_at': None,
+    'error': None,
+}
+_screener_refresh_lock = threading.Lock()
+
+
+def _run_screener_refresh(limit=None):
+    """
+    Fetch fundamentals for the whole universe (or first `limit` symbols) and
+    upsert into the DB. Throttled to <300 calls/min inside fmp_screener.
+    Safe to call from a daemon thread. Returns a summary dict.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    with _screener_refresh_lock:
+        if _screener_refresh_state['running']:
+            return {'success': False, 'error': 'A refresh is already running'}
+        if not fmp_screener.is_configured():
+            return {'success': False, 'error': 'FMP_API_KEY not configured'}
+        _screener_refresh_state.update({
+            'running': True, 'processed': 0, 'total': 0, 'stored': 0,
+            'started_at': datetime.now().isoformat(), 'finished_at': None, 'error': None,
+        })
+
+    try:
+        symbols = fmp_screener.get_universe()
+        if limit:
+            symbols = symbols[:int(limit)]
+        total = len(symbols)
+        _screener_refresh_state['total'] = total
+        app_logger.info(f"[ScreenerRefresh] Starting refresh of {total} symbols")
+
+        stored = 0
+        processed = 0
+
+        def _work(sym):
+            try:
+                return fmp_screener.fetch_symbol(sym)
+            except Exception as e:
+                app_logger.debug(f"[ScreenerRefresh] {sym} fetch error: {e}")
+                return None
+
+        with ThreadPoolExecutor(max_workers=fmp_screener.MAX_WORKERS) as ex:
+            futures = {ex.submit(_work, s): s for s in symbols}
+            for fut in as_completed(futures):
+                processed += 1
+                _screener_refresh_state['processed'] = processed
+                row = fut.result()
+                if row:
+                    try:
+                        db_manager.upsert_fundamentals(row)
+                        stored += 1
+                        _screener_refresh_state['stored'] = stored
+                    except Exception as e:
+                        app_logger.debug(f"[ScreenerRefresh] upsert error {futures[fut]}: {e}")
+                if processed % 250 == 0:
+                    app_logger.info(f"[ScreenerRefresh] {processed}/{total} processed, {stored} stored")
+
+        app_logger.info(f"[ScreenerRefresh] Done — {stored}/{total} stored")
+        return {'success': True, 'total': total, 'stored': stored}
+    except Exception as e:
+        app_logger.error(f"[ScreenerRefresh] Refresh failed: {e}", exc_info=True)
+        _screener_refresh_state['error'] = str(e)[:200]
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        _screener_refresh_state['running'] = False
+        _screener_refresh_state['finished_at'] = datetime.now().isoformat()
+
+
+def _screener_refresh_daemon():
+    """Nightly fundamentals refresh at ~02:30 ET (markets closed, low FMP load)."""
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    app_logger.info('[ScreenerRefresh] Daemon started (nightly ~02:30 ET)')
+    if not fmp_screener.is_configured():
+        app_logger.warning('[ScreenerRefresh] FMP_API_KEY not set — daemon idle')
+        return
+    # Backfill on first boot if the table is empty.
+    try:
+        if db_manager.get_fundamentals_meta().get('total', 0) == 0:
+            app_logger.info('[ScreenerRefresh] Empty table — running initial backfill')
+            _run_screener_refresh()
+    except Exception as e:
+        app_logger.warning(f'[ScreenerRefresh] Initial backfill skipped: {e}')
+
+    _last_run_date = None
+    while True:
+        try:
+            now_et = datetime.now(_et)
+            if now_et.hour == 2 and now_et.minute >= 30 and _last_run_date != now_et.date():
+                _last_run_date = now_et.date()
+                _run_screener_refresh()
+        except Exception as e:
+            app_logger.error(f'[ScreenerRefresh] Daemon loop error: {e}')
+        time.sleep(300)  # check every 5 min
+
+
+@app.route('/api/screener/meta', methods=['GET'])
+@require_auth
+def api_screener_meta():
+    """Row count, last-update time, distinct sectors/exchanges, and column metadata."""
+    meta = db_manager.get_fundamentals_meta()
+    meta['numeric_columns'] = db_manager.FUND_NUMERIC_COLS
+    meta['refresh'] = dict(_screener_refresh_state)
+    meta['configured'] = fmp_screener.is_configured()
+    return jsonify({'success': True, 'meta': meta})
+
+
+@app.route('/api/screener/data', methods=['POST'])
+@require_auth
+def api_screener_data():
+    """
+    Query fundamentals with Finviz-style filters.
+    Body: { filters: [{col, min, max} | {col, eq|in|like}], sort_by, sort_dir,
+            limit, exclude_funds }
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        rows = db_manager.query_fundamentals(
+            filters=body.get('filters') or [],
+            sort_by=body.get('sort_by', 'market_cap'),
+            sort_dir=body.get('sort_dir', 'desc'),
+            limit=body.get('limit', 500),
+            exclude_funds=body.get('exclude_funds', True),
+        )
+        return jsonify({'success': True, 'count': len(rows), 'rows': rows})
+    except Exception as e:
+        app_logger.error(f'[Screener] query error: {e}')
+        return jsonify({'success': False, 'error': str(e)[:200]}), 400
+
+
+@app.route('/api/screener/refresh', methods=['POST'])
+@require_auth
+@require_role('super_admin', 'dev_master', 'bot_admin')
+def api_screener_refresh():
+    """Manually trigger a fundamentals refresh (admin only). Runs in background."""
+    if _screener_refresh_state['running']:
+        return jsonify({'success': False, 'error': 'Refresh already running',
+                        'state': dict(_screener_refresh_state)}), 409
+    body = request.get_json(silent=True) or {}
+    limit = body.get('limit')  # optional: refresh only first N symbols (testing)
+    threading.Thread(
+        target=_run_screener_refresh, kwargs={'limit': limit},
+        daemon=True, name='ScreenerRefreshManual').start()
+    return jsonify({'success': True, 'message': 'Refresh started',
+                    'state': dict(_screener_refresh_state)})
+
+
 # Start background gap-up monitor — runs under both `python app.py` and gunicorn
 _bg_thread_started = False
 def _start_background_tasks():
@@ -11736,6 +11897,14 @@ def _start_background_tasks():
             app_logger.info("✅ [OHLCVFetcher]       started — backfills gap_data bars, then fetches EOD bars daily at 4:30 PM ET")
         except Exception as _e:
             app_logger.warning(f"[OHLCVFetcher] failed to start: {_e}")
+
+        try:
+            screener_thread = threading.Thread(
+                target=_screener_refresh_daemon, daemon=True, name='ScreenerRefresh')
+            screener_thread.start()
+            app_logger.info("✅ [ScreenerRefresh]    started — nightly FMP fundamentals refresh (~02:30 ET)")
+        except Exception as _e:
+            app_logger.warning(f"[ScreenerRefresh] failed to start: {_e}")
 
         app_logger.info("━━━ All background daemon threads launched ━━━")
 
