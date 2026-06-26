@@ -588,6 +588,7 @@ const app = createApp({
                 day_pmh_break_buffer_pct: 0.2,
                 day_pmh_vol_mult: 1.5,
                 day_pmh_max_wick_pct: 60.0,
+                day_pmh_acceptance_bars: 0,
                 day_max_below_dayhigh_pct: 0.0,
                 day_ai_playbook: true,
                 day_position_pct: 5.0,

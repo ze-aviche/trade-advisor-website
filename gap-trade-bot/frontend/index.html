@@ -2767,7 +2767,7 @@
                                     <p class="text-[10px] text-gray-600 mt-0.5">Enters only on a <em>confirmed</em> break of today's pre-market high (04:00–09:29 ET): a completed 1-min candle must close above PMH (plus buffer), on real volume, without a large upper wick — and price must still hold above PMH. Avoids buying the first tick over, where shorts fade the level. PMH value shows as a badge in the Candidates table.</p>
                                 </div>
                             </label>
-                            <div v-show="brownBotConfig.day_check_pmh" class="ml-7 -mt-1 grid grid-cols-3 gap-2">
+                            <div v-show="brownBotConfig.day_check_pmh" class="ml-7 -mt-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <div>
                                     <label class="block text-[10px] text-gray-500 mb-0.5">Break buffer %</label>
                                     <input v-model.number="brownBotConfig.day_pmh_break_buffer_pct" type="number" step="0.1" min="0" max="5"
@@ -2781,6 +2781,12 @@
                                 <div>
                                     <label class="block text-[10px] text-gray-500 mb-0.5">Max wick % <span class="text-gray-600">(0=off)</span></label>
                                     <input v-model.number="brownBotConfig.day_pmh_max_wick_pct" type="number" step="5" min="0" max="100"
+                                           class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-gray-500 mb-0.5">Hold bars <span class="text-gray-600">(0=off)</span></label>
+                                    <input v-model.number="brownBotConfig.day_pmh_acceptance_bars" type="number" step="1" min="0" max="10"
+                                           title="Require this many consecutive 1-min closes above PMH before entering (acceptance). 0 or 1 = off."
                                            class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
                                 </div>
                             </div>

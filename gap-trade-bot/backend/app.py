@@ -4028,6 +4028,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         buf      = float(config.get('day_pmh_break_buffer_pct', 0.2))
         vol_mult = float(config.get('day_pmh_vol_mult', 1.5))
         max_wick = float(config.get('day_pmh_max_wick_pct', 60.0))
+        accept_n = int(config.get('day_pmh_acceptance_bars', 0) or 0)  # 0/1 = off
         if not pmh or pmh <= 0:
             # Can't confirm PMH → block entry (conservative: don't enter blind).
             passed = False
@@ -4038,10 +4039,15 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
             bars = _get_intraday_bars(symbol)  # cached; 09:30 → last completed min
             still_above = float(current_price) > pmh
             if not bars:
-                # No completed candle yet (right at the open) — fall back to a
-                # simple level check so the very first breakout can still trigger.
-                passed = float(current_price) > threshold
-                detail = f'${float(current_price):.2f} vs PMH ${pmh:.2f} +{buf:.1f}% (no candle yet)'
+                # No completed candle yet (right at the open). With acceptance
+                # required we wait; otherwise fall back to a simple level check
+                # so the very first breakout can still trigger.
+                if accept_n >= 2:
+                    passed = False
+                    detail = f'Waiting for {accept_n}-bar hold above PMH ${pmh:.2f} (no candles yet)'
+                else:
+                    passed = float(current_price) > threshold
+                    detail = f'${float(current_price):.2f} vs PMH ${pmh:.2f} +{buf:.1f}% (no candle yet)'
             else:
                 last = bars[-1]
                 close_ok = last['c'] > threshold
@@ -4062,6 +4068,17 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
                 if vol_mult > 0:        bits.append('vol✓' if vol_ok else 'vol low')
                 if 0 < max_wick < 100:  bits.append('wick✓' if wick_ok else 'wick big')
                 if not still_above:     bits.append('faded <PMH')
+                # Acceptance: the last N completed candles must all CLOSE above
+                # PMH — proves the level is held, not just poked once.
+                if accept_n >= 2:
+                    if len(bars) < accept_n:
+                        passed = False
+                        bits.append(f'need {accept_n} bars (have {len(bars)})')
+                    else:
+                        held = all(b['c'] > pmh for b in bars[-accept_n:])
+                        bits.append(f'{accept_n}-bar hold✓' if held else f'{accept_n}-bar hold✗')
+                        if not held:
+                            passed = False
                 detail = f'PMH ${pmh:.2f}: ' + ', '.join(bits)
             value = f'${pmh:.2f}'
         checks.append({'name': 'pmh', 'label': 'PMH breakout confirmed', 'passed': passed,
