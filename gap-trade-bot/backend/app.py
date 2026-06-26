@@ -3929,6 +3929,52 @@ def _get_day_high(symbol):
     return round(max(b['h'] for b in bars), 4)
 
 
+def _confirm_breakout(level, bars, current_price, buf, vol_mult, max_wick, accept_n):
+    """
+    Shared breakout-confirmation logic used by both the PMH and day-high entry
+    triggers. A breakout above `level` is confirmed when the last completed
+    1-min candle CLOSES above level×(1+buf%), on real volume, without a big
+    upper wick, with price still holding above level — and (optional) the last
+    `accept_n` candles all closed above level (acceptance/hold).
+    Returns (passed: bool, bits: list[str]) where bits explain the decision.
+    """
+    threshold = level * (1 + buf / 100.0)
+    still_above = float(current_price) > level
+    if not bars:
+        if accept_n >= 2:
+            return False, [f'waiting for {accept_n}-bar hold (no candles yet)']
+        return (float(current_price) > threshold,
+                [f'${float(current_price):.2f} vs ${level:.2f} +{buf:.1f}% (no candle yet)'])
+
+    last = bars[-1]
+    close_ok = last['c'] > threshold
+    vol_ok = True
+    if vol_mult > 0 and len(bars) >= 3:
+        avg_v  = sum(b['v'] for b in bars[:-1]) / (len(bars) - 1)
+        vol_ok = avg_v > 0 and last['v'] >= avg_v * vol_mult
+    wick_ok = True
+    if 0 < max_wick < 100:
+        rng   = last['h'] - last['l']
+        upper = last['h'] - max(last['o'], last['c'])
+        wick_ok = ((upper / rng * 100) if rng > 0 else 0.0) <= max_wick
+
+    passed = close_ok and vol_ok and wick_ok and still_above
+    bits = [f'close ${last["c"]:.2f} {">" if close_ok else "≤"} ${threshold:.2f}']
+    if vol_mult > 0:        bits.append('vol✓' if vol_ok else 'vol low')
+    if 0 < max_wick < 100:  bits.append('wick✓' if wick_ok else 'wick big')
+    if not still_above:     bits.append('faded')
+    if accept_n >= 2:
+        if len(bars) < accept_n:
+            passed = False
+            bits.append(f'need {accept_n} bars (have {len(bars)})')
+        else:
+            held = all(b['c'] > level for b in bars[-accept_n:])
+            bits.append(f'{accept_n}-bar hold✓' if held else f'{accept_n}-bar hold✗')
+            if not held:
+                passed = False
+    return passed, bits
+
+
 def _check_day_entry_signal(symbol, current_price, gap_price, config):
     """
     Intraday trend checks for day trade entries.
@@ -3941,10 +3987,17 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     ext_pct   = float(config.get('day_max_extension_pct', 0.0))
     vol_on    = bool(config.get('day_check_volume_surge', False))
     pmh_on    = bool(config.get('day_check_pmh', False))
+    dhb_on    = bool(config.get('day_check_dayhigh_break', False))
     max_below = float(config.get('day_max_below_dayhigh_pct', 0.0))
 
-    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on or max_below > 0):
+    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on or dhb_on or max_below > 0):
         return True, [], 'No trend filters enabled'
+
+    # Shared breakout-confirmation params (apply to both PMH & day-high triggers).
+    _buf      = float(config.get('day_pmh_break_buffer_pct', 0.2))
+    _vol_mult = float(config.get('day_pmh_vol_mult', 1.5))
+    _max_wick = float(config.get('day_pmh_max_wick_pct', 60.0))
+    _accept_n = int(config.get('day_pmh_acceptance_bars', 0) or 0)
 
     bars = _get_intraday_bars(symbol)
     no_bars_detail = 'Bar data unavailable (Alpaca API) — will retry next scan'
@@ -4017,82 +4070,57 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         if not passed:
             all_pass = False
 
+    # ─────────────────────────── ENTRY TRIGGERS (OR) ─────────────────────────
+    # PMH-break and day-high-break are alternative long entries: a stock below
+    # PMH can still be a valid long if it reclaims/breaks the intraday high.
+    # At least one ENABLED trigger must confirm. The checks above/below are AND
+    # quality gates. trigger_flags collects each enabled trigger's pass result.
+    trigger_flags = []
+
     # ── Pre-market-high breakout, CONFIRMED ──────────────────────────────
-    # Don't buy the first tick over PMH — that's exactly where shorts lean in
-    # and the first test usually rejects. Require a completed 1-min candle to
-    # CLOSE above PMH by a buffer, on real volume, without a big upper wick
-    # (a long upper wick = the stock got sold into the level), and the live
-    # price still holding above PMH.
+    # Don't buy the first tick over PMH — that's where shorts lean in and the
+    # first test usually rejects. Require a confirmed, held break (see helper).
     if pmh_on:
         pmh, pmh_time = _get_premarket_high(symbol)
-        buf      = float(config.get('day_pmh_break_buffer_pct', 0.2))
-        vol_mult = float(config.get('day_pmh_vol_mult', 1.5))
-        max_wick = float(config.get('day_pmh_max_wick_pct', 60.0))
-        accept_n = int(config.get('day_pmh_acceptance_bars', 0) or 0)  # 0/1 = off
         if not pmh or pmh <= 0:
-            # Can't confirm PMH → block entry (conservative: don't enter blind).
             passed = False
             detail = 'Pre-market high unavailable (Alpaca premarket data) — will retry next scan'
             value  = '—'
         else:
-            threshold = pmh * (1 + buf / 100.0)
-            bars = _get_intraday_bars(symbol)  # cached; 09:30 → last completed min
-            still_above = float(current_price) > pmh
-            if not bars:
-                # No completed candle yet (right at the open). With acceptance
-                # required we wait; otherwise fall back to a simple level check
-                # so the very first breakout can still trigger.
-                if accept_n >= 2:
-                    passed = False
-                    detail = f'Waiting for {accept_n}-bar hold above PMH ${pmh:.2f} (no candles yet)'
-                else:
-                    passed = float(current_price) > threshold
-                    detail = f'${float(current_price):.2f} vs PMH ${pmh:.2f} +{buf:.1f}% (no candle yet)'
-            else:
-                last = bars[-1]
-                close_ok = last['c'] > threshold
-                # Volume: breakout bar vs the session's prior-bar average.
-                vol_ok = True
-                if vol_mult > 0 and len(bars) >= 3:
-                    avg_v  = sum(b['v'] for b in bars[:-1]) / (len(bars) - 1)
-                    vol_ok = avg_v > 0 and last['v'] >= avg_v * vol_mult
-                # Upper wick: rejection tell. upper = high - max(open, close).
-                wick_ok = True
-                if 0 < max_wick < 100:
-                    rng   = last['h'] - last['l']
-                    upper = last['h'] - max(last['o'], last['c'])
-                    wick_ratio = (upper / rng * 100) if rng > 0 else 0.0
-                    wick_ok = wick_ratio <= max_wick
-                passed = close_ok and vol_ok and wick_ok and still_above
-                bits = [f'close ${last["c"]:.2f} {">" if close_ok else "≤"} ${threshold:.2f}']
-                if vol_mult > 0:        bits.append('vol✓' if vol_ok else 'vol low')
-                if 0 < max_wick < 100:  bits.append('wick✓' if wick_ok else 'wick big')
-                if not still_above:     bits.append('faded <PMH')
-                # Acceptance: the last N completed candles must all CLOSE above
-                # PMH — proves the level is held, not just poked once.
-                if accept_n >= 2:
-                    if len(bars) < accept_n:
-                        passed = False
-                        bits.append(f'need {accept_n} bars (have {len(bars)})')
-                    else:
-                        held = all(b['c'] > pmh for b in bars[-accept_n:])
-                        bits.append(f'{accept_n}-bar hold✓' if held else f'{accept_n}-bar hold✗')
-                        if not held:
-                            passed = False
-                detail = f'PMH ${pmh:.2f}: ' + ', '.join(bits)
-            value = f'${pmh:.2f}'
+            passed, bits = _confirm_breakout(pmh, bars, current_price,
+                                             _buf, _vol_mult, _max_wick, _accept_n)
+            detail = f'PMH ${pmh:.2f}: ' + ', '.join(bits)
+            value  = f'${pmh:.2f}'
         checks.append({'name': 'pmh', 'label': 'PMH breakout confirmed', 'passed': passed,
                        'detail': detail, 'value': value})
-        if not passed:
-            all_pass = False
+        trigger_flags.append(passed)
+
+    # ── Day-high breakout / reclaim, CONFIRMED ───────────────────────────
+    # Reclaim-and-break above the intraday high (the rounded-bottom curve into a
+    # new high) — a valid long even while still below PMH. The breakout level is
+    # the day high established BEFORE the current candle (max high of prior bars).
+    if dhb_on:
+        prior_high = round(max(b['h'] for b in bars[:-1]), 4) if bars and len(bars) >= 2 else None
+        if not prior_high or prior_high <= 0:
+            passed = False
+            detail = 'Day high not established yet (need ≥2 bars) — will retry next scan'
+            value  = '—'
+        else:
+            passed, bits = _confirm_breakout(prior_high, bars, current_price,
+                                             _buf, _vol_mult, _max_wick, _accept_n)
+            detail = f'Day-high ${prior_high:.2f}: ' + ', '.join(bits)
+            value  = f'${prior_high:.2f}'
+        checks.append({'name': 'dh_break', 'label': 'Day-high breakout confirmed', 'passed': passed,
+                       'detail': detail, 'value': value})
+        trigger_flags.append(passed)
 
     # ── Not too far below the day high (momentum / anti-chase guard) ─────
-    # Blocks re-entries when the price has faded far from its intraday high.
-    # At the open there's little/no pullback, so this is effectively inert then.
+    # AND gate. Blocks re-entries when price has faded far from its intraday
+    # high. Inert at the open (little/no pullback) and trivially passes when a
+    # breakout trigger is firing (price is at/above the high).
     if max_below > 0:
         day_high = _get_day_high(symbol)
         if not day_high or day_high <= 0:
-            # No intraday high yet (right at open) → nothing to fade from; allow.
             passed, detail, value = True, 'Day high not established yet', '—'
         else:
             below = round((day_high - float(current_price)) / day_high * 100, 1)
@@ -4104,8 +4132,11 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         if not passed:
             all_pass = False
 
+    # Final: all AND gates pass, AND (if any trigger is enabled) at least one fires.
+    enter = all_pass and (any(trigger_flags) if trigger_flags else True)
+
     parts = [f'{"✓" if c["passed"] else "✗"} {c["label"]}: {c["detail"]}' for c in checks]
-    return all_pass, checks, ' | '.join(parts)
+    return enter, checks, ' | '.join(parts)
 
 
 
