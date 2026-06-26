@@ -1517,6 +1517,7 @@ const app = createApp({
                     this.stopPositionHistoryUpdates();
                     this.loadStats();
                     this.loadFeedbackLatest();
+                    this.loadBrownEntryStats();
                 } else if (tabName === 'backtest') {
                     console.log('🧪 Backtest tab selected - loading backtest data...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
