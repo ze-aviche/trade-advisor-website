@@ -11915,6 +11915,262 @@ def api_screener_refresh():
                     'state': dict(_screener_refresh_state)})
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Swing Setups — daily technicals scan (SMA/RSI/52w) over the whole universe,
+# stored in stock_technicals and JOINed with fundamentals for the new tab.
+# Reuses _fetch_swing_daily_bars / _compute_sma / _compute_rsi. Independent of
+# the existing Swing tab (which scans gappers/most-actives) — do not conflate.
+# ═══════════════════════════════════════════════════════════════════════════
+_swing_tech_scan_state = {
+    'running': False, 'processed': 0, 'total': 0, 'stored': 0,
+    'started_at': None, 'finished_at': None, 'error': None,
+}
+_swing_tech_scan_lock = threading.Lock()
+
+
+def _compute_technicals_from_bars(bars):
+    """Compute the stock_technicals row fields from ascending daily bars."""
+    closes = [float(b['c']) for b in bars if b.get('c') is not None]
+    vols = [float(b.get('v') or 0) for b in bars]
+    if len(closes) < 30:
+        return None  # not enough history for a meaningful trend read
+    price = closes[-1]
+
+    def sma(p):
+        return round(sum(closes[-p:]) / p, 4) if len(closes) >= p else None
+
+    sma20, sma50, sma100, sma200 = sma(20), sma(50), sma(100), sma(200)
+
+    # Slope = % change of the SMA vs 5 trading days ago (positive = rising).
+    def slope(p):
+        if len(closes) < p + 5:
+            return None
+        now = sum(closes[-p:]) / p
+        prev = sum(closes[-p - 5:-5]) / p
+        return round((now - prev) / prev, 5) if prev else None
+
+    window = closes[-252:] if len(closes) >= 252 else closes
+    high_52w = round(max(window), 4)
+    low_52w = round(min(window), 4)
+
+    return {
+        'price': round(price, 4),
+        'sma20': sma20, 'sma50': sma50, 'sma100': sma100, 'sma200': sma200,
+        'sma20_slope': slope(20), 'sma50_slope': slope(50),
+        'rsi14': _compute_rsi(closes, 14),
+        'high_52w': high_52w, 'low_52w': low_52w,
+        'pct_from_high': round((price - high_52w) / high_52w * 100, 2) if high_52w else None,
+        'pct_above_sma50': round((price - sma50) / sma50 * 100, 2) if sma50 else None,
+        'avg_vol': round(sum(vols[-20:]) / min(len(vols), 20), 0) if vols else None,
+    }
+
+
+def _run_swing_technicals_scan(limit=None):
+    """
+    Pull daily bars for the whole universe (Alpaca, 100/batch), compute SMAs/RSI,
+    and upsert into stock_technicals. Cheap on Alpaca (~106 calls for ~10.5k
+    symbols); no FMP usage. Safe to run from a daemon thread.
+    """
+    with _swing_tech_scan_lock:
+        if _swing_tech_scan_state['running']:
+            return {'success': False, 'error': 'A technicals scan is already running'}
+        _swing_tech_scan_state.update({
+            'running': True, 'processed': 0, 'total': 0, 'stored': 0,
+            'started_at': datetime.now().isoformat(), 'finished_at': None, 'error': None,
+        })
+
+    try:
+        symbols = fmp_screener.get_universe()
+        if not symbols:
+            # Fall back to whatever we already have fundamentals for.
+            symbols = [r['symbol'] for r in db_manager.query_fundamentals(limit=5000)]
+        if limit:
+            symbols = symbols[:int(limit)]
+        total = len(symbols)
+        _swing_tech_scan_state['total'] = total
+        app_logger.info(f"[SwingTechScan] Starting technicals scan of {total} symbols")
+
+        stored = 0
+        processed = 0
+        # _fetch_swing_daily_bars already batches 100/call internally; chunk the
+        # universe so we can stream progress and upsert as we go.
+        CHUNK = 500
+        for i in range(0, total, CHUNK):
+            chunk = symbols[i:i + CHUNK]
+            # ~400 calendar days ≈ 275 trading days — enough headroom for SMA200.
+            bars_by_sym = _fetch_swing_daily_bars(chunk, days=400)
+            for sym, bars in bars_by_sym.items():
+                tech = _compute_technicals_from_bars(bars)
+                if tech:
+                    tech['symbol'] = sym
+                    try:
+                        db_manager.upsert_technicals(tech)
+                        stored += 1
+                    except Exception as e:
+                        app_logger.debug(f"[SwingTechScan] upsert {sym}: {e}")
+            processed += len(chunk)
+            _swing_tech_scan_state['processed'] = processed
+            _swing_tech_scan_state['stored'] = stored
+            app_logger.info(f"[SwingTechScan] {processed}/{total} processed, {stored} stored")
+
+        app_logger.info(f"[SwingTechScan] Done — {stored}/{total} stored")
+        return {'success': True, 'total': total, 'stored': stored}
+    except Exception as e:
+        app_logger.error(f"[SwingTechScan] Scan failed: {e}", exc_info=True)
+        _swing_tech_scan_state['error'] = str(e)[:200]
+        return {'success': False, 'error': str(e)[:200]}
+    finally:
+        _swing_tech_scan_state['running'] = False
+        _swing_tech_scan_state['finished_at'] = datetime.now().isoformat()
+
+
+def _swing_tech_scan_daemon():
+    """Nightly technicals scan at ~03:30 ET (after the fundamentals refresh)."""
+    import pytz as _pytz
+    _et = _pytz.timezone('US/Eastern')
+    app_logger.info('[SwingTechScan] Daemon started (nightly ~03:30 ET)')
+    # First-boot backfill if empty (and we have a universe / fundamentals).
+    try:
+        if db_manager.get_swing_setups_meta().get('tech_total', 0) == 0:
+            app_logger.info('[SwingTechScan] Empty table — running initial scan')
+            _run_swing_technicals_scan()
+    except Exception as e:
+        app_logger.warning(f'[SwingTechScan] Initial scan skipped: {e}')
+
+    _last_run = None
+    while True:
+        try:
+            now_et = datetime.now(_et)
+            if now_et.hour == 3 and now_et.minute >= 30 and _last_run != now_et.date():
+                _last_run = now_et.date()
+                _run_swing_technicals_scan()
+        except Exception as e:
+            app_logger.error(f'[SwingTechScan] Daemon loop error: {e}')
+        time.sleep(300)
+
+
+# Default "quality swing" preset applied when the tab first loads.
+_SWING_DEFAULT_TREND = {
+    'above_sma20': True, 'above_sma50': True, 'above_sma100': True,
+    'stacked': True, 'sma50_rising': True, 'rsi_min': 40, 'rsi_max': 80,
+    'min_price': 5, 'min_avg_vol': 300000,
+}
+_SWING_DEFAULT_FILTERS = [
+    {'col': 'eps_growth_yoy', 'min': 0},
+    {'col': 'revenue_growth_yoy', 'min': 0},
+    {'col': 'roe', 'min': 0.15},
+    {'col': 'debt_to_equity', 'max': 2},
+]
+
+
+@app.route('/api/swing-setups/meta', methods=['GET'])
+@require_auth
+def api_swing_setups_meta():
+    meta = db_manager.get_swing_setups_meta()
+    meta['scan'] = dict(_swing_tech_scan_state)
+    meta['default_trend'] = _SWING_DEFAULT_TREND
+    meta['default_filters'] = _SWING_DEFAULT_FILTERS
+    meta['fund_numeric_columns'] = db_manager.FUND_NUMERIC_COLS
+    return jsonify({'success': True, 'meta': meta})
+
+
+@app.route('/api/swing-setups/data', methods=['POST'])
+@require_auth
+def api_swing_setups_data():
+    """Query true swing setups: trend (technicals) + fundamentals, ranked by score."""
+    body = request.get_json(silent=True) or {}
+    try:
+        rows = db_manager.query_swing_setups(
+            trend=body.get('trend', _SWING_DEFAULT_TREND),
+            filters=body.get('filters', _SWING_DEFAULT_FILTERS),
+            sort_by=body.get('sort_by', 'swing_score'),
+            sort_dir=body.get('sort_dir', 'desc'),
+            limit=body.get('limit', 200),
+            exclude_funds=body.get('exclude_funds', True),
+        )
+        return jsonify({'success': True, 'count': len(rows), 'rows': rows})
+    except Exception as e:
+        app_logger.error(f'[SwingSetups] query error: {e}')
+        return jsonify({'success': False, 'error': str(e)[:200]}), 400
+
+
+@app.route('/api/swing-setups/scan', methods=['POST'])
+@require_auth
+@require_role('super_admin', 'dev_master', 'bot_admin')
+def api_swing_setups_scan():
+    """Manually trigger the technicals scan (admin). Runs in background."""
+    if _swing_tech_scan_state['running']:
+        return jsonify({'success': False, 'error': 'Scan already running',
+                        'state': dict(_swing_tech_scan_state)}), 409
+    body = request.get_json(silent=True) or {}
+    limit = body.get('limit')
+    threading.Thread(target=_run_swing_technicals_scan, kwargs={'limit': limit},
+                     daemon=True, name='SwingTechScanManual').start()
+    return jsonify({'success': True, 'message': 'Scan started',
+                    'state': dict(_swing_tech_scan_state)})
+
+
+@app.route('/api/swing-setups/grade', methods=['POST'])
+@require_auth
+@require_tier('advanced')
+def api_swing_setups_grade():
+    """
+    Claude-grade a shortlist of swing setups. Body: { symbols: [...] } (max 15).
+    Returns per-symbol { grade, bias, summary }. Reuses the AI agent.
+    """
+    if not AI_AGENT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'AI not available'}), 503
+    body = request.get_json(silent=True) or {}
+    symbols = [s.upper().strip() for s in (body.get('symbols') or [])][:15]
+    if not symbols:
+        return jsonify({'success': False, 'error': 'No symbols provided'}), 400
+
+    # Pull the stored technicals + fundamentals for context.
+    rows = {r['symbol']: r for r in db_manager.query_swing_setups(
+        trend={}, filters=[], limit=1000, exclude_funds=False)}
+
+    results = {}
+    for sym in symbols:
+        r = rows.get(sym, {})
+        context = {
+            'symbol': sym, 'price': r.get('t_price'), 'sma20': r.get('sma20'),
+            'sma50': r.get('sma50'), 'sma100': r.get('sma100'), 'sma200': r.get('sma200'),
+            'rsi14': r.get('rsi14'), 'pct_from_52w_high': r.get('pct_from_high'),
+            'pe': r.get('pe'), 'forward_pe': r.get('forward_pe'),
+            'eps_growth_yoy': r.get('eps_growth_yoy'),
+            'revenue_growth_yoy': r.get('revenue_growth_yoy'),
+            'roe': r.get('roe'), 'net_margin': r.get('net_margin'),
+            'debt_to_equity': r.get('debt_to_equity'), 'sector': r.get('sector'),
+        }
+        prompt = (
+            "You are a swing-trading analyst. Given this stock's technical trend and "
+            "fundamentals, grade it as an A/B/C swing-trade setup for a multi-day to "
+            "multi-week hold, and give a bias (Bullish/Neutral/Bearish) and one-sentence "
+            "rationale. Respond as compact JSON: {\"grade\":\"A|B|C\",\"bias\":\"...\","
+            "\"summary\":\"...\"}.\n\nData:\n" + json.dumps(context, default=str)
+        )
+        try:
+            resp = _ai_agent.client.messages.create(
+                model=_ai_agent.model,
+                max_tokens=300,
+                messages=[{'role': 'user', 'content': prompt}],
+            )
+            raw = ''.join(
+                blk.text for blk in resp.content if getattr(blk, 'type', '') == 'text'
+            ).strip()
+            parsed = None
+            if raw:
+                import re as _re
+                m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group(0))
+            results[sym] = parsed or {'grade': '?', 'bias': 'Unknown', 'summary': (raw or 'No response')[:200]}
+        except Exception as e:
+            results[sym] = {'grade': '?', 'bias': 'Error', 'summary': str(e)[:160]}
+
+    return jsonify({'success': True, 'grades': results})
+
+
 # Start background gap-up monitor — runs under both `python app.py` and gunicorn
 _bg_thread_started = False
 def _start_background_tasks():
@@ -11970,6 +12226,14 @@ def _start_background_tasks():
             app_logger.info("✅ [ScreenerRefresh]    started — nightly FMP fundamentals refresh (~02:30 ET)")
         except Exception as _e:
             app_logger.warning(f"[ScreenerRefresh] failed to start: {_e}")
+
+        try:
+            swing_tech_thread = threading.Thread(
+                target=_swing_tech_scan_daemon, daemon=True, name='SwingTechScan')
+            swing_tech_thread.start()
+            app_logger.info("✅ [SwingTechScan]      started — nightly technicals scan for Swing Setups (~03:30 ET)")
+        except Exception as _e:
+            app_logger.warning(f"[SwingTechScan] failed to start: {_e}")
 
         app_logger.info("━━━ All background daemon threads launched ━━━")
 

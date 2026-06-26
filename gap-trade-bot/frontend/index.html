@@ -169,6 +169,11 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-filter text-xs"></i>Screener<i v-if="!canAccessTab('screener')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
+                <button @click="handleTabClick('swing-setups')"
+                    :class="activeTab === 'swing-setups' ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/20' : canAccessTab('swing-setups') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-emerald-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-chart-line text-xs"></i>Swing Setups<i v-if="!canAccessTab('swing-setups')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
                 <button @click="handleTabClick('brown-bot')"
                     :class="activeTab === 'brown-bot' ? 'bg-amber-600 border-amber-600 text-white shadow-md shadow-amber-600/20' : canAccessTab('brown-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-amber-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
@@ -234,6 +239,7 @@
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('earnings')" :class="activeTab === 'earnings' ? 'bg-blue-600 text-white' : canAccessTab('earnings') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-calendar-alt mr-2 w-4"></i>Earnings<i v-if="!canAccessTab('earnings')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('screener')" :class="activeTab === 'screener' ? 'bg-blue-600 text-white' : canAccessTab('screener') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-filter mr-2 w-4"></i>Screener<i v-if="!canAccessTab('screener')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('swing-setups')" :class="activeTab === 'swing-setups' ? 'bg-emerald-600 text-white' : canAccessTab('swing-setups') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Swing Setups<i v-if="!canAccessTab('swing-setups')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -2231,6 +2237,114 @@
 
             </div>
             <!-- end Swing tab -->
+
+            <!-- ═══════════════════ SWING SETUPS (trend + fundamentals) ═══════════════════ -->
+            <div v-if="activeTab === 'swing-setups' && canAccessTab('swing-setups')" class="space-y-4">
+
+                <!-- Header / status -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i class="fas fa-chart-line text-emerald-400"></i> True Swing Setups
+                        </h2>
+                        <p class="text-xs text-gray-400 mt-1">
+                            Stocks in an uptrend (above moving averages) with solid fundamentals — universe-wide, not gappers.
+                            <span v-if="swingMeta.tech_last_updated">· technicals updated {{ formatDateTime(swingMeta.tech_last_updated) }}</span>
+                            <span v-else class="text-amber-400">· no technicals yet — run a scan</span>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="resetSwing" class="px-3 py-2 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-200"><i class="fas fa-undo mr-1"></i>Reset</button>
+                        <button @click="runSwing" :disabled="swingLoading" class="px-4 py-2 rounded-lg text-sm bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50">
+                            <i class="fas" :class="swingLoading ? 'fa-spinner fa-spin' : 'fa-search'"></i> {{ swingLoading ? 'Scanning…' : 'Apply' }}
+                        </button>
+                        <button v-if="swingSelected.length" @click="gradeSwingAI" :disabled="swingGrading" class="px-3 py-2 rounded-lg text-sm bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50">
+                            <i class="fas" :class="swingGrading ? 'fa-spinner fa-spin' : 'fa-robot'"></i> Grade {{ swingSelected.length }} with AI
+                        </button>
+                        <button v-if="isStaff" @click="scanSwingData" :disabled="swingMeta.scan && swingMeta.scan.running" class="px-3 py-2 rounded-lg text-sm bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50" title="Admin: rescan technicals from Alpaca">
+                            <i class="fas fa-sync-alt mr-1"></i>
+                            <span v-if="swingMeta.scan && swingMeta.scan.running">{{ swingMeta.scan.processed }}/{{ swingMeta.scan.total }}</span>
+                            <span v-else>Rescan</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 space-y-3">
+                    <!-- Trend toggles -->
+                    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-300">
+                        <span class="text-[11px] uppercase tracking-wide text-gray-500">Trend:</span>
+                        <label class="flex items-center gap-1.5"><input type="checkbox" v-model="swingTrend.above_sma20" @change="runSwing"> &gt; SMA20</label>
+                        <label class="flex items-center gap-1.5"><input type="checkbox" v-model="swingTrend.above_sma50" @change="runSwing"> &gt; SMA50</label>
+                        <label class="flex items-center gap-1.5"><input type="checkbox" v-model="swingTrend.above_sma100" @change="runSwing"> &gt; SMA100</label>
+                        <label class="flex items-center gap-1.5"><input type="checkbox" v-model="swingTrend.above_sma200" @change="runSwing"> &gt; SMA200</label>
+                        <label class="flex items-center gap-1.5"><input type="checkbox" v-model="swingTrend.stacked" @change="runSwing"> Stacked (20&gt;50&gt;100)</label>
+                        <label class="flex items-center gap-1.5"><input type="checkbox" v-model="swingTrend.sma50_rising" @change="runSwing"> SMA50 rising</label>
+                    </div>
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">RSI min</label><input type="number" v-model.number="swingTrend.rsi_min" @change="runSwing" class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200"></div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">RSI max</label><input type="number" v-model.number="swingTrend.rsi_max" @change="runSwing" class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200"></div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Min price $</label><input type="number" v-model.number="swingTrend.min_price" @change="runSwing" class="w-24 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200"></div>
+                        <div><label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Min avg vol</label><input type="number" v-model.number="swingTrend.min_avg_vol" @change="runSwing" class="w-28 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200"></div>
+                    </div>
+                    <!-- Fundamental preset dropdowns (subset of screener metrics) -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-3 pt-1 border-t border-gray-700/60">
+                        <div v-for="m in swingFundMetrics" :key="m.key">
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">{{ m.label }}</label>
+                            <select v-model="swingFundSel[m.key]" @change="runSwing" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+                                <option v-for="(opt,i) in presetOptions(m.type)" :key="i" :value="i">{{ opt.label }}</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-2 border-b border-gray-700 text-xs text-gray-400 flex justify-between">
+                        <span>{{ swingRows.length }} setup<span v-if="swingRows.length !== 1">s</span> · tick a row's box to queue it for AI grading</span>
+                        <span>Click headers to sort</span>
+                    </div>
+                    <div class="overflow-x-auto" style="max-height: 65vh;">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-900 sticky top-0 z-10">
+                                <tr class="text-gray-400 text-xs">
+                                    <th class="px-2 py-2"></th>
+                                    <th v-for="c in swingColumns" :key="c.key" @click="sortSwing(c.key)"
+                                        class="px-3 py-2 text-right whitespace-nowrap cursor-pointer hover:text-white"
+                                        :class="(c.key==='symbol'||c.key==='company_name') ? 'text-left' : ''">
+                                        {{ c.label }}<i v-if="swingSort.by === c.key" class="fas text-[10px] ml-0.5" :class="swingSort.dir==='asc'?'fa-caret-up':'fa-caret-down'"></i>
+                                    </th>
+                                    <th class="px-3 py-2 text-left">AI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in swingRows" :key="row.symbol" class="border-t border-gray-700/50 hover:bg-gray-700/30">
+                                    <td class="px-2 py-1.5 text-center"><input type="checkbox" :value="row.symbol" v-model="swingSelected"></td>
+                                    <td v-for="c in swingColumns" :key="c.key" class="px-3 py-1.5 text-right whitespace-nowrap"
+                                        :class="[
+                                            c.key==='symbol' ? 'text-left font-semibold text-emerald-300' : '',
+                                            c.key==='company_name' ? 'text-left text-gray-300 max-w-[180px] truncate' : 'text-gray-200',
+                                            c.key==='swing_score' ? 'font-semibold text-white' : '',
+                                            (c.color && row[c.key]!=null) ? (row[c.key] >= 0 ? 'text-green-400' : 'text-red-400') : ''
+                                        ]">{{ fmtCell(row[c.key], c) }}</td>
+                                    <td class="px-3 py-1.5 text-left">
+                                        <span v-if="swingGrades[row.symbol]" class="inline-flex items-center gap-1">
+                                            <span class="px-1.5 py-0.5 rounded text-[11px] font-bold"
+                                                :class="{'bg-green-700 text-green-100': swingGrades[row.symbol].grade==='A','bg-blue-700 text-blue-100': swingGrades[row.symbol].grade==='B','bg-gray-600 text-gray-200': !['A','B'].includes(swingGrades[row.symbol].grade)}">
+                                                {{ swingGrades[row.symbol].grade }}
+                                            </span>
+                                            <span class="text-[11px] text-gray-400" :title="swingGrades[row.symbol].summary">{{ swingGrades[row.symbol].bias }}</span>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr v-if="!swingRows.length && !swingLoading">
+                                    <td :colspan="swingColumns.length + 2" class="px-3 py-10 text-center text-gray-500">No setups match. Loosen the trend/fundamental filters, or run a technicals scan.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
             <!-- ═══════════════════ FUNDAMENTALS SCREENER ═══════════════════ -->
             <div v-if="activeTab === 'screener' && canAccessTab('screener')" class="space-y-4">

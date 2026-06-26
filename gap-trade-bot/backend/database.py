@@ -230,6 +230,28 @@ class DatabaseManager:
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_fund_sector ON fundamentals(sector)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_fund_mktcap ON fundamentals(market_cap)')
 
+            # Daily technicals for the "Swing Setups" tab (one row per symbol,
+            # refreshed nightly from Alpaca daily bars). JOINed with fundamentals.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS stock_technicals (
+                    symbol            TEXT PRIMARY KEY,
+                    price             REAL,
+                    sma20             REAL,
+                    sma50             REAL,
+                    sma100            REAL,
+                    sma200            REAL,
+                    sma20_slope       REAL,
+                    sma50_slope       REAL,
+                    rsi14             REAL,
+                    high_52w          REAL,
+                    low_52w           REAL,
+                    pct_from_high     REAL,
+                    pct_above_sma50   REAL,
+                    avg_vol           REAL,
+                    updated_at        TEXT
+                )
+            ''')
+
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
 
@@ -3962,6 +3984,162 @@ class DatabaseManager:
             ).fetchall()]
             return {'total': total, 'last_updated': last,
                     'sectors': sectors, 'exchanges': exchanges}
+
+    # ────────────────────────── Stock technicals / Swing Setups ──────────────
+    TECH_COLS = [
+        'symbol', 'price', 'sma20', 'sma50', 'sma100', 'sma200',
+        'sma20_slope', 'sma50_slope', 'rsi14', 'high_52w', 'low_52w',
+        'pct_from_high', 'pct_above_sma50', 'avg_vol', 'updated_at',
+    ]
+    # Technical numeric columns that the swing query may filter/sort on.
+    TECH_NUMERIC_COLS = [
+        'price', 'sma20', 'sma50', 'sma100', 'sma200', 'sma20_slope',
+        'sma50_slope', 'rsi14', 'high_52w', 'low_52w', 'pct_from_high',
+        'pct_above_sma50', 'avg_vol',
+    ]
+
+    def upsert_technicals(self, row: dict):
+        import datetime as _dt
+        row = dict(row)
+        row['updated_at'] = _dt.datetime.utcnow().isoformat()
+        cols = [c for c in self.TECH_COLS if c in row]
+        placeholders = ', '.join('?' for _ in cols)
+        with self.get_connection() as conn:
+            conn.execute(
+                f'INSERT OR REPLACE INTO stock_technicals ({", ".join(cols)}) '
+                f'VALUES ({placeholders})',
+                [row.get(c) for c in cols],
+            )
+            conn.commit()
+
+    def query_swing_setups(self, trend: dict = None, filters: list = None,
+                           sort_by: str = 'swing_score', sort_dir: str = 'desc',
+                           limit: int = 200, exclude_funds: bool = True) -> list:
+        """
+        JOIN fundamentals + stock_technicals, apply trend conditions and
+        fundamental filters, and return combined rows. The swing_score is
+        computed in Python (see _swing_score) after the SQL filter.
+
+        trend keys (all optional booleans / numbers):
+          above_sma20/50/100/200, stacked (20>50>100), sma50_rising, sma20_rising,
+          rsi_min, rsi_max, min_price, min_avg_vol
+        filters: same shape as query_fundamentals (numeric col min/max, text eq/in).
+        """
+        trend = trend or {}
+        where = ['t.price IS NOT NULL']
+        params = []
+
+        # ── Trend conditions ─────────────────────────────────────────────
+        if trend.get('above_sma20'):  where.append('t.price > t.sma20')
+        if trend.get('above_sma50'):  where.append('t.price > t.sma50')
+        if trend.get('above_sma100'): where.append('t.price > t.sma100')
+        if trend.get('above_sma200'): where.append('t.price > t.sma200')
+        if trend.get('stacked'):
+            where.append('t.sma20 > t.sma50 AND t.sma50 > t.sma100')
+        if trend.get('sma50_rising'): where.append('t.sma50_slope > 0')
+        if trend.get('sma20_rising'): where.append('t.sma20_slope > 0')
+        if trend.get('rsi_min') not in (None, ''):
+            where.append('t.rsi14 >= ?'); params.append(float(trend['rsi_min']))
+        if trend.get('rsi_max') not in (None, ''):
+            where.append('t.rsi14 <= ?'); params.append(float(trend['rsi_max']))
+        if trend.get('min_price') not in (None, ''):
+            where.append('t.price >= ?'); params.append(float(trend['min_price']))
+        if trend.get('min_avg_vol') not in (None, ''):
+            where.append('t.avg_vol >= ?'); params.append(float(trend['min_avg_vol']))
+
+        # ── Fundamental filters (reuse the whitelist from query_fundamentals) ─
+        for f in (filters or []):
+            col = f.get('col')
+            if col in self.FUND_NUMERIC_COLS:
+                if f.get('min') not in (None, ''):
+                    where.append(f'f.{col} >= ?'); params.append(float(f['min']))
+                if f.get('max') not in (None, ''):
+                    where.append(f'f.{col} <= ?'); params.append(float(f['max']))
+            elif col in self.FUND_TEXT_COLS:
+                if f.get('eq'):
+                    where.append(f'f.{col} = ?'); params.append(f['eq'])
+                elif f.get('in'):
+                    vals = list(f['in'])
+                    where.append(f'f.{col} IN ({",".join("?" for _ in vals)})')
+                    params.extend(vals)
+        if exclude_funds:
+            where.append('(f.is_etf = 0 OR f.is_etf IS NULL) AND (f.is_fund = 0 OR f.is_fund IS NULL)')
+
+        sql = (
+            'SELECT f.*, '
+            't.price AS t_price, t.sma20, t.sma50, t.sma100, t.sma200, '
+            't.sma20_slope, t.sma50_slope, t.rsi14, t.high_52w, t.low_52w, '
+            't.pct_from_high, t.pct_above_sma50, t.avg_vol '
+            'FROM stock_technicals t JOIN fundamentals f ON f.symbol = t.symbol'
+        )
+        if where:
+            sql += ' WHERE ' + ' AND '.join(where)
+        sql += ' LIMIT 3000'  # cap the working set; scoring/sorting done in Python
+
+        with self.get_connection() as conn:
+            rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+        for r in rows:
+            r['swing_score'] = self._swing_score(r)
+
+        valid_sorts = set(self.FUND_NUMERIC_COLS) | set(self.TECH_NUMERIC_COLS) | {'swing_score'}
+        sort_key = sort_by if sort_by in valid_sorts else 'swing_score'
+        reverse = str(sort_dir).lower() != 'asc'
+        rows.sort(key=lambda r: (r.get(sort_key) is None, r.get(sort_key) or 0), reverse=reverse)
+        return rows[:max(1, min(int(limit or 200), 1000))]
+
+    @staticmethod
+    def _swing_score(r: dict) -> float:
+        """
+        0–100 blend of trend strength (60%) and fundamental quality (40%).
+        Purely heuristic — used for default ranking; users can re-sort any column.
+        """
+        price = r.get('t_price') or r.get('price')
+        trend_pts = 0.0
+        # Above each MA (max 4) → up to 24 pts
+        for ma in ('sma20', 'sma50', 'sma100', 'sma200'):
+            v = r.get(ma)
+            if price and v and price > v:
+                trend_pts += 6
+        # Stacked MAs → 16 pts
+        if all(r.get(k) for k in ('sma20', 'sma50', 'sma100')) and \
+           r['sma20'] > r['sma50'] > r['sma100']:
+            trend_pts += 16
+        # Rising 50-day slope → up to 10 pts
+        s = r.get('sma50_slope')
+        if s and s > 0:
+            trend_pts += min(10, s * 200)
+        # RSI in the constructive 50–70 band → 10 pts
+        rsi = r.get('rsi14')
+        if rsi and 50 <= rsi <= 70:
+            trend_pts += 10
+        trend_pts = min(60, trend_pts)
+
+        fund_pts = 0.0
+        for key, weight in (('eps_growth_yoy', 10), ('revenue_growth_yoy', 8),
+                            ('roe', 8), ('fcf_yield', 6), ('net_margin', 8)):
+            v = r.get(key)
+            if v is not None and v > 0:
+                fund_pts += weight
+        # Penalise heavy leverage
+        de = r.get('debt_to_equity')
+        if de is not None and de > 2:
+            fund_pts -= 5
+        fund_pts = max(0, min(40, fund_pts))
+
+        return round(trend_pts + fund_pts, 1)
+
+    def get_swing_setups_meta(self) -> dict:
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            tech_total = cur.execute('SELECT COUNT(*) AS c FROM stock_technicals').fetchone()['c']
+            tech_last = cur.execute('SELECT MAX(updated_at) AS m FROM stock_technicals').fetchone()['m']
+            fund_total = cur.execute('SELECT COUNT(*) AS c FROM fundamentals').fetchone()['c']
+            sectors = [r['sector'] for r in cur.execute(
+                "SELECT DISTINCT sector FROM fundamentals WHERE sector IS NOT NULL AND sector != '' ORDER BY sector"
+            ).fetchall()]
+            return {'tech_total': tech_total, 'tech_last_updated': tech_last,
+                    'fund_total': fund_total, 'sectors': sectors}
 
 
 # Global database manager instance

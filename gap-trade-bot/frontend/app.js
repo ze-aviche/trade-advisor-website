@@ -86,6 +86,50 @@ const app = createApp({
                     { key: 'avg_volume',         label: 'Avg Vol',     fmt: 'volume' },
                 ],
 
+                // ── Swing Setups (trend + fundamentals) ────────────────────
+                swingMeta: { tech_total: 0, fund_total: 0, tech_last_updated: null, sectors: [], scan: {} },
+                swingRows: [],
+                swingLoading: false,
+                swingLoaded: false,
+                swingGrading: false,
+                swingSelected: [],
+                swingGrades: {},
+                swingScanTimer: null,
+                swingSort: { by: 'swing_score', dir: 'desc' },
+                swingTrend: {
+                    above_sma20: true, above_sma50: true, above_sma100: true, above_sma200: false,
+                    stacked: true, sma50_rising: true, rsi_min: 40, rsi_max: 80,
+                    min_price: 5, min_avg_vol: 300000,
+                },
+                swingFundSel: {},
+                swingFundMetrics: [
+                    { key: 'eps_growth_yoy',     label: 'EPS Gr YoY', type: 'pct' },
+                    { key: 'revenue_growth_yoy', label: 'Rev Gr YoY', type: 'pct' },
+                    { key: 'roe',                label: 'ROE',        type: 'pct' },
+                    { key: 'net_margin',         label: 'Net Margin', type: 'pct' },
+                    { key: 'debt_to_equity',     label: 'Debt/Equity',type: 'ratio' },
+                    { key: 'pe',                 label: 'P/E',        type: 'ratio' },
+                ],
+                // default preset index per fundamental metric (quality gate)
+                swingFundDefaults: { eps_growth_yoy: 1, revenue_growth_yoy: 1, roe: 5, net_margin: 0, debt_to_equity: 0, pe: 0 },
+                swingColumns: [
+                    { key: 'symbol',             label: 'Ticker' },
+                    { key: 'swing_score',        label: 'Score',    fmt: 'num1' },
+                    { key: 't_price',            label: 'Price',    fmt: 'usd' },
+                    { key: 'sma50',              label: 'SMA50',    fmt: 'usd' },
+                    { key: 'sma200',             label: 'SMA200',   fmt: 'usd' },
+                    { key: 'pct_above_sma50',    label: '%>SMA50',  fmt: 'pct_raw', color: true },
+                    { key: 'pct_from_high',      label: '%off Hi',  fmt: 'pct_raw', color: true },
+                    { key: 'rsi14',              label: 'RSI',      fmt: 'num1' },
+                    { key: 'sma50_slope',        label: '50 slope', fmt: 'pct', color: true },
+                    { key: 'eps_growth_yoy',     label: 'EPS YoY',  fmt: 'pct', color: true },
+                    { key: 'revenue_growth_yoy', label: 'Rev YoY',  fmt: 'pct', color: true },
+                    { key: 'roe',                label: 'ROE',      fmt: 'pct', color: true },
+                    { key: 'pe',                 label: 'P/E',      fmt: 'num2' },
+                    { key: 'market_cap',         label: 'Mkt Cap',  fmt: 'mktcap' },
+                    { key: 'sector',             label: 'Sector' },
+                ],
+
                 // Dashboard data - COMPLETELY REBUILT FROM SCRATCH
                 dashboardStats: {
                     totalPositions: 0,
@@ -1444,6 +1488,8 @@ const app = createApp({
                     if (!this.erCalendar.length) this.loadErCalendar();
                 } else if (tabName === 'screener') {
                     this.initScreener();
+                } else if (tabName === 'swing-setups') {
+                    this.initSwingSetups();
                 }
             },
 
@@ -1456,8 +1502,8 @@ const app = createApp({
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'screener'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'screener', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'screener', 'swing-setups'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'screener', 'swing-setups', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -4937,6 +4983,7 @@ const app = createApp({
                 case 'mktcap': return this.fmtMarketCap(v);
                 case 'volume': return this.fmtMarketCap(v).replace('$', '');
                 case 'usd': return '$' + Number(v).toFixed(2);
+                case 'num1': return Number(v).toFixed(1);
                 case 'num2': return Number(v).toFixed(2);
                 case 'pct': return (Number(v) * 100).toFixed(1) + '%';      // fraction -> %
                 case 'pct_raw': return Number(v).toFixed(2) + '%';          // already a % value
@@ -4950,6 +4997,117 @@ const app = createApp({
             if (v >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
             if (v >= 1e3)  return '$' + (v / 1e3).toFixed(0) + 'K';
             return '$' + v.toFixed(0);
+        },
+
+        // ───────────────────── Swing Setups ─────────────────────
+        initSwingSetups() {
+            if (this.swingLoaded) return;
+            this.swingLoaded = true;
+            for (const m of this.swingFundMetrics) {
+                this.swingFundSel[m.key] = this.swingFundDefaults[m.key] ?? 0;
+            }
+            this.loadSwingMeta().then(() => this.runSwing());
+        },
+        async loadSwingMeta() {
+            try {
+                const res = await this.authFetch('/api/swing-setups/meta');
+                const data = await res.json();
+                if (data.success) this.swingMeta = Object.assign({ sectors: [] }, data.meta);
+            } catch (e) { /* ignore */ }
+        },
+        buildSwingFundFilters() {
+            const filters = [];
+            for (const m of this.swingFundMetrics) {
+                const sel = this.swingFundSel[m.key];
+                if (sel === undefined || sel === 0 || sel === '0') continue;
+                const opt = this.presetOptions(m.type)[sel];
+                if (!opt) continue;
+                const f = { col: m.key };
+                if (opt.min != null) f.min = opt.min;
+                if (opt.max != null) f.max = opt.max;
+                if (f.min != null || f.max != null) filters.push(f);
+            }
+            return filters;
+        },
+        async runSwing() {
+            this.swingLoading = true;
+            try {
+                const res = await this.authFetch('/api/swing-setups/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        trend: this.swingTrend,
+                        filters: this.buildSwingFundFilters(),
+                        sort_by: this.swingSort.by,
+                        sort_dir: this.swingSort.dir,
+                        limit: 200,
+                    }),
+                });
+                const data = await res.json();
+                this.swingRows = data.success ? (data.rows || []) : [];
+            } catch (e) {
+                this.swingRows = [];
+            } finally {
+                this.swingLoading = false;
+            }
+        },
+        sortSwing(col) {
+            if (this.swingSort.by === col) {
+                this.swingSort.dir = this.swingSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.swingSort.by = col;
+                this.swingSort.dir = (col === 'symbol' || col === 'company_name' || col === 'sector') ? 'asc' : 'desc';
+            }
+            this.runSwing();
+        },
+        resetSwing() {
+            this.swingTrend = {
+                above_sma20: true, above_sma50: true, above_sma100: true, above_sma200: false,
+                stacked: true, sma50_rising: true, rsi_min: 40, rsi_max: 80,
+                min_price: 5, min_avg_vol: 300000,
+            };
+            for (const m of this.swingFundMetrics) this.swingFundSel[m.key] = this.swingFundDefaults[m.key] ?? 0;
+            this.swingSort = { by: 'swing_score', dir: 'desc' };
+            this.swingSelected = [];
+            this.runSwing();
+        },
+        async gradeSwingAI() {
+            if (!this.swingSelected.length) return;
+            this.swingGrading = true;
+            try {
+                const res = await this.authFetch('/api/swing-setups/grade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbols: this.swingSelected.slice(0, 15) }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    this.swingGrades = Object.assign({}, this.swingGrades, data.grades);
+                } else {
+                    alert(data.error || 'AI grading failed');
+                }
+            } catch (e) {
+                alert('AI grading request failed');
+            } finally {
+                this.swingGrading = false;
+            }
+        },
+        async scanSwingData() {
+            try {
+                const res = await this.authFetch('/api/swing-setups/scan', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const data = await res.json();
+                if (!data.success) { alert(data.error || 'Scan failed'); return; }
+                if (this.swingScanTimer) clearInterval(this.swingScanTimer);
+                this.swingScanTimer = setInterval(async () => {
+                    await this.loadSwingMeta();
+                    if (!this.swingMeta.scan || !this.swingMeta.scan.running) {
+                        clearInterval(this.swingScanTimer);
+                        this.swingScanTimer = null;
+                        this.runSwing();
+                    }
+                }, 5000);
+            } catch (e) { alert('Scan request failed'); }
         },
 
         // Format date
