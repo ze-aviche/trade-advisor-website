@@ -2738,97 +2738,113 @@
                                 <span class="text-xs font-bold text-cyan-400 uppercase tracking-widest">Day Trade Entry Filters</span>
                                 <span class="text-gray-600 text-xs font-normal ml-auto">intraday trend</span>
                             </div>
-                            <p class="text-[11px] text-gray-600 leading-relaxed -mt-1">Each enabled filter must pass before an entry is placed. Shown as signal badges in the Candidates table.</p>
-                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                                <input v-model="brownBotConfig.day_check_vwap" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
-                                <div>
-                                    <span class="text-xs text-gray-300">VWAP — price above session average</span>
-                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires close ≥ VWAP computed from 09:30 ET</p>
-                                </div>
-                            </label>
-                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                                <input v-model="brownBotConfig.day_check_candle" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
-                                <div>
-                                    <span class="text-xs text-gray-300">CANDLE — last 1-min bar is bullish</span>
-                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires close &gt; open on the most recent bar</p>
-                                </div>
-                            </label>
-                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                                <input v-model="brownBotConfig.day_check_volume_surge" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
-                                <div>
-                                    <span class="text-xs text-gray-300">VOL — entry bar volume surge</span>
-                                    <p class="text-[10px] text-gray-600 mt-0.5">Requires entry bar ≥ 1.5× the 10-bar average</p>
-                                </div>
-                            </label>
-                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                                <input v-model="brownBotConfig.day_check_pmh" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
-                                <div>
-                                    <span class="text-xs text-gray-300">PMH — confirmed breakout above pre-market high</span>
-                                    <p class="text-[10px] text-gray-600 mt-0.5">Enters only on a <em>confirmed</em> break of today's pre-market high (04:00–09:29 ET): a completed 1-min candle must close above PMH (plus buffer), on real volume, without a large upper wick — and price must still hold above PMH. Avoids buying the first tick over, where shorts fade the level. PMH value shows as a badge in the Candidates table.</p>
-                                </div>
-                            </label>
-                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                                <input v-model="brownBotConfig.day_check_dayhigh_break" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
-                                <div>
-                                    <span class="text-xs text-gray-300">DHB — confirmed day-high breakout / reclaim</span>
-                                    <p class="text-[10px] text-gray-600 mt-0.5">Enters on a confirmed break above the intraday high (the reclaim-and-curve into a new high) — a valid long even while still below PMH. Uses the same breakout-confirmation rules below. <span class="text-gray-500">PMH and DHB are alternative triggers: if either is enabled, at least one must confirm.</span></p>
-                                </div>
-                            </label>
-                            <div v-show="brownBotConfig.day_check_pmh || brownBotConfig.day_check_dayhigh_break" class="ml-7 -mt-1">
-                              <p class="text-[10px] text-gray-500 mb-1">Breakout confirmation (applies to PMH &amp; day-high triggers):</p>
-                              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                <div>
-                                    <label class="block text-[10px] text-gray-500 mb-0.5">Break buffer %</label>
-                                    <input v-model.number="brownBotConfig.day_pmh_break_buffer_pct" type="number" step="0.1" min="0" max="5"
-                                           class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] text-gray-500 mb-0.5">Vol × avg <span class="text-gray-600">(0=off)</span></label>
-                                    <input v-model.number="brownBotConfig.day_pmh_vol_mult" type="number" step="0.1" min="0" max="10"
-                                           class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] text-gray-500 mb-0.5">Max wick % <span class="text-gray-600">(0=off)</span></label>
-                                    <input v-model.number="brownBotConfig.day_pmh_max_wick_pct" type="number" step="5" min="0" max="100"
-                                           class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] text-gray-500 mb-0.5">Hold bars <span class="text-gray-600">(0=off)</span></label>
-                                    <input v-model.number="brownBotConfig.day_pmh_acceptance_bars" type="number" step="1" min="0" max="10"
-                                           title="Require this many consecutive 1-min closes above PMH before entering (acceptance). 0 or 1 = off."
-                                           class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500">
-                                </div>
-                              </div>
-                            </div>
-                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                                <input v-model="brownBotConfig.day_ai_playbook" type="checkbox" class="rounded border-gray-600 accent-purple-400 mt-0.5 shrink-0">
-                                <div>
-                                    <span class="text-xs text-gray-300">AI PLAYBOOK — skip historically bearish gaps</span>
-                                    <p class="text-[10px] text-gray-600 mt-0.5">Uses Claude AI to analyze 5-yr gap history. Blocks entry if the symbol has a Short/High-confidence bias. First-time symbols are deferred one scan cycle while the analysis runs.</p>
-                                </div>
-                            </label>
-                            <div class="border-t border-gray-700/60 pt-3">
-                                <label class="block text-xs text-gray-400 mb-0.5">
-                                    EXT — max extension from gap price
-                                </label>
-                                <p class="text-[10px] text-gray-600 mb-2">Rejects entries where price has run too far above the pre-market gap. Set to 0 to disable.</p>
+                            <p class="text-[11px] text-gray-500 leading-relaxed -mt-1">An entry needs <span class="text-emerald-400 font-semibold">one trigger</span> to fire <span class="text-gray-400">AND</span> <span class="text-amber-400 font-semibold">every condition</span> to pass. All shown as signal badges in the Candidates table.</p>
+
+                            <!-- ───── ENTRY TRIGGERS (OR) ───── -->
+                            <div class="rounded-lg bg-emerald-950/20 border border-emerald-800/40 p-3 flex flex-col gap-3">
                                 <div class="flex items-center gap-2">
-                                    <input v-model.number="brownBotConfig.day_max_extension_pct" type="number" step="1" min="0" max="50"
-                                           placeholder="0 = off"
-                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors">
-                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                    <i class="fas fa-bolt text-emerald-400 text-xs"></i>
+                                    <span class="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Entry Triggers</span>
+                                    <span class="ml-auto text-[10px] font-semibold text-emerald-300 bg-emerald-900/40 border border-emerald-700/40 rounded-full px-2 py-0.5">enter on ANY one</span>
+                                </div>
+                                <p class="text-[10px] text-gray-500 -mt-1">The breakout signal that starts a trade. Enable one or both — if any is on, at least one must confirm. (If none are enabled, the conditions below act alone.)</p>
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_check_pmh" type="checkbox" class="rounded border-gray-600 accent-emerald-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">PMH — confirmed breakout above pre-market high</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Enters only on a <em>confirmed</em> break of today's pre-market high (04:00–09:29 ET): a completed 1-min candle must close above PMH (plus buffer), on real volume, without a large upper wick — and price must still hold above PMH. Avoids buying the first tick over, where shorts fade the level.</p>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_check_dayhigh_break" type="checkbox" class="rounded border-gray-600 accent-emerald-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">DHB — confirmed day-high breakout / reclaim</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Enters on a confirmed break above the intraday high (the reclaim-and-curve into a new high) — a valid long even while still below PMH. Uses the same breakout-confirmation rules below.</p>
+                                    </div>
+                                </label>
+                                <div v-show="brownBotConfig.day_check_pmh || brownBotConfig.day_check_dayhigh_break" class="ml-7">
+                                  <p class="text-[10px] text-gray-500 mb-1">Breakout confirmation (applies to both triggers):</p>
+                                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-gray-500 mb-0.5">Break buffer %</label>
+                                        <input v-model.number="brownBotConfig.day_pmh_break_buffer_pct" type="number" step="0.1" min="0" max="5"
+                                               class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-gray-500 mb-0.5">Vol × avg <span class="text-gray-600">(0=off)</span></label>
+                                        <input v-model.number="brownBotConfig.day_pmh_vol_mult" type="number" step="0.1" min="0" max="10"
+                                               class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-gray-500 mb-0.5">Max wick % <span class="text-gray-600">(0=off)</span></label>
+                                        <input v-model.number="brownBotConfig.day_pmh_max_wick_pct" type="number" step="5" min="0" max="100"
+                                               class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-gray-500 mb-0.5">Hold bars <span class="text-gray-600">(0=off)</span></label>
+                                        <input v-model.number="brownBotConfig.day_pmh_acceptance_bars" type="number" step="1" min="0" max="10"
+                                               title="Require this many consecutive 1-min closes above the breakout level before entering (acceptance). 0 or 1 = off."
+                                               class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500">
+                                    </div>
+                                  </div>
                                 </div>
                             </div>
-                            <div class="border-t border-gray-700/60 pt-3">
-                                <label class="block text-xs text-gray-400 mb-0.5">
-                                    DH — max % below day high
-                                </label>
-                                <p class="text-[10px] text-gray-600 mb-2">Blocks (re-)entries when price has faded more than this % below the intraday high — avoids chasing a ticker that has lost momentum. Inert at the open (price is at its high). Set to 0 to disable.</p>
+
+                            <!-- ───── CONDITIONS (AND) ───── -->
+                            <div class="rounded-lg bg-gray-800/40 border border-gray-700/50 p-3 flex flex-col gap-3">
                                 <div class="flex items-center gap-2">
-                                    <input v-model.number="brownBotConfig.day_max_below_dayhigh_pct" type="number" step="0.5" min="0" max="50"
-                                           placeholder="0 = off"
-                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors">
-                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                    <i class="fas fa-filter text-amber-400 text-xs"></i>
+                                    <span class="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Conditions</span>
+                                    <span class="ml-auto text-[10px] font-semibold text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded-full px-2 py-0.5">ALL must also pass</span>
+                                </div>
+                                <p class="text-[10px] text-gray-500 -mt-1">Quality checks applied on top of the trigger — every enabled one must pass for an entry to go through.</p>
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_check_vwap" type="checkbox" class="rounded border-gray-600 accent-amber-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">VWAP — price above session average</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Requires close ≥ VWAP computed from 09:30 ET</p>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_check_candle" type="checkbox" class="rounded border-gray-600 accent-amber-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">CANDLE — last 1-min bar is bullish</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Requires close &gt; open on the most recent bar</p>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_check_volume_surge" type="checkbox" class="rounded border-gray-600 accent-amber-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">VOL — entry bar volume surge</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Requires entry bar ≥ 1.5× the 10-bar average</p>
+                                    </div>
+                                </label>
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_ai_playbook" type="checkbox" class="rounded border-gray-600 accent-purple-400 mt-0.5 shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300">AI PLAYBOOK — skip historically bearish gaps</span>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Uses Claude AI to analyze 5-yr gap history. Blocks entry if the symbol has a Short/High-confidence bias. First-time symbols are deferred one scan cycle while the analysis runs.</p>
+                                    </div>
+                                </label>
+                                <div class="border-t border-gray-700/50 pt-3">
+                                    <label class="block text-xs text-gray-400 mb-0.5">EXT — max extension from gap price</label>
+                                    <p class="text-[10px] text-gray-600 mb-2">Rejects entries where price has run too far above the pre-market gap. Set to 0 to disable.</p>
+                                    <div class="flex items-center gap-2">
+                                        <input v-model.number="brownBotConfig.day_max_extension_pct" type="number" step="1" min="0" max="50"
+                                               placeholder="0 = off"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                        <span class="text-xs text-gray-500 shrink-0">%</span>
+                                    </div>
+                                </div>
+                                <div class="border-t border-gray-700/50 pt-3">
+                                    <label class="block text-xs text-gray-400 mb-0.5">DH — max % below day high</label>
+                                    <p class="text-[10px] text-gray-600 mb-2">Blocks (re-)entries when price has faded more than this % below the intraday high — avoids chasing a ticker that has lost momentum. Inert at the open (price is at its high). Set to 0 to disable.</p>
+                                    <div class="flex items-center gap-2">
+                                        <input v-model.number="brownBotConfig.day_max_below_dayhigh_pct" type="number" step="0.5" min="0" max="50"
+                                               placeholder="0 = off"
+                                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                                        <span class="text-xs text-gray-500 shrink-0">%</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
