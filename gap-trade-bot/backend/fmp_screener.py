@@ -37,38 +37,35 @@ logger = logging.getLogger(__name__)
 FMP_API_KEY = os.environ.get('FMP_API_KEY', '').strip().strip('"')
 BASE = 'https://financialmodelingprep.com/stable'
 
-# Stay safely under the 300/min plan cap.  Token-bucket refills continuously.
-RATE_LIMIT_PER_MIN = 280
-# Per-symbol we make this many calls; bump workers but keep the bucket binding.
-MAX_WORKERS = 12
+# Stay safely under the 300/min plan cap. We pace calls EVENLY rather than
+# allowing a burst — FMP enforces a tighter sliding/per-second window than a
+# naive 300-token bucket implies, so an initial burst trips 429s.
+RATE_LIMIT_PER_MIN = 250
+MAX_WORKERS = 8
 HTTP_TIMEOUT = 20
+MAX_429_RETRIES = 5
 
 
 class _RateLimiter:
-    """Process-wide token bucket. Blocks until a token is available."""
+    """
+    Process-wide *pacing* limiter: guarantees consecutive calls are at least
+    `interval` seconds apart regardless of how many threads call acquire().
+    This caps throughput at RATE_LIMIT_PER_MIN with no bursts.
+    """
 
     def __init__(self, per_min: int):
-        self.capacity = float(per_min)
-        self.tokens = float(per_min)
-        self.refill_per_sec = per_min / 60.0
-        self._last = time.monotonic()
+        self.interval = 60.0 / per_min
         self._lock = threading.Lock()
+        self._next = time.monotonic()
 
     def acquire(self):
-        while True:
-            with self._lock:
-                now = time.monotonic()
-                self.tokens = min(
-                    self.capacity,
-                    self.tokens + (now - self._last) * self.refill_per_sec,
-                )
-                self._last = now
-                if self.tokens >= 1.0:
-                    self.tokens -= 1.0
-                    return
-                # time until one token is available
-                wait = (1.0 - self.tokens) / self.refill_per_sec
-            time.sleep(min(wait, 1.0))
+        with self._lock:
+            now = time.monotonic()
+            t = self._next if self._next > now else now
+            self._next = t + self.interval
+            wait = t - now
+        if wait > 0:
+            time.sleep(wait)
 
 
 _limiter = _RateLimiter(RATE_LIMIT_PER_MIN)
@@ -84,22 +81,27 @@ def _get(endpoint: str, params: dict) -> object:
         return None
     params = dict(params or {})
     params['apikey'] = FMP_API_KEY
-    _limiter.acquire()
-    try:
-        resp = requests.get(f'{BASE}/{endpoint}', params=params, timeout=HTTP_TIMEOUT)
-    except Exception as e:
-        logger.debug(f'[FMP] {endpoint} request error: {e}')
-        return None
-    if resp.status_code == 429:
-        # Rate limited despite the bucket — back off and retry once.
-        logger.warning('[FMP] 429 rate limit hit; backing off 2s')
-        time.sleep(2)
+
+    resp = None
+    for attempt in range(MAX_429_RETRIES + 1):
+        _limiter.acquire()
         try:
             resp = requests.get(f'{BASE}/{endpoint}', params=params, timeout=HTTP_TIMEOUT)
-        except Exception:
+        except Exception as e:
+            logger.debug(f'[FMP] {endpoint} request error: {e}')
             return None
-    if resp.status_code != 200:
-        logger.debug(f'[FMP] {endpoint} HTTP {resp.status_code}')
+        if resp.status_code == 429:
+            # Rate limited despite pacing — exponential backoff and retry so we
+            # don't silently drop the symbol.
+            backoff = 1.5 * (attempt + 1)
+            logger.warning(f'[FMP] 429 on {endpoint}; backoff {backoff:.1f}s (attempt {attempt + 1})')
+            time.sleep(backoff)
+            continue
+        break
+
+    if resp is None or resp.status_code != 200:
+        if resp is not None and resp.status_code != 200:
+            logger.debug(f'[FMP] {endpoint} HTTP {resp.status_code}')
         return None
     try:
         data = resp.json()
