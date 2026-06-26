@@ -2466,6 +2466,32 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Collapsible beginner glossary -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <button @click="screenerGlossaryOpen = !screenerGlossaryOpen"
+                            class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-700/40 transition-colors">
+                        <span class="text-sm font-medium text-gray-200 flex items-center gap-2">
+                            <i class="fas fa-book-open text-blue-400"></i> What do these metrics mean?
+                            <span class="text-xs text-gray-500 font-normal">— beginner's guide to every ratio</span>
+                        </span>
+                        <i class="fas text-gray-400" :class="screenerGlossaryOpen ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                    </button>
+                    <div v-show="screenerGlossaryOpen" class="px-4 pb-5 pt-1 border-t border-gray-700/60">
+                        <p class="text-xs text-gray-500 mb-4 mt-3">A quick plain-English reference for each column and filter. Ratios are best compared between companies in the same industry.</p>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-5">
+                            <div v-for="g in screenerGlossary" :key="g.group">
+                                <h4 class="text-xs font-bold uppercase tracking-wide text-blue-400 mb-2">{{ g.group }}</h4>
+                                <dl class="space-y-2">
+                                    <div v-for="it in g.items" :key="it.term">
+                                        <dt class="text-sm font-semibold text-gray-200">{{ it.term }}</dt>
+                                        <dd class="text-xs text-gray-400 leading-relaxed">{{ it.def }}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div v-if="activeTab === 'brown-bot' && canAccessTab('brown-bot')" class="space-y-6">
