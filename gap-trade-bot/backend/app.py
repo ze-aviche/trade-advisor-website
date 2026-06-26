@@ -3723,8 +3723,10 @@ _PMH_TTL = 300  # seconds (only matters pre-open; post-open value is stable for 
 def _get_premarket_high(symbol):
     """
     Highest traded price in today's pre-market session (04:00–09:30 ET) from
-    Alpaca. Returns the PMH float, or None if unavailable (no premarket data on
-    the plan / before 04:00 ET / illiquid). Cached per symbol per day.
+    Alpaca, plus the ET clock time (HH:MM) of the 5-min bar where it occurred.
+    Returns (pmh: float|None, pmh_time: str|None). None if unavailable (no
+    premarket data on the plan / before 04:00 ET / illiquid). Cached per symbol
+    per day.
     """
     import requests as _req
     import pytz as _pytz
@@ -3738,18 +3740,19 @@ def _get_premarket_high(symbol):
     if cached and cached.get('date') == today:
         # Once the open has passed the value is final — serve cache indefinitely.
         if now_et.hour >= 10 or time.time() - cached['cached_at'] < _PMH_TTL:
-            return cached['pmh']
+            return cached['pmh'], cached.get('pmh_time')
 
     start_et = now_et.replace(hour=4, minute=0, second=0, microsecond=0)
     end_et   = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
     if now_et < start_et:
-        return None  # pre-market hasn't started yet today
+        return None, None  # pre-market hasn't started yet today
     if now_et < end_et:
         end_et = now_et.replace(second=0, microsecond=0)  # still in pre-market
 
     ak  = os.environ.get('ALPACA_API_KEY', '')
     as_ = os.environ.get('ALPACA_API_SECRET', '')
     pmh = None
+    pmh_time = None
     if ak and as_:
         for feed in ('sip', 'iex'):  # SIP carries premarket; IEX is a thin fallback
             try:
@@ -3772,14 +3775,23 @@ def _get_premarket_high(symbol):
                     break
                 raw = resp.json().get('bars') or []
                 if raw:
-                    pmh = round(max(float(b['h']) for b in raw), 4)
+                    hi_bar = max(raw, key=lambda b: float(b['h']))
+                    pmh = round(float(hi_bar['h']), 4)
+                    # Bar 't' is RFC3339 UTC (e.g. 2026-06-26T12:40:00Z) → ET HH:MM.
+                    try:
+                        ts = hi_bar.get('t', '')
+                        dt_utc = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                        pmh_time = dt_utc.astimezone(et).strftime('%H:%M')
+                    except Exception:
+                        pmh_time = None
                     break
             except Exception as e:
                 app_logger.debug(f'Pre-market high {sym_up} ({feed}): {e}')
                 continue
 
-    _premarket_high_cache[sym_up] = {'pmh': pmh, 'date': today, 'cached_at': time.time()}
-    return pmh
+    _premarket_high_cache[sym_up] = {'pmh': pmh, 'pmh_time': pmh_time,
+                                     'date': today, 'cached_at': time.time()}
+    return pmh, pmh_time
 
 
 def _get_intraday_bars(symbol):
@@ -3990,7 +4002,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     # ── Above pre-market high (PMH) ──────────────────────────────────────
     # Independent of intraday bars — pulls the 04:00–09:30 ET session high.
     if pmh_on:
-        pmh = _get_premarket_high(symbol)
+        pmh, pmh_time = _get_premarket_high(symbol)
         if not pmh or pmh <= 0:
             # Can't confirm PMH → block entry (conservative: don't enter blind).
             passed = False
@@ -3998,7 +4010,8 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
             value  = '—'
         else:
             passed = float(current_price) > pmh
-            detail = f'${float(current_price):.2f} {">" if passed else "≤"} PMH ${pmh:.2f}'
+            _at = f' @ {pmh_time}' if pmh_time else ''
+            detail = f'${float(current_price):.2f} {">" if passed else "≤"} PMH ${pmh:.2f}{_at}'
             value  = f'${pmh:.2f}'
         checks.append({'name': 'pmh', 'label': 'Above pre-market high', 'passed': passed,
                        'detail': detail, 'value': value})
@@ -7813,9 +7826,14 @@ def get_brown_bot_candidate_signals():
                 quote = get_real_stock_data(sym)
                 price = float(quote['current_price']) if quote else 0.0
             ok, checks, reason = _check_day_entry_signal(sym, price, price, config)
-            results[sym] = {'ok': ok, 'checks': checks, 'reason': reason, 'price': price}
+            # Always surface PMH + the time it was hit, regardless of whether the
+            # PMH entry filter is enabled, so the Candidates table can show it.
+            pmh, pmh_time = _get_premarket_high(sym)
+            results[sym] = {'ok': ok, 'checks': checks, 'reason': reason, 'price': price,
+                            'pmh': pmh, 'pmh_time': pmh_time}
         except Exception as e:
-            results[sym] = {'ok': None, 'checks': [], 'reason': str(e), 'price': 0}
+            results[sym] = {'ok': None, 'checks': [], 'reason': str(e), 'price': 0,
+                            'pmh': None, 'pmh_time': None}
     return jsonify({'success': True, 'signals': results})
 
 
