@@ -173,6 +173,63 @@ class DatabaseManager:
                 )
             ''')
 
+            # Fundamentals snapshot for the Screener tab (one row per symbol,
+            # upserted by the nightly FMP refresh). See fmp_screener.py.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS fundamentals (
+                    symbol                TEXT PRIMARY KEY,
+                    company_name          TEXT,
+                    sector                TEXT,
+                    industry              TEXT,
+                    exchange              TEXT,
+                    country               TEXT,
+                    is_etf                INTEGER DEFAULT 0,
+                    is_fund               INTEGER DEFAULT 0,
+                    price                 REAL,
+                    market_cap            REAL,
+                    volume                REAL,
+                    avg_volume            REAL,
+                    beta                  REAL,
+                    change_pct            REAL,
+                    pe                    REAL,
+                    forward_pe            REAL,
+                    peg                   REAL,
+                    ps                    REAL,
+                    pb                    REAL,
+                    pfcf                  REAL,
+                    ev_ebitda             REAL,
+                    ev_sales              REAL,
+                    eps_ttm               REAL,
+                    eps_forward           REAL,
+                    earnings_yield        REAL,
+                    revenue_growth_yoy    REAL,
+                    revenue_growth_qoq    REAL,
+                    eps_growth_yoy        REAL,
+                    eps_growth_qoq        REAL,
+                    net_income_growth_yoy REAL,
+                    fcf_growth_yoy        REAL,
+                    fcf_growth_qoq        REAL,
+                    ocf_growth_yoy        REAL,
+                    roe                   REAL,
+                    roa                   REAL,
+                    roic                  REAL,
+                    gross_margin          REAL,
+                    operating_margin      REAL,
+                    net_margin            REAL,
+                    debt_to_equity        REAL,
+                    current_ratio         REAL,
+                    quick_ratio           REAL,
+                    interest_coverage     REAL,
+                    fcf_per_share         REAL,
+                    fcf_yield             REAL,
+                    dividend_yield        REAL,
+                    payout_ratio          REAL,
+                    updated_at            TEXT
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_fund_sector ON fundamentals(sector)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_fund_mktcap ON fundamentals(market_cap)')
+
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
 
@@ -214,6 +271,17 @@ class DatabaseManager:
             for _row in cursor.fetchall():
                 cursor.execute('UPDATE users SET email_digest_unsubscribe_token = ? WHERE id = ?',
                                (str(_uuid.uuid4()), _row['id']))
+
+            # Fundamentals: additively add cash-flow-growth columns to existing DBs.
+            for column, definition in [
+                ('fcf_growth_yoy', 'REAL'),
+                ('fcf_growth_qoq', 'REAL'),
+                ('ocf_growth_yoy', 'REAL'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE fundamentals ADD COLUMN {column} {definition}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
 
             # Promote existing 'admin' role users to super_admin system_role
             cursor.execute("UPDATE users SET system_role = 'super_admin' WHERE role = 'admin' AND system_role IS NULL")
@@ -3803,6 +3871,97 @@ class DatabaseManager:
         except Exception as e:
             print(f'Database error fetching brown_daily_realized_pnl: {e}')
             return 0.0
+
+    # ────────────────────────── Fundamentals / Screener ──────────────────────
+    # Numeric columns that support min/max range filtering and sorting.
+    FUND_NUMERIC_COLS = [
+        'price', 'market_cap', 'volume', 'avg_volume', 'beta', 'change_pct',
+        'pe', 'forward_pe', 'peg', 'ps', 'pb', 'pfcf', 'ev_ebitda', 'ev_sales',
+        'eps_ttm', 'eps_forward', 'earnings_yield',
+        'revenue_growth_yoy', 'revenue_growth_qoq',
+        'eps_growth_yoy', 'eps_growth_qoq', 'net_income_growth_yoy',
+        'fcf_growth_yoy', 'fcf_growth_qoq', 'ocf_growth_yoy',
+        'roe', 'roa', 'roic', 'gross_margin', 'operating_margin', 'net_margin',
+        'debt_to_equity', 'current_ratio', 'quick_ratio', 'interest_coverage',
+        'fcf_per_share', 'fcf_yield', 'dividend_yield', 'payout_ratio',
+    ]
+    FUND_TEXT_COLS = ['symbol', 'company_name', 'sector', 'industry', 'exchange', 'country']
+    FUND_ALL_COLS = FUND_TEXT_COLS + ['is_etf', 'is_fund'] + FUND_NUMERIC_COLS + ['updated_at']
+
+    def upsert_fundamentals(self, row: dict):
+        """Insert or replace one symbol's fundamentals snapshot."""
+        import datetime as _dt
+        row = dict(row)
+        row['updated_at'] = _dt.datetime.utcnow().isoformat()
+        cols = [c for c in self.FUND_ALL_COLS if c in row]
+        placeholders = ', '.join('?' for _ in cols)
+        col_sql = ', '.join(cols)
+        with self.get_connection() as conn:
+            conn.execute(
+                f'INSERT OR REPLACE INTO fundamentals ({col_sql}) VALUES ({placeholders})',
+                [row.get(c) for c in cols],
+            )
+            conn.commit()
+
+    def query_fundamentals(self, filters: list = None, sort_by: str = 'market_cap',
+                           sort_dir: str = 'desc', limit: int = 500,
+                           exclude_funds: bool = True) -> list:
+        """
+        filters: list of dicts. Numeric -> {'col','min','max'}; text/equality ->
+        {'col','eq'} or {'col','in':[...]}; symbol/name search -> {'col','like'}.
+        Only whitelisted columns are allowed (guards against SQL injection).
+        """
+        where = []
+        params = []
+        for f in (filters or []):
+            col = f.get('col')
+            if col in self.FUND_NUMERIC_COLS:
+                if f.get('min') not in (None, ''):
+                    where.append(f'{col} >= ?'); params.append(float(f['min']))
+                if f.get('max') not in (None, ''):
+                    where.append(f'{col} <= ?'); params.append(float(f['max']))
+            elif col in self.FUND_TEXT_COLS:
+                if f.get('eq'):
+                    where.append(f'{col} = ?'); params.append(f['eq'])
+                elif f.get('in'):
+                    vals = list(f['in'])
+                    where.append(f'{col} IN ({",".join("?" for _ in vals)})')
+                    params.extend(vals)
+                elif f.get('like'):
+                    where.append(f'UPPER({col}) LIKE ?'); params.append(f'%{f["like"].upper()}%')
+        if exclude_funds:
+            where.append('is_etf = 0 AND is_fund = 0')
+
+        if sort_by not in self.FUND_NUMERIC_COLS and sort_by not in self.FUND_TEXT_COLS:
+            sort_by = 'market_cap'
+        sort_dir = 'ASC' if str(sort_dir).lower() == 'asc' else 'DESC'
+        limit = max(1, min(int(limit or 500), 5000))
+
+        sql = 'SELECT * FROM fundamentals'
+        if where:
+            sql += ' WHERE ' + ' AND '.join(where)
+        # NULLs sort last regardless of direction.
+        sql += f' ORDER BY ({sort_by} IS NULL), {sort_by} {sort_dir} LIMIT ?'
+        params.append(limit)
+
+        with self.get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_fundamentals_meta(self) -> dict:
+        """Row count, last update time, and distinct sectors/exchanges for the UI."""
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            total = cur.execute('SELECT COUNT(*) AS c FROM fundamentals').fetchone()['c']
+            last = cur.execute('SELECT MAX(updated_at) AS m FROM fundamentals').fetchone()['m']
+            sectors = [r['sector'] for r in cur.execute(
+                "SELECT DISTINCT sector FROM fundamentals WHERE sector IS NOT NULL AND sector != '' ORDER BY sector"
+            ).fetchall()]
+            exchanges = [r['exchange'] for r in cur.execute(
+                "SELECT DISTINCT exchange FROM fundamentals WHERE exchange IS NOT NULL AND exchange != '' ORDER BY exchange"
+            ).fetchall()]
+            return {'total': total, 'last_updated': last,
+                    'sectors': sectors, 'exchanges': exchanges}
 
 
 # Global database manager instance

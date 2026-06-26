@@ -13,6 +13,79 @@ axios.defaults.baseURL = '';
 const app = createApp({
         data() {
             return {
+                // ── Fundamentals Screener ──────────────────────────────────
+                screenerMeta: { total: 0, last_updated: null, sectors: [], exchanges: [], refresh: {} },
+                screenerRows: [],
+                screenerLoading: false,
+                screenerLoaded: false,
+                screenerExcludeFunds: true,
+                screenerLimit: 500,
+                screenerCat: { sector: '', exchange: '' },
+                screenerSel: {},       // metric key -> preset index or 'custom'
+                screenerCustom: {},    // metric key -> {min, max}
+                screenerSort: { by: 'market_cap', dir: 'desc' },
+                screenerRefreshTimer: null,
+                // Metric definitions: key matches DB column, type drives preset list + formatting
+                screenerMetrics: [
+                    { key: 'market_cap',         label: 'Market Cap',    type: 'mktcap' },
+                    { key: 'price',              label: 'Price',         type: 'price' },
+                    { key: 'avg_volume',         label: 'Avg Volume',    type: 'volume' },
+                    { key: 'pe',                 label: 'P/E',           type: 'ratio' },
+                    { key: 'forward_pe',         label: 'Forward P/E',   type: 'ratio' },
+                    { key: 'peg',                label: 'PEG',           type: 'ratio' },
+                    { key: 'ps',                 label: 'P/S',           type: 'ratio' },
+                    { key: 'pb',                 label: 'P/B',           type: 'ratio' },
+                    { key: 'pfcf',               label: 'P/FCF',         type: 'ratio' },
+                    { key: 'ev_ebitda',          label: 'EV/EBITDA',     type: 'ratio' },
+                    { key: 'eps_ttm',            label: 'EPS (ttm)',     type: 'eps' },
+                    { key: 'eps_forward',        label: 'EPS fwd',       type: 'eps' },
+                    { key: 'eps_growth_yoy',     label: 'EPS Gr YoY',    type: 'pct' },
+                    { key: 'eps_growth_qoq',     label: 'EPS Gr QoQ',    type: 'pct' },
+                    { key: 'revenue_growth_yoy', label: 'Rev Gr YoY',    type: 'pct' },
+                    { key: 'revenue_growth_qoq', label: 'Rev Gr QoQ',    type: 'pct' },
+                    { key: 'fcf_growth_yoy',     label: 'FCF Gr YoY',    type: 'pct' },
+                    { key: 'fcf_growth_qoq',     label: 'FCF Gr QoQ',    type: 'pct' },
+                    { key: 'ocf_growth_yoy',     label: 'OCF Gr YoY',    type: 'pct' },
+                    { key: 'roe',                label: 'ROE',           type: 'pct' },
+                    { key: 'roa',                label: 'ROA',           type: 'pct' },
+                    { key: 'roic',               label: 'ROIC',          type: 'pct' },
+                    { key: 'gross_margin',       label: 'Gross Margin',  type: 'pct' },
+                    { key: 'operating_margin',   label: 'Oper Margin',   type: 'pct' },
+                    { key: 'net_margin',         label: 'Net Margin',    type: 'pct' },
+                    { key: 'debt_to_equity',     label: 'Debt/Equity',   type: 'ratio' },
+                    { key: 'current_ratio',      label: 'Current Ratio', type: 'ratio' },
+                    { key: 'quick_ratio',        label: 'Quick Ratio',   type: 'ratio' },
+                    { key: 'fcf_yield',          label: 'FCF Yield',     type: 'pct' },
+                    { key: 'dividend_yield',     label: 'Div Yield',     type: 'pct' },
+                    { key: 'payout_ratio',       label: 'Payout Ratio',  type: 'pct' },
+                    { key: 'beta',               label: 'Beta',          type: 'ratio' },
+                ],
+                // Columns shown in the results table
+                screenerColumns: [
+                    { key: 'symbol',             label: 'Ticker' },
+                    { key: 'company_name',       label: 'Company' },
+                    { key: 'sector',             label: 'Sector' },
+                    { key: 'market_cap',         label: 'Mkt Cap',     fmt: 'mktcap' },
+                    { key: 'price',              label: 'Price',       fmt: 'usd' },
+                    { key: 'change_pct',         label: 'Chg%',        fmt: 'pct_raw', color: true },
+                    { key: 'pe',                 label: 'P/E',         fmt: 'num2' },
+                    { key: 'forward_pe',         label: 'Fwd P/E',     fmt: 'num2' },
+                    { key: 'peg',                label: 'PEG',         fmt: 'num2' },
+                    { key: 'ps',                 label: 'P/S',         fmt: 'num2' },
+                    { key: 'pb',                 label: 'P/B',         fmt: 'num2' },
+                    { key: 'eps_ttm',            label: 'EPS',         fmt: 'usd' },
+                    { key: 'eps_forward',        label: 'EPS fwd',     fmt: 'usd' },
+                    { key: 'eps_growth_yoy',     label: 'EPS YoY',     fmt: 'pct', color: true },
+                    { key: 'revenue_growth_yoy', label: 'Rev YoY',     fmt: 'pct', color: true },
+                    { key: 'fcf_growth_yoy',     label: 'FCF YoY',     fmt: 'pct', color: true },
+                    { key: 'roe',                label: 'ROE',         fmt: 'pct', color: true },
+                    { key: 'net_margin',         label: 'Net Mgn',     fmt: 'pct', color: true },
+                    { key: 'debt_to_equity',     label: 'D/E',         fmt: 'num2' },
+                    { key: 'fcf_yield',          label: 'FCF Yld',     fmt: 'pct' },
+                    { key: 'dividend_yield',     label: 'Div Yld',     fmt: 'pct' },
+                    { key: 'avg_volume',         label: 'Avg Vol',     fmt: 'volume' },
+                ],
+
                 // Dashboard data - COMPLETELY REBUILT FROM SCRATCH
                 dashboardStats: {
                     totalPositions: 0,
@@ -1369,6 +1442,8 @@ const app = createApp({
                     this.startBrownBotPolling();
                 } else if (tabName === 'earnings') {
                     if (!this.erCalendar.length) this.loadErCalendar();
+                } else if (tabName === 'screener') {
+                    this.initScreener();
                 }
             },
 
@@ -1381,8 +1456,8 @@ const app = createApp({
                 const tierMap = {
                     basic:    ['gap-ups', 'ai-chat', 'help', 'contact'],
                     beginner: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical'],
-                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings'],
-                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
+                    advanced: ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'screener'],
+                    yogi:     ['gap-ups', 'ai-chat', 'help', 'contact', 'historical', 'swing', 'earnings', 'screener', 'trades', 'positions', 'stats', 'backtest', 'brown-bot'],
                 };
                 return (tierMap[this.user.subscription_tier] || tierMap.basic).includes(tab);
             },
@@ -4717,7 +4792,166 @@ const app = createApp({
                 const logLevel = type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log';
                 console[logLevel](`[${type.toUpperCase()}] ${message}`);
             },
-            
+
+        // ───────────────────── Fundamentals Screener ─────────────────────
+        presetOptions(type) {
+            // Each option carries a {min,max} range (null = unbounded). Index 0 = "Any".
+            const P = {
+                mktcap: [
+                    { label: 'Any' }, { label: 'Mega (>$200B)', min: 200e9 },
+                    { label: 'Large (>$10B)', min: 10e9 }, { label: 'Mid ($2B-$10B)', min: 2e9, max: 10e9 },
+                    { label: 'Small ($300M-$2B)', min: 300e6, max: 2e9 },
+                    { label: 'Micro (<$300M)', max: 300e6 },
+                ],
+                price: [
+                    { label: 'Any' }, { label: 'Under $5', max: 5 }, { label: 'Under $10', max: 10 },
+                    { label: 'Under $20', max: 20 }, { label: '$10-$50', min: 10, max: 50 },
+                    { label: 'Over $50', min: 50 }, { label: 'Over $100', min: 100 },
+                ],
+                volume: [
+                    { label: 'Any' }, { label: 'Over 100K', min: 1e5 }, { label: 'Over 500K', min: 5e5 },
+                    { label: 'Over 1M', min: 1e6 }, { label: 'Over 10M', min: 1e7 },
+                ],
+                ratio: [
+                    { label: 'Any' }, { label: 'Under 1', max: 1 }, { label: 'Under 2', max: 2 },
+                    { label: 'Under 5', max: 5 }, { label: 'Under 15', max: 15 }, { label: 'Under 25', max: 25 },
+                    { label: 'Over 0', min: 0 }, { label: 'Over 1', min: 1 }, { label: 'Over 5', min: 5 },
+                ],
+                eps: [
+                    { label: 'Any' }, { label: 'Positive (>0)', min: 0 }, { label: 'Negative (<0)', max: 0 },
+                    { label: 'Over $1', min: 1 }, { label: 'Over $5', min: 5 },
+                ],
+                pct: [  // values stored as fractions (0.15 = 15%)
+                    { label: 'Any' }, { label: 'Positive', min: 0 }, { label: 'Negative', max: 0 },
+                    { label: 'Over 5%', min: 0.05 }, { label: 'Over 10%', min: 0.10 },
+                    { label: 'Over 15%', min: 0.15 }, { label: 'Over 20%', min: 0.20 },
+                    { label: 'Over 30%', min: 0.30 }, { label: 'Under 50%', max: 0.50 },
+                ],
+            };
+            return P[type] || P.ratio;
+        },
+        onScreenerPreset(m) {
+            if (this.screenerSel[m.key] !== 'custom') this.runScreener();
+        },
+        buildScreenerFilters() {
+            const filters = [];
+            if (this.screenerCat.sector) filters.push({ col: 'sector', eq: this.screenerCat.sector });
+            if (this.screenerCat.exchange) filters.push({ col: 'exchange', eq: this.screenerCat.exchange });
+            for (const m of this.screenerMetrics) {
+                const sel = this.screenerSel[m.key];
+                if (sel === undefined || sel === 0 || sel === '0') continue;
+                if (sel === 'custom') {
+                    const c = this.screenerCustom[m.key] || {};
+                    if (c.min != null && c.min !== '' || c.max != null && c.max !== '') {
+                        const f = { col: m.key };
+                        if (c.min != null && c.min !== '') f.min = c.min;
+                        if (c.max != null && c.max !== '') f.max = c.max;
+                        filters.push(f);
+                    }
+                } else {
+                    const opt = this.presetOptions(m.type)[sel];
+                    if (!opt) continue;
+                    const f = { col: m.key };
+                    if (opt.min != null) f.min = opt.min;
+                    if (opt.max != null) f.max = opt.max;
+                    if (f.min != null || f.max != null) filters.push(f);
+                }
+            }
+            return filters;
+        },
+        async loadScreenerMeta() {
+            try {
+                const res = await this.authFetch('/api/screener/meta');
+                const data = await res.json();
+                if (data.success) this.screenerMeta = Object.assign({ sectors: [], exchanges: [] }, data.meta);
+            } catch (e) { /* ignore */ }
+        },
+        async runScreener() {
+            this.screenerLoading = true;
+            try {
+                const res = await this.authFetch('/api/screener/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filters: this.buildScreenerFilters(),
+                        sort_by: this.screenerSort.by,
+                        sort_dir: this.screenerSort.dir,
+                        limit: this.screenerLimit,
+                        exclude_funds: this.screenerExcludeFunds,
+                    }),
+                });
+                const data = await res.json();
+                this.screenerRows = data.success ? (data.rows || []) : [];
+            } catch (e) {
+                this.screenerRows = [];
+            } finally {
+                this.screenerLoading = false;
+            }
+        },
+        sortScreener(col) {
+            if (this.screenerSort.by === col) {
+                this.screenerSort.dir = this.screenerSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.screenerSort.by = col;
+                this.screenerSort.dir = (col === 'symbol' || col === 'company_name' || col === 'sector') ? 'asc' : 'desc';
+            }
+            this.runScreener();
+        },
+        resetScreener() {
+            this.screenerSel = {};
+            this.screenerCustom = {};
+            this.screenerCat = { sector: '', exchange: '' };
+            this.screenerSort = { by: 'market_cap', dir: 'desc' };
+            this.runScreener();
+        },
+        async refreshScreenerData() {
+            try {
+                const res = await this.authFetch('/api/screener/refresh', { method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const data = await res.json();
+                if (!data.success) { alert(data.error || 'Refresh failed'); return; }
+                // Poll meta while refresh runs so the progress counter updates.
+                if (this.screenerRefreshTimer) clearInterval(this.screenerRefreshTimer);
+                this.screenerRefreshTimer = setInterval(async () => {
+                    await this.loadScreenerMeta();
+                    if (!this.screenerMeta.refresh || !this.screenerMeta.refresh.running) {
+                        clearInterval(this.screenerRefreshTimer);
+                        this.screenerRefreshTimer = null;
+                        this.runScreener();
+                    }
+                }, 4000);
+            } catch (e) { alert('Refresh request failed'); }
+        },
+        initScreener() {
+            if (this.screenerLoaded) return;
+            this.screenerLoaded = true;
+            for (const m of this.screenerMetrics) {
+                this.screenerSel[m.key] = 0;
+                this.screenerCustom[m.key] = { min: null, max: null };
+            }
+            this.loadScreenerMeta().then(() => this.runScreener());
+        },
+        fmtCell(v, c) {
+            if (v == null || v === '') return '–';
+            switch (c.fmt) {
+                case 'mktcap': return this.fmtMarketCap(v);
+                case 'volume': return this.fmtMarketCap(v).replace('$', '');
+                case 'usd': return '$' + Number(v).toFixed(2);
+                case 'num2': return Number(v).toFixed(2);
+                case 'pct': return (Number(v) * 100).toFixed(1) + '%';      // fraction -> %
+                case 'pct_raw': return Number(v).toFixed(2) + '%';          // already a % value
+                default: return v;
+            }
+        },
+        fmtMarketCap(v) {
+            v = Number(v);
+            if (v >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T';
+            if (v >= 1e9)  return '$' + (v / 1e9).toFixed(2) + 'B';
+            if (v >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
+            if (v >= 1e3)  return '$' + (v / 1e3).toFixed(0) + 'K';
+            return '$' + v.toFixed(0);
+        },
+
         // Format date
         formatDate(dateString) {
             if (!dateString) return 'N/A';

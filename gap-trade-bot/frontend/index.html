@@ -164,6 +164,11 @@
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
                     <i class="fas fa-calendar-alt text-xs"></i>Earnings<i v-if="!canAccessTab('earnings')" class="fas fa-lock text-xs ml-0.5"></i>
                 </button>
+                <button @click="handleTabClick('screener')"
+                    :class="activeTab === 'screener' ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-600/20' : canAccessTab('screener') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-blue-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
+                    class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
+                    <i class="fas fa-filter text-xs"></i>Screener<i v-if="!canAccessTab('screener')" class="fas fa-lock text-xs ml-0.5"></i>
+                </button>
                 <button @click="handleTabClick('brown-bot')"
                     :class="activeTab === 'brown-bot' ? 'bg-amber-600 border-amber-600 text-white shadow-md shadow-amber-600/20' : canAccessTab('brown-bot') ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-amber-500/50 hover:text-white' : 'bg-gray-800/50 border-gray-800 text-gray-600 cursor-not-allowed'"
                     class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all whitespace-nowrap">
@@ -228,6 +233,7 @@
                 <button @click="handleTabClick('historical')" :class="activeTab === 'historical' ? 'bg-blue-600 text-white' : canAccessTab('historical') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-history mr-2 w-4"></i>Historical<i v-if="!canAccessTab('historical')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('swing')" :class="activeTab === 'swing' ? 'bg-blue-600 text-white' : canAccessTab('swing') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-wave-square mr-2 w-4"></i>Swing<i v-if="!canAccessTab('swing')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('earnings')" :class="activeTab === 'earnings' ? 'bg-blue-600 text-white' : canAccessTab('earnings') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-calendar-alt mr-2 w-4"></i>Earnings<i v-if="!canAccessTab('earnings')" class="fas fa-lock text-xs ml-auto"></i></button>
+                <button @click="handleTabClick('screener')" :class="activeTab === 'screener' ? 'bg-blue-600 text-white' : canAccessTab('screener') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-filter mr-2 w-4"></i>Screener<i v-if="!canAccessTab('screener')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('brown-bot')" :class="activeTab === 'brown-bot' ? 'bg-amber-600 text-white' : canAccessTab('brown-bot') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-brain mr-2 w-4"></i>BrownBot<i v-if="!canAccessTab('brown-bot')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('trades')" :class="activeTab === 'trades' ? 'bg-blue-600 text-white' : canAccessTab('trades') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-exchange-alt mr-2 w-4"></i>Trade History<i v-if="!canAccessTab('trades')" class="fas fa-lock text-xs ml-auto"></i></button>
                 <button @click="handleTabClick('positions')" :class="activeTab === 'positions' ? 'bg-blue-600 text-white' : canAccessTab('positions') ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-800 text-gray-600'" class="flex items-center px-3 py-2 rounded text-sm font-medium"><i class="fas fa-chart-line mr-2 w-4"></i>Positions<i v-if="!canAccessTab('positions')" class="fas fa-lock text-xs ml-auto"></i></button>
@@ -2225,6 +2231,128 @@
 
             </div>
             <!-- end Swing tab -->
+
+            <!-- ═══════════════════ FUNDAMENTALS SCREENER ═══════════════════ -->
+            <div v-if="activeTab === 'screener' && canAccessTab('screener')" class="space-y-4">
+
+                <!-- Header / status -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i class="fas fa-filter text-blue-400"></i> Fundamentals Screener
+                        </h2>
+                        <p class="text-xs text-gray-400 mt-1">
+                            {{ screenerMeta.total || 0 }} symbols ·
+                            <span v-if="screenerMeta.last_updated">updated {{ formatDateTime(screenerMeta.last_updated) }}</span>
+                            <span v-else class="text-amber-400">no data yet — run a refresh</span>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-gray-400 flex items-center gap-1.5">
+                            <input type="checkbox" v-model="screenerExcludeFunds" @change="runScreener" class="rounded">
+                            Exclude ETFs/funds
+                        </label>
+                        <button @click="resetScreener" class="px-3 py-2 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-200">
+                            <i class="fas fa-undo mr-1"></i>Reset
+                        </button>
+                        <button @click="runScreener" :disabled="screenerLoading"
+                            class="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white font-medium disabled:opacity-50">
+                            <i class="fas" :class="screenerLoading ? 'fa-spinner fa-spin' : 'fa-search'"></i>
+                            {{ screenerLoading ? 'Loading…' : 'Apply Filters' }}
+                        </button>
+                        <button v-if="isStaff" @click="refreshScreenerData" :disabled="screenerMeta.refresh && screenerMeta.refresh.running"
+                            class="px-3 py-2 rounded-lg text-sm bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
+                            title="Admin: fetch fresh fundamentals from FMP">
+                            <i class="fas fa-cloud-download-alt mr-1"></i>
+                            <span v-if="screenerMeta.refresh && screenerMeta.refresh.running">
+                                {{ screenerMeta.refresh.processed }}/{{ screenerMeta.refresh.total }}
+                            </span>
+                            <span v-else>Refresh data</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filter grid -->
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-3">
+                        <!-- Categorical: Sector / Exchange -->
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Sector</label>
+                            <select v-model="screenerCat.sector" @change="runScreener"
+                                class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+                                <option value="">Any</option>
+                                <option v-for="s in screenerMeta.sectors" :key="s" :value="s">{{ s }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Exchange</label>
+                            <select v-model="screenerCat.exchange" @change="runScreener"
+                                class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+                                <option value="">Any</option>
+                                <option v-for="e in screenerMeta.exchanges" :key="e" :value="e">{{ e }}</option>
+                            </select>
+                        </div>
+                        <!-- Numeric metrics: preset-range dropdowns -->
+                        <div v-for="m in screenerMetrics" :key="m.key">
+                            <label class="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">{{ m.label }}</label>
+                            <select v-model="screenerSel[m.key]" @change="onScreenerPreset(m)"
+                                class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200">
+                                <option v-for="(opt,i) in presetOptions(m.type)" :key="i" :value="i">{{ opt.label }}</option>
+                                <option value="custom">Custom…</option>
+                            </select>
+                            <div v-if="screenerSel[m.key] === 'custom'" class="flex gap-1 mt-1">
+                                <input type="number" v-model.number="screenerCustom[m.key].min" @change="runScreener"
+                                    placeholder="min" class="w-1/2 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-gray-200">
+                                <input type="number" v-model.number="screenerCustom[m.key].max" @change="runScreener"
+                                    placeholder="max" class="w-1/2 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-gray-200">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results table -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div class="px-4 py-2 border-b border-gray-700 text-xs text-gray-400 flex justify-between">
+                        <span>{{ screenerRows.length }} match<span v-if="screenerRows.length !== 1">es</span> (max {{ screenerLimit }})</span>
+                        <span>Click a column header to sort</span>
+                    </div>
+                    <div class="overflow-x-auto" style="max-height: 65vh;">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-900 sticky top-0 z-10">
+                                <tr class="text-gray-400 text-xs">
+                                    <th v-for="c in screenerColumns" :key="c.key"
+                                        @click="sortScreener(c.key)"
+                                        class="px-3 py-2 text-right whitespace-nowrap cursor-pointer hover:text-white"
+                                        :class="c.key === 'symbol' || c.key === 'company_name' ? 'text-left sticky left-0 bg-gray-900' : ''">
+                                        {{ c.label }}
+                                        <i v-if="screenerSort.by === c.key" class="fas text-[10px] ml-0.5"
+                                           :class="screenerSort.dir === 'asc' ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in screenerRows" :key="row.symbol"
+                                    class="border-t border-gray-700/50 hover:bg-gray-700/30">
+                                    <td v-for="c in screenerColumns" :key="c.key"
+                                        class="px-3 py-1.5 text-right whitespace-nowrap"
+                                        :class="[
+                                            c.key === 'symbol' ? 'text-left font-semibold text-blue-300 sticky left-0 bg-gray-800' : '',
+                                            c.key === 'company_name' ? 'text-left text-gray-300 max-w-[200px] truncate' : 'text-gray-200',
+                                            (c.color && row[c.key] != null) ? (row[c.key] >= 0 ? 'text-green-400' : 'text-red-400') : ''
+                                        ]">
+                                        {{ fmtCell(row[c.key], c) }}
+                                    </td>
+                                </tr>
+                                <tr v-if="!screenerRows.length && !screenerLoading">
+                                    <td :colspan="screenerColumns.length" class="px-3 py-10 text-center text-gray-500">
+                                        No matches. Adjust your filters or run a data refresh.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
             <div v-if="activeTab === 'brown-bot' && canAccessTab('brown-bot')" class="space-y-6">
 
