@@ -2762,7 +2762,22 @@
                                         <p class="text-[10px] text-gray-600 mt-0.5">Enters on a confirmed break above the intraday high (the reclaim-and-curve into a new high) — a valid long even while still below PMH. Uses the same breakout-confirmation rules below.</p>
                                     </div>
                                 </label>
-                                <div v-show="brownBotConfig.day_check_pmh || brownBotConfig.day_check_dayhigh_break" class="ml-7">
+                                <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input v-model="brownBotConfig.day_check_orb" type="checkbox" class="rounded border-gray-600 accent-emerald-400 mt-0.5 shrink-0">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="text-xs text-gray-300">ORB — opening range breakout</span>
+                                            <select v-model.number="brownBotConfig.day_orb_minutes" @click.stop
+                                                    class="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-white focus:outline-none focus:border-emerald-500">
+                                                <option :value="5">first 5 min</option>
+                                                <option :value="15">first 15 min</option>
+                                                <option :value="30">first 30 min</option>
+                                            </select>
+                                        </div>
+                                        <p class="text-[10px] text-gray-600 mt-0.5">Enters on a confirmed break above the high of the opening range (first {{ brownBotConfig.day_orb_minutes }} min). The OR-high is a fixed level for the day — a distinct play from DHB's running high. Same breakout-confirmation rules.</p>
+                                    </div>
+                                </label>
+                                <div v-show="brownBotConfig.day_check_pmh || brownBotConfig.day_check_dayhigh_break || brownBotConfig.day_check_orb" class="ml-7">
                                   <p class="text-[10px] text-gray-500 mb-1">Breakout confirmation (applies to both triggers):</p>
                                   <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     <div>
@@ -3299,7 +3314,7 @@
                                                           class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default whitespace-nowrap"
                                                           :title="c.detail || ''">
                                                         {{ c.passed ? '✓' : '✗' }}
-                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMH' : c.name === 'dh_break' ? 'DHB' : c.name === 'dayhigh' ? 'DH' : 'VOL' }}
+                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMH' : c.name === 'dh_break' ? 'DHB' : c.name === 'orb' ? 'ORB' : c.name === 'dayhigh' ? 'DH' : 'VOL' }}
                                                         <span v-if="c.value && c.value !== '—'" class="opacity-75 ml-0.5">{{ c.value }}</span>
                                                     </span>
                                                 </div>

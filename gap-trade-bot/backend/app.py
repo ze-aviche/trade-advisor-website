@@ -3874,7 +3874,7 @@ def _get_intraday_bars(symbol):
                 if raw:
                     bars = [{'o': float(b['o']), 'h': float(b['h']),
                              'l': float(b['l']), 'c': float(b['c']),
-                             'v': float(b['v']), 'vw': b.get('vw')}
+                             'v': float(b['v']), 'vw': b.get('vw'), 't': b.get('t')}
                             for b in raw]
                     break
                 # Empty on this feed — try next (SIP can lag at session open)
@@ -3908,7 +3908,8 @@ def _get_intraday_bars(symbol):
                 if sdk_bars:
                     bars = [{'o': float(b.open), 'h': float(b.high),
                              'l': float(b.low),  'c': float(b.close), 'v': float(b.volume),
-                             'vw': float(b.vwap) if b.vwap else None}
+                             'vw': float(b.vwap) if b.vwap else None,
+                             't': b.timestamp.isoformat() if getattr(b, 'timestamp', None) else None}
                             for b in sdk_bars]
             except Exception as e:
                 app_logger.debug(f'Alpaca intraday bars SDK {sym_up}: {e}')
@@ -3988,9 +3989,11 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     vol_on    = bool(config.get('day_check_volume_surge', False))
     pmh_on    = bool(config.get('day_check_pmh', False))
     dhb_on    = bool(config.get('day_check_dayhigh_break', False))
+    orb_on    = bool(config.get('day_check_orb', False))
+    orb_min   = int(config.get('day_orb_minutes', 15) or 15)
     max_below = float(config.get('day_max_below_dayhigh_pct', 0.0))
 
-    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on or dhb_on or max_below > 0):
+    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on or dhb_on or orb_on or max_below > 0):
         return True, [], 'No trend filters enabled'
 
     # Shared breakout-confirmation params (apply to both PMH & day-high triggers).
@@ -4111,6 +4114,46 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
             detail = f'Day-high ${prior_high:.2f}: ' + ', '.join(bits)
             value  = f'${prior_high:.2f}'
         checks.append({'name': 'dh_break', 'label': 'Day-high breakout confirmed', 'passed': passed,
+                       'detail': detail, 'value': value})
+        trigger_flags.append(passed)
+
+    # ── Opening Range Breakout (ORB) ─────────────────────────────────────
+    # Break above the high of the first N minutes (5/15/30) of the session —
+    # the day's initial-balance resolution. The OR-high is a FIXED level (frozen
+    # once the window closes), unlike DHB's running high. Same confirmation rules.
+    if orb_on:
+        import pytz as _pytz_orb
+        _et_orb = _pytz_orb.timezone('US/Eastern')
+        now_et  = datetime.now(_et_orb)
+        or_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+        or_end  = or_open + timedelta(minutes=orb_min)
+        # Highs of bars whose timestamp falls inside [09:30, 09:30+N).
+        or_highs = []
+        for b in (bars or []):
+            ts = b.get('t')
+            if not ts:
+                continue
+            try:
+                t_et = datetime.fromisoformat(ts.replace('Z', '+00:00')).astimezone(_et_orb)
+            except Exception:
+                continue
+            if or_open <= t_et < or_end:
+                or_highs.append(b['h'])
+        if now_et < or_end:
+            passed = False
+            detail = f'Opening range still forming (first {orb_min} min) — will retry'
+            value  = '—'
+        elif not or_highs:
+            passed = False
+            detail = f'No opening-range bars yet (first {orb_min} min)'
+            value  = '—'
+        else:
+            orb_high = round(max(or_highs), 4)
+            passed, bits = _confirm_breakout(orb_high, bars, current_price,
+                                             _buf, _vol_mult, _max_wick, _accept_n)
+            detail = f'ORB{orb_min} ${orb_high:.2f}: ' + ', '.join(bits)
+            value  = f'${orb_high:.2f}'
+        checks.append({'name': 'orb', 'label': f'{orb_min}-min ORB confirmed', 'passed': passed,
                        'detail': detail, 'value': value})
         trigger_flags.append(passed)
 
