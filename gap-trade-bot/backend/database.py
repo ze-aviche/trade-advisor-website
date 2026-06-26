@@ -3917,7 +3917,7 @@ class DatabaseManager:
             return 0.0
 
     def get_brown_entry_signal_stats(self, user_id: int = 1, position_type: str = None,
-                                     since: str = None) -> dict:
+                                     since: str = None, until: str = None) -> dict:
         """
         Per-entry-criterion performance over CLOSED BrownBot positions. A trade
         contributes to every tag in its entry_signals (e.g. 'ORB,VWAP,VOL').
@@ -3932,6 +3932,8 @@ class DatabaseManager:
                     where += " AND position_type = ?"; params.append(position_type)
                 if since:
                     where += " AND trade_date >= ?"; params.append(since)
+                if until:
+                    where += " AND trade_date <= ?"; params.append(until)
                 rows = conn.execute(
                     f"SELECT entry_signals, realized_pnl, realized_pnl_pct "
                     f"FROM brown_positions WHERE {where}", params

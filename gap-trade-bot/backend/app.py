@@ -7368,9 +7368,10 @@ def get_brown_bot_entry_stats():
     """Per-entry-criterion performance over closed positions (win-rate, P&L)."""
     current_user_id = request.user.get('id', 1)
     position_type = request.args.get('type') or None   # 'day' | 'swing' | None
-    since = request.args.get('since') or None           # YYYY-MM-DD
+    since = request.args.get('since') or None           # YYYY-MM-DD (inclusive)
+    until = request.args.get('until') or None           # YYYY-MM-DD (inclusive)
     stats = db_manager.get_brown_entry_signal_stats(
-        user_id=current_user_id, position_type=position_type, since=since)
+        user_id=current_user_id, position_type=position_type, since=since, until=until)
     return jsonify({'success': True, **stats})
 
 

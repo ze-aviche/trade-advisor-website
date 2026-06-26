@@ -1517,7 +1517,6 @@ const app = createApp({
                     this.stopPositionHistoryUpdates();
                     this.loadStats();
                     this.loadFeedbackLatest();
-                    this.loadBrownEntryStats();
                 } else if (tabName === 'backtest') {
                     console.log('🧪 Backtest tab selected - loading backtest data...');
                     this.stopPositionHistoryUpdates(); // Stop position updates when leaving positions tab
@@ -3193,6 +3192,7 @@ const app = createApp({
                         this.loadPieChartData(),
                         this.loadTimeOfDayData(),
                         this.loadDayOfWeekData(),
+                        this.loadBrownEntryStats(true),  // entry-trigger panel follows the stats date range
                     ]);
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
@@ -7180,10 +7180,14 @@ const app = createApp({
             }
         },
 
-        async loadBrownEntryStats() {
+        async loadBrownEntryStats(useStatsDates = false) {
             try {
-                const params = this.brownEntryStatsType ? ('?type=' + this.brownEntryStatsType) : '';
-                const response = await axios.get('/api/brown-bot/entry-stats' + params, { headers: this.authHeaders() });
+                const p = [];
+                if (this.brownEntryStatsType) p.push('type=' + this.brownEntryStatsType);
+                if (useStatsDates && this.statsStartDate) p.push('since=' + this.statsStartDate);
+                if (useStatsDates && this.statsEndDate)   p.push('until=' + this.statsEndDate);
+                const qs = p.length ? ('?' + p.join('&')) : '';
+                const response = await axios.get('/api/brown-bot/entry-stats' + qs, { headers: this.authHeaders() });
                 if (response.data.success) {
                     this.brownEntryStats = { rows: response.data.rows || [], overall: response.data.overall || {} };
                 }
