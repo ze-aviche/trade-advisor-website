@@ -4017,21 +4017,54 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         if not passed:
             all_pass = False
 
-    # ── Above pre-market high (PMH) ──────────────────────────────────────
-    # Independent of intraday bars — pulls the 04:00–09:30 ET session high.
+    # ── Pre-market-high breakout, CONFIRMED ──────────────────────────────
+    # Don't buy the first tick over PMH — that's exactly where shorts lean in
+    # and the first test usually rejects. Require a completed 1-min candle to
+    # CLOSE above PMH by a buffer, on real volume, without a big upper wick
+    # (a long upper wick = the stock got sold into the level), and the live
+    # price still holding above PMH.
     if pmh_on:
         pmh, pmh_time = _get_premarket_high(symbol)
+        buf      = float(config.get('day_pmh_break_buffer_pct', 0.2))
+        vol_mult = float(config.get('day_pmh_vol_mult', 1.5))
+        max_wick = float(config.get('day_pmh_max_wick_pct', 60.0))
         if not pmh or pmh <= 0:
             # Can't confirm PMH → block entry (conservative: don't enter blind).
             passed = False
             detail = 'Pre-market high unavailable (Alpaca premarket data) — will retry next scan'
             value  = '—'
         else:
-            passed = float(current_price) > pmh
-            _at = f' @ {pmh_time}' if pmh_time else ''
-            detail = f'${float(current_price):.2f} {">" if passed else "≤"} PMH ${pmh:.2f}{_at}'
-            value  = f'${pmh:.2f}'
-        checks.append({'name': 'pmh', 'label': 'Above pre-market high', 'passed': passed,
+            threshold = pmh * (1 + buf / 100.0)
+            bars = _get_intraday_bars(symbol)  # cached; 09:30 → last completed min
+            still_above = float(current_price) > pmh
+            if not bars:
+                # No completed candle yet (right at the open) — fall back to a
+                # simple level check so the very first breakout can still trigger.
+                passed = float(current_price) > threshold
+                detail = f'${float(current_price):.2f} vs PMH ${pmh:.2f} +{buf:.1f}% (no candle yet)'
+            else:
+                last = bars[-1]
+                close_ok = last['c'] > threshold
+                # Volume: breakout bar vs the session's prior-bar average.
+                vol_ok = True
+                if vol_mult > 0 and len(bars) >= 3:
+                    avg_v  = sum(b['v'] for b in bars[:-1]) / (len(bars) - 1)
+                    vol_ok = avg_v > 0 and last['v'] >= avg_v * vol_mult
+                # Upper wick: rejection tell. upper = high - max(open, close).
+                wick_ok = True
+                if 0 < max_wick < 100:
+                    rng   = last['h'] - last['l']
+                    upper = last['h'] - max(last['o'], last['c'])
+                    wick_ratio = (upper / rng * 100) if rng > 0 else 0.0
+                    wick_ok = wick_ratio <= max_wick
+                passed = close_ok and vol_ok and wick_ok and still_above
+                bits = [f'close ${last["c"]:.2f} {">" if close_ok else "≤"} ${threshold:.2f}']
+                if vol_mult > 0:        bits.append('vol✓' if vol_ok else 'vol low')
+                if 0 < max_wick < 100:  bits.append('wick✓' if wick_ok else 'wick big')
+                if not still_above:     bits.append('faded <PMH')
+                detail = f'PMH ${pmh:.2f}: ' + ', '.join(bits)
+            value = f'${pmh:.2f}'
+        checks.append({'name': 'pmh', 'label': 'PMH breakout confirmed', 'passed': passed,
                        'detail': detail, 'value': value})
         if not passed:
             all_pass = False
