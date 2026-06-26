@@ -27,14 +27,18 @@ load_dotenv()
 # Error monitoring — must be initialised before Flask app is created
 _sentry_dsn = os.environ.get('SENTRY_DSN')
 if _sentry_dsn:
-    import sentry_sdk
-    from sentry_sdk.integrations.flask import FlaskIntegration
-    sentry_sdk.init(
-        dsn=_sentry_dsn,
-        integrations=[FlaskIntegration()],
-        traces_sample_rate=0.1,
-        send_default_pii=False,
-    )
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            integrations=[FlaskIntegration()],
+            traces_sample_rate=0.1,
+            send_default_pii=False,
+        )
+    except Exception as _e:
+        # A malformed/placeholder DSN must never block startup — Sentry is optional.
+        print(f"⚠️  Sentry disabled — invalid SENTRY_DSN ({_e}); set SENTRY_DSN=\"\" to silence this.")
 
 # Setup comprehensive logging
 setup_logging(log_level='INFO', log_dir='logs')
@@ -10925,6 +10929,56 @@ def earnings_calendar():
     if cached:
         return jsonify(cached)
 
+    today = _date.today()
+    dates = [(today + _td(days=i)).isoformat() for i in range(days)]
+
+    # ── Primary source: FMP earnings-calendar (one call for the whole range) ──
+    # Filtered/enriched against the local fundamentals table so we only show US
+    # equities we track and can attach company names.
+    try:
+        if fmp_screener.is_configured():
+            fmp_rows = fmp_screener.earnings_calendar(dates[0], dates[-1])
+            if fmp_rows:
+                # symbol -> company_name from fundamentals (skip filter if table empty)
+                name_map = {}
+                try:
+                    with db_manager.get_connection() as _c:
+                        for _r in _c.execute(
+                            'SELECT symbol, company_name FROM fundamentals').fetchall():
+                            name_map[_r['symbol']] = _r['company_name']
+                except Exception:
+                    name_map = {}
+
+                by_date = {}
+                for row in fmp_rows:
+                    sym = (row.get('symbol') or '').strip()
+                    if not sym:
+                        continue
+                    # When we have a populated universe, restrict to it (drops
+                    # foreign/OTC tickers FMP includes globally).
+                    if name_map and sym not in name_map:
+                        continue
+                    d = str(row.get('date', ''))[:10]
+                    if d not in dates:
+                        continue
+                    by_date.setdefault(d, []).append({
+                        'symbol': sym,
+                        'company': name_map.get(sym, ''),
+                        'time': '',  # FMP calendar has no session time
+                        'eps_forecast': row.get('epsEstimated'),
+                        'last_year_eps': None,
+                        'fiscal_qtr': '',
+                    })
+
+                grouped = [{'date': d, 'entries': by_date[d]} for d in dates if by_date.get(d)]
+                if grouped:
+                    result = {'success': True, 'days': days, 'calendar': grouped, 'source': 'fmp'}
+                    _cache_set(_calendar_cache, cache_key, result)
+                    return jsonify(result)
+    except Exception as _e:
+        app_logger.warning(f'[Earnings] FMP calendar failed, falling back to Nasdaq: {_e}')
+
+    # ── Fallback source: Nasdaq public calendar (per-day, parallel) ──
     _hdrs = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json, text/plain, */*',
@@ -10968,7 +11022,7 @@ def earnings_calendar():
         if entries:
             grouped.append({'date': d, 'entries': entries})
 
-    result = {'success': True, 'days': days, 'calendar': grouped}
+    result = {'success': True, 'days': days, 'calendar': grouped, 'source': 'nasdaq'}
     _cache_set(_calendar_cache, cache_key, result)
     return jsonify(result)
 
@@ -10981,6 +11035,17 @@ def earnings_research(ticker):
     cached = _cache_get(_earnings_cache, ticker, _EARNINGS_TTL)
     if cached:
         return jsonify(cached)
+
+    # ── Primary source: FMP (richer + paid). Falls through to yfinance below. ──
+    try:
+        if fmp_screener.is_configured():
+            fmp_result = fmp_screener.earnings_research(ticker)
+            if fmp_result and (fmp_result.get('history') or fmp_result.get('next_er')):
+                _cache_set(_earnings_cache, ticker, fmp_result)
+                return jsonify(fmp_result)
+    except Exception as _e:
+        app_logger.warning(f'[Earnings] FMP research {ticker} failed, falling back to yfinance: {_e}')
+
     try:
         import yfinance as yf
         import math as _math

@@ -148,6 +148,10 @@ def fetch_symbol(symbol: str) -> dict | None:
                            {'symbol': symbol, 'period': 'annual', 'limit': 1})) or {}
     g_qtr = _first(_get('financial-growth',
                         {'symbol': symbol, 'period': 'quarter', 'limit': 1})) or {}
+    cf_annual = _first(_get('cash-flow-statement-growth',
+                            {'symbol': symbol, 'period': 'annual', 'limit': 1})) or {}
+    cf_qtr = _first(_get('cash-flow-statement-growth',
+                         {'symbol': symbol, 'period': 'quarter', 'limit': 1})) or {}
 
     price = _num(profile, 'price')
 
@@ -203,6 +207,9 @@ def fetch_symbol(symbol: str) -> dict | None:
         'eps_growth_yoy': _num(g_annual, 'epsgrowth'),
         'eps_growth_qoq': _num(g_qtr, 'epsgrowth'),
         'net_income_growth_yoy': _num(g_annual, 'netIncomeGrowth'),
+        'fcf_growth_yoy': _num(cf_annual, 'growthFreeCashFlow'),
+        'fcf_growth_qoq': _num(cf_qtr, 'growthFreeCashFlow'),
+        'ocf_growth_yoy': _num(cf_annual, 'growthOperatingCashFlow'),
 
         # Profitability
         'roe': _num(metrics, 'returnOnEquityTTM'),
@@ -223,6 +230,122 @@ def fetch_symbol(symbol: str) -> dict | None:
         'fcf_yield': _num(metrics, 'freeCashFlowYieldTTM'),
         'dividend_yield': _num(ratios, 'dividendYieldTTM'),
         'payout_ratio': _num(ratios, 'dividendPayoutRatioTTM'),
+    }
+
+
+def _safe_round(v, dec=2):
+    try:
+        return round(float(v), dec)
+    except (TypeError, ValueError):
+        return None
+
+
+def earnings_calendar(from_date: str, to_date: str) -> list:
+    """
+    Upcoming/historical earnings between two ISO dates (inclusive) from FMP.
+    Returns the raw FMP list (symbol, date, epsActual, epsEstimated,
+    revenueActual, revenueEstimated) or [] on failure.
+    """
+    data = _get('earnings-calendar', {'from': from_date, 'to': to_date})
+    return data if isinstance(data, list) else []
+
+
+def earnings_research(symbol: str) -> dict | None:
+    """
+    Assemble the earnings-research payload for one symbol entirely from FMP,
+    matching the shape the frontend expects (see /api/earnings/<ticker>).
+    Returns None if FMP has no earnings rows (caller should fall back to YF).
+    """
+    symbol = symbol.upper().strip()
+    rows = _get('earnings', {'symbol': symbol, 'limit': 20})
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    today = time.strftime('%Y-%m-%d')
+
+    # Next earnings date: nearest future row.
+    future = sorted([r for r in rows if str(r.get('date', '')) >= today],
+                    key=lambda r: r.get('date', ''))
+    next_er = future[0]['date'] if future else None
+
+    # History: reported quarters (epsActual present), newest first, max 12.
+    reported = sorted([r for r in rows if r.get('epsActual') is not None],
+                      key=lambda r: r.get('date', ''), reverse=True)[:12]
+    history = []
+    for r in reported:
+        est = r.get('epsEstimated')
+        act = r.get('epsActual')
+        surprise = None
+        if est not in (None, 0) and act is not None:
+            try:
+                surprise = round((float(act) - float(est)) / abs(float(est)) * 100, 2)
+            except (TypeError, ValueError, ZeroDivisionError):
+                surprise = None
+        history.append({
+            'date': str(r.get('date', ''))[:10],
+            'eps_estimate': _safe_round(est, 4),
+            'eps_actual': _safe_round(act, 4),
+            'surprise_pct': surprise,
+        })
+
+    # Quarterly revenue (actuals, last 4 reported).
+    rev_rows = [r for r in reported if r.get('revenueActual') is not None][:4]
+    quarterly_revenue = [{
+        'date': str(r.get('date', ''))[:10],
+        'revenue_b': _safe_round(float(r['revenueActual']) / 1e9, 2),
+    } for r in rev_rows]
+
+    # Forward estimates for the *next quarter* (the upcoming report) come straight
+    # from the next earnings row — consistent with the "Next ER" framing. Per-quarter
+    # low/high aren't published, so they stay null.
+    eps_avg = eps_low = eps_high = None
+    rev_avg = rev_low = rev_high = None
+    if future:
+        nxt = future[0]
+        eps_avg = _num(nxt, 'epsEstimated')
+        rev_est = _num(nxt, 'revenueEstimated')
+        rev_avg = _safe_round(rev_est / 1e9, 2) if rev_est else None
+
+    # Price targets + current price.
+    pt = _first(_get('price-target-consensus', {'symbol': symbol})) or {}
+    quote = _first(_get('quote', {'symbol': symbol})) or {}
+    price_targets = {}
+    if pt or quote:
+        price_targets = {
+            'current': _safe_round(quote.get('price')),
+            'mean': _safe_round(pt.get('targetConsensus')),
+            'median': _safe_round(pt.get('targetMedian')),
+            'high': _safe_round(pt.get('targetHigh')),
+            'low': _safe_round(pt.get('targetLow')),
+        }
+
+    # Analyst rating distribution.
+    gc = _first(_get('grades-consensus', {'symbol': symbol})) or {}
+    recommendations = {}
+    if gc:
+        recommendations = {
+            'strong_buy': int(gc.get('strongBuy', 0) or 0),
+            'buy': int(gc.get('buy', 0) or 0),
+            'hold': int(gc.get('hold', 0) or 0),
+            'sell': int(gc.get('sell', 0) or 0),
+            'strong_sell': int(gc.get('strongSell', 0) or 0),
+        }
+
+    name = quote.get('name') or symbol
+
+    return {
+        'success': True, 'ticker': symbol, 'name': name, 'source': 'fmp',
+        'next_er': next_er,
+        'eps_est_avg': _safe_round(eps_avg, 4),
+        'eps_est_low': _safe_round(eps_low, 4),
+        'eps_est_high': _safe_round(eps_high, 4),
+        'rev_est_avg_b': rev_avg,
+        'rev_est_low_b': rev_low,
+        'rev_est_high_b': rev_high,
+        'history': history,
+        'quarterly_revenue': quarterly_revenue,
+        'price_targets': price_targets,
+        'recommendations': recommendations,
     }
 
 

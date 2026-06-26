@@ -207,6 +207,9 @@ class DatabaseManager:
                     eps_growth_yoy        REAL,
                     eps_growth_qoq        REAL,
                     net_income_growth_yoy REAL,
+                    fcf_growth_yoy        REAL,
+                    fcf_growth_qoq        REAL,
+                    ocf_growth_yoy        REAL,
                     roe                   REAL,
                     roa                   REAL,
                     roic                  REAL,
@@ -268,6 +271,17 @@ class DatabaseManager:
             for _row in cursor.fetchall():
                 cursor.execute('UPDATE users SET email_digest_unsubscribe_token = ? WHERE id = ?',
                                (str(_uuid.uuid4()), _row['id']))
+
+            # Fundamentals: additively add cash-flow-growth columns to existing DBs.
+            for column, definition in [
+                ('fcf_growth_yoy', 'REAL'),
+                ('fcf_growth_qoq', 'REAL'),
+                ('ocf_growth_yoy', 'REAL'),
+            ]:
+                try:
+                    cursor.execute(f'ALTER TABLE fundamentals ADD COLUMN {column} {definition}')
+                except sqlite3.OperationalError:
+                    pass  # column already exists
 
             # Promote existing 'admin' role users to super_admin system_role
             cursor.execute("UPDATE users SET system_role = 'super_admin' WHERE role = 'admin' AND system_role IS NULL")
@@ -3866,6 +3880,7 @@ class DatabaseManager:
         'eps_ttm', 'eps_forward', 'earnings_yield',
         'revenue_growth_yoy', 'revenue_growth_qoq',
         'eps_growth_yoy', 'eps_growth_qoq', 'net_income_growth_yoy',
+        'fcf_growth_yoy', 'fcf_growth_qoq', 'ocf_growth_yoy',
         'roe', 'roa', 'roic', 'gross_margin', 'operating_margin', 'net_margin',
         'debt_to_equity', 'current_ratio', 'quick_ratio', 'interest_coverage',
         'fcf_per_share', 'fcf_yield', 'dividend_yield', 'payout_ratio',
