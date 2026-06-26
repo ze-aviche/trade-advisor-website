@@ -3659,7 +3659,15 @@
                             <tbody>
                                 <tr v-for="pos in brownBotStatus.active_positions" :key="pos.position_id"
                                     class="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
-                                    <td class="px-4 py-3 font-mono font-bold text-white">{{ pos.symbol }}</td>
+                                    <td class="px-4 py-3 font-mono font-bold text-white">
+                                        {{ pos.symbol }}
+                                        <div v-if="pos.entry_signals && pos.entry_signals.length" class="flex flex-wrap gap-1 mt-1">
+                                            <span v-for="sig in pos.entry_signals" :key="sig"
+                                                  :class="['PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                                  class="border rounded px-1.5 py-0.5 text-[9px] font-sans font-semibold tracking-wide"
+                                                  title="Entry criterion satisfied at entry">{{ sig }}</span>
+                                        </div>
+                                    </td>
                                     <td class="px-4 py-3">
                                         <span :class="pos.position_type === 'swing' ? 'bg-purple-500/20 text-purple-300 border-purple-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'"
                                               class="text-xs px-2 py-0.5 rounded-full border">

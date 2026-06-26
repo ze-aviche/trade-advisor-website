@@ -619,6 +619,7 @@ class DatabaseManager:
                 ('exit_reason',        'TEXT'),
                 ('exit_time',          'TEXT'),
                 ('user_id',            'INTEGER NOT NULL DEFAULT 1'),
+                ('entry_signals',      'TEXT'),  # comma-joined entry criteria that triggered the entry
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_positions ADD COLUMN {col} {defn}')
@@ -3675,8 +3676,8 @@ class DatabaseManager:
                         profit_target, profit_target_pct, stop_loss, stop_loss_pct,
                         entry_time, entry_time_epoch, data_json,
                         status, trade_date, entry_order_id, avg_entry_price,
-                        current_price, unrealized_pnl, unrealized_pnl_pct, user_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        current_price, unrealized_pnl, unrealized_pnl_pct, entry_signals, user_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     (position_id,
                      position.get('symbol'),
                      position.get('position_type', 'day'),
@@ -3697,6 +3698,7 @@ class DatabaseManager:
                      position.get('_current_price'),
                      float(position.get('unrealized_pnl', 0) or 0),
                      float(position.get('unrealized_pnl_pct', 0) or 0),
+                     ','.join(position.get('entry_signals') or []),
                      user_id)
                 )
                 conn.commit()

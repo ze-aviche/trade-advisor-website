@@ -4341,7 +4341,24 @@ def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict,
         playbook_pending.discard(symbol)
 
 
-def _brown_enter_position(user_id: int, symbol, position_type, config, approx_price, playbook_override=None):
+_ENTRY_SIGNAL_TAGS = {
+    'pmh': 'PMH', 'dh_break': 'DHB', 'orb': 'ORB',
+    'vwap': 'VWAP', 'candle': 'CANDLE', 'vol_surge': 'VOL',
+    'extension': 'EXT', 'dayhigh': 'DH',
+}
+
+
+def _entry_signal_tags(checks):
+    """Short tags for the entry criteria that PASSED (for display + later stats)."""
+    out = []
+    for c in (checks or []):
+        if c.get('passed'):
+            out.append(_ENTRY_SIGNAL_TAGS.get(c.get('name'), str(c.get('name', '')).upper()))
+    return out
+
+
+def _brown_enter_position(user_id: int, symbol, position_type, config, approx_price,
+                          playbook_override=None, entry_signals=None):
     """Place a BUY order for BrownBot and record the position in memory."""
     sess = _get_brown_session(user_id)
     if not sess:
@@ -4584,6 +4601,7 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         'playbook_summary':    playbook_summary,
         'atr_value':           _atr_value,
         'stop_source':         stp_src,
+        'entry_signals':       entry_signals or [],
     }
     with lock:
         active_positions[position_id] = position
@@ -5300,6 +5318,9 @@ def _brown_bot_scan_and_enter(user_id: int):
             continue
         if sig_checks:
             _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}', user_id)
+        # Capture which entry criteria were satisfied — stored on the (confirmed)
+        # position and persisted to the DB for later per-trigger stats.
+        day_entry_signals = _entry_signal_tags(sig_checks)
 
         # Playbook gate — AI analysis of 5-yr gap history for this symbol.
         # Short/High-confidence bias means it historically gaps and reverses — skip.
@@ -5377,7 +5398,8 @@ def _brown_bot_scan_and_enter(user_id: int):
             continue
 
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%', user_id)
-        _brown_enter_position(user_id, symbol, 'day', config, live_price, playbook_override=playbook_override)
+        _brown_enter_position(user_id, symbol, 'day', config, live_price,
+                              playbook_override=playbook_override, entry_signals=day_entry_signals)
         # Refresh active state after entry
         with sess.lock:
             active_symbols.add(symbol)
@@ -5495,7 +5517,9 @@ def _brown_bot_scan_and_enter(user_id: int):
         _add_brown_log('info',
             f'Entering SWING {symbol} [Grade {grade}] — {pick_reason}'
             + (f' · entry zone: {entry_zone}' if entry_zone else ''), user_id=user_id)
-        _brown_enter_position(user_id, symbol, 'swing', config, live_price)
+        swing_entry_signals = [t for t in [f'Grade {grade}', pick.get('bias')] if t]
+        _brown_enter_position(user_id, symbol, 'swing', config, live_price,
+                              entry_signals=swing_entry_signals)
         # Record actual entry in screener history for backtest accuracy
         try:
             import pytz as _ptz
@@ -6645,6 +6669,7 @@ def get_brown_bot_status():
                     '_exit_pending':      sym in pending_exit_syms or bb.get('_exit_pending', False),
                     'atr_value':          bb.get('atr_value'),
                     'stop_source':        bb.get('stop_source'),
+                    'entry_signals':      bb.get('entry_signals') or [],
                 })
             positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
