@@ -436,6 +436,7 @@ class DatabaseManager:
                 ('day_max_extension_pct',  'REAL DEFAULT 0.0'),
                 ('day_check_volume_surge', 'INTEGER DEFAULT 0'),
                 ('day_ai_playbook',        'INTEGER DEFAULT 1'),
+                ('day_check_pmh',          'INTEGER DEFAULT 0'),
                 ('day_position_pct',        'REAL DEFAULT 5.0'),
                 ('swing_position_pct',     'REAL DEFAULT 3.0'),
                 ('day_trades_enabled',     'INTEGER DEFAULT 1'),
@@ -3088,6 +3089,7 @@ class DatabaseManager:
             'max_float_m': 5.0, 'float_operator': '>=',
             'day_check_vwap': False, 'day_check_candle': False,
             'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': False,
+            'day_check_pmh': False,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
             # Swing scanner filters
@@ -3132,6 +3134,7 @@ class DatabaseManager:
                     cfg['day_check_candle'] = bool(cfg.get('day_check_candle', 0))
                     cfg['day_check_volume_surge'] = bool(cfg.get('day_check_volume_surge', 0))
                     cfg['day_ai_playbook']        = bool(cfg.get('day_ai_playbook', 1))
+                    cfg['day_check_pmh']          = bool(cfg.get('day_check_pmh', 0))
                     cfg['day_trades_enabled']       = bool(cfg.get('day_trades_enabled', 1))
                     cfg['swing_trades_enabled']     = bool(cfg.get('swing_trades_enabled', 1))
                     cfg['swing_check_above_sma20']      = bool(cfg.get('swing_check_above_sma20', 0))
@@ -3160,6 +3163,7 @@ class DatabaseManager:
             'max_concurrent_swing', 'min_gap_pct', 'min_price', 'max_price', 'min_volume_m',
             'max_float_m', 'float_operator',
             'day_check_vwap', 'day_check_candle', 'day_max_extension_pct', 'day_check_volume_surge', 'day_ai_playbook',
+            'day_check_pmh',
             'day_position_pct', 'swing_position_pct',
             'day_trades_enabled', 'swing_trades_enabled',
             'swing_scan_source', 'swing_scan_top_n',

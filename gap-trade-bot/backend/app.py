@@ -3713,6 +3713,74 @@ def update_swing_bot_config():
 _intraday_bars_cache: dict = {}
 _INTRADAY_BARS_TTL = 25  # seconds — scanner runs every 30 s, so bars refresh each cycle
 
+# Per-symbol pre-market high cache: symbol.upper() → {'pmh': float|None, 'date': 'YYYY-MM-DD', 'cached_at': float}
+# PMH is fixed once 09:30 ET passes, so we cache it for the whole session day; during
+# pre-market it can still climb, so we refresh every _PMH_TTL seconds before the open.
+_premarket_high_cache: dict = {}
+_PMH_TTL = 300  # seconds (only matters pre-open; post-open value is stable for the day)
+
+
+def _get_premarket_high(symbol):
+    """
+    Highest traded price in today's pre-market session (04:00–09:30 ET) from
+    Alpaca. Returns the PMH float, or None if unavailable (no premarket data on
+    the plan / before 04:00 ET / illiquid). Cached per symbol per day.
+    """
+    import requests as _req
+    import pytz as _pytz
+
+    sym_up = symbol.upper()
+    et = _pytz.timezone('US/Eastern')
+    now_et = datetime.now(et)
+    today = now_et.date().isoformat()
+
+    cached = _premarket_high_cache.get(sym_up)
+    if cached and cached.get('date') == today:
+        # Once the open has passed the value is final — serve cache indefinitely.
+        if now_et.hour >= 10 or time.time() - cached['cached_at'] < _PMH_TTL:
+            return cached['pmh']
+
+    start_et = now_et.replace(hour=4, minute=0, second=0, microsecond=0)
+    end_et   = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now_et < start_et:
+        return None  # pre-market hasn't started yet today
+    if now_et < end_et:
+        end_et = now_et.replace(second=0, microsecond=0)  # still in pre-market
+
+    ak  = os.environ.get('ALPACA_API_KEY', '')
+    as_ = os.environ.get('ALPACA_API_SECRET', '')
+    pmh = None
+    if ak and as_:
+        for feed in ('sip', 'iex'):  # SIP carries premarket; IEX is a thin fallback
+            try:
+                resp = _req.get(
+                    f'https://data.alpaca.markets/v2/stocks/{sym_up}/bars',
+                    headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': as_},
+                    params={
+                        'timeframe':  '5Min',
+                        'start':      start_et.isoformat(),
+                        'end':        end_et.isoformat(),
+                        'limit':      1000,
+                        'adjustment': 'raw',
+                        'feed':       feed,
+                    },
+                    timeout=8,
+                )
+                if resp.status_code in (403, 429):
+                    continue
+                if resp.status_code != 200:
+                    break
+                raw = resp.json().get('bars') or []
+                if raw:
+                    pmh = round(max(float(b['h']) for b in raw), 4)
+                    break
+            except Exception as e:
+                app_logger.debug(f'Pre-market high {sym_up} ({feed}): {e}')
+                continue
+
+    _premarket_high_cache[sym_up] = {'pmh': pmh, 'date': today, 'cached_at': time.time()}
+    return pmh
+
 
 def _get_intraday_bars(symbol):
     """
@@ -3843,8 +3911,9 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     candle_on = bool(config.get('day_check_candle', False))
     ext_pct   = float(config.get('day_max_extension_pct', 0.0))
     vol_on    = bool(config.get('day_check_volume_surge', False))
+    pmh_on    = bool(config.get('day_check_pmh', False))
 
-    if not (vwap_on or candle_on or ext_pct > 0 or vol_on):
+    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on):
         return True, [], 'No trend filters enabled'
 
     bars = _get_intraday_bars(symbol)
@@ -3914,6 +3983,24 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
             detail   = f'{latest_v:,.0f} vs avg {avg_v:,.0f} ({ratio:.1f}×)'
             value    = f'{ratio:.1f}×'
         checks.append({'name': 'vol_surge', 'label': 'Volume surge (≥1.5×)', 'passed': passed,
+                       'detail': detail, 'value': value})
+        if not passed:
+            all_pass = False
+
+    # ── Above pre-market high (PMH) ──────────────────────────────────────
+    # Independent of intraday bars — pulls the 04:00–09:30 ET session high.
+    if pmh_on:
+        pmh = _get_premarket_high(symbol)
+        if not pmh or pmh <= 0:
+            # Can't confirm PMH → block entry (conservative: don't enter blind).
+            passed = False
+            detail = 'Pre-market high unavailable (Alpaca premarket data) — will retry next scan'
+            value  = '—'
+        else:
+            passed = float(current_price) > pmh
+            detail = f'${float(current_price):.2f} {">" if passed else "≤"} PMH ${pmh:.2f}'
+            value  = f'${pmh:.2f}'
+        checks.append({'name': 'pmh', 'label': 'Above pre-market high', 'passed': passed,
                        'detail': detail, 'value': value})
         if not passed:
             all_pass = False

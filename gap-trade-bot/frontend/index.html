@@ -2735,6 +2735,13 @@
                                 </div>
                             </label>
                             <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                                <input v-model="brownBotConfig.day_check_pmh" type="checkbox" class="rounded border-gray-600 accent-cyan-400 mt-0.5 shrink-0">
+                                <div>
+                                    <span class="text-xs text-gray-300">PMH — price above pre-market high</span>
+                                    <p class="text-[10px] text-gray-600 mt-0.5">Only enters when the current price is above today's pre-market high (04:00–09:30 ET). The PMH value is shown as a signal badge in the Candidates table.</p>
+                                </div>
+                            </label>
+                            <label class="flex items-start gap-2.5 cursor-pointer select-none">
                                 <input v-model="brownBotConfig.day_ai_playbook" type="checkbox" class="rounded border-gray-600 accent-purple-400 mt-0.5 shrink-0">
                                 <div>
                                     <span class="text-xs text-gray-300">AI PLAYBOOK — skip historically bearish gaps</span>
@@ -3185,7 +3192,7 @@
                                                           class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default whitespace-nowrap"
                                                           :title="c.detail || ''">
                                                         {{ c.passed ? '✓' : '✗' }}
-                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : 'VOL' }}
+                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMH' : 'VOL' }}
                                                         <span v-if="c.value && c.value !== '—'" class="opacity-75 ml-0.5">{{ c.value }}</span>
                                                     </span>
                                                 </div>
