@@ -7361,6 +7361,19 @@ def get_brown_bot_logs():
     return jsonify({'success': True, 'logs': list(reversed(logs[-100:]))})
 
 
+@app.route('/api/brown-bot/entry-stats', methods=['GET'])
+@require_auth
+@require_tier('yogi')
+def get_brown_bot_entry_stats():
+    """Per-entry-criterion performance over closed positions (win-rate, P&L)."""
+    current_user_id = request.user.get('id', 1)
+    position_type = request.args.get('type') or None   # 'day' | 'swing' | None
+    since = request.args.get('since') or None           # YYYY-MM-DD
+    stats = db_manager.get_brown_entry_signal_stats(
+        user_id=current_user_id, position_type=position_type, since=since)
+    return jsonify({'success': True, **stats})
+
+
 @app.route('/api/brown-bot/risk-status', methods=['GET'])
 @require_auth
 @require_tier('yogi')

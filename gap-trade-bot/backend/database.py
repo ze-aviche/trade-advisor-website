@@ -3916,6 +3916,65 @@ class DatabaseManager:
             print(f'Database error fetching brown_daily_realized_pnl: {e}')
             return 0.0
 
+    def get_brown_entry_signal_stats(self, user_id: int = 1, position_type: str = None,
+                                     since: str = None) -> dict:
+        """
+        Per-entry-criterion performance over CLOSED BrownBot positions. A trade
+        contributes to every tag in its entry_signals (e.g. 'ORB,VWAP,VOL').
+        Returns {'rows': [{tag, trades, wins, win_rate, total_pnl, avg_pnl,
+        avg_pnl_pct}], 'overall': {...}} sorted by trades desc.
+        """
+        try:
+            with self.get_connection() as conn:
+                params: list = [user_id]
+                where = "status = 'closed' AND user_id = ?"
+                if position_type:
+                    where += " AND position_type = ?"; params.append(position_type)
+                if since:
+                    where += " AND trade_date >= ?"; params.append(since)
+                rows = conn.execute(
+                    f"SELECT entry_signals, realized_pnl, realized_pnl_pct "
+                    f"FROM brown_positions WHERE {where}", params
+                ).fetchall()
+
+            agg = {}
+            ov = {'trades': 0, 'wins': 0, 'total_pnl': 0.0}
+            for r in rows:
+                pnl = float(r['realized_pnl'] or 0)
+                pnl_pct = float(r['realized_pnl_pct'] or 0)
+                win = 1 if pnl > 0 else 0
+                ov['trades'] += 1; ov['wins'] += win; ov['total_pnl'] += pnl
+                tags = [t.strip() for t in (r['entry_signals'] or '').split(',') if t.strip()]
+                if not tags:
+                    tags = ['(none)']
+                for tag in tags:
+                    a = agg.setdefault(tag, {'tag': tag, 'trades': 0, 'wins': 0,
+                                             'total_pnl': 0.0, '_pnl_pct_sum': 0.0})
+                    a['trades'] += 1; a['wins'] += win
+                    a['total_pnl'] += pnl; a['_pnl_pct_sum'] += pnl_pct
+
+            out = []
+            for a in agg.values():
+                t = a['trades']
+                out.append({
+                    'tag': a['tag'], 'trades': t, 'wins': a['wins'],
+                    'win_rate': round(a['wins'] / t * 100, 1) if t else 0.0,
+                    'total_pnl': round(a['total_pnl'], 2),
+                    'avg_pnl': round(a['total_pnl'] / t, 2) if t else 0.0,
+                    'avg_pnl_pct': round(a['_pnl_pct_sum'] / t, 2) if t else 0.0,
+                })
+            out.sort(key=lambda x: x['trades'], reverse=True)
+            overall = {
+                'trades': ov['trades'], 'wins': ov['wins'],
+                'win_rate': round(ov['wins'] / ov['trades'] * 100, 1) if ov['trades'] else 0.0,
+                'total_pnl': round(ov['total_pnl'], 2),
+                'avg_pnl': round(ov['total_pnl'] / ov['trades'], 2) if ov['trades'] else 0.0,
+            }
+            return {'rows': out, 'overall': overall}
+        except Exception as e:
+            print(f'Database error fetching brown_entry_signal_stats: {e}')
+            return {'rows': [], 'overall': {}}
+
     # ────────────────────────── Fundamentals / Screener ──────────────────────
     # Numeric columns that support min/max range filtering and sorting.
     FUND_NUMERIC_COLS = [

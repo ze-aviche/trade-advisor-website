@@ -3805,6 +3805,64 @@
                     </div>
                 </div>
 
+                <!-- Entry Trigger Performance -->
+                <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <button @click="brownEntryStatsOpen = !brownEntryStatsOpen; if (brownEntryStatsOpen) loadBrownEntryStats()"
+                            class="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-700/40 transition-colors">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-chart-pie text-emerald-400"></i>Entry Trigger Performance
+                            <span class="text-xs text-gray-500 font-normal">— win-rate &amp; P&amp;L by criterion (closed trades)</span>
+                        </div>
+                        <i class="fas text-gray-400" :class="brownEntryStatsOpen ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                    </button>
+                    <div v-show="brownEntryStatsOpen" class="px-5 pb-5 border-t border-gray-700/60">
+                        <div class="flex items-center gap-2 mt-3 mb-2">
+                            <select v-model="brownEntryStatsType" @change="loadBrownEntryStats"
+                                    class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                                <option value="">All trades</option>
+                                <option value="day">Day only</option>
+                                <option value="swing">Swing only</option>
+                            </select>
+                            <button @click="loadBrownEntryStats" class="text-xs text-emerald-400 hover:text-emerald-300">
+                                <i class="fas fa-sync-alt mr-1"></i>Refresh
+                            </button>
+                            <span v-if="brownEntryStats.overall && brownEntryStats.overall.trades" class="ml-auto text-xs text-gray-400">
+                                Overall: {{ brownEntryStats.overall.trades }} trades · {{ brownEntryStats.overall.win_rate }}% win ·
+                                <span :class="brownEntryStats.overall.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ brownEntryStats.overall.total_pnl?.toFixed(2) }}</span>
+                            </span>
+                        </div>
+                        <div v-if="!brownEntryStats.rows || !brownEntryStats.rows.length" class="py-6 text-center text-gray-500 text-sm">
+                            No closed trades yet — stats appear here once positions close.
+                        </div>
+                        <table v-else class="w-full text-sm">
+                            <thead class="text-gray-500 text-xs border-b border-gray-700">
+                                <tr>
+                                    <th class="text-left px-2 py-2">Criterion</th>
+                                    <th class="text-right px-2 py-2">Trades</th>
+                                    <th class="text-right px-2 py-2">Win %</th>
+                                    <th class="text-right px-2 py-2">Total P&amp;L</th>
+                                    <th class="text-right px-2 py-2">Avg P&amp;L</th>
+                                    <th class="text-right px-2 py-2">Avg %</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="r in brownEntryStats.rows" :key="r.tag" class="border-b border-gray-700/40 hover:bg-gray-700/20">
+                                    <td class="px-2 py-1.5">
+                                        <span :class="['PMH','DHB','ORB'].includes(r.tag) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                              class="border rounded px-1.5 py-0.5 text-[10px] font-semibold">{{ r.tag }}</span>
+                                    </td>
+                                    <td class="px-2 py-1.5 text-right text-gray-300">{{ r.trades }}</td>
+                                    <td class="px-2 py-1.5 text-right" :class="r.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ r.win_rate }}%</td>
+                                    <td class="px-2 py-1.5 text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toFixed(2) }}</td>
+                                    <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.avg_pnl.toFixed(2) }}</td>
+                                    <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">{{ r.avg_pnl_pct >= 0 ? '+' : '' }}{{ r.avg_pnl_pct.toFixed(2) }}%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="text-[10px] text-gray-600 mt-2">A trade counts toward every criterion it satisfied at entry, so rows overlap. Triggers (PMH/DHB/ORB) are shown in green.</p>
+                    </div>
+                </div>
+
                 <!-- Activity Log -->
                 <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">

@@ -674,6 +674,9 @@ const app = createApp({
                 circuit_breaker_open: false,
                 circuit_breaker_triggered: false,
             },
+            brownEntryStats: { rows: [], overall: {} },
+            brownEntryStatsOpen: false,
+            brownEntryStatsType: '',
             brownBotConfigCollapsed: false,
             brownBotOrdersCollapsed: false,
             brownBotCloseAllConfirm: false,
@@ -7173,6 +7176,18 @@ const app = createApp({
                 }
             } catch (error) {
                 console.error('Error loading BrownBot risk status:', error);
+            }
+        },
+
+        async loadBrownEntryStats() {
+            try {
+                const params = this.brownEntryStatsType ? ('?type=' + this.brownEntryStatsType) : '';
+                const response = await axios.get('/api/brown-bot/entry-stats' + params, { headers: this.authHeaders() });
+                if (response.data.success) {
+                    this.brownEntryStats = { rows: response.data.rows || [], overall: response.data.overall || {} };
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot entry stats:', error);
             }
         },
 
