@@ -533,6 +533,7 @@ const app = createApp({
                 day_max_extension_pct: 0.0,
                 day_check_volume_surge: false,
                 day_check_pmh: false,
+                day_max_below_dayhigh_pct: 0.0,
                 day_ai_playbook: true,
                 day_position_pct: 5.0,
                 swing_position_pct: 3.0,

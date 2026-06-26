@@ -2760,6 +2760,18 @@
                                     <span class="text-xs text-gray-500 shrink-0">%</span>
                                 </div>
                             </div>
+                            <div class="border-t border-gray-700/60 pt-3">
+                                <label class="block text-xs text-gray-400 mb-0.5">
+                                    DH — max % below day high
+                                </label>
+                                <p class="text-[10px] text-gray-600 mb-2">Blocks (re-)entries when price has faded more than this % below the intraday high — avoids chasing a ticker that has lost momentum. Inert at the open (price is at its high). Set to 0 to disable.</p>
+                                <div class="flex items-center gap-2">
+                                    <input v-model.number="brownBotConfig.day_max_below_dayhigh_pct" type="number" step="0.5" min="0" max="50"
+                                           placeholder="0 = off"
+                                           class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors">
+                                    <span class="text-xs text-gray-500 shrink-0">%</span>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Day Scanner Filters -->
@@ -3155,6 +3167,7 @@
                                         <th class="px-4 py-2 text-right">Price</th>
                                         <th class="px-4 py-2 text-right">Vol (M)</th>
                                         <th class="px-4 py-2 text-right">PMH</th>
+                                        <th class="px-4 py-2 text-right">Off High</th>
                                         <th class="px-4 py-2 text-left text-cyan-500">Signal</th>
                                     </tr>
                                 </thead>
@@ -3191,6 +3204,15 @@
                                             </template>
                                             <span v-else class="text-gray-600">—</span>
                                         </td>
+                                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                                            <template v-if="brownBotSignals[s.ticker]?.pct_off_high != null">
+                                                <span :class="brownBotSignals[s.ticker].pct_off_high >= 0 ? 'text-green-400' : 'text-red-400'"
+                                                      :title="brownBotSignals[s.ticker].day_high ? ('Day high $' + brownBotSignals[s.ticker].day_high.toFixed(2)) : ''">
+                                                    {{ brownBotSignals[s.ticker].pct_off_high >= 0 ? '+' : '' }}{{ brownBotSignals[s.ticker].pct_off_high.toFixed(1) }}%
+                                                </span>
+                                            </template>
+                                            <span v-else class="text-gray-600">—</span>
+                                        </td>
                                         <td class="px-4 py-2">
                                             <template v-if="brownBotSignals[s.ticker]?.loading">
                                                 <i class="fas fa-spinner fa-spin text-gray-500 text-xs"></i>
@@ -3202,7 +3224,7 @@
                                                           class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default whitespace-nowrap"
                                                           :title="c.detail || ''">
                                                         {{ c.passed ? '✓' : '✗' }}
-                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMH' : 'VOL' }}
+                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMH' : c.name === 'dayhigh' ? 'DH' : 'VOL' }}
                                                         <span v-if="c.value && c.value !== '—'" class="opacity-75 ml-0.5">{{ c.value }}</span>
                                                     </span>
                                                 </div>

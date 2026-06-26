@@ -3760,7 +3760,7 @@ def _get_premarket_high(symbol):
                     f'https://data.alpaca.markets/v2/stocks/{sym_up}/bars',
                     headers={'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': as_},
                     params={
-                        'timeframe':  '5Min',
+                        'timeframe':  '1Min',   # minute-level (few symbols, once/day)
                         'start':      start_et.isoformat(),
                         'end':        end_et.isoformat(),
                         'limit':      1000,
@@ -3774,16 +3774,21 @@ def _get_premarket_high(symbol):
                 if resp.status_code != 200:
                     break
                 raw = resp.json().get('bars') or []
-                if raw:
-                    hi_bar = max(raw, key=lambda b: float(b['h']))
-                    pmh = round(float(hi_bar['h']), 4)
-                    # Bar 't' is RFC3339 UTC (e.g. 2026-06-26T12:40:00Z) → ET HH:MM.
+                # Exclude the 09:30 opening minute — that bar is the regular
+                # session open, not pre-market. Keep only bars before 09:30 ET.
+                pm_bars = []
+                for b in raw:
                     try:
-                        ts = hi_bar.get('t', '')
-                        dt_utc = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                        pmh_time = dt_utc.astimezone(et).strftime('%H:%M')
+                        t_et = datetime.fromisoformat(b['t'].replace('Z', '+00:00')).astimezone(et)
+                        if t_et.hour == 9 and t_et.minute >= 30:
+                            continue
+                        pm_bars.append((b, t_et))
                     except Exception:
-                        pmh_time = None
+                        pm_bars.append((b, None))
+                if pm_bars:
+                    hi_bar, hi_t = max(pm_bars, key=lambda x: float(x[0]['h']))
+                    pmh = round(float(hi_bar['h']), 4)
+                    pmh_time = hi_t.strftime('%H:%M') if hi_t else None
                     break
             except Exception as e:
                 app_logger.debug(f'Pre-market high {sym_up} ({feed}): {e}')
@@ -3912,6 +3917,18 @@ def _get_intraday_bars(symbol):
     return bars
 
 
+def _get_day_high(symbol):
+    """
+    Intraday session high (after 09:30 ET) from the regular-session 1-min bars.
+    Returns the high float, or None if no intraday bars yet (e.g. right at open).
+    Uses the same cached _get_intraday_bars feed, so it adds no extra API calls.
+    """
+    bars = _get_intraday_bars(symbol)
+    if not bars:
+        return None
+    return round(max(b['h'] for b in bars), 4)
+
+
 def _check_day_entry_signal(symbol, current_price, gap_price, config):
     """
     Intraday trend checks for day trade entries.
@@ -3924,8 +3941,9 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     ext_pct   = float(config.get('day_max_extension_pct', 0.0))
     vol_on    = bool(config.get('day_check_volume_surge', False))
     pmh_on    = bool(config.get('day_check_pmh', False))
+    max_below = float(config.get('day_max_below_dayhigh_pct', 0.0))
 
-    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on):
+    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on or max_below > 0):
         return True, [], 'No trend filters enabled'
 
     bars = _get_intraday_bars(symbol)
@@ -4015,6 +4033,24 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
             value  = f'${pmh:.2f}'
         checks.append({'name': 'pmh', 'label': 'Above pre-market high', 'passed': passed,
                        'detail': detail, 'value': value})
+        if not passed:
+            all_pass = False
+
+    # ── Not too far below the day high (momentum / anti-chase guard) ─────
+    # Blocks re-entries when the price has faded far from its intraday high.
+    # At the open there's little/no pullback, so this is effectively inert then.
+    if max_below > 0:
+        day_high = _get_day_high(symbol)
+        if not day_high or day_high <= 0:
+            # No intraday high yet (right at open) → nothing to fade from; allow.
+            passed, detail, value = True, 'Day high not established yet', '—'
+        else:
+            below = round((day_high - float(current_price)) / day_high * 100, 1)
+            passed = below <= max_below
+            detail = f'{below:.1f}% below day high ${day_high:.2f} (max {max_below:.1f}%)'
+            value  = f'-{below:.1f}%'
+        checks.append({'name': 'dayhigh', 'label': f'Within {max_below:.0f}% of day high',
+                       'passed': passed, 'detail': detail, 'value': value})
         if not passed:
             all_pass = False
 
@@ -7826,14 +7862,19 @@ def get_brown_bot_candidate_signals():
                 quote = get_real_stock_data(sym)
                 price = float(quote['current_price']) if quote else 0.0
             ok, checks, reason = _check_day_entry_signal(sym, price, price, config)
-            # Always surface PMH + the time it was hit, regardless of whether the
-            # PMH entry filter is enabled, so the Candidates table can show it.
+            # Always surface PMH + time-hit and the day-high pullback %, regardless
+            # of whether those entry filters are enabled, so the table can show them.
             pmh, pmh_time = _get_premarket_high(sym)
+            day_high = _get_day_high(sym)
+            pct_off_high = (round((price - day_high) / day_high * 100, 2)
+                            if day_high and price else None)
             results[sym] = {'ok': ok, 'checks': checks, 'reason': reason, 'price': price,
-                            'pmh': pmh, 'pmh_time': pmh_time}
+                            'pmh': pmh, 'pmh_time': pmh_time,
+                            'day_high': day_high, 'pct_off_high': pct_off_high}
         except Exception as e:
             results[sym] = {'ok': None, 'checks': [], 'reason': str(e), 'price': 0,
-                            'pmh': None, 'pmh_time': None}
+                            'pmh': None, 'pmh_time': None,
+                            'day_high': None, 'pct_off_high': None}
     return jsonify({'success': True, 'signals': results})
 
 
