@@ -11928,6 +11928,63 @@ _swing_tech_scan_state = {
 _swing_tech_scan_lock = threading.Lock()
 
 
+def _fetch_daily_bars_for_scan(symbols, days=400):
+    """
+    Paginating daily-bars fetch for the universe-wide technicals scan.
+
+    Unlike _fetch_swing_daily_bars (used by the existing Swing tab, left
+    untouched), this follows Alpaca's `next_page_token` so EVERY symbol in a
+    batch gets its full history — the non-paginated version with limit=1000
+    silently returns only the first ~3-4 symbols per 100-symbol batch, which is
+    why an earlier scan stored only ~4% of the universe.
+
+    Returns {SYMBOL: [bar_dicts ascending]} with keys o,h,l,c,v,t.
+    """
+    if not symbols:
+        return {}
+    import requests as _req
+    import datetime as _dt_mod
+    ak  = os.environ.get('ALPACA_API_KEY', '')
+    aks = os.environ.get('ALPACA_API_SECRET', '')
+    if not (ak and aks):
+        return {}
+
+    headers = {'APCA-API-KEY-ID': ak, 'APCA-API-SECRET-KEY': aks}
+    start   = (_dt_mod.datetime.now(_dt_mod.timezone.utc)
+               - _dt_mod.timedelta(days=days + 5)).strftime('%Y-%m-%d')
+    result  = {}
+
+    for i in range(0, len(symbols), 100):
+        batch = symbols[i:i + 100]
+        page_token = None
+        for _page in range(25):  # safety cap (~250k bars/batch max)
+            params = {
+                'symbols':    ','.join(batch),
+                'timeframe':  '1Day',
+                'start':      start,
+                'limit':      10000,         # max page size
+                'feed':       'sip',
+                'adjustment': 'split',
+                'sort':       'asc',
+            }
+            if page_token:
+                params['page_token'] = page_token
+            try:
+                resp = _req.get('https://data.alpaca.markets/v2/stocks/bars',
+                                headers=headers, params=params, timeout=30).json()
+            except Exception as e:
+                app_logger.warning(f'[SwingTechScan] bars batch {i//100+1} failed: {e}')
+                break
+            for sym, bars in (resp.get('bars') or {}).items():
+                if bars:
+                    result.setdefault(sym.upper(), []).extend(bars)
+            page_token = resp.get('next_page_token')
+            if not page_token:
+                break
+
+    return result
+
+
 def _compute_technicals_from_bars(bars):
     """Compute the stock_technicals row fields from ascending daily bars."""
     closes = [float(b['c']) for b in bars if b.get('c') is not None]
@@ -11992,29 +12049,42 @@ def _run_swing_technicals_scan(limit=None):
 
         stored = 0
         processed = 0
-        # _fetch_swing_daily_bars already batches 100/call internally; chunk the
-        # universe so we can stream progress and upsert as we go.
+        no_bars = 0      # Alpaca returned no bars (illiquid/delisted/no data feed)
+        short_hist = 0   # had bars but < 30 trading days — too little for a trend read
+        # Chunk the universe so we can stream progress and upsert as we go.
+        # _fetch_daily_bars_for_scan paginates per 100-symbol batch internally.
         CHUNK = 500
         for i in range(0, total, CHUNK):
             chunk = symbols[i:i + CHUNK]
             # ~400 calendar days ≈ 275 trading days — enough headroom for SMA200.
-            bars_by_sym = _fetch_swing_daily_bars(chunk, days=400)
-            for sym, bars in bars_by_sym.items():
+            bars_by_sym = _fetch_daily_bars_for_scan(chunk, days=400)
+            for sym in chunk:
+                bars = bars_by_sym.get(sym)
+                if not bars:
+                    no_bars += 1
+                    continue
                 tech = _compute_technicals_from_bars(bars)
-                if tech:
-                    tech['symbol'] = sym
-                    try:
-                        db_manager.upsert_technicals(tech)
-                        stored += 1
-                    except Exception as e:
-                        app_logger.debug(f"[SwingTechScan] upsert {sym}: {e}")
+                if not tech:
+                    short_hist += 1
+                    continue
+                tech['symbol'] = sym
+                try:
+                    db_manager.upsert_technicals(tech)
+                    stored += 1
+                except Exception as e:
+                    app_logger.debug(f"[SwingTechScan] upsert {sym}: {e}")
             processed += len(chunk)
             _swing_tech_scan_state['processed'] = processed
             _swing_tech_scan_state['stored'] = stored
-            app_logger.info(f"[SwingTechScan] {processed}/{total} processed, {stored} stored")
+            app_logger.info(
+                f"[SwingTechScan] {processed}/{total} processed, {stored} stored "
+                f"(no-bars {no_bars}, short-history {short_hist})")
 
-        app_logger.info(f"[SwingTechScan] Done — {stored}/{total} stored")
-        return {'success': True, 'total': total, 'stored': stored}
+        app_logger.info(
+            f"[SwingTechScan] Done — {stored}/{total} stored "
+            f"(skipped: {no_bars} no-bars, {short_hist} short-history)")
+        return {'success': True, 'total': total, 'stored': stored,
+                'no_bars': no_bars, 'short_history': short_hist}
     except Exception as e:
         app_logger.error(f"[SwingTechScan] Scan failed: {e}", exc_info=True)
         _swing_tech_scan_state['error'] = str(e)[:200]
