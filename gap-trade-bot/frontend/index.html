@@ -3701,9 +3701,12 @@
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-right font-mono text-red-400"
-                                        :title="pos.atr_value ? 'ATR-based stop: entry − (' + pos.atr_value.toFixed(3) + ' × multiplier) | ATR=' + pos.atr_value.toFixed(3) : 'Fixed % stop'">
+                                        :title="pos.stop_source === 'trail' ? ('Trailing stop — ' + (pos.stop_loss_pct?.toFixed(1)) + '% below high-water $' + (pos._trail_high?.toFixed(2) ?? '?')) : pos.atr_value ? 'ATR-based stop: entry − (' + pos.atr_value.toFixed(3) + ' × multiplier) | ATR=' + pos.atr_value.toFixed(3) : 'Fixed % stop'">
                                         ${{ pos.stop_loss?.toFixed(2) ?? '—' }}
-                                        <div v-if="pos.atr_value" class="text-[9px] text-gray-500 font-sans font-normal leading-tight mt-0.5">
+                                        <div v-if="pos.stop_source === 'trail'" class="text-[9px] text-emerald-400 font-sans font-semibold leading-tight mt-0.5">
+                                            <i class="fas fa-arrow-trend-up text-[8px]"></i> TRAIL -{{ pos.stop_loss_pct?.toFixed(1) }}%
+                                        </div>
+                                        <div v-else-if="pos.atr_value" class="text-[9px] text-gray-500 font-sans font-normal leading-tight mt-0.5">
                                             ATR ${{ pos.atr_value.toFixed(3) }}
                                         </div>
                                         <div v-else-if="pos.stop_loss_pct" class="text-[9px] text-gray-500 font-sans font-normal leading-tight mt-0.5">

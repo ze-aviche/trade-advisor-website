@@ -6425,6 +6425,7 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
         trail_pct_key = f'{position_type}_trailing_stop_pct'
         if config.get(trail_key) and entry_price:
             trail_pct = float(config.get(trail_pct_key, 5.0))
+            _trail_moved = False
             # Initialise the high-water mark on first tick
             with lock:
                 if position_id in active_positions:
@@ -6436,8 +6437,21 @@ def _brown_bot_check_exits(user_id: int, check_swing_specific=False, verbose=Fal
                     new_stop = round(trail_high * (1 - trail_pct / 100), 4)
                     cur_stop = active_positions[position_id].get('stop_loss') or 0
                     if new_stop > cur_stop:
-                        active_positions[position_id]['stop_loss'] = new_stop
+                        active_positions[position_id]['stop_loss']   = new_stop
+                        active_positions[position_id]['stop_source']  = 'trail'
+                        active_positions[position_id]['stop_loss_pct'] = trail_pct
                         stop_loss = new_stop
+                        _trail_moved = True
+            if _trail_moved:
+                _add_brown_log('info',
+                    f'{symbol}: trailing stop raised to ${new_stop:.2f} '
+                    f'(−{trail_pct:.1f}% from high ${trail_high:.2f})', user_id=user_id)
+                # Persist so the ratcheted stop survives a restart / shows in DB views.
+                try:
+                    db_manager.save_brown_position(
+                        position_id, active_positions.get(position_id, position), user_id=user_id)
+                except Exception:
+                    pass
 
         # ── Exit condition checks ──
         exit_reason = None
@@ -6669,6 +6683,7 @@ def get_brown_bot_status():
                     '_exit_pending':      sym in pending_exit_syms or bb.get('_exit_pending', False),
                     'atr_value':          bb.get('atr_value'),
                     'stop_source':        bb.get('stop_source'),
+                    '_trail_high':        bb.get('_trail_high'),
                     'entry_signals':      bb.get('entry_signals') or [],
                 })
             positions_list.sort(key=lambda p: p.get('symbol', ''))
