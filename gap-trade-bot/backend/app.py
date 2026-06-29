@@ -12519,17 +12519,30 @@ def api_swing_setups_grade():
         return jsonify({'success': False, 'error': 'AI not available'}), 503
     body = request.get_json(silent=True) or {}
     symbols = [s.upper().strip() for s in (body.get('symbols') or [])][:8]
+    force = bool(body.get('refresh'))  # bypass the same-day cache when True
     if not symbols:
         return jsonify({'success': False, 'error': 'No symbols provided'}), 400
+
+    # Today's date (ET) keys the daily analysis cache.
+    import pytz as _pytz_g
+    today_str = datetime.now(_pytz_g.timezone('US/Eastern')).date().isoformat()
 
     # Pull the stored technicals + fundamentals for context.
     rows = {r['symbol']: r for r in db_manager.query_swing_setups(
         trend={}, filters=[], limit=2000, exclude_funds=False)}
 
-    def _fmt_pct(v):
-        return f'{v * 100:.1f}%' if isinstance(v, (int, float)) else 'n/a'
+    # Higher-quality model for the deep write-up (vs the agent's default Haiku).
+    GRADE_MODEL = 'claude-sonnet-4-6'
 
     def _analyze(sym):
+        # Same-day cache: if we already analyzed this symbol today, reuse it
+        # instead of re-running peer/news/Claude.
+        if not force:
+            cached = db_manager.get_swing_ai_analysis(sym, today_str)
+            if cached:
+                cached['cached'] = True
+                return sym, cached
+
         r = rows.get(sym, {})
         peer = db_manager.get_sector_peer_comparison(sym, peer_limit=8)
 
@@ -12583,9 +12596,10 @@ def api_swing_setups_grade():
         )
         out = {'grade': '?', 'bias': 'Unknown', 'summary': 'No response',
                'peer_analysis': '', 'entry': '', 'exit': '', 'risks': ''}
+        _ai_failed = False
         try:
             resp = _ai_agent.client.messages.create(
-                model=_ai_agent.model, max_tokens=900,
+                model=GRADE_MODEL, max_tokens=1200,
                 messages=[{'role': 'user', 'content': prompt}],
             )
             raw = ''.join(blk.text for blk in resp.content
@@ -12596,6 +12610,7 @@ def api_swing_setups_grade():
                 if m:
                     out = {**out, **json.loads(m.group(0))}
         except Exception as e:
+            _ai_failed = True
             out = {**out, 'bias': 'Error', 'summary': str(e)[:200]}
 
         # Attach the computed (non-AI) data for the UI.
@@ -12604,6 +12619,15 @@ def api_swing_setups_grade():
         out['sector'] = peer.get('sector')
         out['sector_count'] = peer.get('sector_count')
         out['news'] = news_items
+        out['analysis_date'] = today_str
+        out['cached'] = False
+
+        # Cache successful analyses for same-day reuse (don't cache AI failures).
+        if not _ai_failed:
+            try:
+                db_manager.save_swing_ai_analysis(sym, today_str, out)
+            except Exception as _se:
+                app_logger.debug(f'[SwingGrade] cache save {sym}: {_se}')
         return sym, out
 
     results = {}

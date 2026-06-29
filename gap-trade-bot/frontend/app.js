@@ -5163,6 +5163,28 @@ const app = createApp({
         openSwingDetail(sym) {
             if (this.swingGrades[sym]) { this.swingDetailSymbol = sym; this.swingDetailOpen = true; }
         },
+        async rerunSwingDetail() {
+            const sym = this.swingDetailSymbol;
+            if (!sym) return;
+            this.swingGrading = true;
+            try {
+                const res = await this.authFetch('/api/swing-setups/grade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbols: [sym], refresh: true }),
+                });
+                const data = await res.json();
+                if (data.success && data.grades[sym]) {
+                    this.swingGrades = Object.assign({}, this.swingGrades, data.grades);
+                } else {
+                    alert(data.error || 'Re-run failed');
+                }
+            } catch (e) {
+                alert('Re-run request failed');
+            } finally {
+                this.swingGrading = false;
+            }
+        },
         swingMetricLabel(m) {
             const map = {
                 pe: 'P/E', forward_pe: 'Forward P/E', ps: 'P/S', pb: 'P/B', ev_ebitda: 'EV/EBITDA',

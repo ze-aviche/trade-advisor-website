@@ -2362,8 +2362,14 @@
                                     {{ swingGrades[swingDetailSymbol].bias }}
                                 </span>
                                 <span v-if="swingGrades[swingDetailSymbol].sector" class="text-xs text-gray-500">{{ swingGrades[swingDetailSymbol].sector }} · {{ swingGrades[swingDetailSymbol].sector_count }} peers</span>
+                                <span v-if="swingGrades[swingDetailSymbol].cached" class="text-[10px] text-gray-500 bg-gray-800 border border-gray-700 rounded-full px-2 py-0.5" title="Served from today's cached analysis">cached</span>
                             </div>
-                            <button @click="swingDetailOpen=false" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                            <div class="flex items-center gap-3">
+                                <button @click="rerunSwingDetail" :disabled="swingGrading" class="text-xs text-purple-400 hover:text-purple-300 disabled:opacity-50" title="Re-run AI analysis now">
+                                    <i class="fas" :class="swingGrading ? 'fa-spinner fa-spin' : 'fa-rotate'"></i> Re-run
+                                </button>
+                                <button @click="swingDetailOpen=false" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                            </div>
                         </div>
                         <div class="px-5 py-4 space-y-4 text-sm">
                             <div>

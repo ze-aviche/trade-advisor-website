@@ -252,6 +252,18 @@ class DatabaseManager:
                 )
             ''')
 
+            # Cached deep AI swing analysis (one row per symbol per day) so the
+            # same-day re-grade is served from cache instead of re-calling Claude.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS swing_ai_analysis (
+                    symbol         TEXT NOT NULL,
+                    analysis_date  TEXT NOT NULL,
+                    analysis_json  TEXT NOT NULL,
+                    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (symbol, analysis_date)
+                )
+            ''')
+
             conn.commit()
             print(f"✅ Database initialized: {self.db_file}")
 
@@ -4297,6 +4309,34 @@ class DatabaseManager:
             'metrics': metric_stats,
             'peers': peers,
         }
+
+    def get_swing_ai_analysis(self, symbol: str, analysis_date: str) -> dict:
+        """Return the cached deep AI analysis for a symbol on a date, or None."""
+        try:
+            with self.get_connection() as conn:
+                row = conn.execute(
+                    'SELECT analysis_json FROM swing_ai_analysis '
+                    'WHERE symbol = ? AND analysis_date = ?',
+                    (symbol.upper(), analysis_date)).fetchone()
+                if row and row['analysis_json']:
+                    return json.loads(row['analysis_json'])
+        except Exception as e:
+            print(f'Database error fetching swing_ai_analysis: {e}')
+        return None
+
+    def save_swing_ai_analysis(self, symbol: str, analysis_date: str, data: dict) -> bool:
+        """Upsert the deep AI analysis for a symbol on a date."""
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    'INSERT OR REPLACE INTO swing_ai_analysis '
+                    '(symbol, analysis_date, analysis_json) VALUES (?, ?, ?)',
+                    (symbol.upper(), analysis_date, json.dumps(data, default=str)))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f'Database error saving swing_ai_analysis: {e}')
+            return False
 
 
 # Global database manager instance
