@@ -94,6 +94,8 @@ const app = createApp({
                 swingGrading: false,
                 swingSelected: [],
                 swingGrades: {},
+                swingDetailOpen: false,
+                swingDetailSymbol: '',
                 swingScanTimer: null,
                 swingSort: { by: 'swing_score', dir: 'desc' },
                 swingTrend: {
@@ -5144,7 +5146,7 @@ const app = createApp({
                 const res = await this.authFetch('/api/swing-setups/grade', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbols: this.swingSelected.slice(0, 15) }),
+                    body: JSON.stringify({ symbols: this.swingSelected.slice(0, 8) }),
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -5157,6 +5159,23 @@ const app = createApp({
             } finally {
                 this.swingGrading = false;
             }
+        },
+        openSwingDetail(sym) {
+            if (this.swingGrades[sym]) { this.swingDetailSymbol = sym; this.swingDetailOpen = true; }
+        },
+        swingMetricLabel(m) {
+            const map = {
+                pe: 'P/E', forward_pe: 'Forward P/E', ps: 'P/S', pb: 'P/B', ev_ebitda: 'EV/EBITDA',
+                peg: 'PEG', roe: 'ROE', roa: 'ROA', net_margin: 'Net Margin', gross_margin: 'Gross Margin',
+                operating_margin: 'Oper Margin', revenue_growth_yoy: 'Rev Gr YoY', eps_growth_yoy: 'EPS Gr YoY',
+                debt_to_equity: 'Debt/Equity', fcf_yield: 'FCF Yield', dividend_yield: 'Div Yield',
+            };
+            return map[m] || m;
+        },
+        fmtSwingMetric(m, v) {
+            if (v == null) return '—';
+            const pctCols = ['roe','roa','net_margin','gross_margin','operating_margin','revenue_growth_yoy','eps_growth_yoy','fcf_yield','dividend_yield'];
+            return pctCols.includes(m) ? (Number(v) * 100).toFixed(1) + '%' : Number(v).toFixed(2);
         },
         async scanSwingData() {
             try {

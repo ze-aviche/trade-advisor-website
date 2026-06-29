@@ -4237,6 +4237,67 @@ class DatabaseManager:
             return {'tech_total': tech_total, 'tech_last_updated': tech_last,
                     'fund_total': fund_total, 'sectors': sectors}
 
+    def get_sector_peer_comparison(self, symbol: str, peer_limit: int = 8) -> dict:
+        """
+        Compare a stock's fundamentals against its sector. Returns the stock's
+        value, the sector median, and a percentile rank for each key metric,
+        plus the largest peers in the sector (for context / a comparison table).
+        Pure DB computation — no AI.
+        """
+        symbol = symbol.upper()
+        metrics = ['pe', 'forward_pe', 'ps', 'pb', 'ev_ebitda', 'peg',
+                   'roe', 'roa', 'net_margin', 'gross_margin', 'operating_margin',
+                   'revenue_growth_yoy', 'eps_growth_yoy', 'debt_to_equity',
+                   'fcf_yield', 'dividend_yield']
+        with self.get_connection() as conn:
+            row = conn.execute('SELECT * FROM fundamentals WHERE symbol = ?', (symbol,)).fetchone()
+            if not row:
+                return {'symbol': symbol, 'sector': None, 'metrics': {}, 'peers': []}
+            row = dict(row)
+            sector = row.get('sector')
+            if not sector:
+                return {'symbol': symbol, 'sector': None, 'metrics': {}, 'peers': []}
+
+            cols = 'symbol, company_name, market_cap, ' + ', '.join(metrics)
+            sector_rows = [dict(r) for r in conn.execute(
+                f"SELECT {cols} FROM fundamentals "
+                f"WHERE sector = ? AND (is_etf = 0 OR is_etf IS NULL) "
+                f"AND (is_fund = 0 OR is_fund IS NULL)", (sector,)).fetchall()]
+
+        def _median(vals):
+            vals = sorted(v for v in vals if v is not None)
+            n = len(vals)
+            if n == 0:
+                return None
+            mid = n // 2
+            return vals[mid] if n % 2 else round((vals[mid - 1] + vals[mid]) / 2, 4)
+
+        metric_stats = {}
+        for m in metrics:
+            series = [r.get(m) for r in sector_rows if r.get(m) is not None]
+            val = row.get(m)
+            med = _median(series)
+            pct = None
+            if val is not None and series:
+                below = sum(1 for v in series if v <= val)
+                pct = round(below / len(series) * 100)
+            metric_stats[m] = {'value': val, 'sector_median': med,
+                               'percentile': pct, 'n': len(series)}
+
+        # Largest peers in the sector (exclude the stock itself).
+        peers = sorted([r for r in sector_rows if r['symbol'] != symbol],
+                       key=lambda r: r.get('market_cap') or 0, reverse=True)[:peer_limit]
+
+        return {
+            'symbol': symbol,
+            'company_name': row.get('company_name'),
+            'sector': sector,
+            'industry': row.get('industry'),
+            'sector_count': len(sector_rows),
+            'metrics': metric_stats,
+            'peers': peers,
+        }
+
 
 # Global database manager instance
 db_manager = DatabaseManager()

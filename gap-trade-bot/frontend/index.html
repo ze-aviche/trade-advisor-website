@@ -2328,13 +2328,15 @@
                                             (c.color && row[c.key]!=null) ? (row[c.key] >= 0 ? 'text-green-400' : 'text-red-400') : ''
                                         ]">{{ fmtCell(row[c.key], c) }}</td>
                                     <td class="px-3 py-1.5 text-left">
-                                        <span v-if="swingGrades[row.symbol]" class="inline-flex items-center gap-1">
+                                        <button v-if="swingGrades[row.symbol]" @click="openSwingDetail(row.symbol)"
+                                                class="inline-flex items-center gap-1 hover:opacity-80" title="View full AI analysis">
                                             <span class="px-1.5 py-0.5 rounded text-[11px] font-bold"
                                                 :class="{'bg-green-700 text-green-100': swingGrades[row.symbol].grade==='A','bg-blue-700 text-blue-100': swingGrades[row.symbol].grade==='B','bg-gray-600 text-gray-200': !['A','B'].includes(swingGrades[row.symbol].grade)}">
                                                 {{ swingGrades[row.symbol].grade }}
                                             </span>
-                                            <span class="text-[11px] text-gray-400" :title="swingGrades[row.symbol].summary">{{ swingGrades[row.symbol].bias }}</span>
-                                        </span>
+                                            <span class="text-[11px] text-gray-400">{{ swingGrades[row.symbol].bias }}</span>
+                                            <i class="fas fa-up-right-from-square text-[8px] text-gray-500"></i>
+                                        </button>
                                     </td>
                                 </tr>
                                 <tr v-if="!swingRows.length && !swingLoading">
@@ -2342,6 +2344,89 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- Swing AI analysis detail modal -->
+                <div v-if="swingDetailOpen && swingGrades[swingDetailSymbol]" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" @click.self="swingDetailOpen=false">
+                    <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+                        <div class="sticky top-0 bg-gray-900 border-b border-gray-700 px-5 py-4 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-lg font-bold text-white">{{ swingDetailSymbol }}</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-bold"
+                                      :class="{'bg-green-700 text-green-100': swingGrades[swingDetailSymbol].grade==='A','bg-blue-700 text-blue-100': swingGrades[swingDetailSymbol].grade==='B','bg-gray-600 text-gray-200': !['A','B'].includes(swingGrades[swingDetailSymbol].grade)}">
+                                    Grade {{ swingGrades[swingDetailSymbol].grade }}
+                                </span>
+                                <span class="text-xs px-2 py-0.5 rounded-full border"
+                                      :class="swingGrades[swingDetailSymbol].bias==='Bullish' ? 'border-green-600 text-green-300' : swingGrades[swingDetailSymbol].bias==='Bearish' ? 'border-red-600 text-red-300' : 'border-gray-600 text-gray-300'">
+                                    {{ swingGrades[swingDetailSymbol].bias }}
+                                </span>
+                                <span v-if="swingGrades[swingDetailSymbol].sector" class="text-xs text-gray-500">{{ swingGrades[swingDetailSymbol].sector }} · {{ swingGrades[swingDetailSymbol].sector_count }} peers</span>
+                            </div>
+                            <button @click="swingDetailOpen=false" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="px-5 py-4 space-y-4 text-sm">
+                            <div>
+                                <h4 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Summary</h4>
+                                <p class="text-gray-200 leading-relaxed">{{ swingGrades[swingDetailSymbol].summary }}</p>
+                            </div>
+                            <div class="grid sm:grid-cols-2 gap-3">
+                                <div class="bg-emerald-950/20 border border-emerald-800/40 rounded-lg p-3">
+                                    <h4 class="text-xs uppercase tracking-wide text-emerald-400 mb-1"><i class="fas fa-right-to-bracket mr-1"></i>Entry</h4>
+                                    <p class="text-gray-300 leading-relaxed">{{ swingGrades[swingDetailSymbol].entry || '—' }}</p>
+                                </div>
+                                <div class="bg-amber-950/20 border border-amber-800/40 rounded-lg p-3">
+                                    <h4 class="text-xs uppercase tracking-wide text-amber-400 mb-1"><i class="fas fa-right-from-bracket mr-1"></i>Exit</h4>
+                                    <p class="text-gray-300 leading-relaxed">{{ swingGrades[swingDetailSymbol].exit || '—' }}</p>
+                                </div>
+                            </div>
+                            <div v-if="swingGrades[swingDetailSymbol].peer_analysis">
+                                <h4 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Fundamentals vs Sector Peers</h4>
+                                <p class="text-gray-300 leading-relaxed">{{ swingGrades[swingDetailSymbol].peer_analysis }}</p>
+                            </div>
+                            <!-- Peer comparison table -->
+                            <div v-if="swingGrades[swingDetailSymbol].metrics">
+                                <h4 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Metric vs Sector Median</h4>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead class="text-gray-500"><tr><th class="text-left py-1">Metric</th><th class="text-right">This stock</th><th class="text-right">Sector median</th><th class="text-right">Percentile</th></tr></thead>
+                                        <tbody>
+                                            <tr v-for="(st, m) in swingGrades[swingDetailSymbol].metrics" :key="m" class="border-t border-gray-800">
+                                                <td class="py-1 text-gray-400">{{ swingMetricLabel(m) }}</td>
+                                                <td class="text-right text-gray-200 font-mono">{{ fmtSwingMetric(m, st.value) }}</td>
+                                                <td class="text-right text-gray-400 font-mono">{{ fmtSwingMetric(m, st.sector_median) }}</td>
+                                                <td class="text-right font-mono" :class="st.percentile==null ? 'text-gray-600' : 'text-gray-300'">{{ st.percentile==null ? '—' : st.percentile + '%' }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <!-- Top peers -->
+                            <div v-if="swingGrades[swingDetailSymbol].peers && swingGrades[swingDetailSymbol].peers.length">
+                                <h4 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Largest Sector Peers</h4>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <span v-for="p in swingGrades[swingDetailSymbol].peers" :key="p.symbol"
+                                          class="bg-gray-800 border border-gray-700 rounded px-2 py-0.5 text-[11px] text-gray-300"
+                                          :title="'P/E ' + (p.pe?.toFixed(1) ?? 'n/a') + ' · ROE ' + (p.roe!=null ? (p.roe*100).toFixed(0)+'%' : 'n/a')">
+                                        {{ p.symbol }} <span class="text-gray-500">{{ fmtMarketCap(p.market_cap) }}</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <div v-if="swingGrades[swingDetailSymbol].risks">
+                                <h4 class="text-xs uppercase tracking-wide text-red-400 mb-1"><i class="fas fa-triangle-exclamation mr-1"></i>Risks</h4>
+                                <p class="text-gray-300 leading-relaxed">{{ swingGrades[swingDetailSymbol].risks }}</p>
+                            </div>
+                            <!-- News -->
+                            <div v-if="swingGrades[swingDetailSymbol].news && swingGrades[swingDetailSymbol].news.length">
+                                <h4 class="text-xs uppercase tracking-wide text-gray-500 mb-1"><i class="fas fa-newspaper mr-1"></i>Recent News</h4>
+                                <ul class="space-y-1">
+                                    <li v-for="(n, i) in swingGrades[swingDetailSymbol].news" :key="i" class="text-xs">
+                                        <a v-if="n.url" :href="n.url" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300">{{ n.title }} <i class="fas fa-external-link-alt text-[8px]"></i></a>
+                                        <span v-else class="text-gray-400">{{ n.title }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -12509,58 +12509,113 @@ def api_swing_setups_scan():
 @require_tier('advanced')
 def api_swing_setups_grade():
     """
-    Claude-grade a shortlist of swing setups. Body: { symbols: [...] } (max 15).
-    Returns per-symbol { grade, bias, summary }. Reuses the AI agent.
+    Deep AI analysis of swing setups: grades each stock, compares its
+    fundamentals to sector peers, pulls recent news, and gives entry/exit plans.
+    Body: { symbols: [...] } (max 8 — each does peer + news + an AI call).
+    Returns per-symbol { grade, bias, summary, peer_analysis, entry, exit,
+    risks, peers, metrics, news }.
     """
     if not AI_AGENT_AVAILABLE:
         return jsonify({'success': False, 'error': 'AI not available'}), 503
     body = request.get_json(silent=True) or {}
-    symbols = [s.upper().strip() for s in (body.get('symbols') or [])][:15]
+    symbols = [s.upper().strip() for s in (body.get('symbols') or [])][:8]
     if not symbols:
         return jsonify({'success': False, 'error': 'No symbols provided'}), 400
 
     # Pull the stored technicals + fundamentals for context.
     rows = {r['symbol']: r for r in db_manager.query_swing_setups(
-        trend={}, filters=[], limit=1000, exclude_funds=False)}
+        trend={}, filters=[], limit=2000, exclude_funds=False)}
 
-    results = {}
-    for sym in symbols:
+    def _fmt_pct(v):
+        return f'{v * 100:.1f}%' if isinstance(v, (int, float)) else 'n/a'
+
+    def _analyze(sym):
         r = rows.get(sym, {})
+        peer = db_manager.get_sector_peer_comparison(sym, peer_limit=8)
+
+        # Recent news (web search) — best-effort, short headlines for the prompt.
+        news_items = []
+        try:
+            nd = _ai_agent._get_stock_news(sym, days=10)
+            for n in (nd.get('news') or [])[:6]:
+                news_items.append({'title': n.get('title') or n.get('text') or '',
+                                   'url': n.get('url') or n.get('link') or ''})
+        except Exception as _ne:
+            app_logger.debug(f'[SwingGrade] news {sym}: {_ne}')
+
+        # Compact peer-median block for the prompt.
+        peer_lines = []
+        for m, st in (peer.get('metrics') or {}).items():
+            if st.get('value') is not None and st.get('sector_median') is not None:
+                peer_lines.append(f"{m}: {st['value']:.2f} vs sector median {st['sector_median']:.2f} "
+                                  f"(pctile {st.get('percentile')})")
+
         context = {
-            'symbol': sym, 'price': r.get('t_price'), 'sma20': r.get('sma20'),
-            'sma50': r.get('sma50'), 'sma100': r.get('sma100'), 'sma200': r.get('sma200'),
+            'symbol': sym, 'company': peer.get('company_name'),
+            'sector': peer.get('sector'), 'industry': peer.get('industry'),
+            'price': r.get('t_price'), 'sma20': r.get('sma20'), 'sma50': r.get('sma50'),
+            'sma100': r.get('sma100'), 'sma200': r.get('sma200'),
             'rsi14': r.get('rsi14'), 'pct_from_52w_high': r.get('pct_from_high'),
-            'pe': r.get('pe'), 'forward_pe': r.get('forward_pe'),
+            'pct_above_sma50': r.get('pct_above_sma50'),
+            'pe': r.get('pe'), 'forward_pe': r.get('forward_pe'), 'peg': r.get('peg'),
+            'ps': r.get('ps'), 'pb': r.get('pb'),
             'eps_growth_yoy': r.get('eps_growth_yoy'),
             'revenue_growth_yoy': r.get('revenue_growth_yoy'),
             'roe': r.get('roe'), 'net_margin': r.get('net_margin'),
-            'debt_to_equity': r.get('debt_to_equity'), 'sector': r.get('sector'),
+            'debt_to_equity': r.get('debt_to_equity'),
         }
         prompt = (
-            "You are a swing-trading analyst. Given this stock's technical trend and "
-            "fundamentals, grade it as an A/B/C swing-trade setup for a multi-day to "
-            "multi-week hold, and give a bias (Bullish/Neutral/Bearish) and one-sentence "
-            "rationale. Respond as compact JSON: {\"grade\":\"A|B|C\",\"bias\":\"...\","
-            "\"summary\":\"...\"}.\n\nData:\n" + json.dumps(context, default=str)
+            "You are an expert swing-trading analyst. Analyze this stock as a swing-trade "
+            "candidate for a multi-day to multi-week hold. Use the technicals, the "
+            "fundamentals-vs-sector-peers, and the recent news provided.\n\n"
+            "Return ONLY compact JSON with these keys:\n"
+            '{"grade":"A|B|C","bias":"Bullish|Neutral|Bearish",'
+            '"summary":"2-3 sentence overall take",'
+            '"peer_analysis":"how its valuation & fundamentals compare to sector peers (cite P/E, growth, margins, ROE)",'
+            '"entry":"specific entry plan — good entry zone/price and the trigger",'
+            '"exit":"profit target(s) and stop-loss level with rough % ",'
+            '"risks":"key risks including any from the news/earnings"}\n\n'
+            f"TECHNICALS & FUNDAMENTALS:\n{json.dumps(context, default=str)}\n\n"
+            f"FUNDAMENTALS VS SECTOR PEERS ({peer.get('sector')}, n={peer.get('sector_count')}):\n"
+            + ('\n'.join(peer_lines) if peer_lines else 'n/a') + "\n\n"
+            "RECENT NEWS HEADLINES:\n"
+            + ('\n'.join(f"- {n['title']}" for n in news_items if n['title']) or 'none found')
         )
+        out = {'grade': '?', 'bias': 'Unknown', 'summary': 'No response',
+               'peer_analysis': '', 'entry': '', 'exit': '', 'risks': ''}
         try:
             resp = _ai_agent.client.messages.create(
-                model=_ai_agent.model,
-                max_tokens=300,
+                model=_ai_agent.model, max_tokens=900,
                 messages=[{'role': 'user', 'content': prompt}],
             )
-            raw = ''.join(
-                blk.text for blk in resp.content if getattr(blk, 'type', '') == 'text'
-            ).strip()
-            parsed = None
+            raw = ''.join(blk.text for blk in resp.content
+                          if getattr(blk, 'type', '') == 'text').strip()
             if raw:
                 import re as _re
                 m = _re.search(r'\{.*\}', raw, _re.DOTALL)
                 if m:
-                    parsed = json.loads(m.group(0))
-            results[sym] = parsed or {'grade': '?', 'bias': 'Unknown', 'summary': (raw or 'No response')[:200]}
+                    out = {**out, **json.loads(m.group(0))}
         except Exception as e:
-            results[sym] = {'grade': '?', 'bias': 'Error', 'summary': str(e)[:160]}
+            out = {**out, 'bias': 'Error', 'summary': str(e)[:200]}
+
+        # Attach the computed (non-AI) data for the UI.
+        out['peers'] = peer.get('peers') or []
+        out['metrics'] = peer.get('metrics') or {}
+        out['sector'] = peer.get('sector')
+        out['sector_count'] = peer.get('sector_count')
+        out['news'] = news_items
+        return sym, out
+
+    results = {}
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_analyze, s) for s in symbols]
+        for fut in as_completed(futures):
+            try:
+                sym, out = fut.result()
+                results[sym] = out
+            except Exception as e:
+                app_logger.warning(f'[SwingGrade] analyze error: {e}')
 
     return jsonify({'success': True, 'grades': results})
 
