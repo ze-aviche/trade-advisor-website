@@ -3533,6 +3533,7 @@
                                         <th class="px-4 py-2 text-right font-semibold">Realized</th>
                                         <th class="px-4 py-2 text-right font-semibold">Unrealized</th>
                                         <th class="px-4 py-2 text-right font-semibold">Total</th>
+                                        <th class="px-4 py-2 text-left font-semibold">Entry</th>
                                         <th class="px-4 py-2 text-right text-gray-600 hidden sm:table-cell">Trades · Shares</th>
                                     </tr>
                                 </thead>
@@ -3551,6 +3552,15 @@
                                         <td class="px-4 py-2 text-right font-bold"
                                             :class="(t.realized + t.unrealized) >= 0 ? 'text-green-300' : 'text-red-300'">
                                             {{ (t.realized + t.unrealized) >= 0 ? '+' : '' }}${{ (t.realized + t.unrealized).toFixed(2) }}
+                                        </td>
+                                        <td class="px-4 py-2 font-sans">
+                                            <div v-if="t.entry_signals && t.entry_signals.length" class="flex flex-wrap gap-1">
+                                                <span v-for="sig in t.entry_signals" :key="sig"
+                                                      :class="['PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                                      class="border rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide"
+                                                      title="Entry criteria satisfied">{{ sig }}</span>
+                                            </div>
+                                            <span v-else class="text-gray-600">—</span>
                                         </td>
                                         <td class="px-4 py-2 text-right text-gray-600 hidden sm:table-cell">
                                             {{ t.trades > 0 ? t.trades + 't · ' + t.shares + 'sh' : '—' }}
@@ -3572,6 +3582,7 @@
                                             :class="bbTotalPnl >= 0 ? 'text-green-300' : 'text-red-300'">
                                             {{ bbTotalPnl >= 0 ? '+' : '' }}${{ bbTotalPnl.toFixed(2) }}
                                         </td>
+                                        <td></td>
                                         <td class="hidden sm:table-cell"></td>
                                     </tr>
                                 </tfoot>

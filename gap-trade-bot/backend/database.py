@@ -3885,14 +3885,27 @@ class DatabaseManager:
                                ROUND(SUM(CASE WHEN status IS NULL OR status = 'open'
                                               THEN unrealized_pnl ELSE 0 END), 2)               AS unrealized_pnl,
                                COUNT(*)                                                          AS trades,
-                               COALESCE(SUM(quantity), 0)                                        AS shares
+                               COALESCE(SUM(quantity), 0)                                        AS shares,
+                               GROUP_CONCAT(entry_signals, ',')                                  AS entry_signals_raw
                         FROM brown_positions
                         {where}
                         GROUP BY symbol
                         ORDER BY SUM(realized_pnl) DESC''',
                     params
                 ).fetchall()
-                return [dict(r) for r in rows]
+                out = []
+                for r in rows:
+                    d = dict(r)
+                    raw = d.pop('entry_signals_raw', None) or ''
+                    # Dedupe the criteria across this ticker's positions, preserving order.
+                    seen, tags = set(), []
+                    for t in raw.split(','):
+                        t = t.strip()
+                        if t and t not in seen:
+                            seen.add(t); tags.append(t)
+                    d['entry_signals'] = tags
+                    out.append(d)
+                return out
         except Exception as e:
             print(f'Database error fetching brown_positions_pnl_by_ticker: {e}')
             return []
