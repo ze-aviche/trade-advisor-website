@@ -2842,7 +2842,7 @@
                                 <label class="flex items-start gap-2.5 cursor-pointer select-none">
                                     <input v-model="brownBotConfig.day_check_pmh" type="checkbox" class="rounded border-gray-600 accent-emerald-400 mt-0.5 shrink-0">
                                     <div>
-                                        <span class="text-xs text-gray-300">PMH — confirmed breakout above pre-market high</span>
+                                        <span class="text-xs text-gray-300">PMHB — confirmed pre-market-high breakout</span>
                                         <p class="text-[10px] text-gray-600 mt-0.5">Enters only on a <em>confirmed</em> break of today's pre-market high (04:00–09:29 ET): a completed 1-min candle must close above PMH (plus buffer), on real volume, without a large upper wick — and price must still hold above PMH. Avoids buying the first tick over, where shorts fade the level.</p>
                                     </div>
                                 </label>
@@ -3405,7 +3405,7 @@
                                                           class="border rounded px-1.5 py-0.5 text-xs font-mono cursor-default whitespace-nowrap"
                                                           :title="c.detail || ''">
                                                         {{ c.passed ? '✓' : '✗' }}
-                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMH' : c.name === 'dh_break' ? 'DHB' : c.name === 'orb' ? 'ORB' : c.name === 'dayhigh' ? 'DH' : 'VOL' }}
+                                                        {{ c.name === 'vwap' ? 'VWAP' : c.name === 'candle' ? 'CANDLE' : c.name === 'extension' ? 'EXT' : c.name === 'pmh' ? 'PMHB' : c.name === 'dh_break' ? 'DHB' : c.name === 'orb' ? 'ORB' : c.name === 'dayhigh' ? 'DH' : 'VOL' }}
                                                         <span v-if="c.value && c.value !== '—'" class="opacity-75 ml-0.5">{{ c.value }}</span>
                                                     </span>
                                                 </div>
@@ -3647,7 +3647,7 @@
                                         <td class="px-4 py-2 font-sans">
                                             <div v-if="t.entry_signals && t.entry_signals.length" class="flex flex-wrap gap-1">
                                                 <span v-for="sig in t.entry_signals" :key="sig"
-                                                      :class="['PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                                      :class="['PMHB','PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
                                                       class="border rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide"
                                                       title="Entry criteria satisfied">{{ sig }}</span>
                                             </div>
@@ -3765,7 +3765,7 @@
                                         {{ pos.symbol }}
                                         <div v-if="pos.entry_signals && pos.entry_signals.length" class="flex flex-wrap gap-1 mt-1">
                                             <span v-for="sig in pos.entry_signals" :key="sig"
-                                                  :class="['PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                                  :class="['PMHB','PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
                                                   class="border rounded px-1.5 py-0.5 text-[9px] font-sans font-semibold tracking-wide"
                                                   title="Entry criterion satisfied at entry">{{ sig }}</span>
                                         </div>
@@ -3953,7 +3953,7 @@
                             <tbody>
                                 <tr v-for="r in brownEntryStats.rows" :key="r.tag" class="border-b border-gray-700/40 hover:bg-gray-700/20">
                                     <td class="px-2 py-1.5">
-                                        <span :class="['PMH','DHB','ORB'].includes(r.tag) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                        <span :class="['PMHB','PMH','DHB','ORB'].includes(r.tag) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
                                               class="border rounded px-1.5 py-0.5 text-[10px] font-semibold">{{ r.tag }}</span>
                                     </td>
                                     <td class="px-2 py-1.5 text-right text-gray-300">{{ r.trades }}</td>
@@ -4754,7 +4754,7 @@
                             <tbody>
                                 <tr v-for="r in brownEntryStats.rows" :key="r.tag" class="border-b border-gray-700/40 hover:bg-gray-700/20">
                                     <td class="px-2 py-1.5">
-                                        <span :class="['PMH','DHB','ORB'].includes(r.tag) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                        <span :class="['PMHB','PMH','DHB','ORB'].includes(r.tag) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
                                               class="border rounded px-1.5 py-0.5 text-[10px] font-semibold">{{ r.tag }}</span>
                                     </td>
                                     <td class="px-2 py-1.5 text-right text-gray-300">{{ r.trades }}</td>

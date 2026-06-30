@@ -4042,16 +4042,19 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
         if not passed:
             all_pass = False
 
-    # ── Extension from gap price ─────────────────────────────────────────
+    # ── Extension from the session OPEN (09:30 ET) ───────────────────────
+    # How far price has run since the open: (current − open) / open × 100.
+    # e.g. open $1.00, now $2.00 → +100%. Rejects entries that have run too far.
     if ext_pct > 0:
-        if not gap_price:
-            passed, detail, value = True, 'No gap price reference', '—'
+        open_price = bars[0]['o'] if bars else None
+        if not open_price:
+            passed, detail, value = True, 'Session open not available yet', '—'
         else:
-            ext    = round((float(current_price) - float(gap_price)) / float(gap_price) * 100, 1)
+            ext    = round((float(current_price) - float(open_price)) / float(open_price) * 100, 1)
             passed = ext <= ext_pct
-            detail = f'+{ext:.1f}% from gap (max +{ext_pct:.1f}%)'
+            detail = f'+{ext:.1f}% from open ${open_price:.2f} (max +{ext_pct:.0f}%)'
             value  = f'+{ext:.1f}%'
-        checks.append({'name': 'extension', 'label': f'Not over-extended (≤{ext_pct:.0f}%)',
+        checks.append({'name': 'extension', 'label': f'Not over-extended (≤{ext_pct:.0f}% from open)',
                        'passed': passed, 'detail': detail, 'value': value})
         if not passed:
             all_pass = False
@@ -4094,7 +4097,7 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
                                              _buf, _vol_mult, _max_wick, _accept_n)
             detail = f'PMH ${pmh:.2f}: ' + ', '.join(bits)
             value  = f'${pmh:.2f}'
-        checks.append({'name': 'pmh', 'label': 'PMH breakout confirmed', 'passed': passed,
+        checks.append({'name': 'pmh', 'label': 'PMHB — pre-market-high breakout confirmed', 'passed': passed,
                        'detail': detail, 'value': value})
         trigger_flags.append(passed)
 
@@ -4342,7 +4345,7 @@ def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict,
 
 
 _ENTRY_SIGNAL_TAGS = {
-    'pmh': 'PMH', 'dh_break': 'DHB', 'orb': 'ORB',
+    'pmh': 'PMHB', 'dh_break': 'DHB', 'orb': 'ORB',
     'vwap': 'VWAP', 'candle': 'CANDLE', 'vol_surge': 'VOL',
     'extension': 'EXT', 'dayhigh': 'DH',
 }
@@ -4700,9 +4703,11 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     times_str = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-entry ×{entry_num - 1})'
     position['entry_num'] = entry_num
 
+    _signals_str = ', '.join(entry_signals) if entry_signals else 'none'
     _add_brown_log(
         'info',
         f"ENTERED {position_type.upper()} {symbol} {times_str} ~${price:.2f} | "
+        f"signals: {_signals_str} | "
         f"target ${profit_target} (+{tgt_pct}%, {tgt_src}) | stop ${stop_loss} (-{stp_pct}%, {stp_src})"
         + (f' | playbook bias={playbook_bias}' if playbook_bias else ''),
         user_id)
