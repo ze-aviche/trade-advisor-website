@@ -3765,9 +3765,10 @@
                                         {{ pos.symbol }}
                                         <div v-if="pos.entry_signals && pos.entry_signals.length" class="flex flex-wrap gap-1 mt-1">
                                             <span v-for="sig in pos.entry_signals" :key="sig"
-                                                  :class="['PMHB','PMH','DHB','ORB'].includes(sig) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
+                                                  :class="sig === pos.primary_trigger ? 'bg-emerald-600 text-white border-emerald-400 ring-1 ring-emerald-400/60' : (['PMHB','PMH','DHB','ORB'].includes(sig) ? 'bg-gray-700/40 text-gray-400 border-gray-600/50' : 'bg-gray-700/40 text-gray-400 border-gray-600/50')"
                                                   class="border rounded px-1.5 py-0.5 text-[9px] font-sans font-semibold tracking-wide"
-                                                  title="Entry criterion satisfied at entry">{{ sig }}</span>
+                                                  :title="sig === pos.primary_trigger ? 'Primary entry trigger (first to fire)' : 'Supporting condition satisfied at entry'">
+                                                <i v-if="sig === pos.primary_trigger" class="fas fa-bolt text-[7px]"></i> {{ sig }}</span>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3">

@@ -466,7 +466,7 @@ class BrownSession:
         'scanner_thread', 'exit_thread', 'order_monitor_thread',
         'swing_candidates_cache', 'swing_ai_picks_cache',
         'playbook_cache', 'playbook_pending', 'playbook_failed',
-        'circuit_breaker_triggered',
+        'circuit_breaker_triggered', 'first_trigger_fire',
     ]
 
     def __init__(self, user_id: int):
@@ -495,6 +495,10 @@ class BrownSession:
         self.playbook_pending: set  = set()
         self.playbook_failed:  set  = set()
         self.circuit_breaker_triggered: bool = False
+        # symbol -> {'trigger': 'PMHB'|'ORB'|'DHB', 'time': 'HH:MM', 'price': float}
+        # The FIRST breakout trigger that confirmed for a symbol this session —
+        # the primary reason for entry even if a gate delayed the actual fill.
+        self.first_trigger_fire: dict = {}
 
 
 _brown_sessions: dict = {}           # user_id (int) -> BrownSession
@@ -4361,7 +4365,7 @@ def _entry_signal_tags(checks):
 
 
 def _brown_enter_position(user_id: int, symbol, position_type, config, approx_price,
-                          playbook_override=None, entry_signals=None):
+                          playbook_override=None, entry_signals=None, primary_trigger=None):
     """Place a BUY order for BrownBot and record the position in memory."""
     sess = _get_brown_session(user_id)
     if not sess:
@@ -4605,6 +4609,7 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         'atr_value':           _atr_value,
         'stop_source':         stp_src,
         'entry_signals':       entry_signals or [],
+        'primary_trigger':     primary_trigger,
     }
     with lock:
         active_positions[position_id] = position
@@ -4703,11 +4708,14 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     times_str = f'#{entry_num}' if entry_num == 1 else f'#{entry_num} (re-entry ×{entry_num - 1})'
     position['entry_num'] = entry_num
 
-    _signals_str = ', '.join(entry_signals) if entry_signals else 'none'
+    # Primary = the breakout trigger that caused entry; conditions = supporting gates.
+    _conditions = [t for t in (entry_signals or []) if t != primary_trigger]
+    _trigger_str = primary_trigger or 'none'
+    _cond_str = ', '.join(_conditions) if _conditions else 'none'
     _add_brown_log(
         'info',
         f"ENTERED {position_type.upper()} {symbol} {times_str} ~${price:.2f} | "
-        f"signals: {_signals_str} | "
+        f"trigger: {_trigger_str} | conditions: {_cond_str} | "
         f"target ${profit_target} (+{tgt_pct}%, {tgt_src}) | stop ${stop_loss} (-{stp_pct}%, {stp_src})"
         + (f' | playbook bias={playbook_bias}' if playbook_bias else ''),
         user_id)
@@ -5318,14 +5326,36 @@ def _brown_bot_scan_and_enter(user_id: int):
         live_price = _brown_get_current_price(user_id, symbol) or s.get('price', 0)
         sig_ok, sig_checks, sig_reason = _check_day_entry_signal(
             symbol, live_price, s.get('price', 0), config)
+
+        # Record the FIRST breakout trigger to confirm for this symbol — that's
+        # the *primary* reason for the eventual entry, even if a gate (VWAP, AI
+        # playbook, risk, buying power) delays the actual fill to a later scan.
+        # Priority when several fire in the same scan: PMHB > ORB > DHB.
+        _passed_trigs = [c for c in sig_checks
+                         if c.get('name') in ('pmh', 'dh_break', 'orb') and c.get('passed')]
+        if _passed_trigs and symbol not in sess.first_trigger_fire:
+            _prio = {'pmh': 0, 'orb': 1, 'dh_break': 2}
+            _first = sorted(_passed_trigs, key=lambda c: _prio.get(c['name'], 9))[0]
+            _ptag = _ENTRY_SIGNAL_TAGS.get(_first['name'], str(_first['name']).upper())
+            sess.first_trigger_fire[symbol] = {
+                'trigger': _ptag, 'time': now_et.strftime('%H:%M'), 'price': live_price}
+            _add_brown_log('info',
+                f'{symbol}: {_ptag} breakout fired at {now_et.strftime("%H:%M")} ET '
+                f'(${live_price:.2f})' + ('' if sig_ok else f' — entry gated: {sig_reason}'),
+                user_id)
+
         if not sig_ok:
             _add_brown_log('info', f'SKIP {symbol} [TREND] {sig_reason}', user_id)
             continue
         if sig_checks:
             _add_brown_log('info', f'Signal OK {symbol}: {sig_reason}', user_id)
         # Capture which entry criteria were satisfied — stored on the (confirmed)
-        # position and persisted to the DB for later per-trigger stats.
+        # position and persisted to the DB for later per-trigger stats. The
+        # PRIMARY trigger (first to fire) is placed first.
+        _primary_trigger = (sess.first_trigger_fire.get(symbol) or {}).get('trigger')
         day_entry_signals = _entry_signal_tags(sig_checks)
+        if _primary_trigger:
+            day_entry_signals = [_primary_trigger] + [t for t in day_entry_signals if t != _primary_trigger]
 
         # Playbook gate — AI analysis of 5-yr gap history for this symbol.
         # Short/High-confidence bias means it historically gaps and reverses — skip.
@@ -5404,7 +5434,8 @@ def _brown_bot_scan_and_enter(user_id: int):
 
         _add_brown_log('info', f'Entering DAY {symbol} — gap {s["gap_percent"]:.1f}%', user_id)
         _brown_enter_position(user_id, symbol, 'day', config, live_price,
-                              playbook_override=playbook_override, entry_signals=day_entry_signals)
+                              playbook_override=playbook_override, entry_signals=day_entry_signals,
+                              primary_trigger=_primary_trigger)
         # Refresh active state after entry
         with sess.lock:
             active_symbols.add(symbol)
@@ -6690,6 +6721,7 @@ def get_brown_bot_status():
                     'stop_source':        bb.get('stop_source'),
                     '_trail_high':        bb.get('_trail_high'),
                     'entry_signals':      bb.get('entry_signals') or [],
+                    'primary_trigger':    bb.get('primary_trigger'),
                 })
             positions_list.sort(key=lambda p: p.get('symbol', ''))
         except Exception as _be:
