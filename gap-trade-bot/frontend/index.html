@@ -4724,7 +4724,7 @@
                     <div class="flex items-center justify-between px-5 py-4 border-b border-emerald-700/30 flex-wrap gap-2">
                         <div class="text-white font-semibold flex items-center gap-2">
                             <i class="fas fa-chart-pie text-emerald-400"></i>Entry Trigger Performance
-                            <span class="text-xs text-gray-500 font-normal">— win-rate &amp; P&amp;L by entry criterion · follows the date filter above</span>
+                            <span class="text-xs text-gray-500 font-normal">— win-rate &amp; P&amp;L by entry trigger (PMHB/ORB/DHB) · follows the date filter above</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <select v-model="brownEntryStatsType" @change="loadBrownEntryStats(true)"
@@ -4744,13 +4744,13 @@
                             <span :class="brownEntryStats.overall.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ brownEntryStats.overall.win_rate }}% win</span> ·
                             <span :class="brownEntryStats.overall.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ brownEntryStats.overall.total_pnl?.toFixed(2) }}</span> total P&amp;L
                         </div>
-                        <div v-if="!brownEntryStats.rows || !brownEntryStats.rows.length" class="py-6 text-center text-gray-500 text-sm">
-                            No closed trades yet — stats appear here once BrownBot positions close.
+                        <div v-if="!brownEntryStatsTriggers.length" class="py-6 text-center text-gray-500 text-sm">
+                            No closed trigger trades yet — stats appear here once BrownBot positions close.
                         </div>
                         <table v-else class="w-full text-sm">
                             <thead class="text-gray-500 text-xs border-b border-gray-700">
                                 <tr>
-                                    <th class="text-left px-2 py-2">Criterion</th>
+                                    <th class="text-left px-2 py-2">Trigger</th>
                                     <th class="text-right px-2 py-2">Trades</th>
                                     <th class="text-right px-2 py-2">Win %</th>
                                     <th class="text-right px-2 py-2">Total P&amp;L</th>
@@ -4759,7 +4759,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="r in brownEntryStats.rows" :key="r.tag" class="border-b border-gray-700/40 hover:bg-gray-700/20">
+                                <tr v-for="r in brownEntryStatsTriggers" :key="r.tag" class="border-b border-gray-700/40 hover:bg-gray-700/20">
                                     <td class="px-2 py-1.5">
                                         <span :class="['PMHB','PMH','DHB','ORB'].includes(r.tag) ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50'"
                                               class="border rounded px-1.5 py-0.5 text-[10px] font-semibold">{{ r.tag }}</span>
@@ -4772,7 +4772,7 @@
                                 </tr>
                             </tbody>
                         </table>
-                        <p class="text-[10px] text-gray-600 mt-2">Triggers (PMH/DHB/ORB) in green. A trade counts toward every criterion it satisfied at entry, so rows overlap — compare them to see which signal carries the edge.</p>
+                        <p class="text-[10px] text-gray-600 mt-2">Only the entry triggers (PMHB/ORB/DHB). A trade counts toward every trigger that fired at entry, so rows can overlap — compare them to see which trigger is profitable over time.</p>
                     </div>
                 </div>
 

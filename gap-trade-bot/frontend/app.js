@@ -1258,6 +1258,12 @@ const app = createApp({
             bbTotalPnl() {
                 return this.bbTotalRealized + this.bbTotalUnrealized;
             },
+            // Stats tab: only the entry TRIGGERS (PMHB/ORB/DHB), so the user can
+            // see which triggers are profitable over time — not the condition gates.
+            brownEntryStatsTriggers() {
+                const triggers = ['PMHB', 'PMH', 'ORB', 'DHB'];
+                return (this.brownEntryStats.rows || []).filter(r => triggers.includes(r.tag));
+            },
             bbPnlByTickerMerged() {
                 // brown_positions is the source of truth: realized_pnl from closed positions,
                 // unrealized_pnl from open positions (updated by exit loop every 2s).
