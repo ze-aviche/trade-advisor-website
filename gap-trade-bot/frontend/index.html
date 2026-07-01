@@ -2768,6 +2768,12 @@
                                            class="w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
                                     <span class="text-[10px] text-gray-500">stop = entry − (ATR×multiplier)</span>
                                 </div>
+                                <div v-if="brownBotConfig.day_use_atr_stop" class="flex items-center gap-2 mt-1">
+                                    <label class="text-xs text-gray-400 shrink-0">Max stop cap %</label>
+                                    <input v-model.number="brownBotConfig.day_max_atr_stop_pct" type="number" step="0.5" min="0" max="30"
+                                           class="w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-yellow-500">
+                                    <span class="text-[10px] text-gray-500">caps ATR stop width (0 = no cap) — bounds risk on volatile/leveraged names</span>
+                                </div>
                                 <p v-if="!brownBotConfig.day_use_atr_stop" class="text-[10px] text-gray-600">When off, uses fixed Stop Loss % above. Enable to adapt stop width to each stock's true daily range — avoids shakeouts in volatile openers.</p>
                             </div>
                             <!-- Min Risk/Reward Gate -->

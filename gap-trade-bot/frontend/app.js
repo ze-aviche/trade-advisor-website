@@ -620,8 +620,10 @@ const app = createApp({
                 // ATR-based dynamic stops
                 day_use_atr_stop: false,
                 day_atr_multiplier: 1.5,
+                day_max_atr_stop_pct: 8.0,
                 swing_use_atr_stop: false,
                 swing_atr_multiplier: 2.0,
+                swing_max_atr_stop_pct: 15.0,
                 // Minimum risk/reward gate (0 = disabled)
                 day_min_rr: 0.0,
                 swing_min_rr: 0.0,

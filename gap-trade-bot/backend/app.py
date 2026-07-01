@@ -4470,19 +4470,28 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     # ATR-based dynamic stop: override fixed % stop with entry - (multiplier × ATR).
     # Falls back to the fixed % stop if ATR fetch fails, so entry is never blocked.
     if use_atr_stop and price > 0:
+        # Max ATR stop width (%) — bounds the outrageous stops that raw ATR can
+        # imply on very volatile / leveraged tickers (e.g. 2x ETFs). 0 = no cap.
+        max_atr_stop = float(config.get(f'{position_type}_max_atr_stop_pct', 0.0))
         atr_val = _fetch_atr(symbol)
         if atr_val and atr_val > 0:
             atr_stop_dollar = price - (atr_mult * atr_val)
             atr_stp_pct     = (price - atr_stop_dollar) / price * 100
-            # Sanity bounds: stop must be positive and the pct must be reasonable.
-            # If ATR is corrupted (e.g. data spike) fall back to fixed stop.
-            if atr_stop_dollar <= 0 or atr_stp_pct > 25:
+            # Only bail to the fixed stop if the ATR is truly corrupted (negative
+            # stop) or absurd with no cap set. A configured cap handles the rest.
+            if atr_stop_dollar <= 0 or (max_atr_stop <= 0 and atr_stp_pct > 25):
                 _add_brown_log('warning',
                     f'{symbol}: ATR stop out of bounds (ATR=${atr_val:.3f}, '
                     f'stop=${atr_stop_dollar:.2f}, {atr_stp_pct:.1f}%) — using fixed {stp_pct:.2f}%',
                     user_id=user_id)
             else:
                 atr_stp_pct = max(atr_stp_pct, 0.5)
+                # Cap the ATR-implied stop so risk stays bounded on volatile names.
+                if max_atr_stop > 0 and atr_stp_pct > max_atr_stop:
+                    _add_brown_log('info',
+                        f'{symbol}: ATR-implied stop {atr_stp_pct:.1f}% exceeds cap '
+                        f'{max_atr_stop:.1f}% — capped at {max_atr_stop:.1f}%', user_id=user_id)
+                    atr_stp_pct = max_atr_stop
                 # Scale target to maintain the same RR ratio as originally configured
                 # so widening the stop doesn't silently collapse the risk/reward.
                 cfg_rr  = cfg_tgt / cfg_stp if cfg_stp > 0 else 2.0
@@ -4502,9 +4511,11 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
                 f'{symbol}: ATR fetch failed — using fixed stop {stp_pct:.2f}%', user_id=user_id)
 
     # Minimum risk/reward gate: skip entry if (target% / stop%) < min_rr.
+    # Compare at 2-decimal precision so an RR that is *exactly* the minimum but
+    # a hair under due to target rounding (e.g. 1.9998 vs 2.00) is not rejected.
     if min_rr > 0 and stp_pct > 0:
         actual_rr = tgt_pct / stp_pct
-        if actual_rr < min_rr:
+        if round(actual_rr, 2) < min_rr:
             _add_brown_log('warning',
                 f'SKIP {symbol}: RR {actual_rr:.2f} < minimum {min_rr:.2f} '
                 f'(target {tgt_pct:.1f}% / stop {stp_pct:.1f}%) — trade skipped',

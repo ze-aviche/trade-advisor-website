@@ -490,8 +490,10 @@ class DatabaseManager:
                 # ATR-based dynamic stops (replaces fixed % when enabled)
                 ('day_use_atr_stop',            'INTEGER DEFAULT 0'),
                 ('day_atr_multiplier',          'REAL DEFAULT 1.5'),
+                ('day_max_atr_stop_pct',        'REAL DEFAULT 8.0'),
                 ('swing_use_atr_stop',          'INTEGER DEFAULT 0'),
                 ('swing_atr_multiplier',        'REAL DEFAULT 2.0'),
+                ('swing_max_atr_stop_pct',      'REAL DEFAULT 15.0'),
                 # Minimum risk/reward gate — skip entry if RR < this value (0 = disabled)
                 ('day_min_rr',                  'REAL DEFAULT 0.0'),
                 ('swing_min_rr',                'REAL DEFAULT 0.0'),
@@ -3132,7 +3134,8 @@ class DatabaseManager:
             # Swing entry time gate
             'swing_time_gate_enabled': False, 'swing_time_gate_start': '09:30', 'swing_time_gate_end': '15:00',
             # ATR-based dynamic stops
-            'day_use_atr_stop': False, 'day_atr_multiplier': 1.5,
+            'day_use_atr_stop': False, 'day_atr_multiplier': 1.5, 'day_max_atr_stop_pct': 8.0,
+            'swing_max_atr_stop_pct': 15.0,
             'swing_use_atr_stop': False, 'swing_atr_multiplier': 2.0,
             # Minimum risk/reward gate
             'day_min_rr': 0.0, 'swing_min_rr': 0.0,
@@ -3204,7 +3207,8 @@ class DatabaseManager:
             'swing_trailing_stop_enabled', 'swing_trailing_stop_pct',
             'swing_time_gate_enabled', 'swing_time_gate_start', 'swing_time_gate_end',
             'day_max_reentry',
-            'day_use_atr_stop', 'day_atr_multiplier',
+            'day_use_atr_stop', 'day_atr_multiplier', 'day_max_atr_stop_pct',
+            'swing_max_atr_stop_pct',
             'swing_use_atr_stop', 'swing_atr_multiplier',
             'day_min_rr', 'swing_min_rr',
             'day_breakeven_enabled', 'swing_breakeven_enabled',
