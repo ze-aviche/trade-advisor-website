@@ -3604,10 +3604,23 @@ class DatabaseManager:
 
                 api_key    = config.get('api_key',    '') or (existing['api_key']    if existing else '')
                 api_secret = config.get('api_secret', '') or (existing['api_secret'] if existing else '')
-                account_id    = config.get('account_id', '')
-                extra_config  = json.dumps(config.get('extra_config', {}))
-                paper_trading = int(config.get('paper_trading', 1))
-                is_active     = int(config.get('is_active', 1))
+                account_id    = config.get('account_id', '') or ''
+                extra_config  = json.dumps(config.get('extra_config', {}) or {})
+
+                # Robustly coerce toggle values — the client may send null, a
+                # bool, or a string ('true'/'false'), any of which int() chokes on.
+                def _flag(v, default):
+                    if v is None:
+                        return default
+                    if isinstance(v, str):
+                        return 1 if v.strip().lower() in ('1', 'true', 'yes', 'on') else 0
+                    try:
+                        return int(bool(v)) if isinstance(v, bool) else int(v)
+                    except (TypeError, ValueError):
+                        return default
+
+                paper_trading = _flag(config.get('paper_trading', 1), 1)
+                is_active     = _flag(config.get('is_active', 1), 1)
 
                 # Saving a broker config always makes it the sole active broker
                 if is_active:
