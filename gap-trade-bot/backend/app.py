@@ -12141,6 +12141,11 @@ def _historical_prefetch_daemon():
 # ═══════════════════════════════════════════════════════════════════════════
 import fmp_screener
 
+# On small/constrained instances the universe-wide backfills can starve the
+# single eventlet worker at boot. Set DISABLE_AUTO_BACKFILL=1 to skip the
+# first-boot backfills (nightly refresh + manual admin refresh still work).
+_AUTO_BACKFILL_DISABLED = os.environ.get('DISABLE_AUTO_BACKFILL', '').strip().lower() in ('1', 'true', 'yes')
+
 # Live progress so the UI / admin can watch a refresh run.
 _screener_refresh_state = {
     'running': False,
@@ -12205,6 +12210,10 @@ def _run_screener_refresh(limit=None):
                         app_logger.debug(f"[ScreenerRefresh] upsert error {futures[fut]}: {e}")
                 if processed % 250 == 0:
                     app_logger.info(f"[ScreenerRefresh] {processed}/{total} processed, {stored} stored")
+                # Yield to the eventlet hub so per-symbol upserts/JSON parsing
+                # never starve the single web worker.
+                if processed % 20 == 0:
+                    time.sleep(0)
 
         app_logger.info(f"[ScreenerRefresh] Done — {stored}/{total} stored")
         return {'success': True, 'total': total, 'stored': stored}
@@ -12225,13 +12234,20 @@ def _screener_refresh_daemon():
     if not fmp_screener.is_configured():
         app_logger.warning('[ScreenerRefresh] FMP_API_KEY not set — daemon idle')
         return
-    # Backfill on first boot if the table is empty.
-    try:
-        if db_manager.get_fundamentals_meta().get('total', 0) == 0:
-            app_logger.info('[ScreenerRefresh] Empty table — running initial backfill')
-            _run_screener_refresh()
-    except Exception as e:
-        app_logger.warning(f'[ScreenerRefresh] Initial backfill skipped: {e}')
+    # Backfill on first boot if the table is empty. Deferred ~2 min so the web
+    # worker is healthy and serving before the heavy scan starts (prevents a
+    # startup 502 crash-loop on small instances). Set DISABLE_AUTO_BACKFILL=1 to
+    # skip entirely and rely on the nightly run / manual admin refresh.
+    if _AUTO_BACKFILL_DISABLED:
+        app_logger.info('[ScreenerRefresh] Auto-backfill disabled (DISABLE_AUTO_BACKFILL)')
+    else:
+        try:
+            if db_manager.get_fundamentals_meta().get('total', 0) == 0:
+                time.sleep(120)
+                app_logger.info('[ScreenerRefresh] Empty table — running initial backfill')
+                _run_screener_refresh()
+        except Exception as e:
+            app_logger.warning(f'[ScreenerRefresh] Initial backfill skipped: {e}')
 
     _last_run_date = None
     while True:
@@ -12434,12 +12450,14 @@ def _run_swing_technicals_scan(limit=None):
         short_hist = 0   # had bars but < 30 trading days — too little for a trend read
         # Chunk the universe so we can stream progress and upsert as we go.
         # _fetch_daily_bars_for_scan paginates per 100-symbol batch internally.
-        CHUNK = 500
+        # Smaller chunks keep the peak memory of bars_by_sym modest (each symbol
+        # can carry ~275 daily bars) — important on 512MB instances.
+        CHUNK = 150
         for i in range(0, total, CHUNK):
             chunk = symbols[i:i + CHUNK]
             # ~400 calendar days ≈ 275 trading days — enough headroom for SMA200.
             bars_by_sym = _fetch_daily_bars_for_scan(chunk, days=400)
-            for sym in chunk:
+            for _n, sym in enumerate(chunk):
                 bars = bars_by_sym.get(sym)
                 if not bars:
                     no_bars += 1
@@ -12454,8 +12472,15 @@ def _run_swing_technicals_scan(limit=None):
                     stored += 1
                 except Exception as e:
                     app_logger.debug(f"[SwingTechScan] upsert {sym}: {e}")
+                # Yield to the eventlet hub every ~25 symbols so the CPU-bound
+                # SMA compute + SQLite writes never starve the web worker.
+                if _n % 25 == 0:
+                    time.sleep(0)
             processed += len(chunk)
             _swing_tech_scan_state['processed'] = processed
+            # Free the chunk's bars and yield before fetching the next batch.
+            bars_by_sym = None
+            time.sleep(0)
             _swing_tech_scan_state['stored'] = stored
             app_logger.info(
                 f"[SwingTechScan] {processed}/{total} processed, {stored} stored "
@@ -12480,13 +12505,18 @@ def _swing_tech_scan_daemon():
     import pytz as _pytz
     _et = _pytz.timezone('US/Eastern')
     app_logger.info('[SwingTechScan] Daemon started (nightly ~03:30 ET)')
-    # First-boot backfill if empty (and we have a universe / fundamentals).
-    try:
-        if db_manager.get_swing_setups_meta().get('tech_total', 0) == 0:
-            app_logger.info('[SwingTechScan] Empty table — running initial scan')
-            _run_swing_technicals_scan()
-    except Exception as e:
-        app_logger.warning(f'[SwingTechScan] Initial scan skipped: {e}')
+    # First-boot backfill if empty. Deferred ~3 min (after the screener backfill)
+    # so the worker is healthy first. Set DISABLE_AUTO_BACKFILL=1 to skip.
+    if _AUTO_BACKFILL_DISABLED:
+        app_logger.info('[SwingTechScan] Auto-backfill disabled (DISABLE_AUTO_BACKFILL)')
+    else:
+        try:
+            if db_manager.get_swing_setups_meta().get('tech_total', 0) == 0:
+                time.sleep(180)
+                app_logger.info('[SwingTechScan] Empty table — running initial scan')
+                _run_swing_technicals_scan()
+        except Exception as e:
+            app_logger.warning(f'[SwingTechScan] Initial scan skipped: {e}')
 
     _last_run = None
     while True:
