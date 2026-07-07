@@ -4424,28 +4424,37 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     # BP is checked BEFORE marking attempted — it's a transient condition that
     # restores as positions close intraday, so insufficient-BP should not block
     # the symbol for the full session.
+    # A transient account-fetch failure (or equity read as 0) must NOT fall back
+    # to a 1-share entry — that wastes a slot on a tiny position and skews stats.
+    # Skip and retry next scan instead (symbol not marked attempted).
     try:
         acct = broker.get_account()
-        if acct.equity > 0:
-            dollar_size = acct.equity * (position_pct / 100.0)
-            quantity    = max(1, int(dollar_size / price))
-            required    = price * quantity
-            _add_brown_log('info',
-                f'{symbol}: sizing {position_pct:.1f}% of ${acct.equity:,.0f} equity '
-                f'= ${dollar_size:,.0f} → {quantity} shares @ ${price:.2f}', user_id=user_id)
-            if acct.buying_power < required:
-                _add_brown_log('warning',
-                    f'SKIP {symbol}: insufficient buying power '
-                    f'(need ${required:,.0f}, have ${acct.buying_power:,.0f}) '
-                    f'— will retry when BP frees up', user_id=user_id)
-                return  # NOT added to attempted — will retry on next scan
-        else:
-            _add_brown_log('warning', f'{symbol}: equity is 0 — using fallback 1 share', user_id)
-            quantity = 1
     except Exception as _bp_err:
         _brown_debug(user_id, f'{symbol}: account fetch failed — {_bp_err}')
-        quantity = max(1, int(dollar_size / price)) if 'dollar_size' in dir() else 1
-        _add_brown_log('warning', f'{symbol}: account fetch failed — fallback {quantity} shares', user_id)
+        _add_brown_log('warning',
+            f'SKIP {symbol}: account fetch failed — will retry next scan', user_id=user_id)
+        return
+
+    _equity = float(getattr(acct, 'equity', 0) or 0)
+    if _equity <= 0:
+        _add_brown_log('warning',
+            f'SKIP {symbol}: account equity unavailable (${_equity:,.0f}) — will retry next scan',
+            user_id=user_id)
+        return
+
+    dollar_size = _equity * (position_pct / 100.0)
+    quantity    = max(1, int(dollar_size / price))
+    required    = price * quantity
+    _add_brown_log('info',
+        f'{symbol}: sizing {position_pct:.1f}% of ${_equity:,.0f} equity '
+        f'= ${dollar_size:,.0f} → {quantity} shares @ ${price:.2f}', user_id=user_id)
+    _bp = float(getattr(acct, 'buying_power', 0) or 0)
+    if _bp < required:
+        _add_brown_log('warning',
+            f'SKIP {symbol}: insufficient buying power '
+            f'(need ${required:,.0f}, have ${_bp:,.0f}) '
+            f'— will retry when BP frees up', user_id=user_id)
+        return  # NOT added to attempted — will retry on next scan
 
     # Compute stop/target and apply ATR + RR gate BEFORE placing the order,
     # so a skipped trade never triggers a real order or marks the symbol attempted.
