@@ -4383,10 +4383,12 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     pct_key = 'day_position_pct' if position_type == 'day' else 'swing_position_pct'
     position_pct = float(config.get(pct_key, 5.0 if position_type == 'day' else 3.0))
 
-    # Hard safety cap: no single trade can exceed 10% (day) / 20% (swing) of equity,
-    # regardless of what the config says — guards against accidental large values.
-    MAX_PCT = 10.0 if position_type == 'day' else 20.0
-    if position_pct > MAX_PCT:
+    # Safety cap: no single trade can exceed this % of equity — guards against
+    # accidental large values. Configurable per trade type (day/swing); defaults
+    # 10%/20%. Set to 0 to disable the cap entirely (use with care).
+    _cap_key = 'day_max_position_pct' if position_type == 'day' else 'swing_max_position_pct'
+    MAX_PCT = float(config.get(_cap_key, 10.0 if position_type == 'day' else 20.0))
+    if MAX_PCT > 0 and position_pct > MAX_PCT:
         _add_brown_log('warning',
             f'{symbol}: {pct_key} {position_pct:.1f}% exceeds safety cap {MAX_PCT:.0f}% '
             f'— capped. Check your BrownBot config.', user_id=user_id)

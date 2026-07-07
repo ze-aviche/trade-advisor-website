@@ -598,6 +598,8 @@ const app = createApp({
                 day_ai_playbook: true,
                 day_position_pct: 5.0,
                 swing_position_pct: 3.0,
+                day_max_position_pct: 10.0,
+                swing_max_position_pct: 20.0,
                 day_trades_enabled: true,
                 swing_trades_enabled: true,
                 // Swing scanner filters

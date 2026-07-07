@@ -459,6 +459,8 @@ class DatabaseManager:
                 ('day_pmh_acceptance_bars',  'INTEGER DEFAULT 0'),
                 ('day_position_pct',        'REAL DEFAULT 5.0'),
                 ('swing_position_pct',     'REAL DEFAULT 3.0'),
+                ('day_max_position_pct',   'REAL DEFAULT 10.0'),
+                ('swing_max_position_pct', 'REAL DEFAULT 20.0'),
                 ('day_trades_enabled',     'INTEGER DEFAULT 1'),
                 ('swing_trades_enabled',   'INTEGER DEFAULT 1'),
                 # Swing scanner filters
@@ -3117,6 +3119,7 @@ class DatabaseManager:
             'day_pmh_break_buffer_pct': 0.2, 'day_pmh_vol_mult': 1.5, 'day_pmh_max_wick_pct': 60.0,
             'day_pmh_acceptance_bars': 0,
             'day_position_pct': 5.0, 'swing_position_pct': 3.0,
+            'day_max_position_pct': 10.0, 'swing_max_position_pct': 20.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
             # Swing scanner filters
             'swing_scan_source': 'both', 'swing_scan_top_n': 30,
@@ -3197,6 +3200,7 @@ class DatabaseManager:
             'day_pmh_break_buffer_pct', 'day_pmh_vol_mult', 'day_pmh_max_wick_pct',
             'day_pmh_acceptance_bars',
             'day_position_pct', 'swing_position_pct',
+            'day_max_position_pct', 'swing_max_position_pct',
             'day_trades_enabled', 'swing_trades_enabled',
             'swing_scan_source', 'swing_scan_top_n',
             'swing_min_price', 'swing_max_price', 'swing_min_avg_vol_k',
