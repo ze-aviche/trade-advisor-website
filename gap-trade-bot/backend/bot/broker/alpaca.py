@@ -122,12 +122,20 @@ class AlpacaBroker(BrokerBase):
     def get_account(self) -> AccountInfo:
         self._require_client()
         acc = self._client.get_account()
+        # Alpaca can return None for numeric fields (e.g. daytrade_count on a
+        # fresh paper account). getattr's default only applies when the attr is
+        # missing — not when it's present-but-None — so coerce with `or 0`.
+        def _f(v):
+            try:
+                return float(v) if v is not None else 0.0
+            except (TypeError, ValueError):
+                return 0.0
         return AccountInfo(
             account_id         = str(acc.id),
-            cash               = float(acc.cash),
-            buying_power       = float(acc.buying_power),
-            equity             = float(acc.equity),
-            day_trade_count    = int(getattr(acc, 'daytrade_count', 0)),
+            cash               = _f(getattr(acc, 'cash', 0)),
+            buying_power       = _f(getattr(acc, 'buying_power', 0)),
+            equity             = _f(getattr(acc, 'equity', 0)),
+            day_trade_count    = int(getattr(acc, 'daytrade_count', 0) or 0),
             pattern_day_trader = bool(getattr(acc, 'pattern_day_trader', False)),
             paper_trading      = self._paper,
         )
