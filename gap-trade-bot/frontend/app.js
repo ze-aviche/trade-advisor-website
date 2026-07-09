@@ -805,10 +805,18 @@ const app = createApp({
                     minPrice: 1,
                     maxPrice: 500,
                     minVolumeMillion: 1,
+                    maxFloatM: 0,
+                    floatOperator: '>=',
                     // ── Day trade ────────────────────────────
                     dayPositionSizePct: 10,
                     dayStopLossPct: 2.0,
                     dayProfitTargetPct: 4.0,
+                    dayBreakevenEnabled: false,
+                    dayBreakevenTriggerPct: 50,
+                    dayTrailingStopEnabled: false,
+                    dayTrailingStopPct: 1.5,
+                    maxConcurrentDay: 5,
+                    daySlippagePct: 0.1,
                     entryStartTime: '09:35',
                     entryEndTime: '10:30',
                     eodExitTime: '15:55',
@@ -3921,12 +3929,20 @@ const app = createApp({
                         min_price:         c.minPrice,
                         max_price:         c.maxPrice,
                         min_volume_m:      c.minVolumeMillion,
+                        max_float_m:       c.maxFloatM,
+                        float_operator:    c.floatOperator,
                     };
                     if (isDay) {
                         Object.assign(payload, {
                             position_size_pct:       c.dayPositionSizePct,
                             stop_loss_pct:           c.dayStopLossPct,
                             profit_target_pct:       c.dayProfitTargetPct,
+                            day_breakeven_enabled:   c.dayBreakevenEnabled,
+                            day_breakeven_trigger_pct: c.dayBreakevenTriggerPct,
+                            day_trailing_stop_enabled: c.dayTrailingStopEnabled,
+                            day_trailing_stop_pct:   c.dayTrailingStopPct,
+                            max_concurrent_day:      c.maxConcurrentDay,
+                            day_slippage_pct:        c.daySlippagePct,
                             entry_start_time:        c.entryStartTime,
                             entry_end_time:          c.entryEndTime,
                             eod_exit_time:           c.eodExitTime,
@@ -3963,7 +3979,19 @@ const app = createApp({
                     if (!data.success) throw new Error(data.error || 'Backtest failed');
                     this.backtestResults = { ...data, tradeType: this.backtestTradeType };
                     this.$nextTick(() => this.updateEquityCurveChart());
-                    this.showNotification(`${isDay ? 'Day' : 'Swing'} backtest complete — ${data.summary.total_trades} trades`, 'success');
+                    // Loud warning instead of a silent zero when the date range has no data.
+                    const nTrades = data.summary.total_trades || 0;
+                    if (nTrades === 0 && this.backtestInfo) {
+                        const lo = this.backtestInfo.min_date, hi = this.backtestInfo.max_date;
+                        const outOfRange = (c.startDate && hi && c.startDate > hi) || (c.endDate && lo && c.endDate < lo);
+                        if (outOfRange) {
+                            this.showNotification(`No data for ${c.startDate} → ${c.endDate}. Available range: ${lo} to ${hi}.`, 'error');
+                        } else {
+                            this.showNotification('0 trades — no candidates matched your filters in this range. Loosen gap/price/volume/float or widen the dates.', 'error');
+                        }
+                    } else {
+                        this.showNotification(`${isDay ? 'Day' : 'Swing'} backtest complete — ${nTrades} trades`, 'success');
+                    }
                 } catch (e) {
                     this.showNotification('Backtest error: ' + e.message, 'error');
                 } finally {

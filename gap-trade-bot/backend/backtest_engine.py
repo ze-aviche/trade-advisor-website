@@ -272,116 +272,160 @@ def run_day_backtest(cfg: dict) -> dict:
         'chk_surge': bool(cfg.get('day_check_volume_surge', False)),
         'max_ext':   float(cfg.get('day_max_extension_pct', 0)),
         'max_below': float(cfg.get('day_max_below_dayhigh_pct', 0)),
+        # Dynamic stops (mirror live exit loop)
+        'breakeven_on':  bool(cfg.get('day_breakeven_enabled', False)),
+        'be_trigger':    float(cfg.get('day_breakeven_trigger_pct', 50.0)),
+        'trailing_on':   bool(cfg.get('day_trailing_stop_enabled', False)),
+        'trailing_pct':  float(cfg.get('day_trailing_stop_pct', 1.5)),
     }
 
-    candidates = _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float)
+    # Portfolio realism (mirror live constraints + real-world frictions).
+    max_concurrent = int(cfg.get('max_concurrent_day', 5) or 5)
+    slippage_pct   = float(cfg.get('day_slippage_pct', 0.1))     # per side (%)
+    commission     = float(cfg.get('commission_per_trade', 0.0)) # $ per round-trip
+
+    # No trigger enabled → no entries (matches live). Return an explicit note
+    # instead of a silently-empty run.
+    if not (sig['pmh_on'] or sig['dhb_on'] or sig['orb_on']):
+        return {
+            'summary': _calc_summary([], capital, capital, 0.0, []),
+            'trades': [], 'equity_curve': [{'date': start, 'equity': capital}],
+            'note': 'No entry trigger enabled — enable PMHB, ORB, or DHB to run a day backtest.',
+        }
+
+    candidates = _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float,
+                                   cfg.get('float_operator', '<='))
 
     use_1m  = os.path.exists(OHLCV_DB_PATH)
     ohlcv_c = _ohlcv_conn() if use_1m else None
 
+    # ── 1) Simulate every candidate on 1-min bars → raw outcomes with times ──
+    # Triggers can only be evaluated with intraday bars, so days without 1-min
+    # data are skipped (no OHLC fallback — it can't confirm a trigger).
+    from collections import defaultdict
+    raw_by_date: dict = defaultdict(list)
+    no_entry_count = 0
+    no_bars_count  = 0
+
+    if not ohlcv_c:
+        return {
+            'summary': _calc_summary([], capital, capital, 0.0, []),
+            'trades': [], 'equity_curve': [{'date': start, 'equity': capital}],
+            'note': 'No 1-min bar data on this instance — day-trigger backtests need the ohlcv_1m cache.',
+        }
+
+    for row in candidates:
+        ticker = row['ticker']; trade_date = row['date']
+        if float(row['today_open'] or 0) <= 0:
+            continue
+        sim = _simulate_day_trade_1m(ohlcv_c, ticker, trade_date, sl_pct, tgt_pct,
+                                     entry_start, entry_end, eod_et,
+                                     float(row['today_open'] or 0), sig)
+        if sim is False:
+            no_bars_count += 1;  continue     # no 1-min bars → can't confirm a trigger
+        if sim is None:
+            no_entry_count += 1; continue     # had bars, no confirmed entry
+        if sim['entry'] <= 0:
+            continue
+        sim['ticker']  = ticker
+        sim['gap_pct'] = round(float(row['gap_percentage'] or 0), 2)
+        raw_by_date[trade_date].append(sim)
+
+    ohlcv_c.close()
+
+    # ── 2) Portfolio walk: day-level compounding + concurrency cap + slippage ──
     trades        = []
     equity        = capital
     equity_curve  = [{'date': start, 'equity': round(equity, 2)}]
     peak_equity   = capital
     max_dd        = 0.0
     daily_returns: list[float] = []
-    fallback_count = 0
-    no_entry_count = 0
+    skipped_slot  = 0
 
-    for row in candidates:
-        ticker     = row['ticker']
-        trade_date = row['date']
-        gap_open   = float(row['today_open']  or 0)
-        ohlc_high  = float(row['today_high']  or 0)
-        ohlc_low   = float(row['today_low']   or 0)
-        ohlc_close = float(row['today_close'] or 0)
+    for d in sorted(raw_by_date.keys()):
+        day_trades = sorted(raw_by_date[d], key=lambda t: t.get('entry_ts') or '')
+        day_start_equity = equity
+        open_exits: list = []   # exit timestamps of currently-open positions
+        day_pnl = 0.0
 
-        if gap_open <= 0:
-            continue
-
-        result_1m = None
-        if ohlcv_c:
-            sim = _simulate_day_trade_1m(
-                ohlcv_c, ticker, trade_date,
-                sl_pct, tgt_pct,
-                entry_start, entry_end, eod_et,
-                gap_open, sig,
-            )
-            if sim is False:
-                # No 1-min bars for this ticker/day — fall through to OHLC fallback
-                result_1m = None
-            elif sim is None:
-                # Had 1-min bars but no qualifying entry in window — skip trade
-                no_entry_count += 1
+        for t in day_trades:
+            ets = t.get('entry_ts') or ''
+            xts = t.get('exit_ts') or ''
+            # Free slots for positions that already closed by this entry time.
+            open_exits = [x for x in open_exits if x > ets]
+            if len(open_exits) >= max_concurrent:
+                skipped_slot += 1
                 continue
-            else:
-                result_1m = sim
+            open_exits.append(xts)
 
-        if result_1m:
-            entry, exit_price, exit_reason = result_1m
-        else:
-            # OHLC fallback (no 1-min data at all)
-            fallback_count += 1
-            entry     = gap_open
-            stop_fb   = round(entry * (1 - sl_pct  / 100), 4)
-            target_fb = round(entry * (1 + tgt_pct / 100), 4)
-            if ohlc_low <= stop_fb:
-                exit_price, exit_reason = stop_fb,    'Stop Loss'
-            elif ohlc_high >= target_fb:
-                exit_price, exit_reason = target_fb,  'Target Hit'
-            else:
-                exit_price, exit_reason = ohlc_close, 'EOD Close'
+            entry = t['entry']
+            trade_value = day_start_equity * (pos_pct / 100)
+            shares = math.floor(trade_value / entry)
+            if shares < 1:
+                continue
+            # Slippage: pay up on entry, give up on exit; commission per round-trip.
+            fill_entry = entry * (1 + slippage_pct / 100)
+            fill_exit  = t['exit'] * (1 - slippage_pct / 100)
+            pnl     = round((fill_exit - fill_entry) * shares - commission, 2)
+            pnl_pct = round((fill_exit - fill_entry) / fill_entry * 100, 3) if fill_entry else 0
+            day_pnl += pnl
 
-        if entry <= 0:
-            continue
+            trades.append({
+                'date':         d,
+                'ticker':       t['ticker'],
+                'gap_pct':      t['gap_pct'],
+                'entry':        round(entry, 4),
+                'exit':         round(t['exit'], 4),
+                'shares':       shares,
+                'stop':         round(entry * (1 - sl_pct / 100), 4),
+                'target':       round(entry * (1 + tgt_pct / 100), 4),
+                'pnl':          pnl,
+                'pnl_pct':      pnl_pct,
+                'trigger':      t.get('trigger'),
+                'exit_reason':  t['reason'],
+                'equity_after': round(day_start_equity + day_pnl, 2),
+            })
 
-        stop   = round(entry * (1 - sl_pct  / 100), 4)
-        target = round(entry * (1 + tgt_pct / 100), 4)
-
-        trade_value = equity * (pos_pct / 100)
-        shares      = math.floor(trade_value / entry)
-        if shares < 1:
-            continue
-
-        pnl     = round((exit_price - entry) * shares, 2)
-        pnl_pct = round((exit_price - entry) / entry * 100, 3)
-        equity += pnl
-
+        equity += day_pnl
         if equity > peak_equity:
             peak_equity = equity
-        dd = (peak_equity - equity) / peak_equity * 100
-        if dd > max_dd:
-            max_dd = dd
-
-        daily_returns.append(pnl / (entry * shares) if entry * shares else 0)
-
-        trades.append({
-            'date':         trade_date,
-            'ticker':       ticker,
-            'gap_pct':      round(float(row['gap_percentage'] or 0), 2),
-            'entry':        round(entry, 4),
-            'exit':         round(exit_price, 4),
-            'shares':       shares,
-            'stop':         round(stop, 4),
-            'target':       round(target, 4),
-            'pnl':          pnl,
-            'pnl_pct':      pnl_pct,
-            'exit_reason':  exit_reason,
-            'equity_after': round(equity, 2),
-        })
-        equity_curve.append({'date': trade_date, 'equity': round(equity, 2)})
-
-    if ohlcv_c:
-        ohlcv_c.close()
+        if peak_equity > 0:
+            dd = (peak_equity - equity) / peak_equity * 100
+            if dd > max_dd:
+                max_dd = dd
+        daily_returns.append(day_pnl / day_start_equity if day_start_equity else 0)
+        equity_curve.append({'date': d, 'equity': round(equity, 2)})
 
     equity_curve.append({'date': end, 'equity': round(equity, 2)})
 
     summary = _calc_summary(trades, capital, equity, max_dd, daily_returns)
-    summary['used_1m_bars']       = len(trades) - fallback_count
-    summary['used_ohlc_fallback'] = fallback_count
-    summary['no_entry_in_window'] = no_entry_count
+    # Per-entry-trigger and per-exit-reason breakdowns (like the Stats tab).
+    summary['by_trigger']     = _perf_breakdown(trades, 'trigger')
+    summary['by_exit_reason'] = _perf_breakdown(trades, 'exit_reason')
+    summary['skipped_slot_cap'] = skipped_slot
+    summary['no_entry']        = no_entry_count
+    summary['no_bars']         = no_bars_count
 
     return {'summary': summary, 'trades': trades, 'equity_curve': equity_curve}
+
+
+def _perf_breakdown(trades: list, key: str) -> list:
+    """Aggregate trades by a key ('trigger' | 'exit_reason'): count, win-rate, P&L."""
+    agg: dict = {}
+    for t in trades:
+        k = t.get(key) or 'UNKNOWN'
+        a = agg.setdefault(k, {'name': k, 'trades': 0, 'wins': 0, 'pnl': 0.0})
+        a['trades'] += 1
+        a['wins']   += 1 if t.get('pnl', 0) > 0 else 0
+        a['pnl']    += t.get('pnl', 0)
+    out = [{
+        'name': a['name'], 'trades': a['trades'], 'wins': a['wins'],
+        'win_rate': round(a['wins'] / a['trades'] * 100, 1) if a['trades'] else 0.0,
+        'total_pnl': round(a['pnl'], 2),
+        'avg_pnl': round(a['pnl'] / a['trades'], 2) if a['trades'] else 0.0,
+    } for a in agg.values()]
+    out.sort(key=lambda x: x['trades'], reverse=True)
+    return out
 
 
 def _add_min(hhmm: str, mins: int) -> str:
@@ -468,10 +512,18 @@ def _simulate_day_trade_1m(
     buf, vol_mult, max_wick, accept_n = sig['buf'], sig['vol_mult'], sig['max_wick'], sig['accept_n']
     chk_vwap, chk_candle, chk_surge = sig['chk_vwap'], sig['chk_candle'], sig['chk_surge']
     max_ext, max_below = sig['max_ext'], sig['max_below']
+    breakeven_on, be_trigger = sig['breakeven_on'], sig['be_trigger']
+    trailing_on, trailing_pct = sig['trailing_on'], sig['trailing_pct']
     any_trigger = pmh_on or dhb_on or orb_on
+    if not any_trigger:
+        return None  # a breakout trigger is required to enter (mirrors live)
 
     entry = None
+    entry_ts = None
+    trigger_tag = None
     stop = target = 0.0
+    hi_water = 0.0
+    at_be = False
     in_position = False
     pm_high = session_open = orb_high = day_high = 0.0
     vwap_num = vwap_den = 0.0
@@ -530,36 +582,53 @@ def _simulate_day_trade_1m(
                 if (day_high - c) / day_high * 100 > max_below:
                     cond_ok = False
 
-            # ── Breakout triggers (OR) ──
-            trig_ok = True
-            if any_trigger:
-                trig_ok = (
-                    (pmh_on and _confirm_breakout_bt(pm_high, session_bars, c, buf, vol_mult, max_wick, accept_n)) or
-                    (orb_on and hhmm >= orb_end_cmp and _confirm_breakout_bt(orb_high, session_bars, c, buf, vol_mult, max_wick, accept_n)) or
-                    (dhb_on and _confirm_breakout_bt(prior_high, session_bars, c, buf, vol_mult, max_wick, accept_n))
-                )
+            # ── Breakout triggers (OR) — capture which fired (PMHB > ORB > DHB) ──
+            pmh_fire = pmh_on and _confirm_breakout_bt(pm_high, session_bars, c, buf, vol_mult, max_wick, accept_n)
+            orb_fire = orb_on and hhmm >= orb_end_cmp and _confirm_breakout_bt(orb_high, session_bars, c, buf, vol_mult, max_wick, accept_n)
+            dhb_fire = dhb_on and _confirm_breakout_bt(prior_high, session_bars, c, buf, vol_mult, max_wick, accept_n)
+            trig_ok = pmh_fire or orb_fire or dhb_fire
 
             if not (cond_ok and trig_ok):
                 continue
 
-            entry = o if o > 0 else c
+            # Enter at the CONFIRMING bar's CLOSE (the signal is only known once
+            # the bar closes) — not its open, which would be a 1-bar look-ahead.
+            entry = c
             if entry <= 0:
                 continue
-            stop   = round(entry * (1 - sl_pct  / 100), 4)
-            target = round(entry * (1 + tgt_pct / 100), 4)
+            entry_ts = bar['ts']
+            trigger_tag = 'PMHB' if pmh_fire else ('ORB' if orb_fire else 'DHB')
+            stop     = round(entry * (1 - sl_pct  / 100), 4)
+            target   = round(entry * (1 + tgt_pct / 100), 4)
+            hi_water = entry
             in_position = True
-            # Fall through to exit checks on the entry bar
+            continue  # exits are evaluated from the NEXT bar onward (no look-ahead)
 
-        # In position — exit checks
+        # In position — exit checks first, using the stop set from PRIOR bars'
+        # high-water (avoids intrabar look-ahead), then ratchet for the next bar.
         if hhmm >= eod_cmp:
-            return (entry, c, 'EOD Close')
+            return {'entry': entry, 'exit': c, 'reason': 'EOD Close', 'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag}
         if l <= stop:
-            return (entry, stop, 'Stop Loss')
+            return {'entry': entry, 'exit': stop, 'reason': 'Stop Loss', 'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag}
         if h >= target:
-            return (entry, target, 'Target Hit')
+            return {'entry': entry, 'exit': target, 'reason': 'Target Hit', 'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag}
+
+        # Update high-water, then apply breakeven + trailing (mirror live).
+        if h > hi_water:
+            hi_water = h
+        if breakeven_on and not at_be and target > entry:
+            if (hi_water - entry) / (target - entry) * 100 >= be_trigger:
+                if entry > stop:
+                    stop = entry
+                at_be = True
+        if trailing_on and hi_water > 0:
+            new_stop = round(hi_water * (1 - trailing_pct / 100), 4)
+            if new_stop > stop:
+                stop = new_stop
 
     if in_position and bars:
-        return (entry, float(bars[-1]['close'] or 0), 'EOD Close')
+        return {'entry': entry, 'exit': float(bars[-1]['close'] or 0), 'reason': 'EOD Close',
+                'entry_ts': entry_ts, 'exit_ts': bars[-1]['ts'], 'trigger': trigger_tag}
     return None  # never entered
 
 
@@ -600,7 +669,8 @@ def run_swing_backtest(cfg: dict) -> dict:
     if not POLYGON_KEY:
         raise ValueError('POLYGON_API_KEY is required for swing backtest (daily bar fetch)')
 
-    candidates = _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float)
+    candidates = _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float,
+                                   cfg.get('float_operator', '<='))
     total_before_cap_filter = len(candidates)
 
     # ── Market cap filter ──────────────────────────────────────────────────────
@@ -760,7 +830,8 @@ def _simulate_swing_trade(
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
-def _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float) -> list:
+def _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float,
+                      float_operator: str = '<=') -> list:
     query = """
         SELECT date, ticker, gap_percentage, today_open, today_high, today_low,
                today_close, volume_m, yesterday_close
@@ -777,7 +848,10 @@ def _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_fl
         with _conn() as conn:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_data)").fetchall()}
             if 'float_shares' in cols and max_float > 0:
-                query += " AND (float_shares IS NULL OR float_shares / 1e6 <= ?)"
+                # Match the live BrownBot float gate: '>=' (min float) or '<=' (max
+                # float). NULL float is never excluded (no data ≠ fails the filter).
+                op = '>=' if float_operator == '>=' else '<='
+                query += f" AND (float_shares IS NULL OR float_shares / 1e6 {op} ?)"
                 params.append(max_float)
             query += " ORDER BY date ASC, gap_percentage DESC"
             return conn.execute(query, params).fetchall()

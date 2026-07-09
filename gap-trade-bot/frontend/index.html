@@ -5580,9 +5580,9 @@
                     <!-- Shared: dates + capital -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div><label class="block text-xs text-gray-400 mb-1">Start Date</label>
-                            <input type="date" v-model="backtestConfig.startDate" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                            <input type="date" v-model="backtestConfig.startDate" :min="backtestInfo && backtestInfo.min_date" :max="backtestInfo && backtestInfo.max_date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
                         <div><label class="block text-xs text-gray-400 mb-1">End Date</label>
-                            <input type="date" v-model="backtestConfig.endDate" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                            <input type="date" v-model="backtestConfig.endDate" :min="backtestInfo && backtestInfo.min_date" :max="backtestInfo && backtestInfo.max_date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
                         <div><label class="block text-xs text-gray-400 mb-1">Initial Capital ($)</label>
                             <input type="number" v-model="backtestConfig.initialCapital" min="1000" step="1000" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
                         <div><label class="block text-xs text-gray-400 mb-1">Position Size (%)</label>
@@ -5599,6 +5599,41 @@
                             <input type="number" v-model="backtestConfig.minGapPct" min="0" max="100" step="0.5" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
                         <div><label class="block text-xs text-gray-400 mb-1">Min Volume (M)</label>
                             <input type="number" v-model="backtestConfig.minVolumeMillion" min="0" step="0.5" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
+                    </div>
+
+                    <!-- Float filter + dynamic stops (mirror BrownBot) -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Float filter (M shares)</label>
+                            <div class="flex items-center gap-1">
+                                <select v-model="backtestConfig.floatOperator" class="bg-gray-700 border border-gray-600 rounded-lg px-2 py-2 text-sm text-white">
+                                    <option value=">=">&ge;</option>
+                                    <option value="<=">&le;</option>
+                                </select>
+                                <input type="number" v-model.number="backtestConfig.maxFloatM" min="0" step="1" placeholder="0=off" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="flex items-center gap-2 text-xs text-gray-400 mb-1 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayBreakevenEnabled" class="w-3.5 h-3.5 rounded accent-blue-500">Breakeven stop @ %</label>
+                            <input type="number" v-model.number="backtestConfig.dayBreakevenTriggerPct" min="0" max="100" step="5" :disabled="!backtestConfig.dayBreakevenEnabled" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="flex items-center gap-2 text-xs text-gray-400 mb-1 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayTrailingStopEnabled" class="w-3.5 h-3.5 rounded accent-blue-500">Trailing stop %</label>
+                            <input type="number" v-model.number="backtestConfig.dayTrailingStopPct" min="0.1" max="50" step="0.1" :disabled="!backtestConfig.dayTrailingStopEnabled" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Max concurrent positions</label>
+                            <input type="number" v-model.number="backtestConfig.maxConcurrentDay" min="1" max="50" step="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Slippage % (per side)</label>
+                            <input type="number" v-model.number="backtestConfig.daySlippagePct" min="0" max="5" step="0.05" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="md:col-span-3 flex items-end">
+                            <p class="text-[10px] text-gray-600 leading-tight">Realistic model: day-level compounding, slot cap on concurrent positions, and per-side slippage — mirrors the live bot's constraints. Float ≥ min (BrownBot default) or ≤ max. A breakout trigger (PMHB/ORB/DHB) is <span class="text-emerald-400">required</span> to enter — conditions alone won't.</p>
+                        </div>
                     </div>
 
                     <!-- Entry window + EOD + price range -->
@@ -5753,6 +5788,10 @@
                         </span>
                     </div>
 
+                    <div v-if="backtestResults.note" class="bg-amber-900/20 border border-amber-700/40 rounded-lg px-4 py-3 text-sm text-amber-300">
+                        <i class="fas fa-circle-info mr-1"></i>{{ backtestResults.note }}
+                    </div>
+
                     <!-- Summary cards -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div class="bg-gray-800 rounded-xl p-4">
@@ -5805,9 +5844,9 @@
                                     <span class="text-purple-400 text-xs">{{ backtestResults.summary.market_cap_filtered }} / {{ backtestResults.summary.total_before_cap_filter }}</span>
                                 </div>
                                 <template v-if="backtestResults.tradeType === 'day'">
-                                    <div class="border-t border-gray-700 pt-2 mt-1 flex justify-between"><span class="text-gray-500 text-xs">1-min simulated</span><span class="text-blue-400 text-xs">{{ backtestResults.summary.used_1m_bars }}</span></div>
-                                    <div class="flex justify-between"><span class="text-gray-500 text-xs">OHLC fallback</span><span class="text-yellow-500 text-xs">{{ backtestResults.summary.used_ohlc_fallback }}</span></div>
-                                    <div class="flex justify-between"><span class="text-gray-500 text-xs">No entry in window</span><span class="text-gray-500 text-xs">{{ backtestResults.summary.no_entry_in_window }}</span></div>
+                                    <div class="border-t border-gray-700 pt-2 mt-1 flex justify-between"><span class="text-gray-500 text-xs">No confirmed entry</span><span class="text-gray-500 text-xs">{{ backtestResults.summary.no_entry }}</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-500 text-xs">Skipped — no 1-min bars</span><span class="text-yellow-500 text-xs">{{ backtestResults.summary.no_bars }}</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-500 text-xs">Skipped — slot cap</span><span class="text-orange-400 text-xs">{{ backtestResults.summary.skipped_slot_cap }}</span></div>
                                 </template>
                             </div>
                         </div>
@@ -5830,6 +5869,40 @@
                                 </div>
                                 <div class="flex justify-between"><span class="text-gray-400">Entry</span><span class="text-white">Gap-day close</span></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Entry Trigger + Exit Reason performance (day) -->
+                    <div v-if="backtestResults.tradeType === 'day'" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="bg-gray-800 rounded-xl p-4 border border-emerald-700/30">
+                            <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2"><i class="fas fa-bolt mr-1"></i>Entry Trigger Performance</div>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-500"><tr><th class="text-left py-1">Trigger</th><th class="text-right">Trades</th><th class="text-right">Win %</th><th class="text-right">Total P&amp;L</th><th class="text-right">Avg P&amp;L</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="r in (backtestResults.summary.by_trigger || [])" :key="r.name" class="border-t border-gray-700/40">
+                                        <td class="py-1"><span class="bg-emerald-900/40 text-emerald-300 border border-emerald-700/50 rounded px-1.5 py-0.5 text-[10px] font-semibold">{{ r.name }}</span></td>
+                                        <td class="text-right text-gray-300">{{ r.trades }}</td>
+                                        <td class="text-right" :class="r.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ r.win_rate }}%</td>
+                                        <td class="text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toLocaleString() }}</td>
+                                        <td class="text-right font-mono" :class="r.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.avg_pnl.toLocaleString() }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="bg-gray-800 rounded-xl p-4 border border-rose-700/30">
+                            <div class="text-xs font-semibold text-rose-400 uppercase tracking-wider mb-2"><i class="fas fa-door-open mr-1"></i>Exit Reason Performance</div>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-500"><tr><th class="text-left py-1">Exit</th><th class="text-right">Trades</th><th class="text-right">Win %</th><th class="text-right">Total P&amp;L</th><th class="text-right">Avg P&amp;L</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="r in (backtestResults.summary.by_exit_reason || [])" :key="r.name" class="border-t border-gray-700/40">
+                                        <td class="py-1"><span class="rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="r.name==='Target Hit' ? 'bg-green-900/40 text-green-300 border border-green-700/50' : (r.name==='Stop Loss' ? 'bg-red-900/40 text-red-300 border border-red-700/50' : 'bg-gray-700/50 text-gray-300 border border-gray-600/50')">{{ r.name }}</span></td>
+                                        <td class="text-right text-gray-300">{{ r.trades }}</td>
+                                        <td class="text-right" :class="r.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ r.win_rate }}%</td>
+                                        <td class="text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toLocaleString() }}</td>
+                                        <td class="text-right font-mono" :class="r.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.avg_pnl.toLocaleString() }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 

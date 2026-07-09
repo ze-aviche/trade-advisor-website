@@ -3997,8 +3997,11 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
     orb_min   = int(config.get('day_orb_minutes', 15) or 15)
     max_below = float(config.get('day_max_below_dayhigh_pct', 0.0))
 
-    if not (vwap_on or candle_on or ext_pct > 0 or vol_on or pmh_on or dhb_on or orb_on or max_below > 0):
-        return True, [], 'No trend filters enabled'
+    # A breakout trigger is REQUIRED to enter — conditions (VWAP/candle/vol/EXT/DH)
+    # are confirmation filters, not entry signals on their own. No trigger enabled
+    # → no day entries.
+    if not (pmh_on or dhb_on or orb_on):
+        return False, [], 'No entry trigger enabled — enable PMHB / ORB / DHB'
 
     # Shared breakout-confirmation params (apply to both PMH & day-high triggers).
     _buf      = float(config.get('day_pmh_break_buffer_pct', 0.2))
@@ -4183,7 +4186,8 @@ def _check_day_entry_signal(symbol, current_price, gap_price, config):
             all_pass = False
 
     # Final: all AND gates pass, AND (if any trigger is enabled) at least one fires.
-    enter = all_pass and (any(trigger_flags) if trigger_flags else True)
+    # A trigger is required (guarded above), so at least one must fire.
+    enter = all_pass and any(trigger_flags)
 
     parts = [f'{"✓" if c["passed"] else "✗"} {c["label"]}: {c["detail"]}' for c in checks]
     return enter, checks, ' | '.join(parts)
