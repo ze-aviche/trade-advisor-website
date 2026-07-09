@@ -373,8 +373,8 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS brown_bot_config (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL DEFAULT 1,
-                    day_profit_target_pct REAL DEFAULT 5.0,
-                    day_stop_loss_pct REAL DEFAULT 2.5,
+                    day_profit_target_pct REAL DEFAULT 9.0,
+                    day_stop_loss_pct REAL DEFAULT 3.0,
                     day_trailing_stop_enabled INTEGER DEFAULT 0,
                     day_trailing_stop_pct REAL DEFAULT 1.5,
                     day_eod_exit_time TEXT DEFAULT '15:55',
@@ -386,12 +386,12 @@ class DatabaseManager:
                     swing_earnings_exit_days INTEGER DEFAULT 2,
                     swing_breakeven_trigger_pct REAL DEFAULT 50.0,
                     max_daily_loss REAL DEFAULT -500.0,
-                    max_concurrent_day INTEGER DEFAULT 3,
-                    max_concurrent_swing INTEGER DEFAULT 5,
-                    min_gap_pct REAL DEFAULT 10.0,
-                    min_price REAL DEFAULT 5.0,
-                    max_price REAL DEFAULT 500.0,
-                    min_volume_m REAL DEFAULT 0.5,
+                    max_concurrent_day INTEGER DEFAULT 5,
+                    max_concurrent_swing INTEGER DEFAULT 3,
+                    min_gap_pct REAL DEFAULT 20.0,
+                    min_price REAL DEFAULT 10.0,
+                    max_price REAL DEFAULT 50.0,
+                    min_volume_m REAL DEFAULT 20.0,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -439,27 +439,27 @@ class DatabaseManager:
             # brown_bot_config: additive migrations
             for col, defn in [
                 ('day_time_gate_enabled',  'INTEGER DEFAULT 1'),
-                ('day_time_gate_start',    "TEXT DEFAULT '09:35'"),
-                ('day_time_gate_end',      "TEXT DEFAULT '10:30'"),
+                ('day_time_gate_start',    "TEXT DEFAULT '09:40'"),
+                ('day_time_gate_end',      "TEXT DEFAULT '15:30'"),
                 ('max_float_m',            'REAL DEFAULT 0.0'),
                 ('float_operator',         "TEXT DEFAULT '<='"),
-                ('day_check_vwap',         'INTEGER DEFAULT 0'),
+                ('day_check_vwap',         'INTEGER DEFAULT 1'),
                 ('day_check_candle',       'INTEGER DEFAULT 0'),
                 ('day_max_extension_pct',  'REAL DEFAULT 0.0'),
                 ('day_check_volume_surge', 'INTEGER DEFAULT 0'),
                 ('day_ai_playbook',        'INTEGER DEFAULT 1'),
-                ('day_check_pmh',          'INTEGER DEFAULT 0'),
+                ('day_check_pmh',          'INTEGER DEFAULT 1'),
                 ('day_check_dayhigh_break', 'INTEGER DEFAULT 0'),
-                ('day_check_orb',          'INTEGER DEFAULT 0'),
+                ('day_check_orb',          'INTEGER DEFAULT 1'),
                 ('day_orb_minutes',        'INTEGER DEFAULT 15'),
                 ('day_max_below_dayhigh_pct', 'REAL DEFAULT 0.0'),
                 ('day_pmh_break_buffer_pct', 'REAL DEFAULT 0.2'),
                 ('day_pmh_vol_mult',         'REAL DEFAULT 1.5'),
                 ('day_pmh_max_wick_pct',     'REAL DEFAULT 60.0'),
                 ('day_pmh_acceptance_bars',  'INTEGER DEFAULT 0'),
-                ('day_position_pct',        'REAL DEFAULT 5.0'),
+                ('day_position_pct',        'REAL DEFAULT 20.0'),
                 ('swing_position_pct',     'REAL DEFAULT 3.0'),
-                ('day_max_position_pct',   'REAL DEFAULT 10.0'),
+                ('day_max_position_pct',   'REAL DEFAULT 20.0'),
                 ('swing_max_position_pct', 'REAL DEFAULT 20.0'),
                 ('day_trades_enabled',     'INTEGER DEFAULT 1'),
                 ('swing_trades_enabled',   'INTEGER DEFAULT 1'),
@@ -488,7 +488,7 @@ class DatabaseManager:
                 ('swing_time_gate_start',       "TEXT DEFAULT '09:30'"),
                 ('swing_time_gate_end',         "TEXT DEFAULT '15:00'"),
                 # Re-entry cap: max times BrownBot may enter the same symbol per session
-                ('day_max_reentry',             'INTEGER DEFAULT 2'),
+                ('day_max_reentry',             'INTEGER DEFAULT 1'),
                 # ATR-based dynamic stops (replaces fixed % when enabled)
                 ('day_use_atr_stop',            'INTEGER DEFAULT 0'),
                 ('day_atr_multiplier',          'REAL DEFAULT 1.5'),
@@ -501,7 +501,7 @@ class DatabaseManager:
                 ('swing_min_rr',                'REAL DEFAULT 0.0'),
                 # Breakeven stop toggle (default on — move stop to entry once price
                 # reaches day_breakeven_trigger_pct % of the way to profit target)
-                ('day_breakeven_enabled',       'INTEGER DEFAULT 1'),
+                ('day_breakeven_enabled',       'INTEGER DEFAULT 0'),
                 ('swing_breakeven_enabled',     'INTEGER DEFAULT 1'),
             ]:
                 try:
@@ -3102,24 +3102,27 @@ class DatabaseManager:
 
     def get_brown_bot_config(self, user_id: int = 1) -> dict:
         defaults = {
-            'day_profit_target_pct': 5.0, 'day_stop_loss_pct': 2.5,
+            # Day defaults = backtest-validated winner (gap>=20%, $10-50, vol>=20M,
+            # 3%/9% stop/target, PMHB+ORB+VWAP, 20%x5 cash, no breakeven, 09:40-15:30).
+            # In-sample 2021-2025 PF 1.39 / +55% / 7% maxDD; OOS 2015-2020 PF 1.38.
+            'day_profit_target_pct': 9.0, 'day_stop_loss_pct': 3.0,
             'day_trailing_stop_enabled': False, 'day_trailing_stop_pct': 1.5,
             'day_eod_exit_time': '15:55', 'day_breakeven_trigger_pct': 50.0,
-            'day_time_gate_enabled': True, 'day_time_gate_start': '09:35', 'day_time_gate_end': '10:30',
+            'day_time_gate_enabled': True, 'day_time_gate_start': '09:40', 'day_time_gate_end': '15:30',
             'swing_profit_target_pct': 15.0, 'swing_stop_loss_pct': 7.0,
             'swing_max_hold_days': 20, 'swing_earnings_protection_enabled': True,
             'swing_earnings_exit_days': 2, 'swing_breakeven_trigger_pct': 50.0,
             'max_daily_loss': -500.0, 'max_concurrent_day': 5, 'max_concurrent_swing': 3,
-            'min_gap_pct': 25.0, 'min_price': 1.0, 'max_price': 50.0, 'min_volume_m': 10.0,
+            'min_gap_pct': 20.0, 'min_price': 10.0, 'max_price': 50.0, 'min_volume_m': 20.0,
             'max_float_m': 5.0, 'float_operator': '>=',
-            'day_check_vwap': False, 'day_check_candle': False,
+            'day_check_vwap': True, 'day_check_candle': False,
             'day_max_extension_pct': 0.0, 'day_check_volume_surge': False, 'day_ai_playbook': False,
-            'day_check_pmh': False, 'day_check_dayhigh_break': False,
-            'day_check_orb': False, 'day_orb_minutes': 15, 'day_max_below_dayhigh_pct': 0.0,
+            'day_check_pmh': True, 'day_check_dayhigh_break': False,
+            'day_check_orb': True, 'day_orb_minutes': 15, 'day_max_below_dayhigh_pct': 0.0,
             'day_pmh_break_buffer_pct': 0.2, 'day_pmh_vol_mult': 1.5, 'day_pmh_max_wick_pct': 60.0,
             'day_pmh_acceptance_bars': 0,
-            'day_position_pct': 5.0, 'swing_position_pct': 3.0,
-            'day_max_position_pct': 10.0, 'swing_max_position_pct': 20.0,
+            'day_position_pct': 20.0, 'swing_position_pct': 3.0,
+            'day_max_position_pct': 20.0, 'swing_max_position_pct': 20.0,
             'day_trades_enabled': True, 'swing_trades_enabled': True,
             # Swing scanner filters
             'swing_scan_source': 'both', 'swing_scan_top_n': 30,
@@ -3128,7 +3131,7 @@ class DatabaseManager:
             'swing_min_market_cap_m': 200.0, 'swing_max_market_cap_m': 0.0,
             'swing_max_float_m': 0.0,
             # Swing entry signals
-            'day_max_reentry': 2,
+            'day_max_reentry': 1,
             'swing_check_above_sma20': True, 'swing_check_ma_cross': True,
             'swing_check_rsi_range': False, 'swing_rsi_min': 40.0, 'swing_rsi_max': 70.0,
             'swing_check_rel_vol': False, 'swing_rel_vol_min': 1.2,
@@ -3142,8 +3145,9 @@ class DatabaseManager:
             'swing_use_atr_stop': False, 'swing_atr_multiplier': 2.0,
             # Minimum risk/reward gate
             'day_min_rr': 0.0, 'swing_min_rr': 0.0,
-            # Breakeven stop toggle
-            'day_breakeven_enabled': True, 'swing_breakeven_enabled': True,
+            # Breakeven stop toggle — OFF for day: sweep showed BE cuts PF/return on
+            # the 3/9 geometry (kills trades that dip then recover to target).
+            'day_breakeven_enabled': False, 'swing_breakeven_enabled': True,
         }
         try:
             with self.get_connection() as conn:

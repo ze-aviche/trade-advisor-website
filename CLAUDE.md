@@ -226,15 +226,24 @@ Use `_brown_debug(user_id, msg)` for verbose hot-path logging. It logs at INFO o
 - `_brown_close_position`: duplicate exit guard, broker confirmation, DB write, pending-orders queue, active_positions removal
 
 #### Default BrownBot config (applied to every new user at registration)
+Day defaults are the **backtest-validated winner** (2021–2025 in-sample PF 1.39 / +55% / 7% maxDD; 2015–2020 out-of-sample PF 1.38). Do not loosen these without re-running the day backtest.
+
 | Setting | Value |
 |---|---|
 | EOD exit time | 15:55 ET |
 | AI Playbook | Off |
-| Min gap % | 25% |
-| Min volume | 10M |
-| Min price | $1 |
+| Min gap % | 20% |
+| Min volume | 20M |
+| Min price | $10 |
 | Max price | $50 |
 | Float filter | ≥ 5M |
+| Day entry window | 09:40 → 15:30 ET |
+| Day triggers | PMHB + ORB (DHB off) |
+| Day condition | Above VWAP |
+| Day stop / target | 3% / 9% |
+| Day position size | 20% (×5 concurrent = 100% cash) |
+| Day breakeven stop | Off (hurts PF on 3/9 geometry) |
+| Day max re-entries | 1 |
 | Max concurrent day | 5 |
 | Max concurrent swing | 3 |
 | Swing scan source | Both |
