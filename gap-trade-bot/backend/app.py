@@ -4372,6 +4372,44 @@ def _catalyst_key(symbol: str) -> str:
     return f'{symbol.upper()}:{today}'
 
 
+def _fetch_catalyst_headlines(symbol: str, days: int = 5) -> list:
+    """Recent headlines for a ticker, yfinance-FIRST (matches the Gap-Ups news
+    button) then web-search fallback. yfinance carries corporate-action items
+    (reverse splits, offerings) that a generic web search often misses on small
+    tickers — the exact case that made the classifier say 'No news' for a stock
+    whose news page clearly showed a reverse split. Returns a list of strings
+    (title + short description) — best-effort, never raises."""
+    headlines: list = []
+    # Primary: yfinance (same source/parsing as get_stock_news_endpoint).
+    try:
+        import yfinance as yf
+        for item in (yf.Ticker(symbol.upper()).news or [])[:8]:
+            content = item.get('content') or {}
+            title = (content.get('title') or item.get('title') or '').strip()
+            desc  = (content.get('summary') or '').strip()
+            if title:
+                headlines.append(f'{title}. {desc[:160]}' if desc else title)
+    except Exception as _e:
+        app_logger.debug(f'[Catalyst] yfinance news {symbol}: {_e}')
+    # Fallback: AI-agent web search only if yfinance returned nothing.
+    if not headlines and AI_AGENT_AVAILABLE and _ai_agent:
+        try:
+            nd = _ai_agent._get_stock_news(symbol, days=days)
+            for n in (nd.get('news') or [])[:6]:
+                h = (n.get('title') or n.get('text') or n.get('snippet') or '').strip()
+                if h:
+                    headlines.append(h)
+        except Exception as _e:
+            app_logger.debug(f'[Catalyst] websearch news {symbol}: {_e}')
+    # De-dup preserving order.
+    seen, uniq = set(), []
+    for h in headlines:
+        k = h.lower()[:80]
+        if k not in seen:
+            seen.add(k); uniq.append(h)
+    return uniq[:6]
+
+
 def _classify_catalyst_sync(symbol: str, gap_pct, price) -> dict:
     """Fetch recent news for `symbol` and have Claude classify the gap catalyst.
     Returns {type, quality, reason, headline}. Never raises — returns a safe
@@ -4380,10 +4418,7 @@ def _classify_catalyst_sync(symbol: str, gap_pct, price) -> dict:
     if not (AI_AGENT_AVAILABLE and _ai_agent):
         return out
     try:
-        nd = _ai_agent._get_stock_news(symbol, days=5)
-        items = (nd.get('news') or [])[:6]
-        headlines = [(n.get('title') or n.get('text') or '').strip() for n in items]
-        headlines = [h for h in headlines if h]
+        headlines = _fetch_catalyst_headlines(symbol, days=5)
         if not headlines:
             out['reason'] = 'No recent news found — gap may be technical/low-float.'
             out['type']   = 'No news'
