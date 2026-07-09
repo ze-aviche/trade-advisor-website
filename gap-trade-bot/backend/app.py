@@ -4719,6 +4719,9 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
     position_id = f"BROWN_{symbol}_{int(time.time())}"
 
     _trade_date = _last_trading_date()
+    # Snapshot the AI catalyst classification at entry (cache-only, no LLM call
+    # in the hot path) so closed-trade stats can forward-track catalyst → P&L.
+    _cat_at_entry = _get_or_schedule_catalyst(symbol, max_spawn=False)
     position = {
         'position_id':         position_id,
         'symbol':              symbol,
@@ -4745,6 +4748,8 @@ def _brown_enter_position(user_id: int, symbol, position_type, config, approx_pr
         'stop_source':         stp_src,
         'entry_signals':       entry_signals or [],
         'primary_trigger':     primary_trigger,
+        'catalyst_type':       _cat_at_entry.get('type')    if _cat_at_entry else None,
+        'catalyst_quality':    _cat_at_entry.get('quality') if _cat_at_entry else None,
     }
     with lock:
         active_positions[position_id] = position
@@ -5459,6 +5464,10 @@ def _brown_bot_scan_and_enter(user_id: int):
         # VWAP/extension checks aren't comparing against a stale gap-open price.
         # gap_price stays as the scanner price (the price at which the gap was detected).
         live_price = _brown_get_current_price(user_id, symbol) or s.get('price', 0)
+        # Pre-warm the AI catalyst classification (non-blocking, cached per day)
+        # so it's usually ready by the time entry conditions confirm — the class
+        # is then snapshotted onto the position for catalyst-vs-P&L tracking.
+        _get_or_schedule_catalyst(symbol, s.get('gap_percent'), live_price)
         sig_ok, sig_checks, sig_reason = _check_day_entry_signal(
             symbol, live_price, s.get('price', 0), config)
 
@@ -7591,6 +7600,21 @@ def get_brown_bot_exit_stats():
     since = request.args.get('since') or None
     until = request.args.get('until') or None
     stats = db_manager.get_brown_exit_stats(
+        user_id=current_user_id, position_type=position_type, since=since, until=until)
+    return jsonify({'success': True, **stats})
+
+
+@app.route('/api/brown-bot/catalyst-stats', methods=['GET'])
+@require_auth
+@require_tier('yogi')
+def get_brown_bot_catalyst_stats():
+    """Per-catalyst performance (by quality + type) over closed positions —
+    forward-tracks whether the AI catalyst classifier actually predicts P&L."""
+    current_user_id = request.user.get('id', 1)
+    position_type = request.args.get('type') or None
+    since = request.args.get('since') or None
+    until = request.args.get('until') or None
+    stats = db_manager.get_brown_catalyst_stats(
         user_id=current_user_id, position_type=position_type, since=since, until=until)
     return jsonify({'success': True, **stats})
 

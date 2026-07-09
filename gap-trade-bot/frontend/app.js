@@ -684,6 +684,7 @@ const app = createApp({
             brownEntryStatsOpen: false,
             brownEntryStatsType: '',
             brownExitStats: { rows: [], overall: {} },
+            brownCatalystStats: { by_quality: [], by_type: [], overall: {} },
             brownBotConfigCollapsed: false,
             brownBotOrdersCollapsed: false,
             brownBotCloseAllConfirm: false,
@@ -3246,6 +3247,7 @@ const app = createApp({
                         this.loadDayOfWeekData(),
                         this.loadBrownEntryStats(true),  // entry-trigger panel follows the stats date range
                         this.loadBrownExitStats(true),   // exit-reason panel follows the stats date range
+                        this.loadBrownCatalystStats(true), // catalyst panel follows the stats date range
                     ]);
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
@@ -7362,6 +7364,33 @@ const app = createApp({
             } catch (error) {
                 console.error('Error loading BrownBot exit stats:', error);
             }
+        },
+        async loadBrownCatalystStats(useStatsDates = false) {
+            try {
+                const p = [];
+                if (this.brownEntryStatsType) p.push('type=' + this.brownEntryStatsType);
+                if (useStatsDates && this.statsStartDate) p.push('since=' + this.statsStartDate);
+                if (useStatsDates && this.statsEndDate)   p.push('until=' + this.statsEndDate);
+                const qs = p.length ? ('?' + p.join('&')) : '';
+                const response = await axios.get('/api/brown-bot/catalyst-stats' + qs, { headers: this.authHeaders() });
+                if (response.data.success) {
+                    this.brownCatalystStats = {
+                        by_quality: response.data.by_quality || [],
+                        by_type:    response.data.by_type || [],
+                        overall:    response.data.overall || {},
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot catalyst stats:', error);
+            }
+        },
+        catalystQualityClass(q) {
+            return {
+                high:   'bg-green-900/40 text-green-300 border-green-700/50',
+                medium: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+                low:    'bg-gray-700/50 text-gray-300 border-gray-600/50',
+                trap:   'bg-red-900/50 text-red-300 border-red-700/60',
+            }[q] || 'bg-gray-700/40 text-gray-400 border-gray-600/40';
         },
         fmtHold(mins) {
             if (mins == null) return '—';

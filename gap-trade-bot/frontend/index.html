@@ -4861,6 +4861,88 @@
                     </div>
                 </div>
 
+                <!-- Catalyst Performance (BrownBot) -->
+                <div class="bg-gray-800 rounded-xl border border-fuchsia-700/40 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-fuchsia-700/30 flex-wrap gap-2">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-brain text-fuchsia-400"></i>Catalyst Performance
+                            <span class="text-xs text-gray-500 font-normal">— does the AI catalyst call predict P&amp;L? win-rate &amp; P&amp;L by catalyst · follows the date filter above</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select v-model="brownEntryStatsType" @change="loadBrownCatalystStats(true)"
+                                    class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                                <option value="">All trades</option>
+                                <option value="day">Day only</option>
+                                <option value="swing">Swing only</option>
+                            </select>
+                            <button @click="loadBrownCatalystStats(true)" class="text-xs text-fuchsia-400 hover:text-fuchsia-300">
+                                <i class="fas fa-sync-alt mr-1"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="px-5 py-4">
+                        <div v-if="brownCatalystStats.overall && brownCatalystStats.overall.trades" class="text-xs text-gray-400 mb-3">
+                            Overall: <span class="text-white font-semibold">{{ brownCatalystStats.overall.trades }}</span> closed trades ·
+                            <span :class="brownCatalystStats.overall.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ brownCatalystStats.overall.win_rate }}% win</span> ·
+                            <span :class="brownCatalystStats.overall.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ brownCatalystStats.overall.total_pnl?.toFixed(2) }}</span> total P&amp;L
+                        </div>
+                        <div v-if="!brownCatalystStats.by_quality.length" class="py-6 text-center text-gray-500 text-sm">
+                            No classified closed trades yet — the catalyst column populates as BrownBot enters &amp; closes positions. This table is your forward-test of whether 'high' beats 'trap'.
+                        </div>
+                        <template v-else>
+                            <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">By quality</div>
+                            <table class="w-full text-sm mb-5">
+                                <thead class="text-gray-500 text-xs border-b border-gray-700">
+                                    <tr>
+                                        <th class="text-left px-2 py-2">Quality</th>
+                                        <th class="text-right px-2 py-2">Trades</th>
+                                        <th class="text-right px-2 py-2">Win %</th>
+                                        <th class="text-right px-2 py-2">Total P&amp;L</th>
+                                        <th class="text-right px-2 py-2">Avg P&amp;L</th>
+                                        <th class="text-right px-2 py-2">Avg %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in brownCatalystStats.by_quality" :key="r.key" class="border-b border-gray-700/40 hover:bg-gray-700/20">
+                                        <td class="px-2 py-1.5">
+                                            <span class="border rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase" :class="catalystQualityClass(r.key)">{{ r.key }}</span>
+                                        </td>
+                                        <td class="px-2 py-1.5 text-right text-gray-300">{{ r.trades }}</td>
+                                        <td class="px-2 py-1.5 text-right" :class="r.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ r.win_rate }}%</td>
+                                        <td class="px-2 py-1.5 text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toFixed(2) }}</td>
+                                        <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.avg_pnl.toFixed(2) }}</td>
+                                        <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">{{ r.avg_pnl_pct >= 0 ? '+' : '' }}{{ r.avg_pnl_pct.toFixed(2) }}%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">By catalyst type</div>
+                            <table class="w-full text-sm">
+                                <thead class="text-gray-500 text-xs border-b border-gray-700">
+                                    <tr>
+                                        <th class="text-left px-2 py-2">Catalyst</th>
+                                        <th class="text-right px-2 py-2">Trades</th>
+                                        <th class="text-right px-2 py-2">Win %</th>
+                                        <th class="text-right px-2 py-2">Total P&amp;L</th>
+                                        <th class="text-right px-2 py-2">Avg P&amp;L</th>
+                                        <th class="text-right px-2 py-2">Avg %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in brownCatalystStats.by_type" :key="r.key" class="border-b border-gray-700/40 hover:bg-gray-700/20">
+                                        <td class="px-2 py-1.5 text-gray-200">{{ r.key }}</td>
+                                        <td class="px-2 py-1.5 text-right text-gray-300">{{ r.trades }}</td>
+                                        <td class="px-2 py-1.5 text-right" :class="r.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ r.win_rate }}%</td>
+                                        <td class="px-2 py-1.5 text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toFixed(2) }}</td>
+                                        <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.avg_pnl.toFixed(2) }}</td>
+                                        <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">{{ r.avg_pnl_pct >= 0 ? '+' : '' }}{{ r.avg_pnl_pct.toFixed(2) }}%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </template>
+                        <p class="text-[10px] text-gray-600 mt-2">Forward-test: if <span class="text-green-400">high</span> shows a materially better win-rate / avg P&amp;L than <span class="text-red-400">trap</span> over enough trades, the catalyst gate is worth wiring into entries. 'unclassified' = entered before the AI finished reading the news.</p>
+                    </div>
+                </div>
+
                 <!-- AI Advisor (Purple Feedback Bot) -->
                 <div class="bg-gray-800 rounded-xl border border-purple-700/40 overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-purple-700/30 cursor-pointer select-none"

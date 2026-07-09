@@ -636,6 +636,8 @@ class DatabaseManager:
                 ('exit_time',          'TEXT'),
                 ('user_id',            'INTEGER NOT NULL DEFAULT 1'),
                 ('entry_signals',      'TEXT'),  # comma-joined entry criteria that triggered the entry
+                ('catalyst_type',      'TEXT'),  # AI catalyst classification at entry (e.g. 'FDA/Trial')
+                ('catalyst_quality',   'TEXT'),  # 'high'|'medium'|'low'|'trap'|'unknown' at entry
             ]:
                 try:
                     cursor.execute(f'ALTER TABLE brown_positions ADD COLUMN {col} {defn}')
@@ -3713,8 +3715,9 @@ class DatabaseManager:
                         profit_target, profit_target_pct, stop_loss, stop_loss_pct,
                         entry_time, entry_time_epoch, data_json,
                         status, trade_date, entry_order_id, avg_entry_price,
-                        current_price, unrealized_pnl, unrealized_pnl_pct, entry_signals, user_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        current_price, unrealized_pnl, unrealized_pnl_pct, entry_signals,
+                        catalyst_type, catalyst_quality, user_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                     (position_id,
                      position.get('symbol'),
                      position.get('position_type', 'day'),
@@ -3736,6 +3739,8 @@ class DatabaseManager:
                      float(position.get('unrealized_pnl', 0) or 0),
                      float(position.get('unrealized_pnl_pct', 0) or 0),
                      ','.join(position.get('entry_signals') or []),
+                     position.get('catalyst_type'),
+                     position.get('catalyst_quality'),
                      user_id)
                 )
                 conn.commit()
@@ -4026,6 +4031,74 @@ class DatabaseManager:
         except Exception as e:
             print(f'Database error fetching brown_entry_signal_stats: {e}')
             return {'rows': [], 'overall': {}}
+
+    def get_brown_catalyst_stats(self, user_id: int = 1, position_type: str = None,
+                                 since: str = None, until: str = None) -> dict:
+        """
+        Per-catalyst performance over CLOSED BrownBot positions — the forward-
+        tracking payoff for the AI catalyst classifier. Groups by catalyst
+        QUALITY (high/medium/low/trap/unknown) and separately by catalyst TYPE
+        so you can see whether 'high' beats 'trap' on real fills over time.
+        Each trade counts once. Returns {'by_quality': [...], 'by_type': [...],
+        'overall': {...}} sorted by trades desc.
+        """
+        try:
+            with self.get_connection() as conn:
+                params: list = [user_id]
+                where = "status = 'closed' AND user_id = ?"
+                if position_type:
+                    where += " AND position_type = ?"; params.append(position_type)
+                if since:
+                    where += " AND trade_date >= ?"; params.append(since)
+                if until:
+                    where += " AND trade_date <= ?"; params.append(until)
+                rows = conn.execute(
+                    f"SELECT catalyst_type, catalyst_quality, realized_pnl, realized_pnl_pct "
+                    f"FROM brown_positions WHERE {where}", params
+                ).fetchall()
+
+            by_q, by_t = {}, {}
+            ov = {'trades': 0, 'wins': 0, 'total_pnl': 0.0}
+
+            def _acc(bucket, key):
+                a = bucket.setdefault(key, {'key': key, 'trades': 0, 'wins': 0,
+                                            'total_pnl': 0.0, '_pnl_pct_sum': 0.0})
+                a['trades'] += 1; a['wins'] += win
+                a['total_pnl'] += pnl; a['_pnl_pct_sum'] += pnl_pct
+
+            for r in rows:
+                pnl = float(r['realized_pnl'] or 0)
+                pnl_pct = float(r['realized_pnl_pct'] or 0)
+                win = 1 if pnl > 0 else 0
+                ov['trades'] += 1; ov['wins'] += win; ov['total_pnl'] += pnl
+                _acc(by_q, (r['catalyst_quality'] or 'unclassified'))
+                _acc(by_t, (r['catalyst_type'] or 'Unclassified'))
+
+            def _finalize(bucket):
+                out = []
+                for a in bucket.values():
+                    t = a['trades']
+                    gross_win = a['total_pnl'] if a['total_pnl'] > 0 else 0
+                    out.append({
+                        'key': a['key'], 'trades': t, 'wins': a['wins'],
+                        'win_rate': round(a['wins'] / t * 100, 1) if t else 0.0,
+                        'total_pnl': round(a['total_pnl'], 2),
+                        'avg_pnl': round(a['total_pnl'] / t, 2) if t else 0.0,
+                        'avg_pnl_pct': round(a['_pnl_pct_sum'] / t, 2) if t else 0.0,
+                    })
+                out.sort(key=lambda x: x['trades'], reverse=True)
+                return out
+
+            overall = {
+                'trades': ov['trades'], 'wins': ov['wins'],
+                'win_rate': round(ov['wins'] / ov['trades'] * 100, 1) if ov['trades'] else 0.0,
+                'total_pnl': round(ov['total_pnl'], 2),
+                'avg_pnl': round(ov['total_pnl'] / ov['trades'], 2) if ov['trades'] else 0.0,
+            }
+            return {'by_quality': _finalize(by_q), 'by_type': _finalize(by_t), 'overall': overall}
+        except Exception as e:
+            print(f'Database error fetching brown_catalyst_stats: {e}')
+            return {'by_quality': [], 'by_type': [], 'overall': {}}
 
     def get_brown_exit_stats(self, user_id: int = 1, position_type: str = None,
                              since: str = None, until: str = None) -> dict:
