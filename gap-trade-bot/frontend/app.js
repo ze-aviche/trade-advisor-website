@@ -7202,12 +7202,41 @@ const app = createApp({
                     this._brownPriceInterval = setInterval(() => this.loadBrownBotLivePrices(), 30000);
                     // Auto-load signals whenever candidates refresh
                     this.loadCandidateSignals();
+                    // Catalysts classify in the background — re-poll a few times
+                    // while any are still 'pending' so badges fill in on their own.
+                    const pending = (this.brownBotCandidates.scanner || [])
+                        .some(s => s.catalyst && s.catalyst.status === 'pending');
+                    if (this._catalystTimer) clearTimeout(this._catalystTimer);
+                    if (pending) {
+                        this._catalystRetries = (this._catalystRetries || 0) + 1;
+                        if (this._catalystRetries <= 12) {
+                            this._catalystTimer = setTimeout(() => this.loadBrownBotCandidates(), 6000);
+                        }
+                    } else {
+                        this._catalystRetries = 0;
+                    }
                 }
             } catch (error) {
                 console.error('Error loading BrownBot candidates:', error);
             } finally {
                 this.loading.brownBotCandidates = false;
             }
+        },
+        catalystBadgeClass(quality) {
+            return {
+                high:   'bg-green-900/40 text-green-300 border-green-700/50',
+                medium: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+                low:    'bg-gray-700/50 text-gray-300 border-gray-600/50',
+                trap:   'bg-red-900/50 text-red-300 border-red-700/60',
+            }[quality] || 'bg-gray-700/40 text-gray-400 border-gray-600/40';
+        },
+        catalystIcon(quality) {
+            return {
+                high:   'fa-bolt text-green-400',
+                medium: 'fa-circle-info text-blue-400',
+                low:    'fa-minus text-gray-400',
+                trap:   'fa-triangle-exclamation text-red-400',
+            }[quality] || 'fa-question text-gray-500';
         },
 
         async loadBrownBotLivePrices() {

@@ -4352,6 +4352,115 @@ def _fetch_and_cache_playbook(symbol: str, sector_info: dict, sector_perf: dict,
         playbook_pending.discard(symbol)
 
 
+# ── Catalyst classifier ─────────────────────────────────────────────────────
+# Human-like judgment layer: for a gap-up candidate, read the pre-market news /
+# filing and classify WHY it's gapping. Rules see identical numbers on an FDA
+# approval and a toxic dilution — this tells them apart. Results are cached per
+# (symbol, ET date) because a catalyst is the same for every user on a given day.
+_catalyst_cache:   dict = {}    # "SYM:YYYY-MM-DD" -> {type, quality, reason, headline, ts}
+_catalyst_pending: set  = set()
+_catalyst_lock          = threading.Lock()
+_CATALYST_MODEL         = 'claude-sonnet-4-6'
+
+# quality -> UI weight; 'trap' should be filtered/avoided, 'high' sized up.
+_CATALYST_QUALITIES = {'high', 'medium', 'low', 'trap', 'unknown'}
+
+
+def _catalyst_key(symbol: str) -> str:
+    import pytz as _pytz
+    today = datetime.now(_pytz.timezone('US/Eastern')).strftime('%Y-%m-%d')
+    return f'{symbol.upper()}:{today}'
+
+
+def _classify_catalyst_sync(symbol: str, gap_pct, price) -> dict:
+    """Fetch recent news for `symbol` and have Claude classify the gap catalyst.
+    Returns {type, quality, reason, headline}. Never raises — returns a safe
+    'unknown' dict on any failure so the scanner path is unaffected."""
+    out = {'type': 'Unknown', 'quality': 'unknown', 'reason': '', 'headline': ''}
+    if not (AI_AGENT_AVAILABLE and _ai_agent):
+        return out
+    try:
+        nd = _ai_agent._get_stock_news(symbol, days=5)
+        items = (nd.get('news') or [])[:6]
+        headlines = [(n.get('title') or n.get('text') or '').strip() for n in items]
+        headlines = [h for h in headlines if h]
+        if not headlines:
+            out['reason'] = 'No recent news found — gap may be technical/low-float.'
+            out['type']   = 'No news'
+            return out
+        prompt = (
+            "You are a day-trading catalyst analyst. A stock is gapping up pre-market. "
+            "Using ONLY the headlines below, classify WHY it is gapping and how tradeable "
+            "the catalyst is for a long day-trade.\n\n"
+            f"Symbol: {symbol}  Gap: {gap_pct}%  Price: ${price}\n\n"
+            "Headlines:\n" + '\n'.join(f'- {h}' for h in headlines) + "\n\n"
+            "Return ONLY compact JSON:\n"
+            '{"type":"one of: Earnings|FDA/Trial|M&A/Buyout|Partnership/Contract|'
+            'Guidance/Upgrade|Product/Launch|Offering/Dilution|Reverse Split|'
+            'Low-float squeeze|Pump/Promotion|Macro/Sector|No news",'
+            '"quality":"high|medium|low|trap",'
+            '"reason":"one concise sentence a trader would say"}\n'
+            "quality=trap for shelf/dilution offerings, reverse splits, obvious promotions, "
+            "or going-concern news (these gap up then dump). quality=high for hard catalysts "
+            "(real earnings beat, FDA approval, buyout, major contract)."
+        )
+        resp = _ai_agent.client.messages.create(
+            model=_CATALYST_MODEL, max_tokens=300,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw = ''.join(blk.text for blk in resp.content
+                      if getattr(blk, 'type', '') == 'text').strip()
+        import re as _re
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if m:
+            parsed = json.loads(m.group(0))
+            out['type']    = str(parsed.get('type', 'Unknown'))[:40]
+            q = str(parsed.get('quality', 'unknown')).lower().strip()
+            out['quality'] = q if q in _CATALYST_QUALITIES else 'unknown'
+            out['reason']  = str(parsed.get('reason', ''))[:200]
+        out['headline'] = headlines[0][:160]
+    except Exception as _e:
+        app_logger.debug(f'[Catalyst] classify {symbol} failed: {_e}')
+    return out
+
+
+def _fetch_and_cache_catalyst(symbol: str, gap_pct, price):
+    """Background worker: classify a catalyst and store it in the module cache."""
+    key = _catalyst_key(symbol)
+    try:
+        res = _classify_catalyst_sync(symbol, gap_pct, price)
+        res['ts'] = time.time()
+        _catalyst_cache[key] = res
+    except Exception as _e:
+        app_logger.debug(f'[Catalyst] worker {symbol}: {_e}')
+    finally:
+        with _catalyst_lock:
+            _catalyst_pending.discard(key)
+
+
+def _get_or_schedule_catalyst(symbol: str, gap_pct=None, price=None, max_spawn=True):
+    """Return the cached catalyst for `symbol` today, or (optionally) spawn a
+    background classification and return a 'pending' placeholder. Non-blocking."""
+    if not (AI_AGENT_AVAILABLE and _ai_agent):
+        return None
+    key = _catalyst_key(symbol)
+    cached = _catalyst_cache.get(key)
+    if cached:
+        return {'type': cached['type'], 'quality': cached['quality'],
+                'reason': cached['reason'], 'headline': cached.get('headline', ''),
+                'status': 'ready'}
+    if not max_spawn:
+        return None
+    with _catalyst_lock:
+        if key in _catalyst_pending:
+            return {'status': 'pending'}
+        _catalyst_pending.add(key)
+    threading.Thread(target=_fetch_and_cache_catalyst,
+                     args=(symbol, gap_pct, price), daemon=True,
+                     name=f'Catalyst-{symbol}').start()
+    return {'status': 'pending'}
+
+
 _ENTRY_SIGNAL_TAGS = {
     'pmh': 'PMHB', 'dh_break': 'DHB', 'orb': 'ORB',
     'vwap': 'VWAP', 'candle': 'CANDLE', 'vol_surge': 'VOL',
@@ -8055,6 +8164,23 @@ def get_brown_bot_candidates():
         for s in wl_entries:
             s['reentry_status'] = _reentry_status(s['ticker'])
             s['entry_count']    = _entry_counts.get(s['ticker'], 0)
+
+        # Catalyst classification (human-like "why is it gapping?" layer).
+        # Non-blocking: cached hits attach instantly; misses spawn a background
+        # classify and return 'pending'. Cap new spawns per request so a large
+        # candidate list can't fan out dozens of LLM calls at once — the rest
+        # populate on the next poll from cache.
+        _spawn_budget = 8
+        for s in sorted(scanner_hits, key=lambda x: x.get('gap_percent') or 0, reverse=True):
+            cat = _get_or_schedule_catalyst(
+                s['ticker'], s.get('gap_percent'), s.get('price'),
+                max_spawn=_spawn_budget > 0)
+            if cat and cat.get('status') == 'pending':
+                _spawn_budget -= 1
+            s['catalyst'] = cat
+        for s in wl_entries:
+            # Watchlist: only show cached catalysts, don't spawn (may not be gapping).
+            s['catalyst'] = _get_or_schedule_catalyst(s['ticker'], max_spawn=False)
 
         return jsonify({'success': True, 'scanner': scanner_hits, 'watchlist': wl_entries})
     except Exception as e:
