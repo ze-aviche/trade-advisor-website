@@ -5615,26 +5615,47 @@
                             <input type="number" v-model="backtestConfig.maxPrice" min="0" step="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"></div>
                     </div>
 
-                    <!-- Entry signals (matching BrownBot day config) -->
-                    <div class="border-t border-gray-700 pt-3">
-                        <p class="text-xs text-gray-400 uppercase tracking-wider mb-2">Entry Signals (optional — match BrownBot day config)</p>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" v-model="backtestConfig.dayCheckVwap" class="w-4 h-4 rounded text-blue-500">
-                                <span class="text-sm text-gray-300">Above VWAP</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" v-model="backtestConfig.dayCheckCandle" class="w-4 h-4 rounded text-blue-500">
-                                <span class="text-sm text-gray-300">Bullish Candle</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" v-model="backtestConfig.dayCheckVolumeSurge" class="w-4 h-4 rounded text-blue-500">
-                                <span class="text-sm text-gray-300">Volume Surge 1.5×</span>
-                            </label>
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm text-gray-300 whitespace-nowrap">Max Extension %</span>
-                                <input type="number" v-model="backtestConfig.dayMaxExtensionPct" min="0" step="0.5" placeholder="0=off"
-                                    class="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <!-- Entry signals — mirrors the live BrownBot day config exactly -->
+                    <div class="border-t border-gray-700 pt-3 space-y-3">
+                        <!-- Entry Triggers (OR) -->
+                        <div class="rounded-lg bg-emerald-950/20 border border-emerald-800/40 p-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-bolt text-emerald-400 text-xs"></i>
+                                <span class="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Entry Triggers</span>
+                                <span class="ml-auto text-[10px] font-semibold text-emerald-300 bg-emerald-900/40 border border-emerald-700/40 rounded-full px-2 py-0.5">enter on ANY one</span>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayCheckPmh" class="w-4 h-4 rounded accent-emerald-400"><span class="text-sm text-gray-300">PMHB — pre-market-high break</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayCheckDayhighBreak" class="w-4 h-4 rounded accent-emerald-400"><span class="text-sm text-gray-300">DHB — day-high break</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" v-model="backtestConfig.dayCheckOrb" class="w-4 h-4 rounded accent-emerald-400">
+                                    <span class="text-sm text-gray-300">ORB</span>
+                                    <select v-model.number="backtestConfig.dayOrbMinutes" @click.stop class="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-[11px] text-white">
+                                        <option :value="5">5m</option><option :value="15">15m</option><option :value="30">30m</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div v-show="backtestConfig.dayCheckPmh || backtestConfig.dayCheckDayhighBreak || backtestConfig.dayCheckOrb" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                                <div><label class="block text-[10px] text-gray-500 mb-0.5">Break buffer %</label><input type="number" v-model.number="backtestConfig.dayPmhBreakBufferPct" step="0.1" min="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white"></div>
+                                <div><label class="block text-[10px] text-gray-500 mb-0.5">Vol × avg (0=off)</label><input type="number" v-model.number="backtestConfig.dayPmhVolMult" step="0.1" min="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white"></div>
+                                <div><label class="block text-[10px] text-gray-500 mb-0.5">Max wick % (0=off)</label><input type="number" v-model.number="backtestConfig.dayPmhMaxWickPct" step="5" min="0" max="100" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white"></div>
+                                <div><label class="block text-[10px] text-gray-500 mb-0.5">Hold bars (0=off)</label><input type="number" v-model.number="backtestConfig.dayPmhAcceptanceBars" step="1" min="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white"></div>
+                            </div>
+                            <p class="text-[10px] text-gray-600 mt-1">If any trigger is enabled, at least one must confirm. PMHB needs pre-market bars for that day — where the 1-min cache lacks them, PMHB won't fire.</p>
+                        </div>
+                        <!-- Conditions (AND) -->
+                        <div class="rounded-lg bg-gray-800/40 border border-gray-700/50 p-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-filter text-amber-400 text-xs"></i>
+                                <span class="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Conditions</span>
+                                <span class="ml-auto text-[10px] font-semibold text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded-full px-2 py-0.5">ALL must also pass</span>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayCheckVwap" class="w-4 h-4 rounded accent-amber-400"><span class="text-sm text-gray-300">Above VWAP</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayCheckCandle" class="w-4 h-4 rounded accent-amber-400"><span class="text-sm text-gray-300">Bullish Candle</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.dayCheckVolumeSurge" class="w-4 h-4 rounded accent-amber-400"><span class="text-sm text-gray-300">Volume Surge 1.5×</span></label>
+                                <div class="flex items-center gap-2"><span class="text-sm text-gray-300 whitespace-nowrap">Max Ext % (from open)</span><input type="number" v-model.number="backtestConfig.dayMaxExtensionPct" min="0" step="0.5" placeholder="0=off" class="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"></div>
+                                <div class="flex items-center gap-2"><span class="text-sm text-gray-300 whitespace-nowrap">Max % below day high</span><input type="number" v-model.number="backtestConfig.dayMaxBelowDayhighPct" min="0" step="0.5" placeholder="0=off" class="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"></div>
                             </div>
                         </div>
                     </div>

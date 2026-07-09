@@ -254,10 +254,25 @@ def run_day_backtest(cfg: dict) -> dict:
     entry_start = cfg.get('entry_start_time', '09:35')
     entry_end   = cfg.get('entry_end_time',   '10:30')
     eod_et      = cfg.get('eod_exit_time',    '15:55')
-    chk_vwap    = bool(cfg.get('day_check_vwap', False))
-    chk_candle  = bool(cfg.get('day_check_candle', False))
-    max_ext     = float(cfg.get('day_max_extension_pct', 0))
-    chk_surge   = bool(cfg.get('day_check_volume_surge', False))
+    # Entry signals — mirror the live BrownBot _check_day_entry_signal():
+    # OR'd breakout triggers (PMHB / DHB / ORB) + AND'd condition gates
+    # (VWAP / candle / volume surge / extension-from-open / max % below day high).
+    # Keep this dict in sync with brown_bot_config day_* fields.
+    sig = {
+        'pmh_on':    bool(cfg.get('day_check_pmh', False)),
+        'dhb_on':    bool(cfg.get('day_check_dayhigh_break', False)),
+        'orb_on':    bool(cfg.get('day_check_orb', False)),
+        'orb_min':   int(cfg.get('day_orb_minutes', 15) or 15),
+        'buf':       float(cfg.get('day_pmh_break_buffer_pct', 0.2)),
+        'vol_mult':  float(cfg.get('day_pmh_vol_mult', 1.5)),
+        'max_wick':  float(cfg.get('day_pmh_max_wick_pct', 60.0)),
+        'accept_n':  int(cfg.get('day_pmh_acceptance_bars', 0) or 0),
+        'chk_vwap':  bool(cfg.get('day_check_vwap', False)),
+        'chk_candle':bool(cfg.get('day_check_candle', False)),
+        'chk_surge': bool(cfg.get('day_check_volume_surge', False)),
+        'max_ext':   float(cfg.get('day_max_extension_pct', 0)),
+        'max_below': float(cfg.get('day_max_below_dayhigh_pct', 0)),
+    }
 
     candidates = _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float)
 
@@ -290,8 +305,7 @@ def run_day_backtest(cfg: dict) -> dict:
                 ohlcv_c, ticker, trade_date,
                 sl_pct, tgt_pct,
                 entry_start, entry_end, eod_et,
-                chk_vwap, chk_candle, max_ext, chk_surge,
-                gap_open,
+                gap_open, sig,
             )
             if sim is False:
                 # No 1-min bars for this ticker/day — fall through to OHLC fallback
@@ -370,6 +384,41 @@ def run_day_backtest(cfg: dict) -> dict:
     return {'summary': summary, 'trades': trades, 'equity_curve': equity_curve}
 
 
+def _add_min(hhmm: str, mins: int) -> str:
+    from datetime import datetime as _d, timedelta as _td
+    return (_d.strptime(hhmm, '%H:%M') + _td(minutes=mins)).strftime('%H:%M')
+
+
+def _confirm_breakout_bt(level, session_bars, cur_close, buf, vol_mult, max_wick, accept_n) -> bool:
+    """
+    Backtest port of the live _confirm_breakout(): session_bars[-1] is the
+    breakout candle, cur_close ≈ current price. Keep in sync with app.py.
+    """
+    if not level or level <= 0 or not session_bars:
+        return False
+    threshold = level * (1 + buf / 100.0)
+    last = session_bars[-1]
+    if cur_close <= level:            # price must still hold above the level
+        return False
+    if last['c'] <= threshold:        # candle must close above level + buffer
+        return False
+    if vol_mult > 0 and len(session_bars) >= 3:
+        avg = sum(b['v'] for b in session_bars[:-1]) / (len(session_bars) - 1)
+        if not (avg > 0 and last['v'] >= avg * vol_mult):
+            return False
+    if 0 < max_wick < 100:
+        rng = last['h'] - last['l']
+        up  = last['h'] - max(last['o'], last['c'])
+        if ((up / rng * 100) if rng > 0 else 0.0) > max_wick:
+            return False
+    if accept_n >= 2:
+        if len(session_bars) < accept_n:
+            return False
+        if not all(b['c'] > level for b in session_bars[-accept_n:]):
+            return False
+    return True
+
+
 def _simulate_day_trade_1m(
     conn: sqlite3.Connection,
     ticker: str,
@@ -379,115 +428,138 @@ def _simulate_day_trade_1m(
     entry_start_et: str,
     entry_end_et: str,
     eod_et: str,
-    check_vwap: bool,
-    check_candle: bool,
-    max_extension_pct: float,
-    check_volume_surge: bool,
     gap_open: float,
+    sig: dict,
 ) -> 'Optional[tuple[float, float, str]] | bool':
     """
-    Find the first qualifying bar in [entry_start, entry_end], enter at
-    that bar's open, then simulate exit.
+    Mirror of the live BrownBot _check_day_entry_signal(): walk 1-min bars,
+    and at each bar in [entry_start, entry_end] require ALL enabled condition
+    gates to pass AND (if any breakout trigger is enabled) at least one trigger
+    to confirm. Enter at the first qualifying bar's open, then simulate exit.
 
-    Returns:
-      (entry, exit, reason) — trade completed.
-      None  — had 1-min bars, but no qualifying entry found in window;
-               caller should skip this trade entirely (not fall back to OHLC).
-      False — no 1-min bars at all for this ticker/day;
-               caller should use OHLC fallback.
+    Triggers (OR): PMHB (pre-market-high break), ORB (opening-range break),
+    DHB (day-high break) — each via _confirm_breakout_bt.
+    Conditions (AND): VWAP, bullish candle, volume surge, extension-from-open,
+    max % below day high.
+
+    Note: PMHB needs pre-market (04:00–09:30 ET) bars for that day; where the
+    1-min cache lacks them, pm_high stays 0 and PMHB simply never fires for that
+    day (honest — the break can't be confirmed without the level).
+
+    Returns: (entry, exit, reason) | None (had bars, no entry) | False (no bars).
     """
     bars = conn.execute(
         "SELECT ts, open, high, low, close, volume FROM ohlcv_1m "
         "WHERE ticker=? AND day=? ORDER BY ts ASC",
         (ticker, day)
     ).fetchall()
-
     if not bars:
         return False  # sentinel: no 1-min data → caller should use OHLC fallback
 
-    first_ts = bars[0]['ts']
-    is_utc   = _ts_is_utc(first_ts)
-
+    is_utc = _ts_is_utc(bars[0]['ts'])
     entry_start_cmp = _et_hhmm_to_comparable(entry_start_et, day, is_utc)
     entry_end_cmp   = _et_hhmm_to_comparable(entry_end_et,   day, is_utc)
-    eod_cmp         = _et_hhmm_to_comparable(eod_et,          day, is_utc)
+    eod_cmp         = _et_hhmm_to_comparable(eod_et,         day, is_utc)
+    pm_start_cmp    = _et_hhmm_to_comparable('04:00', day, is_utc)
+    open_cmp        = _et_hhmm_to_comparable('09:30', day, is_utc)
+    orb_end_cmp     = _et_hhmm_to_comparable(_add_min('09:30', sig['orb_min']), day, is_utc)
 
-    entry       = None
-    stop        = target = 0.0
+    pmh_on, dhb_on, orb_on = sig['pmh_on'], sig['dhb_on'], sig['orb_on']
+    buf, vol_mult, max_wick, accept_n = sig['buf'], sig['vol_mult'], sig['max_wick'], sig['accept_n']
+    chk_vwap, chk_candle, chk_surge = sig['chk_vwap'], sig['chk_candle'], sig['chk_surge']
+    max_ext, max_below = sig['max_ext'], sig['max_below']
+    any_trigger = pmh_on or dhb_on or orb_on
+
+    entry = None
+    stop = target = 0.0
     in_position = False
-
-    # Running session VWAP: computed from all bars, even pre-entry, so the
-    # VWAP at the entry bar accurately reflects full session context.
-    vwap_num  = 0.0
-    vwap_den  = 0.0
-    recent_vols: list[float] = []
+    pm_high = session_open = orb_high = day_high = 0.0
+    vwap_num = vwap_den = 0.0
+    session_bars: list = []   # {o,h,l,c,v} for bars ≥ 09:30 ET
 
     for bar in bars:
-        hhmm  = bar['ts'][11:16]
-        open_ = float(bar['open']   or 0)
-        high  = float(bar['high']   or 0)
-        low   = float(bar['low']    or 0)
-        close = float(bar['close']  or 0)
-        vol   = float(bar['volume'] or 0)
-
-        # Update VWAP regardless of position state
-        tp = (high + low + close) / 3
-        if vol > 0:
-            vwap_num += tp * vol
-            vwap_den += vol
-        session_vwap = vwap_num / vwap_den if vwap_den else 0
+        hhmm = bar['ts'][11:16]
+        o = float(bar['open'] or 0);  h = float(bar['high'] or 0)
+        l = float(bar['low'] or 0);   c = float(bar['close'] or 0)
+        v = float(bar['volume'] or 0)
 
         if not in_position:
+            # Pre-market (04:00–09:30 ET): accumulate the pre-market high.
+            if hhmm < open_cmp:
+                if hhmm >= pm_start_cmp and h > pm_high:
+                    pm_high = h
+                continue
+
+            # Regular-session bar (≥ 09:30): update session state.
+            if not session_open:
+                session_open = o if o > 0 else c
+            prior_high = day_high            # day high BEFORE this bar → DHB level
+            session_bars.append({'o': o, 'h': h, 'l': l, 'c': c, 'v': v})
+            if h > day_high:
+                day_high = h
+            if hhmm < orb_end_cmp and h > orb_high:
+                orb_high = h
+            tp = (h + l + c) / 3
+            if v > 0:
+                vwap_num += tp * v
+                vwap_den += v
+            session_vwap = vwap_num / vwap_den if vwap_den else 0
+
             if hhmm < entry_start_cmp:
-                recent_vols.append(vol)
                 continue
-
             if hhmm > entry_end_cmp:
-                # Entry window closed without a qualifying bar — skip stock
-                return None
+                return None  # window closed without an entry — skip stock
 
-            # Inside entry window — evaluate signals
-            ok = True
-            if check_vwap and session_vwap > 0 and close < session_vwap:
-                ok = False
-            if ok and check_candle and close < open_:
-                ok = False
-            if ok and max_extension_pct > 0 and gap_open > 0:
-                if (close - gap_open) / gap_open * 100 > max_extension_pct:
-                    ok = False
-            if ok and check_volume_surge and len(recent_vols) >= 3:
-                avg = sum(recent_vols[-5:]) / min(len(recent_vols), 5)
-                if avg > 0 and vol < avg * 1.5:
-                    ok = False
+            # ── Condition gates (AND) ──
+            cond_ok = True
+            if chk_vwap and session_vwap > 0 and c < session_vwap:
+                cond_ok = False
+            if cond_ok and chk_candle and c < o:
+                cond_ok = False
+            if cond_ok and max_ext > 0 and session_open > 0:
+                if (c - session_open) / session_open * 100 > max_ext:
+                    cond_ok = False
+            if cond_ok and chk_surge:
+                if len(session_bars) < 3:
+                    cond_ok = False
+                else:
+                    avg = sum(b['v'] for b in session_bars[:-1]) / (len(session_bars) - 1)
+                    if not (avg > 0 and v >= avg * 1.5):
+                        cond_ok = False
+            if cond_ok and max_below > 0 and day_high > 0:
+                if (day_high - c) / day_high * 100 > max_below:
+                    cond_ok = False
 
-            if not ok:
-                recent_vols.append(vol)
+            # ── Breakout triggers (OR) ──
+            trig_ok = True
+            if any_trigger:
+                trig_ok = (
+                    (pmh_on and _confirm_breakout_bt(pm_high, session_bars, c, buf, vol_mult, max_wick, accept_n)) or
+                    (orb_on and hhmm >= orb_end_cmp and _confirm_breakout_bt(orb_high, session_bars, c, buf, vol_mult, max_wick, accept_n)) or
+                    (dhb_on and _confirm_breakout_bt(prior_high, session_bars, c, buf, vol_mult, max_wick, accept_n))
+                )
+
+            if not (cond_ok and trig_ok):
                 continue
 
-            # Qualifies — enter at this bar's open
-            entry = open_ if open_ > 0 else close
+            entry = o if o > 0 else c
             if entry <= 0:
-                recent_vols.append(vol)
                 continue
-
-            stop        = round(entry * (1 - sl_pct  / 100), 4)
-            target      = round(entry * (1 + tgt_pct / 100), 4)
+            stop   = round(entry * (1 - sl_pct  / 100), 4)
+            target = round(entry * (1 + tgt_pct / 100), 4)
             in_position = True
-            # Fall through to check exit on entry bar
+            # Fall through to exit checks on the entry bar
 
-        # In position
+        # In position — exit checks
         if hhmm >= eod_cmp:
-            return (entry, close, 'EOD Close')
-        if low <= stop:
+            return (entry, c, 'EOD Close')
+        if l <= stop:
             return (entry, stop, 'Stop Loss')
-        if high >= target:
+        if h >= target:
             return (entry, target, 'Target Hit')
-
-        recent_vols.append(vol)
 
     if in_position and bars:
         return (entry, float(bars[-1]['close'] or 0), 'EOD Close')
-
     return None  # never entered
 
 

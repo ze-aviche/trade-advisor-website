@@ -812,10 +812,21 @@ const app = createApp({
                     entryStartTime: '09:35',
                     entryEndTime: '10:30',
                     eodExitTime: '15:55',
+                    // Breakout triggers (OR) — mirror BrownBot day settings
+                    dayCheckPmh: false,
+                    dayCheckDayhighBreak: false,
+                    dayCheckOrb: false,
+                    dayOrbMinutes: 15,
+                    dayPmhBreakBufferPct: 0.2,
+                    dayPmhVolMult: 1.5,
+                    dayPmhMaxWickPct: 60,
+                    dayPmhAcceptanceBars: 0,
+                    // Condition gates (AND)
                     dayCheckVwap: false,
                     dayCheckCandle: false,
                     dayMaxExtensionPct: 0,
                     dayCheckVolumeSurge: false,
+                    dayMaxBelowDayhighPct: 0,
                     // ── Swing trade ──────────────────────────
                     swingPositionSizePct: 3,
                     swingStopLossPct: 7.0,
@@ -3923,6 +3934,16 @@ const app = createApp({
                             day_check_candle:        c.dayCheckCandle,
                             day_max_extension_pct:   c.dayMaxExtensionPct,
                             day_check_volume_surge:  c.dayCheckVolumeSurge,
+                            day_max_below_dayhigh_pct: c.dayMaxBelowDayhighPct,
+                            // Breakout triggers (OR)
+                            day_check_pmh:           c.dayCheckPmh,
+                            day_check_dayhigh_break: c.dayCheckDayhighBreak,
+                            day_check_orb:           c.dayCheckOrb,
+                            day_orb_minutes:         c.dayOrbMinutes,
+                            day_pmh_break_buffer_pct: c.dayPmhBreakBufferPct,
+                            day_pmh_vol_mult:        c.dayPmhVolMult,
+                            day_pmh_max_wick_pct:    c.dayPmhMaxWickPct,
+                            day_pmh_acceptance_bars: c.dayPmhAcceptanceBars,
                         });
                     } else {
                         Object.assign(payload, {
