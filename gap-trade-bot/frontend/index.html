@@ -5910,6 +5910,32 @@
                         </div>
                     </div>
 
+                    <!-- Segment analysis (day) — where the edge lives -->
+                    <div v-if="backtestResults.tradeType === 'day' && backtestResults.summary.segments" class="bg-gray-800 rounded-xl p-5">
+                        <div class="text-sm font-semibold text-gray-300 mb-1">Segment Analysis — where the edge lives</div>
+                        <p class="text-[11px] text-gray-500 mb-4">Isolate the sub-populations with PF &gt; 1 (green) and trade only those. Ignore segments with very few trades.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <template v-for="seg in [{k:'by_gap',t:'Gap size'},{k:'by_price',t:'Entry price'},{k:'by_hour',t:'Entry time (ET)'},{k:'by_dow',t:'Day of week'}]" :key="seg.k">
+                                <div>
+                                    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{{ seg.t }}</div>
+                                    <table class="w-full text-xs">
+                                        <thead class="text-gray-500"><tr><th class="text-left py-1">Segment</th><th class="text-right">Trades</th><th class="text-right">Win %</th><th class="text-right">PF</th><th class="text-right">Total P&amp;L</th></tr></thead>
+                                        <tbody>
+                                            <tr v-for="r in backtestResults.summary.segments[seg.k]" :key="r.segment" class="border-t border-gray-700/40"
+                                                :class="r.profit_factor >= 1 ? 'bg-green-900/10' : ''">
+                                                <td class="py-1 text-gray-300">{{ r.segment }}</td>
+                                                <td class="text-right text-gray-400">{{ r.trades }}</td>
+                                                <td class="text-right" :class="r.win_rate >= 40 ? 'text-green-400' : 'text-gray-400'">{{ r.win_rate }}%</td>
+                                                <td class="text-right font-mono font-semibold" :class="r.profit_factor >= 1.3 ? 'text-green-400' : r.profit_factor >= 1 ? 'text-green-300' : 'text-red-400'">{{ r.profit_factor >= 999 ? '∞' : r.profit_factor }}</td>
+                                                <td class="text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toLocaleString() }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
                     <!-- Equity curve -->
                     <div class="bg-gray-800 rounded-xl p-5">
                         <h5 class="text-sm font-semibold text-gray-300 mb-4">Equity Curve</h5>

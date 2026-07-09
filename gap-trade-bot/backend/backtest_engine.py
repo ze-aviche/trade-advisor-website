@@ -388,6 +388,7 @@ def run_day_backtest(cfg: dict) -> dict:
                 'pnl_pct':      pnl_pct,
                 'trigger':      t.get('trigger'),
                 'exit_reason':  t['reason'],
+                'entry_ts':     t.get('entry_ts'),
                 'equity_after': round(day_start_equity + day_pnl, 2),
             })
 
@@ -407,6 +408,7 @@ def run_day_backtest(cfg: dict) -> dict:
     # Per-entry-trigger and per-exit-reason breakdowns (like the Stats tab).
     summary['by_trigger']     = _perf_breakdown(trades, 'trigger')
     summary['by_exit_reason'] = _perf_breakdown(trades, 'exit_reason')
+    summary['segments']       = _segment_report(trades)
     summary['skipped_slot_cap'] = skipped_slot
     summary['no_entry']        = no_entry_count
     summary['no_bars']         = no_bars_count
@@ -431,6 +433,76 @@ def _perf_breakdown(trades: list, key: str) -> list:
     } for a in agg.values()]
     out.sort(key=lambda x: x['trades'], reverse=True)
     return out
+
+
+def _seg_stats(trades: list, keyfn) -> list:
+    """Group trades by keyfn → trades, win-rate, total/avg P&L, and profit factor."""
+    agg: dict = {}
+    for t in trades:
+        k = keyfn(t)
+        if k is None:
+            continue
+        a = agg.setdefault(k, {'segment': k, 'trades': 0, 'wins': 0,
+                               'gp': 0.0, 'gl': 0.0, 'pnl': 0.0})
+        p = t.get('pnl', 0)
+        a['trades'] += 1
+        a['pnl'] += p
+        if p > 0:
+            a['wins'] += 1; a['gp'] += p
+        else:
+            a['gl'] += abs(p)
+    out = []
+    for a in agg.values():
+        n = a['trades']
+        out.append({
+            'segment': a['segment'], 'trades': n, 'wins': a['wins'],
+            'win_rate': round(a['wins'] / n * 100, 1) if n else 0.0,
+            'total_pnl': round(a['pnl'], 2),
+            'avg_pnl': round(a['pnl'] / n, 2) if n else 0.0,
+            'profit_factor': round(a['gp'] / a['gl'], 2) if a['gl'] > 0 else (999.0 if a['gp'] > 0 else 0.0),
+        })
+    return out
+
+
+def _segment_report(trades: list) -> dict:
+    """Break trades into sub-populations so we can see WHERE the edge lives."""
+    def gap_bucket(t):
+        g = t.get('gap_pct', 0) or 0
+        return '10-20%' if g < 20 else '20-30%' if g < 30 else '30-50%' if g < 50 else '50%+'
+
+    def price_bucket(t):
+        p = t.get('entry', 0) or 0
+        return '$1-5' if p < 5 else '$5-10' if p < 10 else '$10-20' if p < 20 else '$20-50' if p < 50 else '$50+'
+
+    def hour_bucket(t):
+        ets = t.get('entry_ts')
+        if not ets:
+            return None
+        try:
+            d = datetime.fromisoformat(str(ets).replace('Z', '+00:00')).astimezone(ET)
+        except Exception:
+            return None
+        m = d.hour * 60 + d.minute
+        return ('09:30-10:00' if m < 600 else '10:00-10:30' if m < 630 else
+                '10:30-11:00' if m < 660 else '11:00-12:00' if m < 720 else '12:00+')
+
+    _DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    def dow_bucket(t):
+        try:
+            return _DOW[date.fromisoformat(t['date']).weekday()]
+        except Exception:
+            return None
+
+    def _ordered(rows, order):
+        idx = {v: i for i, v in enumerate(order)}
+        return sorted(rows, key=lambda r: idx.get(r['segment'], 99))
+
+    return {
+        'by_gap':   _ordered(_seg_stats(trades, gap_bucket), ['10-20%', '20-30%', '30-50%', '50%+']),
+        'by_price': _ordered(_seg_stats(trades, price_bucket), ['$1-5', '$5-10', '$10-20', '$20-50', '$50+']),
+        'by_hour':  _ordered(_seg_stats(trades, hour_bucket), ['09:30-10:00', '10:00-10:30', '10:30-11:00', '11:00-12:00', '12:00+']),
+        'by_dow':   _ordered(_seg_stats(trades, dow_bucket), _DOW),
+    }
 
 
 def _add_min(hhmm: str, mins: int) -> str:
