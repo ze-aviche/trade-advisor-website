@@ -286,6 +286,11 @@ def run_day_backtest(cfg: dict) -> dict:
     max_concurrent = int(cfg.get('max_concurrent_day', 5) or 5)
     slippage_pct   = float(cfg.get('day_slippage_pct', 0.1))     # per side (%)
     commission     = float(cfg.get('commission_per_trade', 0.0)) # $ per round-trip
+    # Margin realism: you cannot deploy more than (equity × margin_factor) at once.
+    #   1.0 = cash account · 2.0 = Reg-T overnight · 4.0 = PDT intraday buying power.
+    # position_size_pct × max_concurrent can exceed this; excess entries are skipped
+    # for lack of buying power (exposure_capped), exactly as a real broker would reject.
+    margin_factor  = float(cfg.get('margin_factor', 1.0) or 1.0)
 
     # No trigger enabled → no entries (matches live). Return an explicit note
     # instead of a silently-empty run.
@@ -346,25 +351,35 @@ def run_day_backtest(cfg: dict) -> dict:
     max_dd        = 0.0
     daily_returns: list[float] = []
     skipped_slot  = 0
+    skipped_expo  = 0
+    max_gross_pct = 0.0   # peak simultaneous deployment seen (as % of equity)
 
     for d in sorted(raw_by_date.keys()):
         day_trades = sorted(raw_by_date[d], key=lambda t: t.get('entry_ts') or '')
         day_start_equity = equity
-        open_exits: list = []   # exit timestamps of currently-open positions
+        # Each open position tracked as (exit_ts, trade_value, worst_case_loss$) so we
+        # can enforce the buying-power cap and mark unrealized intraday heat.
+        open_pos: list = []
         day_pnl = 0.0
+        buying_power = day_start_equity * margin_factor
+        day_intraday_low = day_start_equity   # lowest mark-to-worst equity intraday
 
         for t in day_trades:
             ets = t.get('entry_ts') or ''
             xts = t.get('exit_ts') or ''
-            # Free slots for positions that already closed by this entry time.
-            open_exits = [x for x in open_exits if x > ets]
-            if len(open_exits) >= max_concurrent:
+            # Free capital/slots for positions that already closed by this entry time.
+            open_pos = [p for p in open_pos if p[0] > ets]
+            if len(open_pos) >= max_concurrent:
                 skipped_slot += 1
                 continue
-            open_exits.append(xts)
 
             entry = t['entry']
             trade_value = day_start_equity * (pos_pct / 100)
+            # Buying-power cap: sum of open deployment + this trade must fit margin.
+            deployed = sum(p[1] for p in open_pos)
+            if deployed + trade_value > buying_power + 1e-6:
+                skipped_expo += 1
+                continue
             shares = math.floor(trade_value / entry)
             if shares < 1:
                 continue
@@ -374,6 +389,24 @@ def run_day_backtest(cfg: dict) -> dict:
             pnl     = round((fill_exit - fill_entry) * shares - commission, 2)
             pnl_pct = round((fill_exit - fill_entry) / fill_entry * 100, 3) if fill_entry else 0
             day_pnl += pnl
+
+            # Track this position as open for buying-power + intraday-heat modelling.
+            # Worst case = position runs to its stop (mark-to-worst) incl. slippage.
+            worst_loss = shares * fill_entry * (sl_pct / 100) + commission
+            open_pos.append((xts, trade_value, worst_loss))
+            # Intraday heat: realized-so-far minus every still-open position's worst case.
+            # (day_pnl already includes this trade's *final* pnl, so back it out and
+            #  substitute its worst case to avoid double counting the winners.)
+            realized_prior = day_pnl - pnl
+            unreal_worst   = sum(p[2] for p in open_pos)
+            mark = day_start_equity + realized_prior - unreal_worst
+            if mark < day_intraday_low:
+                day_intraday_low = mark
+            gross = sum(p[1] for p in open_pos)
+            if day_start_equity > 0:
+                gp = gross / day_start_equity * 100
+                if gp > max_gross_pct:
+                    max_gross_pct = gp
 
             trades.append({
                 'date':         d,
@@ -395,8 +428,11 @@ def run_day_backtest(cfg: dict) -> dict:
         equity += day_pnl
         if equity > peak_equity:
             peak_equity = equity
+        # Drawdown against BOTH the end-of-day equity and the worst intraday mark
+        # (positions marked to their stops), so 250%-gross days show real heat.
         if peak_equity > 0:
-            dd = (peak_equity - equity) / peak_equity * 100
+            low_equity = min(equity, day_intraday_low)
+            dd = (peak_equity - low_equity) / peak_equity * 100
             if dd > max_dd:
                 max_dd = dd
         daily_returns.append(day_pnl / day_start_equity if day_start_equity else 0)
@@ -410,6 +446,9 @@ def run_day_backtest(cfg: dict) -> dict:
     summary['by_exit_reason'] = _perf_breakdown(trades, 'exit_reason')
     summary['segments']       = _segment_report(trades)
     summary['skipped_slot_cap'] = skipped_slot
+    summary['skipped_exposure'] = skipped_expo
+    summary['peak_gross_pct']   = round(max_gross_pct, 1)
+    summary['margin_factor']    = margin_factor
     summary['no_entry']        = no_entry_count
     summary['no_bars']         = no_bars_count
 

@@ -816,6 +816,7 @@ const app = createApp({
                     dayTrailingStopEnabled: false,
                     dayTrailingStopPct: 1.5,
                     maxConcurrentDay: 5,
+                    marginFactor: 1,
                     daySlippagePct: 0.1,
                     dayMaxReentry: 1,
                     entryStartTime: '09:35',
@@ -853,6 +854,23 @@ const app = createApp({
 
         
         computed: {
+            // Segments with PF < 1 on a meaningful sample — the "don't trade" list.
+            segmentsToAvoid() {
+                const segs = this.backtestResults?.summary?.segments;
+                if (!segs) return [];
+                const labels = { by_gap: 'Gap', by_price: 'Price', by_hour: 'Time', by_dow: 'Day' };
+                const total = (this.backtestResults.summary.total_trades) || 0;
+                const minN = Math.max(20, total * 0.03); // ignore tiny buckets (noise)
+                const out = [];
+                for (const k of Object.keys(labels)) {
+                    for (const r of (segs[k] || [])) {
+                        if (r.profit_factor < 1 && r.trades >= minN) {
+                            out.push({ label: labels[k], segment: r.segment, pf: r.profit_factor, trades: r.trades });
+                        }
+                    }
+                }
+                return out.sort((a, b) => a.pf - b.pf);
+            },
             erSelectedDayEntries() {
                 if (!this.erSelectedDate || !this.erCalendar.length) return [];
                 const day = this.erCalendar.find(d => d.date === this.erSelectedDate);
@@ -3943,6 +3961,7 @@ const app = createApp({
                             day_trailing_stop_enabled: c.dayTrailingStopEnabled,
                             day_trailing_stop_pct:   c.dayTrailingStopPct,
                             max_concurrent_day:      c.maxConcurrentDay,
+                            margin_factor:           c.marginFactor,
                             day_slippage_pct:        c.daySlippagePct,
                             day_max_reentry:         c.dayMaxReentry,
                             entry_start_time:        c.entryStartTime,

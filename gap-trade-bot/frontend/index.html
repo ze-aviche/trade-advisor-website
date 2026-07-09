@@ -5625,6 +5625,14 @@
                             <label class="block text-xs text-gray-400 mb-1">Max concurrent positions</label>
                             <input type="number" v-model.number="backtestConfig.maxConcurrentDay" min="1" max="50" step="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1" title="Buying-power cap. 1x = cash (can't deploy > equity). 2x = Reg-T. 4x = PDT intraday. Positions that don't fit are skipped, like a real broker rejects them.">Margin factor (buying power)</label>
+                            <select v-model.number="backtestConfig.marginFactor" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option :value="1">1× — Cash (no leverage)</option>
+                                <option :value="2">2× — Reg-T margin</option>
+                                <option :value="4">4× — PDT intraday</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div>
@@ -5818,9 +5826,20 @@
                             <div class="text-xs text-gray-500 mt-1">Gross profit / gross loss</div>
                         </div>
                         <div class="bg-gray-800 rounded-xl p-4">
-                            <div class="text-xs text-gray-400 mb-1">Max Drawdown</div>
+                            <div class="text-xs text-gray-400 mb-1" title="Worst peak-to-trough equity drop, marking open positions to their stops intraday — reflects real heat, not just end-of-day.">Max Drawdown <span class="text-gray-600">(intraday)</span></div>
                             <div class="text-2xl font-bold text-red-400">{{ backtestResults.summary.max_drawdown_pct.toFixed(1) }}%</div>
                             <div class="text-xs text-gray-500 mt-1">Sharpe: {{ backtestResults.summary.sharpe_ratio }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Leverage / buying-power reality check -->
+                    <div v-if="backtestResults.tradeType === 'day' && backtestResults.summary.peak_gross_pct != null"
+                         class="rounded-lg px-4 py-3 text-sm border"
+                         :class="backtestResults.summary.peak_gross_pct > 100 ? 'bg-amber-900/20 border-amber-700/40 text-amber-300' : 'bg-gray-800/60 border-gray-700 text-gray-300'">
+                        <div class="flex flex-wrap gap-x-6 gap-y-1 items-center">
+                            <span><i class="fas fa-scale-balanced mr-1"></i><strong>Peak deployment:</strong> {{ backtestResults.summary.peak_gross_pct }}% of equity ({{ backtestResults.summary.margin_factor }}× buying power)</span>
+                            <span v-if="backtestResults.summary.skipped_exposure > 0" class="text-gray-400">{{ backtestResults.summary.skipped_exposure }} entries skipped — no buying power</span>
+                            <span v-if="backtestResults.summary.peak_gross_pct > 100" class="font-semibold">⚠ Uses leverage — a real cash account could not place every trade. Returns and drawdown are amplified together.</span>
                         </div>
                     </div>
 
@@ -5914,6 +5933,10 @@
                     <div v-if="backtestResults.tradeType === 'day' && backtestResults.summary.segments" class="bg-gray-800 rounded-xl p-5">
                         <div class="text-sm font-semibold text-gray-300 mb-1">Segment Analysis — where the edge lives</div>
                         <p class="text-[11px] text-gray-500 mb-4">Isolate the sub-populations with PF &gt; 1 (green) and trade only those. Ignore segments with very few trades.</p>
+                        <div v-if="segmentsToAvoid.length" class="mb-4 bg-red-900/15 border border-red-700/40 rounded-lg px-3 py-2 text-xs text-red-300">
+                            <i class="fas fa-ban mr-1"></i><strong>Don't trade these</strong> (PF &lt; 1 on a meaningful sample):
+                            <span v-for="(a, i) in segmentsToAvoid" :key="i">{{ a.label }}: <span class="font-mono">{{ a.segment }}</span> (PF {{ a.pf }}, {{ a.trades }} trades){{ i < segmentsToAvoid.length - 1 ? ' · ' : '' }}</span>
+                        </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <template v-for="seg in [{k:'by_gap',t:'Gap size'},{k:'by_price',t:'Entry price'},{k:'by_hour',t:'Entry time (ET)'},{k:'by_dow',t:'Day of week'}]" :key="seg.k">
                                 <div>
