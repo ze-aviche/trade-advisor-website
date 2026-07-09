@@ -5765,8 +5765,22 @@
 
                     <!-- Entry signals — mirrors the live BrownBot day config exactly -->
                     <div class="border-t border-gray-700 pt-3 space-y-3">
-                        <!-- Entry Triggers (OR) -->
-                        <div class="rounded-lg bg-emerald-950/20 border border-emerald-800/40 p-3">
+                        <!-- Direction: Long (BrownBot) vs Short (RedBot experiment) -->
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <span class="text-xs text-gray-400">Direction</span>
+                            <div class="inline-flex rounded-lg overflow-hidden border border-gray-700">
+                                <button type="button" @click="backtestConfig.direction = 'long'"
+                                    :class="backtestConfig.direction !== 'short' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                                    class="px-4 py-1.5 text-sm font-semibold transition-colors"><i class="fas fa-arrow-trend-up mr-1"></i>Long</button>
+                                <button type="button" @click="backtestConfig.direction = 'short'"
+                                    :class="backtestConfig.direction === 'short' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                                    class="px-4 py-1.5 text-sm font-semibold transition-colors"><i class="fas fa-arrow-trend-down mr-1"></i>Short</button>
+                            </div>
+                            <span v-if="backtestConfig.direction === 'short'" class="text-[10px] text-red-300/80"><i class="fas fa-triangle-exclamation mr-1"></i>Fades gap-ups. Historically a losing edge in the 2021–2025 squeeze regime — stops fill exactly here (real squeezes gap through) and borrow fees aren't modeled.</span>
+                        </div>
+
+                        <!-- Entry Triggers (OR) — LONG -->
+                        <div v-if="backtestConfig.direction !== 'short'" class="rounded-lg bg-emerald-950/20 border border-emerald-800/40 p-3">
                             <div class="flex items-center gap-2 mb-2">
                                 <i class="fas fa-bolt text-emerald-400 text-xs"></i>
                                 <span class="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Entry Triggers</span>
@@ -5791,8 +5805,8 @@
                             </div>
                             <p class="text-[10px] text-gray-600 mt-1">If any trigger is enabled, at least one must confirm. PMHB needs pre-market bars for that day — where the 1-min cache lacks them, PMHB won't fire.</p>
                         </div>
-                        <!-- Conditions (AND) -->
-                        <div class="rounded-lg bg-gray-800/40 border border-gray-700/50 p-3">
+                        <!-- Conditions (AND) — LONG -->
+                        <div v-if="backtestConfig.direction !== 'short'" class="rounded-lg bg-gray-800/40 border border-gray-700/50 p-3">
                             <div class="flex items-center gap-2 mb-2">
                                 <i class="fas fa-filter text-amber-400 text-xs"></i>
                                 <span class="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Conditions</span>
@@ -5806,13 +5820,48 @@
                                 <div class="flex items-center gap-2"><span class="text-sm text-gray-300 whitespace-nowrap">Max % below day high</span><input type="number" v-model.number="backtestConfig.dayMaxBelowDayhighPct" min="0" step="0.5" placeholder="0=off" class="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"></div>
                             </div>
                         </div>
+
+                        <!-- Short Triggers (OR) — SHORT -->
+                        <div v-if="backtestConfig.direction === 'short'" class="rounded-lg bg-red-950/20 border border-red-800/40 p-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-arrow-trend-down text-red-400 text-xs"></i>
+                                <span class="text-[11px] font-bold text-red-400 uppercase tracking-widest">Short Triggers</span>
+                                <span class="ml-auto text-[10px] font-semibold text-red-300 bg-red-900/40 border border-red-700/40 rounded-full px-2 py-0.5">short on ANY one</span>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.shortPmhReject" class="w-4 h-4 rounded accent-red-400"><span class="text-sm text-gray-300">Failed PMH break (gap fade)</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.shortVwapLoss" class="w-4 h-4 rounded accent-red-400"><span class="text-sm text-gray-300">VWAP loss</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.shortLowerHigh" class="w-4 h-4 rounded accent-red-400"><span class="text-sm text-gray-300">Lower-high roll-over</span></label>
+                            </div>
+                            <div v-show="backtestConfig.shortPmhReject || backtestConfig.shortVwapLoss || backtestConfig.shortLowerHigh" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                                <div><label class="block text-[10px] text-gray-500 mb-0.5">Break buffer %</label><input type="number" v-model.number="backtestConfig.dayPmhBreakBufferPct" step="0.1" min="0" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white"></div>
+                                <div><label class="block text-[10px] text-gray-500 mb-0.5">Roll-over lookback (bars)</label><input type="number" v-model.number="backtestConfig.dayPmhAcceptanceBars" step="1" min="3" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white"></div>
+                            </div>
+                            <p class="text-[10px] text-gray-600 mt-1">Failed-PMH = poked above the pre-market high then closed back below. VWAP-loss = held above VWAP then lost it. Roll-over = lower high + breaks the recent swing low.</p>
+                        </div>
+
+                        <!-- Short Conditions (AND) — SHORT -->
+                        <div v-if="backtestConfig.direction === 'short'" class="rounded-lg bg-gray-800/40 border border-gray-700/50 p-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-filter text-amber-400 text-xs"></i>
+                                <span class="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Short Conditions</span>
+                                <span class="ml-auto text-[10px] font-semibold text-amber-300 bg-amber-900/30 border border-amber-700/40 rounded-full px-2 py-0.5">ALL must also pass</span>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.shortBelowVwap" class="w-4 h-4 rounded accent-amber-400"><span class="text-sm text-gray-300">Below VWAP</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.shortBearishCandle" class="w-4 h-4 rounded accent-amber-400"><span class="text-sm text-gray-300">Bearish Candle</span></label>
+                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="backtestConfig.shortVolumeSurge" class="w-4 h-4 rounded accent-amber-400"><span class="text-sm text-gray-300">Volume Surge 1.5×</span></label>
+                                <div class="flex items-center gap-2"><span class="text-sm text-gray-300 whitespace-nowrap">Min Ext % above VWAP</span><input type="number" v-model.number="backtestConfig.shortMinExtPct" min="0" step="0.5" placeholder="0=off" class="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"></div>
+                            </div>
+                            <p class="text-[10px] text-gray-600 mt-1">"Min Ext % above VWAP" gates the roll-over play to only <em>extended</em> names (the classic short-the-pump setup).</p>
+                        </div>
                     </div>
 
                     <div class="flex justify-end pt-1">
                         <button @click="runBacktest" :disabled="loading.runBacktest"
                             class="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed px-8 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
                             <i class="fas" :class="loading.runBacktest ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
-                            {{ loading.runBacktest ? 'Running…' : 'Run Day Backtest' }}
+                            {{ loading.runBacktest ? 'Running…' : (backtestConfig.direction === 'short' ? 'Run SHORT Day Backtest' : 'Run Day Backtest') }}
                         </button>
                     </div>
                 </div>
