@@ -291,6 +291,9 @@ def run_day_backtest(cfg: dict) -> dict:
     # position_size_pct × max_concurrent can exceed this; excess entries are skipped
     # for lack of buying power (exposure_capped), exactly as a real broker would reject.
     margin_factor  = float(cfg.get('margin_factor', 1.0) or 1.0)
+    # Trade direction: 'long' (BrownBot) or 'short' (RedBot experiment — fade the
+    # exact same breakout entries). Short flips stop/target and P&L sign.
+    _direction     = str(cfg.get('direction', 'long')).lower()
 
     # No trigger enabled → no entries (matches live). Return an explicit note
     # instead of a silently-empty run.
@@ -328,7 +331,7 @@ def run_day_backtest(cfg: dict) -> dict:
             continue
         sim = _simulate_day_trade_1m(ohlcv_c, ticker, trade_date, sl_pct, tgt_pct,
                                      entry_start, entry_end, eod_et,
-                                     float(row['today_open'] or 0), sig)
+                                     float(row['today_open'] or 0), sig, direction=_direction)
         if sim is False:
             no_bars_count += 1;  continue     # no 1-min bars → can't confirm a trigger
         if not sim:
@@ -383,11 +386,19 @@ def run_day_backtest(cfg: dict) -> dict:
             shares = math.floor(trade_value / entry)
             if shares < 1:
                 continue
-            # Slippage: pay up on entry, give up on exit; commission per round-trip.
-            fill_entry = entry * (1 + slippage_pct / 100)
-            fill_exit  = t['exit'] * (1 - slippage_pct / 100)
-            pnl     = round((fill_exit - fill_entry) * shares - commission, 2)
-            pnl_pct = round((fill_exit - fill_entry) / fill_entry * 100, 3) if fill_entry else 0
+            # Slippage & P&L by direction. Long: buy up on entry, sell down on
+            # exit. Short: sell down on entry (fill lower), buy up on cover (fill
+            # higher), and P&L is (entry - exit). Slippage always hurts.
+            if _direction == 'short':
+                fill_entry = entry * (1 - slippage_pct / 100)
+                fill_exit  = t['exit'] * (1 + slippage_pct / 100)
+                pnl     = round((fill_entry - fill_exit) * shares - commission, 2)
+                pnl_pct = round((fill_entry - fill_exit) / fill_entry * 100, 3) if fill_entry else 0
+            else:
+                fill_entry = entry * (1 + slippage_pct / 100)
+                fill_exit  = t['exit'] * (1 - slippage_pct / 100)
+                pnl     = round((fill_exit - fill_entry) * shares - commission, 2)
+                pnl_pct = round((fill_exit - fill_entry) / fill_entry * 100, 3) if fill_entry else 0
             day_pnl += pnl
 
             # Track this position as open for buying-power + intraday-heat modelling.
@@ -590,6 +601,7 @@ def _simulate_day_trade_1m(
     eod_et: str,
     gap_open: float,
     sig: dict,
+    direction: str = 'long',
 ) -> 'Optional[tuple[float, float, str]] | bool':
     """
     Mirror of the live BrownBot _check_day_entry_signal(): walk 1-min bars,
@@ -630,6 +642,11 @@ def _simulate_day_trade_1m(
     max_ext, max_below = sig['max_ext'], sig['max_below']
     breakeven_on, be_trigger = sig['breakeven_on'], sig['be_trigger']
     trailing_on, trailing_pct = sig['trailing_on'], sig['trailing_pct']
+    _short = (direction == 'short')
+    if _short:
+        # Short mode fades the SAME breakout entries with a fixed stop/target
+        # only (dynamic breakeven/trailing are long-oriented and disabled here).
+        breakeven_on = trailing_on = False
     any_trigger = pmh_on or dhb_on or orb_on
     if not any_trigger:
         return []   # a breakout trigger is required to enter (mirrors live)
@@ -720,8 +737,13 @@ def _simulate_day_trade_1m(
                 continue
             entry_ts = bar['ts']
             trigger_tag = 'PMHB' if pmh_fire else ('ORB' if orb_fire else 'DHB')
-            stop     = round(entry * (1 - sl_pct  / 100), 4)
-            target   = round(entry * (1 + tgt_pct / 100), 4)
+            if _short:
+                # Short the SAME breakout entry: stop ABOVE, target BELOW.
+                stop   = round(entry * (1 + sl_pct  / 100), 4)
+                target = round(entry * (1 - tgt_pct / 100), 4)
+            else:
+                stop     = round(entry * (1 - sl_pct  / 100), 4)
+                target   = round(entry * (1 + tgt_pct / 100), 4)
             hi_water = entry
             in_position = True
             continue  # exits are evaluated from the NEXT bar onward (no look-ahead)
@@ -731,10 +753,17 @@ def _simulate_day_trade_1m(
         exit_price = exit_reason = None
         if hhmm >= eod_cmp:
             exit_price, exit_reason = c, 'EOD Close'
-        elif l <= stop:
-            exit_price, exit_reason = stop, 'Stop Loss'
-        elif h >= target:
-            exit_price, exit_reason = target, 'Target Hit'
+        elif _short:
+            # Short: stop is ABOVE (price rising hits it), target is BELOW.
+            if h >= stop:
+                exit_price, exit_reason = stop, 'Stop Loss'
+            elif l <= target:
+                exit_price, exit_reason = target, 'Target Hit'
+        else:
+            if l <= stop:
+                exit_price, exit_reason = stop, 'Stop Loss'
+            elif h >= target:
+                exit_price, exit_reason = target, 'Target Hit'
 
         if exit_reason:
             trades_out.append({'entry': entry, 'exit': exit_price, 'reason': exit_reason,
