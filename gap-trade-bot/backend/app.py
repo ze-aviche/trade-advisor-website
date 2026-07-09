@@ -7449,6 +7449,20 @@ def get_brown_bot_entry_stats():
     return jsonify({'success': True, **stats})
 
 
+@app.route('/api/brown-bot/exit-stats', methods=['GET'])
+@require_auth
+@require_tier('yogi')
+def get_brown_bot_exit_stats():
+    """Per-exit-reason performance (win-rate, P&L, avg hold) over closed positions."""
+    current_user_id = request.user.get('id', 1)
+    position_type = request.args.get('type') or None
+    since = request.args.get('since') or None
+    until = request.args.get('until') or None
+    stats = db_manager.get_brown_exit_stats(
+        user_id=current_user_id, position_type=position_type, since=since, until=until)
+    return jsonify({'success': True, **stats})
+
+
 @app.route('/api/brown-bot/risk-status', methods=['GET'])
 @require_auth
 @require_tier('yogi')

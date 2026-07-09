@@ -683,6 +683,7 @@ const app = createApp({
             brownEntryStats: { rows: [], overall: {} },
             brownEntryStatsOpen: false,
             brownEntryStatsType: '',
+            brownExitStats: { rows: [], overall: {} },
             brownBotConfigCollapsed: false,
             brownBotOrdersCollapsed: false,
             brownBotCloseAllConfirm: false,
@@ -3206,6 +3207,7 @@ const app = createApp({
                         this.loadTimeOfDayData(),
                         this.loadDayOfWeekData(),
                         this.loadBrownEntryStats(true),  // entry-trigger panel follows the stats date range
+                        this.loadBrownExitStats(true),   // exit-reason panel follows the stats date range
                     ]);
                 } catch (error) {
                     console.error('❌ Error loading statistics:', error);
@@ -7246,6 +7248,27 @@ const app = createApp({
             } catch (error) {
                 console.error('Error loading BrownBot entry stats:', error);
             }
+        },
+        async loadBrownExitStats(useStatsDates = false) {
+            try {
+                const p = [];
+                if (this.brownEntryStatsType) p.push('type=' + this.brownEntryStatsType);
+                if (useStatsDates && this.statsStartDate) p.push('since=' + this.statsStartDate);
+                if (useStatsDates && this.statsEndDate)   p.push('until=' + this.statsEndDate);
+                const qs = p.length ? ('?' + p.join('&')) : '';
+                const response = await axios.get('/api/brown-bot/exit-stats' + qs, { headers: this.authHeaders() });
+                if (response.data.success) {
+                    this.brownExitStats = { rows: response.data.rows || [], overall: response.data.overall || {} };
+                }
+            } catch (error) {
+                console.error('Error loading BrownBot exit stats:', error);
+            }
+        },
+        fmtHold(mins) {
+            if (mins == null) return '—';
+            if (mins < 60) return Math.round(mins) + 'm';
+            if (mins < 60 * 24) { const h = Math.floor(mins / 60), m = Math.round(mins % 60); return h + 'h' + (m ? ' ' + m + 'm' : ''); }
+            return (mins / (60 * 24)).toFixed(1) + 'd';
         },
 
         async loadBrownBotBrokerOrders() {

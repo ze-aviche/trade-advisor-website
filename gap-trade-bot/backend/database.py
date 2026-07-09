@@ -4023,6 +4023,84 @@ class DatabaseManager:
             print(f'Database error fetching brown_entry_signal_stats: {e}')
             return {'rows': [], 'overall': {}}
 
+    def get_brown_exit_stats(self, user_id: int = 1, position_type: str = None,
+                             since: str = None, until: str = None) -> dict:
+        """
+        Per-exit-reason performance over CLOSED positions: trades, win-rate,
+        total/avg P&L, and avg hold time (minutes). The reason is normalised
+        (strips the parenthetical detail, e.g. 'EOD_FLATTEN (15:55 ET)' →
+        'EOD_FLATTEN'). Returns {'rows': [...], 'overall': {...}}.
+        """
+        import datetime as _dt
+
+        def _hold_min(entry, exit):
+            try:
+                e = _dt.datetime.fromisoformat(str(entry))
+                x = _dt.datetime.fromisoformat(str(exit))
+                return max(0.0, (x - e).total_seconds() / 60.0)
+            except Exception:
+                return None
+
+        try:
+            with self.get_connection() as conn:
+                params: list = [user_id]
+                where = "status = 'closed' AND user_id = ?"
+                if position_type:
+                    where += " AND position_type = ?"; params.append(position_type)
+                if since:
+                    where += " AND trade_date >= ?"; params.append(since)
+                if until:
+                    where += " AND trade_date <= ?"; params.append(until)
+                rows = conn.execute(
+                    f"SELECT exit_reason, realized_pnl, realized_pnl_pct, "
+                    f"entry_time, exit_time FROM brown_positions WHERE {where}", params
+                ).fetchall()
+
+            agg = {}
+            ov = {'trades': 0, 'wins': 0, 'total_pnl': 0.0, '_hold_sum': 0.0, '_hold_n': 0}
+            for r in rows:
+                pnl = float(r['realized_pnl'] or 0)
+                pnl_pct = float(r['realized_pnl_pct'] or 0)
+                win = 1 if pnl > 0 else 0
+                reason = (r['exit_reason'] or 'UNKNOWN').split(' (')[0].strip() or 'UNKNOWN'
+                hold = _hold_min(r['entry_time'], r['exit_time'])
+
+                ov['trades'] += 1; ov['wins'] += win; ov['total_pnl'] += pnl
+                if hold is not None:
+                    ov['_hold_sum'] += hold; ov['_hold_n'] += 1
+
+                a = agg.setdefault(reason, {'reason': reason, 'trades': 0, 'wins': 0,
+                                            'total_pnl': 0.0, '_pct_sum': 0.0,
+                                            '_hold_sum': 0.0, '_hold_n': 0})
+                a['trades'] += 1; a['wins'] += win
+                a['total_pnl'] += pnl; a['_pct_sum'] += pnl_pct
+                if hold is not None:
+                    a['_hold_sum'] += hold; a['_hold_n'] += 1
+
+            out = []
+            for a in agg.values():
+                t = a['trades']
+                out.append({
+                    'reason': a['reason'], 'trades': t, 'wins': a['wins'],
+                    'win_rate': round(a['wins'] / t * 100, 1) if t else 0.0,
+                    'total_pnl': round(a['total_pnl'], 2),
+                    'avg_pnl': round(a['total_pnl'] / t, 2) if t else 0.0,
+                    'avg_pnl_pct': round(a['_pct_sum'] / t, 2) if t else 0.0,
+                    'avg_hold_min': round(a['_hold_sum'] / a['_hold_n'], 1) if a['_hold_n'] else None,
+                })
+            out.sort(key=lambda x: x['trades'], reverse=True)
+            overall = {
+                'trades': ov['trades'], 'wins': ov['wins'],
+                'win_rate': round(ov['wins'] / ov['trades'] * 100, 1) if ov['trades'] else 0.0,
+                'total_pnl': round(ov['total_pnl'], 2),
+                'avg_pnl': round(ov['total_pnl'] / ov['trades'], 2) if ov['trades'] else 0.0,
+                'avg_hold_min': round(ov['_hold_sum'] / ov['_hold_n'], 1) if ov['_hold_n'] else None,
+            }
+            return {'rows': out, 'overall': overall}
+        except Exception as e:
+            print(f'Database error fetching brown_exit_stats: {e}')
+            return {'rows': [], 'overall': {}}
+
     # ────────────────────────── Fundamentals / Screener ──────────────────────
     # Numeric columns that support min/max range filtering and sorting.
     FUND_NUMERIC_COLS = [

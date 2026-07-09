@@ -4782,6 +4782,66 @@
                     </div>
                 </div>
 
+                <!-- Exit Reason Performance (BrownBot) -->
+                <div class="bg-gray-800 rounded-xl border border-rose-700/40 overflow-hidden">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-rose-700/30 flex-wrap gap-2">
+                        <div class="text-white font-semibold flex items-center gap-2">
+                            <i class="fas fa-door-open text-rose-400"></i>Exit Reason Performance
+                            <span class="text-xs text-gray-500 font-normal">— how each exit type performs + avg hold time · follows the date filter above</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select v-model="brownEntryStatsType" @change="loadBrownEntryStats(true); loadBrownExitStats(true)"
+                                    class="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200">
+                                <option value="">All trades</option>
+                                <option value="day">Day only</option>
+                                <option value="swing">Swing only</option>
+                            </select>
+                            <button @click="loadBrownExitStats(true)" class="text-xs text-rose-400 hover:text-rose-300">
+                                <i class="fas fa-sync-alt mr-1"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="px-5 py-4">
+                        <div v-if="brownExitStats.overall && brownExitStats.overall.trades" class="text-xs text-gray-400 mb-3">
+                            Overall: <span class="text-white font-semibold">{{ brownExitStats.overall.trades }}</span> trades ·
+                            <span :class="brownExitStats.overall.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ brownExitStats.overall.win_rate }}% win</span> ·
+                            <span :class="brownExitStats.overall.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ brownExitStats.overall.total_pnl?.toFixed(2) }}</span> ·
+                            avg hold <span class="text-gray-200">{{ fmtHold(brownExitStats.overall.avg_hold_min) }}</span>
+                        </div>
+                        <div v-if="!brownExitStats.rows || !brownExitStats.rows.length" class="py-6 text-center text-gray-500 text-sm">
+                            No closed trades yet — exit stats appear here once BrownBot positions close.
+                        </div>
+                        <table v-else class="w-full text-sm">
+                            <thead class="text-gray-500 text-xs border-b border-gray-700">
+                                <tr>
+                                    <th class="text-left px-2 py-2">Exit Reason</th>
+                                    <th class="text-right px-2 py-2">Trades</th>
+                                    <th class="text-right px-2 py-2">Win %</th>
+                                    <th class="text-right px-2 py-2">Total P&amp;L</th>
+                                    <th class="text-right px-2 py-2">Avg P&amp;L</th>
+                                    <th class="text-right px-2 py-2">Avg %</th>
+                                    <th class="text-right px-2 py-2">Avg Hold</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="r in brownExitStats.rows" :key="r.reason" class="border-b border-gray-700/40 hover:bg-gray-700/20">
+                                    <td class="px-2 py-1.5">
+                                        <span class="border rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                              :class="r.reason==='PROFIT_TARGET' ? 'bg-green-900/40 text-green-300 border-green-700/50' : (r.reason==='STOP_LOSS' ? 'bg-red-900/40 text-red-300 border-red-700/50' : 'bg-gray-700/50 text-gray-300 border-gray-600/50')">{{ r.reason }}</span>
+                                    </td>
+                                    <td class="px-2 py-1.5 text-right text-gray-300">{{ r.trades }}</td>
+                                    <td class="px-2 py-1.5 text-right" :class="r.win_rate >= 50 ? 'text-green-400' : 'text-red-400'">{{ r.win_rate }}%</td>
+                                    <td class="px-2 py-1.5 text-right font-mono" :class="r.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.total_pnl.toFixed(2) }}</td>
+                                    <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">${{ r.avg_pnl.toFixed(2) }}</td>
+                                    <td class="px-2 py-1.5 text-right font-mono" :class="r.avg_pnl_pct >= 0 ? 'text-green-400' : 'text-red-400'">{{ r.avg_pnl_pct >= 0 ? '+' : '' }}{{ r.avg_pnl_pct.toFixed(2) }}%</td>
+                                    <td class="px-2 py-1.5 text-right font-mono text-gray-300">{{ fmtHold(r.avg_hold_min) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="text-[10px] text-gray-600 mt-2">If most trades exit on STOP_LOSS with few PROFIT_TARGET hits, stops are too tight or entries are late. EOD_FLATTEN with negative avg P&amp;L means positions drift red into the close.</p>
+                    </div>
+                </div>
+
                 <!-- AI Advisor (Purple Feedback Bot) -->
                 <div class="bg-gray-800 rounded-xl border border-purple-700/40 overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-purple-700/30 cursor-pointer select-none"
