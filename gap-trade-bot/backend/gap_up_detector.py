@@ -144,6 +144,17 @@ def _ticker_looks_non_cs(ticker):
     return any(t.endswith(s) for s in _NON_CS_SUFFIXES)
 
 
+# ── Global gap-up scanner filter (platform setting, env-configurable) ──────────
+# The gap-up scan is a single shared, always-on pipeline, so this is a platform
+# setting read from env — not per-user config. Float is the right filter here:
+# unlike volume/dollar-volume (which build intraday) it's near-static, changing
+# only on offerings/buybacks/splits. Applied AFTER enrichment (where float is
+# known) and only to known values — unknown float (0) is kept, never dropped.
+try:
+    GAP_MIN_FLOAT = float(os.environ.get('GAP_MIN_FLOAT', '') or 500_000)  # shares; 0 = off
+except (TypeError, ValueError):
+    GAP_MIN_FLOAT = 500_000.0
+
 # ── Full universe cache ────────────────────────────────────────────────────────
 # Populated once per day by _get_alpaca_equity_universe().
 _UNIVERSE_CACHE: dict = {'symbols': [], 'ts': 0.0}
@@ -1101,6 +1112,16 @@ def get_gap_up_stocks_for_frontend():
     _dropped = _before - len(merged)
     if _dropped:
         logger.info(f'[GapScanner] Dropped {_dropped} ETF/leveraged products from gap-up list')
+
+    # Min-float filter (platform setting). Float is near-static intraday, so it's
+    # a safe global gate — drops illiquid <500k-float lottery tickets. Only drops
+    # KNOWN low floats; float==0/None (un-enriched or unknown) is kept (fail-open).
+    if GAP_MIN_FLOAT > 0:
+        _b = len(merged)
+        merged = [s for s in merged
+                  if not s.get('float_shares') or s['float_shares'] >= GAP_MIN_FLOAT]
+        if len(merged) != _b:
+            logger.info(f'[GapScanner] Dropped {_b - len(merged)} rows below {GAP_MIN_FLOAT:,.0f} float')
 
     _tag_with_session(merged)
 
