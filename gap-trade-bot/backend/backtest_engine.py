@@ -280,6 +280,16 @@ def run_day_backtest(cfg: dict) -> dict:
         # Max total entries per symbol per day (1 = no re-entry). Mirrors the live
         # day_max_reentry cap: after a position exits, re-scan for another entry.
         'max_reentry':   int(cfg.get('day_max_reentry', 1) or 1),
+        # ── SHORT setups (RedBot) — OR triggers + AND conditions, mirroring the
+        # long side's structure but for fading gap-ups. Only used when
+        # direction='short'. All off by default.
+        'sr_reject':     bool(cfg.get('short_pmh_reject', False)),      # failed PMH breakout (gap fade)
+        'sr_vwap_loss':  bool(cfg.get('short_vwap_loss', False)),       # lost VWAP after holding it
+        'sr_lower_high': bool(cfg.get('short_lower_high', False)),      # rolling over (breaks recent low w/ lower high)
+        'sc_below_vwap': bool(cfg.get('short_below_vwap', False)),      # AND: price under VWAP
+        'sc_bearish':    bool(cfg.get('short_bearish_candle', False)),  # AND: red 1-min bar
+        'sc_surge':      bool(cfg.get('short_volume_surge', False)),    # AND: breakdown bar ≥1.5× avg vol
+        'sc_min_ext':    float(cfg.get('short_min_ext_pct', 0)),        # AND: ≥X% above VWAP ("extended")
     }
 
     # Portfolio realism (mirror live constraints + real-world frictions).
@@ -296,12 +306,17 @@ def run_day_backtest(cfg: dict) -> dict:
     _direction     = str(cfg.get('direction', 'long')).lower()
 
     # No trigger enabled → no entries (matches live). Return an explicit note
-    # instead of a silently-empty run.
-    if not (sig['pmh_on'] or sig['dhb_on'] or sig['orb_on']):
+    # instead of a silently-empty run. Short uses its own trigger set.
+    _long_trig  = sig['pmh_on'] or sig['dhb_on'] or sig['orb_on']
+    _short_trig = sig['sr_reject'] or sig['sr_vwap_loss'] or sig['sr_lower_high']
+    if (_direction == 'short' and not _short_trig) or (_direction != 'short' and not _long_trig):
+        _msg = ('No short trigger enabled — enable Failed-PMH / VWAP-loss / Roll-over.'
+                if _direction == 'short'
+                else 'No entry trigger enabled — enable PMHB, ORB, or DHB to run a day backtest.')
         return {
             'summary': _calc_summary([], capital, capital, 0.0, []),
             'trades': [], 'equity_curve': [{'date': start, 'equity': capital}],
-            'note': 'No entry trigger enabled — enable PMHB, ORB, or DHB to run a day backtest.',
+            'note': _msg,
         }
 
     candidates = _fetch_candidates(start, end, min_gap, min_price, max_price, min_vol, max_float,
@@ -329,9 +344,14 @@ def run_day_backtest(cfg: dict) -> dict:
         ticker = row['ticker']; trade_date = row['date']
         if float(row['today_open'] or 0) <= 0:
             continue
-        sim = _simulate_day_trade_1m(ohlcv_c, ticker, trade_date, sl_pct, tgt_pct,
-                                     entry_start, entry_end, eod_et,
-                                     float(row['today_open'] or 0), sig, direction=_direction)
+        if _direction == 'short':
+            sim = _simulate_short_day_1m(ohlcv_c, ticker, trade_date, sl_pct, tgt_pct,
+                                         entry_start, entry_end, eod_et,
+                                         float(row['today_open'] or 0), sig)
+        else:
+            sim = _simulate_day_trade_1m(ohlcv_c, ticker, trade_date, sl_pct, tgt_pct,
+                                         entry_start, entry_end, eod_et,
+                                         float(row['today_open'] or 0), sig)
         if sim is False:
             no_bars_count += 1;  continue     # no 1-min bars → can't confirm a trigger
         if not sim:
@@ -790,6 +810,160 @@ def _simulate_day_trade_1m(
                 stop = new_stop
 
     # Position still open when bars ran out → close at the last bar.
+    if in_position and bars:
+        trades_out.append({'entry': entry, 'exit': float(bars[-1]['close'] or 0), 'reason': 'EOD Close',
+                           'entry_ts': entry_ts, 'exit_ts': bars[-1]['ts'], 'trigger': trigger_tag})
+    return trades_out
+
+
+def _simulate_short_day_1m(conn, ticker, day, sl_pct, tgt_pct,
+                           entry_start_et, entry_end_et, eod_et, gap_open, sig):
+    """
+    SHORT-side day simulation (RedBot). Fades gap-ups with short-specific
+    entries — NOT the inverted long breakout. Structure mirrors the long sim:
+    OR triggers + AND condition gates.
+
+      OR triggers (≥1 must fire):
+        sr_reject     — failed PMH breakout / gap fade: price poked ≥ pre-market
+                        high earlier, now closes back below it (buffer-confirmed).
+        sr_vwap_loss  — held above VWAP earlier, now closes below it.
+        sr_lower_high — rolling over: prints a lower high vs the day high AND
+                        breaks below the recent N-bar swing low.
+      AND conditions (all enabled must pass):
+        sc_below_vwap — close < VWAP        sc_bearish — red 1-min bar
+        sc_surge      — breakdown bar ≥1.5× avg vol
+        sc_min_ext    — price ≥ X% ABOVE VWAP ("extended", for the roll-over play)
+
+    Enters short at the confirming bar CLOSE. Stop ABOVE (sl_pct), target BELOW
+    (tgt_pct), EOD flat. Returns list of {entry,exit,reason,entry_ts,exit_ts,
+    trigger}; [] no entry; False no bars.
+    """
+    is_utc = None
+    bars = conn.execute(
+        "SELECT ts, open, high, low, close, volume FROM ohlcv_1m "
+        "WHERE ticker=? AND day=? ORDER BY ts ASC", (ticker, day)).fetchall()
+    if not bars:
+        return False
+    is_utc = _ts_is_utc(bars[0]['ts'])
+    entry_start_cmp = _et_hhmm_to_comparable(entry_start_et, day, is_utc)
+    entry_end_cmp   = _et_hhmm_to_comparable(entry_end_et,   day, is_utc)
+    eod_cmp         = _et_hhmm_to_comparable(eod_et,         day, is_utc)
+    pm_start_cmp    = _et_hhmm_to_comparable('04:00', day, is_utc)
+    open_cmp        = _et_hhmm_to_comparable('09:30', day, is_utc)
+
+    buf       = sig['buf']
+    accept_n  = max(3, int(sig['accept_n'] or 3))   # swing-low lookback for roll-over
+    sr_reject, sr_vwap_loss, sr_lower_high = sig['sr_reject'], sig['sr_vwap_loss'], sig['sr_lower_high']
+    sc_below_vwap, sc_bearish, sc_surge = sig['sc_below_vwap'], sig['sc_bearish'], sig['sc_surge']
+    sc_min_ext = sig['sc_min_ext']
+    if not (sr_reject or sr_vwap_loss or sr_lower_high):
+        return []   # a short trigger is required
+    max_entries = max(1, int(sig.get('max_reentry', 1)))
+
+    trades_out: list = []
+    entry = entry_ts = trigger_tag = None
+    stop = target = 0.0
+    in_position = False
+    pm_high = day_high = 0.0
+    vwap_num = vwap_den = 0.0
+    pmh_tested = was_above_vwap = False
+    session_bars: list = []
+
+    for bar in bars:
+        hhmm = bar['ts'][11:16]
+        o = float(bar['open'] or 0); h = float(bar['high'] or 0)
+        l = float(bar['low'] or 0);  c = float(bar['close'] or 0)
+        v = float(bar['volume'] or 0)
+
+        if not in_position:
+            if hhmm < open_cmp:
+                if hhmm >= pm_start_cmp and h > pm_high:
+                    pm_high = h
+                continue
+            session_bars.append({'o': o, 'h': h, 'l': l, 'c': c, 'v': v})
+            if h > day_high:
+                day_high = h
+            if pm_high > 0 and h >= pm_high:
+                pmh_tested = True
+            tp = (h + l + c) / 3
+            if v > 0:
+                vwap_num += tp * v; vwap_den += v
+            svwap = vwap_num / vwap_den if vwap_den else 0
+            if svwap > 0 and c > svwap:
+                was_above_vwap = True
+
+            if len(trades_out) >= max_entries:
+                break
+            if hhmm < entry_start_cmp:
+                continue
+            if hhmm > entry_end_cmp:
+                break
+
+            # ── AND condition gates ──
+            cond_ok = True
+            if sc_below_vwap and svwap > 0 and c >= svwap:
+                cond_ok = False
+            if cond_ok and sc_bearish and c >= o:
+                cond_ok = False
+            if cond_ok and sc_min_ext > 0:
+                if not (svwap > 0 and (c - svwap) / svwap * 100 >= sc_min_ext):
+                    cond_ok = False
+            if cond_ok and sc_surge:
+                if len(session_bars) < 3:
+                    cond_ok = False
+                else:
+                    avg = sum(b['v'] for b in session_bars[:-1]) / (len(session_bars) - 1)
+                    if not (avg > 0 and v >= avg * 1.5):
+                        cond_ok = False
+
+            # ── OR short triggers ──
+            reject_fire = (sr_reject and pmh_tested and pm_high > 0
+                           and c < pm_high * (1 - buf / 100))
+            vwap_fire   = (sr_vwap_loss and was_above_vwap and svwap > 0
+                           and c < svwap * (1 - buf / 100))
+            roll_fire = False
+            if sr_lower_high and len(session_bars) > accept_n and day_high > 0:
+                recent = session_bars[-(accept_n + 1):-1]
+                swing_low  = min(b['l'] for b in recent)
+                swing_high = max(b['h'] for b in recent)
+                # lower high (not making new day highs) AND breaks recent swing low
+                if swing_high < day_high and c < swing_low * (1 - buf / 100):
+                    roll_fire = True
+            trig_ok = reject_fire or vwap_fire or roll_fire
+
+            if not (cond_ok and trig_ok):
+                continue
+
+            entry = c
+            if entry <= 0:
+                continue
+            entry_ts = bar['ts']
+            trigger_tag = ('REJECT' if reject_fire else
+                           ('VWAP_LOSS' if vwap_fire else 'ROLL_OVER'))
+            stop   = round(entry * (1 + sl_pct  / 100), 4)   # above
+            target = round(entry * (1 - tgt_pct / 100), 4)   # below
+            in_position = True
+            continue   # exits from the NEXT bar (no look-ahead)
+
+        # In position (short) — exit checks.
+        exit_price = exit_reason = None
+        if hhmm >= eod_cmp:
+            exit_price, exit_reason = c, 'EOD Close'
+        elif h >= stop:
+            exit_price, exit_reason = stop, 'Stop Loss'
+        elif l <= target:
+            exit_price, exit_reason = target, 'Target Hit'
+
+        if exit_reason:
+            trades_out.append({'entry': entry, 'exit': exit_price, 'reason': exit_reason,
+                               'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag})
+            in_position = False
+            entry = entry_ts = trigger_tag = None
+            stop = target = 0.0
+            if exit_reason == 'EOD Close':
+                break
+            continue
+
     if in_position and bars:
         trades_out.append({'entry': entry, 'exit': float(bars[-1]['close'] or 0), 'reason': 'EOD Close',
                            'entry_ts': entry_ts, 'exit_ts': bars[-1]['ts'], 'trigger': trigger_tag})
