@@ -5631,7 +5631,11 @@
                             <label class="block text-xs text-gray-400 mb-1">Slippage % (per side)</label>
                             <input type="number" v-model.number="backtestConfig.daySlippagePct" min="0" max="5" step="0.05" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
-                        <div class="md:col-span-3 flex items-end">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Max entries / symbol (re-entries)</label>
+                            <input type="number" v-model.number="backtestConfig.dayMaxReentry" min="1" max="10" step="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="md:col-span-2 flex items-end">
                             <p class="text-[10px] text-gray-600 leading-tight">Realistic model: day-level compounding, slot cap on concurrent positions, and per-side slippage — mirrors the live bot's constraints. Float ≥ min (BrownBot default) or ≤ max. A breakout trigger (PMHB/ORB/DHB) is <span class="text-emerald-400">required</span> to enter — conditions alone won't.</p>
                         </div>
                     </div>

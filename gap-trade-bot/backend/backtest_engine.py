@@ -277,6 +277,9 @@ def run_day_backtest(cfg: dict) -> dict:
         'be_trigger':    float(cfg.get('day_breakeven_trigger_pct', 50.0)),
         'trailing_on':   bool(cfg.get('day_trailing_stop_enabled', False)),
         'trailing_pct':  float(cfg.get('day_trailing_stop_pct', 1.5)),
+        # Max total entries per symbol per day (1 = no re-entry). Mirrors the live
+        # day_max_reentry cap: after a position exits, re-scan for another entry.
+        'max_reentry':   int(cfg.get('day_max_reentry', 1) or 1),
     }
 
     # Portfolio realism (mirror live constraints + real-world frictions).
@@ -323,13 +326,15 @@ def run_day_backtest(cfg: dict) -> dict:
                                      float(row['today_open'] or 0), sig)
         if sim is False:
             no_bars_count += 1;  continue     # no 1-min bars → can't confirm a trigger
-        if sim is None:
+        if not sim:
             no_entry_count += 1; continue     # had bars, no confirmed entry
-        if sim['entry'] <= 0:
-            continue
-        sim['ticker']  = ticker
-        sim['gap_pct'] = round(float(row['gap_percentage'] or 0), 2)
-        raw_by_date[trade_date].append(sim)
+        gp = round(float(row['gap_percentage'] or 0), 2)
+        for t in sim:                          # 1+ trades (initial + re-entries)
+            if t['entry'] <= 0:
+                continue
+            t['ticker']  = ticker
+            t['gap_pct'] = gp
+            raw_by_date[trade_date].append(t)
 
     ohlcv_c.close()
 
@@ -516,8 +521,11 @@ def _simulate_day_trade_1m(
     trailing_on, trailing_pct = sig['trailing_on'], sig['trailing_pct']
     any_trigger = pmh_on or dhb_on or orb_on
     if not any_trigger:
-        return None  # a breakout trigger is required to enter (mirrors live)
+        return []   # a breakout trigger is required to enter (mirrors live)
 
+    max_entries = max(1, int(sig.get('max_reentry', 1)))  # total entries/symbol/day
+
+    trades_out: list = []     # completed trades (initial + re-entries)
     entry = None
     entry_ts = None
     trigger_tag = None
@@ -557,10 +565,13 @@ def _simulate_day_trade_1m(
                 vwap_den += v
             session_vwap = vwap_num / vwap_den if vwap_den else 0
 
+            # No more entries allowed (re-entry cap) and flat → done for the day.
+            if len(trades_out) >= max_entries:
+                break
             if hhmm < entry_start_cmp:
                 continue
             if hhmm > entry_end_cmp:
-                return None  # window closed without an entry — skip stock
+                break  # entry window closed and flat — no more (re-)entries
 
             # ── Condition gates (AND) ──
             cond_ok = True
@@ -606,12 +617,24 @@ def _simulate_day_trade_1m(
 
         # In position — exit checks first, using the stop set from PRIOR bars'
         # high-water (avoids intrabar look-ahead), then ratchet for the next bar.
+        exit_price = exit_reason = None
         if hhmm >= eod_cmp:
-            return {'entry': entry, 'exit': c, 'reason': 'EOD Close', 'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag}
-        if l <= stop:
-            return {'entry': entry, 'exit': stop, 'reason': 'Stop Loss', 'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag}
-        if h >= target:
-            return {'entry': entry, 'exit': target, 'reason': 'Target Hit', 'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag}
+            exit_price, exit_reason = c, 'EOD Close'
+        elif l <= stop:
+            exit_price, exit_reason = stop, 'Stop Loss'
+        elif h >= target:
+            exit_price, exit_reason = target, 'Target Hit'
+
+        if exit_reason:
+            trades_out.append({'entry': entry, 'exit': exit_price, 'reason': exit_reason,
+                               'entry_ts': entry_ts, 'exit_ts': bar['ts'], 'trigger': trigger_tag})
+            in_position = False
+            entry = entry_ts = trigger_tag = None
+            stop = target = hi_water = 0.0
+            at_be = False
+            if exit_reason == 'EOD Close':
+                break  # end of day — no re-entries
+            continue   # re-scan for a re-entry from the next bar (if cap allows)
 
         # Update high-water, then apply breakeven + trailing (mirror live).
         if h > hi_water:
@@ -626,10 +649,11 @@ def _simulate_day_trade_1m(
             if new_stop > stop:
                 stop = new_stop
 
+    # Position still open when bars ran out → close at the last bar.
     if in_position and bars:
-        return {'entry': entry, 'exit': float(bars[-1]['close'] or 0), 'reason': 'EOD Close',
-                'entry_ts': entry_ts, 'exit_ts': bars[-1]['ts'], 'trigger': trigger_tag}
-    return None  # never entered
+        trades_out.append({'entry': entry, 'exit': float(bars[-1]['close'] or 0), 'reason': 'EOD Close',
+                           'entry_ts': entry_ts, 'exit_ts': bars[-1]['ts'], 'trigger': trigger_tag})
+    return trades_out
 
 
 # ══════════════════════════════════════════════════════════════════════════════
