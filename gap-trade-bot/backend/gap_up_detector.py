@@ -757,6 +757,8 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
         # Only overwrite company_name when it's still the raw ticker symbol
         if data.get('company_name') and data['company_name'] != stock.get('ticker'):
             stock['company_name'] = data['company_name']
+        if data.get('is_etf'):
+            stock['is_etf'] = True
 
     missing = [s for s in stocks if _needs_enrichment(s)]
     if not missing:
@@ -779,6 +781,7 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
             info = yf.Ticker(ticker).info
             if not info or not isinstance(info, dict):
                 return ticker, None          # network/parse failure — don't cache
+            _qt = (info.get('quoteType') or '').upper()
             return ticker, {
                 'market_cap':   int(info.get('marketCap') or 0),
                 'float_shares': int(info.get('floatShares') or
@@ -788,6 +791,9 @@ def _enrich_missing_fundamentals(stocks: list) -> None:
                 'company_name': (info.get('longName') or
                                  info.get('shortName') or ticker),
                 'sector':       info.get('sector') or 'Unknown',
+                # ETFs/funds (incl. leveraged/inverse like QID, NVDL) report no
+                # market cap or float — flag them so the caller can drop them.
+                'is_etf':       _qt in ('ETF', 'MUTUALFUND'),
             }
         except Exception:
             return ticker, None              # network/parse failure — don't cache
@@ -1086,6 +1092,15 @@ def get_gap_up_stocks_for_frontend():
     # Enrich stocks that still have market_cap=0 (Alpaca-sourced) with yfinance fundamentals.
     # Cache means subsequent scans are instant; only new tickers hit the network.
     _enrich_missing_fundamentals(merged)
+
+    # Drop ETFs / leveraged & inverse products (QID, NVDL, SOXL, …). They report
+    # no market cap or float — which the candidate filters rely on — so they are
+    # noise in a stock scanner and needlessly consume memory.
+    _before = len(merged)
+    merged = [s for s in merged if not s.get('is_etf')]
+    _dropped = _before - len(merged)
+    if _dropped:
+        logger.info(f'[GapScanner] Dropped {_dropped} ETF/leveraged products from gap-up list')
 
     _tag_with_session(merged)
 
