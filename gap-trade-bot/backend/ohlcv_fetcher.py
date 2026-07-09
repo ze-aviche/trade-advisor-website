@@ -309,6 +309,121 @@ def fetch_today_bars():
     logger.info(f'[OHLCV] EOD {day_str}: fetched={ok}, skipped={skipped}, errors={errors}')
 
 
+# ── Snapshot → gap_data sync (close the loop for daily forward-testing) ────────
+
+def _ensure_gap_data_float_col():
+    """Add gap_data.float_shares if missing so the backtest float filter works."""
+    try:
+        with _main_conn() as conn:
+            tbls = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            if 'gap_data' not in tbls:
+                return
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(gap_data)").fetchall()}
+            if 'float_shares' not in cols:
+                conn.execute("ALTER TABLE gap_data ADD COLUMN float_shares REAL")
+                conn.commit()
+    except Exception as e:
+        logger.debug(f'[OHLCV] float col ensure: {e}')
+
+
+def _regular_session_ohlc(ticker: str, day: str):
+    """Aggregate ohlcv_1m 09:30–16:00 ET bars → (open, high, low, close, vol, peak_$vol)."""
+    with _conn() as oc:
+        bars = oc.execute(
+            "SELECT ts, open, high, low, close, volume FROM ohlcv_1m "
+            "WHERE ticker=? AND day=? ORDER BY ts ASC", (ticker, day)).fetchall()
+    reg = []
+    for b in bars:
+        try:
+            dt = datetime.fromisoformat(str(b[0]).replace('Z', '+00:00')).astimezone(ET)
+        except Exception:
+            continue
+        if (dt.hour, dt.minute) >= (9, 30) and dt.hour < 16:
+            reg.append(b)
+    if not reg:
+        return None
+    o  = float(reg[0][1] or 0)
+    hi = max(float(b[2] or 0) for b in reg)
+    lo = min(float(b[3] or 0) for b in reg if (b[3] or 0) > 0)
+    cl = float(reg[-1][4] or 0)
+    vol = sum(float(b[5] or 0) for b in reg)
+    peak_dv = max((float(b[4] or 0) * float(b[5] or 0)) for b in reg)
+    return o, hi, lo, cl, vol, peak_dv
+
+
+def sync_gap_data_from_snapshots(fetch_missing: bool = True) -> int:
+    """
+    Append daily gap_up_snapshots into gap_data (the backtest CANDIDATE table),
+    deriving OHLC/volume from the 1-min bars in ohlcv_1m. This closes the loop so
+    recent days become backtestable ("go one day back and test"). Idempotent.
+    If fetch_missing, pulls any snapshot ticker-day whose bars aren't cached yet.
+    """
+    _ensure_gap_data_float_col()
+    try:
+        with _main_conn() as conn:
+            tbls = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            if 'gap_up_snapshots' not in tbls or 'gap_data' not in tbls:
+                return 0
+            snaps = conn.execute(
+                "SELECT date, ticker, gap_percent, previous_close, float_shares "
+                "FROM gap_up_snapshots").fetchall()
+            existing = {(r[0], (r[1] or '').upper())
+                        for r in conn.execute("SELECT date, ticker FROM gap_data").fetchall()}
+    except Exception as e:
+        logger.warning(f'[OHLCV] gap_data sync: tables not ready — {e}')
+        return 0
+
+    # De-dup snapshots (a ticker may appear multiple sessions per day) & skip existing.
+    seen = set()
+    pending = []
+    for date_s, ticker, gap_pct, prev_close, float_sh in snaps:
+        t = (ticker or '').upper()
+        key = (date_s, t)
+        if not t or key in seen or key in existing:
+            continue
+        seen.add(key)
+        pending.append((date_s, t, gap_pct, prev_close, float_sh))
+
+    if not pending:
+        return 0
+    logger.info(f'[OHLCV] gap_data sync: {len(pending)} snapshot rows to evaluate')
+
+    inserted = 0
+    for date_s, t, gap_pct, prev_close, float_sh in pending:
+        if fetch_missing and not _already_fetched(t, date_s):
+            bars = fetch_bars(t, date_s)
+            if bars:
+                _insert_bars(bars)
+            time.sleep(SLEEP_BETWEEN)
+        agg = _regular_session_ohlc(t, date_s)
+        if not agg:
+            continue
+        o, hi, lo, cl, vol, peak_dv = agg
+        pc = float(prev_close) if prev_close not in (None, 0) else 0
+        if o <= 0 or pc <= 0:
+            continue
+        gp = round((o - pc) / pc * 100, 2)   # open-based gap, matching historical gap_data
+        try:
+            with _main_conn() as conn:
+                conn.execute(
+                    "INSERT INTO gap_data (date, ticker, yesterday_close, today_open, "
+                    "gap_percentage, today_close, today_high, today_low, volume_m, "
+                    "highest_dollar_volume_m, float_shares) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (date_s, t, round(pc, 4), round(o, 4), gp, round(cl, 4),
+                     round(hi, 4), round(lo, 4), round(vol / 1e6, 3),
+                     round(peak_dv / 1e6, 3), float_sh))
+                conn.commit()
+            inserted += 1
+        except Exception as e:
+            logger.debug(f'[OHLCV] gap_data insert {t} {date_s}: {e}')
+
+    logger.info(f'[OHLCV] gap_data sync: +{inserted} new candidate rows from snapshots')
+    return inserted
+
+
 # ── Daemon thread ─────────────────────────────────────────────────────────────
 
 def ohlcv_daemon():
@@ -330,6 +445,13 @@ def ohlcv_daemon():
             logger.error(f'[OHLCV] Backfill failed: {e} — retrying in 10 min', exc_info=True)
             time.sleep(600)
 
+    # One-time catch-up: fold any snapshot days not yet in gap_data (2025-09 →
+    # today) into the candidate table so recent days become backtestable.
+    try:
+        sync_gap_data_from_snapshots()
+    except Exception as e:
+        logger.error(f'[OHLCV] gap_data catch-up sync failed: {e}', exc_info=True)
+
     # Phase 2 — daily EOD fetch
     last_eod_date: Optional[date] = None
 
@@ -340,6 +462,11 @@ def ohlcv_daemon():
 
             if _is_eod_window(now_et) and last_eod_date != today:
                 fetch_today_bars()
+                # Fold today's gappers into gap_data so tomorrow you can backtest today.
+                try:
+                    sync_gap_data_from_snapshots()
+                except Exception as _se:
+                    logger.error(f'[OHLCV] EOD gap_data sync failed: {_se}')
                 last_eod_date = today
 
         except Exception as e:

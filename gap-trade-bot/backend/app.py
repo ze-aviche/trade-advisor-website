@@ -6622,6 +6622,25 @@ def run_backtest():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/sync-gap-data', methods=['POST'])
+@require_role('super_admin', 'dev_master', 'bot_admin')
+def sync_gap_data_endpoint():
+    """
+    Fold gap_up_snapshots into gap_data (the backtest candidate table), deriving
+    OHLC from ohlcv_1m — so recent days become backtestable. Runs in background
+    (fetches missing bars). Idempotent.
+    """
+    def _run():
+        try:
+            from ohlcv_fetcher import sync_gap_data_from_snapshots
+            n = sync_gap_data_from_snapshots(fetch_missing=True)
+            app_logger.info(f'[SyncGapData] Done — {n} new candidate rows added')
+        except Exception as e:
+            app_logger.error(f'[SyncGapData] failed: {e}', exc_info=True)
+    threading.Thread(target=_run, daemon=True, name='SyncGapData').start()
+    return jsonify({'success': True, 'message': 'Gap-data sync started in background — check logs.'})
+
+
 @app.route('/api/admin/seed-gap-data', methods=['POST'])
 @require_role('super_admin', 'dev_master', 'bot_admin')
 def seed_gap_data():
