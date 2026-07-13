@@ -3912,13 +3912,21 @@ class DatabaseManager:
             return False
 
     def get_brown_positions_pnl_by_ticker(self, trade_date: str = None, user_id: int = 1) -> list:
-        """Return per-ticker realized and unrealized P&L from brown_positions."""
+        """Return per-ticker realized and unrealized P&L from brown_positions.
+
+        "Today" = positions CLOSED today (realized, by exit date) plus any still-
+        OPEN positions (their live unrealized), so it reconciles with the daily
+        realized P&L. Positions opened earlier but closed today are included;
+        positions closed on a prior day are not.
+        """
         try:
             with self.get_connection() as conn:
                 params: list = [user_id]
                 where_clauses = ['user_id = ?']
                 if trade_date:
-                    where_clauses.append('trade_date = ?')
+                    where_clauses.append(
+                        "((status = 'closed' AND DATE(exit_time) = ?) "
+                        "OR status IS NULL OR status = 'open')")
                     params.append(trade_date)
                 where = 'WHERE ' + ' AND '.join(where_clauses)
                 rows = conn.execute(
@@ -3953,13 +3961,21 @@ class DatabaseManager:
             return []
 
     def get_brown_daily_realized_pnl(self, trade_date: str = None, user_id: int = 1) -> float:
-        """Return total realized P&L for closed BrownBot positions on a given trading date."""
+        """Return total realized P&L for BrownBot positions CLOSED on a given date.
+
+        Grouped by EXIT date (DATE(exit_time)), not entry date (trade_date):
+        P&L is realized when a position closes, so a swing opened days ago but
+        closed today counts toward today's realized P&L (and today's circuit
+        breaker). This matches the Stats tab, which consolidates the trades
+        table by sell date. Filtering by trade_date (entry) here previously
+        dropped positions opened on an earlier day but realized today.
+        """
         try:
             with self.get_connection() as conn:
                 params: list = [user_id]
                 where = "AND user_id = ?"
                 if trade_date:
-                    where += " AND trade_date = ?"
+                    where += " AND DATE(exit_time) = ?"
                     params.append(trade_date)
                 row = conn.execute(
                     f"SELECT COALESCE(SUM(realized_pnl), 0) AS total "
