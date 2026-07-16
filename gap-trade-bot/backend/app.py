@@ -5412,18 +5412,22 @@ def _brown_bot_scan_and_enter(user_id: int):
             return True  # no float data — don't exclude
         return f <= float_val if float_op == '<=' else f >= float_val
 
+    # NOTE: volume is deliberately NOT filtered here. The scanner's 'volume'
+    # field lags near the open (prior-day total) — filtering on it both admits
+    # stale-high names and wrongly drops names whose real session volume is still
+    # building. Volume is instead verified per-symbol against Alpaca's live
+    # dailyBar at the entry gate below (_brown_live_session_volume).
     scanner_hits = {
         s['ticker']: s for s in raw_gaps
         if s.get('gap_percent', 0) >= min_gap
         and min_price <= s.get('price', 0) <= max_price
-        and s.get('volume', 0) / 1_000_000 >= min_vol_m
         and _float_ok(s)
     }
 
     # Log per-stock filter results so we can see exactly why each raw candidate passed or failed
     _add_brown_log('info',
         f'Scanner: {len(raw_gaps)} raw gaps → {len(scanner_hits)} passed filters '
-        f'(gap≥{min_gap}%, price ${min_price:.0f}–${max_price:.0f}, vol≥{min_vol_m}M'
+        f'(gap≥{min_gap}%, price ${min_price:.0f}–${max_price:.0f}, vol≥{min_vol_m}M verified live'
         + (f', float{float_op}{float_val}M' if float_val > 0 else '') + ')',
         user_id)
     for _s in raw_gaps:
@@ -5436,9 +5440,6 @@ def _brown_bot_scan_and_enter(user_id: int):
         _p = _s.get('price', 0)
         if not (min_price <= _p <= max_price):
             _reasons.append(f'price ${_p:.2f} outside ${min_price}–${max_price}')
-        _vm = _s.get('volume', 0) / 1_000_000
-        if _vm < min_vol_m:
-            _reasons.append(f'vol {_vm:.2f}M < {min_vol_m}M')
         if not _float_ok(_s):
             _fm = _s.get('float_shares', 0) / 1_000_000
             _reasons.append(f'float {_fm:.1f}M failed {float_op}{float_val}M')
@@ -5499,6 +5500,26 @@ def _brown_bot_scan_and_enter(user_id: int):
         # VWAP/extension checks aren't comparing against a stale gap-open price.
         # gap_price stays as the scanner price (the price at which the gap was detected).
         live_price = _brown_get_current_price(user_id, symbol) or s.get('price', 0)
+
+        # Authoritative volume gate: verify the stock's ACTUAL cumulative session
+        # volume from Alpaca's live dailyBar (updates intraday), since the
+        # scanner's 'volume' field lags near the open and can carry the prior
+        # day's total. Falls back to the scanner value only if the live fetch
+        # fails, so a transient API error doesn't freeze the bot. Not marked
+        # attempted — volume builds through the day, so a stock under-threshold
+        # now may qualify on a later scan cycle.
+        if min_vol_m > 0:
+            _live_vol = _brown_live_session_volume(symbol)
+            _vol_shares = _live_vol if _live_vol is not None else int(s.get('volume', 0) or 0)
+            _vol_src    = 'live' if _live_vol is not None else 'scanner'
+            if _vol_shares < min_vol_m * 1_000_000:
+                _add_brown_log('info',
+                    f'SKIP {symbol}: {_vol_src} session volume {_vol_shares/1e6:.2f}M < {min_vol_m}M'
+                    + (f' (scanner showed {s.get("volume", 0)/1e6:.1f}M — stale)'
+                       if _live_vol is not None and s.get('volume', 0)/1e6 >= min_vol_m else ''),
+                    user_id)
+                continue
+
         # Pre-warm the AI catalyst classification (non-blocking, cached per day)
         # so it's usually ready by the time entry conditions confirm — the class
         # is then snapshotted onto the position for catalyst-vs-P&L tracking.
@@ -8368,6 +8389,51 @@ def _alpaca_snapshots(tickers: list) -> dict:
     except Exception as e:
         app_logger.debug(f'Alpaca snapshots error: {e}')
         return {}
+
+
+def _brown_live_session_volume(symbol: str):
+    """Today's cumulative regular-session share volume from Alpaca's live dailyBar.
+
+    The gap-up scanner's 'volume' field is populated from yfinance
+    regularMarketVolume / Alpaca movers, which near the open lag and can report
+    the PRIOR day's total (e.g. NTSK showed >10M at 09:32 while only ~146k had
+    actually traded). Alpaca's dailyBar.v accumulates in real time intraday, so
+    it's the correct figure to gate entries on.
+
+    Returns int shares, or None if unavailable (caller then falls back to the
+    scanner value rather than blocking entries on a transient API error).
+    """
+    import requests as _req
+    key    = os.environ.get('ALPACA_API_KEY', '')
+    secret = os.environ.get('ALPACA_API_SECRET', '')
+    if not key or not secret:
+        return None
+    try:
+        resp = _req.get(
+            'https://data.alpaca.markets/v2/stocks/snapshots',
+            headers={'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret},
+            params={'symbols': symbol.upper(), 'feed': 'sip'}, timeout=8)
+        if resp.status_code != 200:
+            return None
+        snap = resp.json().get(symbol.upper()) or {}
+        db = snap.get('dailyBar') or {}
+        v = db.get('v')
+        if v is None:
+            return None
+        # Guard against a stale prior-day dailyBar right at the open: the bar's
+        # date must be today (accept either ET or UTC calendar date to sidestep
+        # the daily-bar timestamp's timezone convention). A yesterday-dated bar
+        # is treated as unavailable rather than trusted.
+        import pytz as _pytz
+        ts_date = (db.get('t') or '')[:10]
+        if ts_date:
+            today_et  = datetime.now(_pytz.timezone('US/Eastern')).strftime('%Y-%m-%d')
+            today_utc = datetime.now(_pytz.utc).strftime('%Y-%m-%d')
+            if ts_date not in (today_et, today_utc):
+                return None
+        return int(v)
+    except Exception:
+        return None
 
 
 @app.route('/api/brown-bot/live-prices', methods=['GET'])
