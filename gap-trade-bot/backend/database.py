@@ -3911,6 +3911,35 @@ class DatabaseManager:
             print(f'Database error closing brown_position: {e}')
             return False
 
+    def reconcile_close_brown_position(self, position_id: str, exit_reason: str,
+                                       user_id: int = 1, exit_price: float = 0.0) -> bool:
+        """Mark an orphaned position closed ONLY if it is still open.
+
+        Used when the broker confirms it no longer holds the position (the close
+        never persisted). Status-guarded so it can never overwrite the realized
+        P&L of a row that was already closed correctly by another path. Records
+        zero realized P&L — the actual exit, if any, is recovered separately via
+        broker fill history on restart.
+        """
+        try:
+            with self.get_connection() as conn:
+                cur = conn.execute(
+                    '''UPDATE brown_positions
+                       SET status = 'closed', exit_reason = ?, exit_price = ?,
+                           realized_pnl = 0, realized_pnl_pct = 0,
+                           unrealized_pnl = 0, unrealized_pnl_pct = 0,
+                           exit_time = ?
+                       WHERE position_id = ? AND user_id = ?
+                         AND (status IS NULL OR status = 'open')''',
+                    (exit_reason, exit_price, datetime.now().isoformat(),
+                     position_id, user_id)
+                )
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            print(f'Database error reconciling brown_position: {e}')
+            return False
+
     def get_brown_positions_pnl_by_ticker(self, trade_date: str = None, user_id: int = 1) -> list:
         """Return per-ticker realized and unrealized P&L from brown_positions.
 
@@ -3924,9 +3953,15 @@ class DatabaseManager:
                 params: list = [user_id]
                 where_clauses = ['user_id = ?']
                 if trade_date:
+                    # Today = positions CLOSED today (realized, by exit date) plus
+                    # positions OPENED today that are still open (unrealized). Open
+                    # rows from a PRIOR day are excluded so a stale/orphaned open
+                    # position (a close that never persisted) can't leak into
+                    # today's P&L.
                     where_clauses.append(
                         "((status = 'closed' AND DATE(exit_time) = ?) "
-                        "OR status IS NULL OR status = 'open')")
+                        "OR ((status IS NULL OR status = 'open') AND trade_date = ?))")
+                    params.append(trade_date)
                     params.append(trade_date)
                 where = 'WHERE ' + ' AND '.join(where_clauses)
                 rows = conn.execute(

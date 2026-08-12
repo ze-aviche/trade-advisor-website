@@ -6319,18 +6319,37 @@ def _brown_close_position(user_id: int, position_id, position, exit_reason):
 
     # Verify the broker actually holds this position before selling.
     # If it doesn't exist (e.g. BUY never filled), abort cleanly.
+    _broker_ok = True
     try:
         bp = broker.get_position(symbol)
     except Exception as _gpe:
         _brown_debug(user_id, f'{symbol}: broker.get_position raised: {_gpe}')
         bp = None
+        _broker_ok = False
     if not bp:
-        _add_brown_log('warning',
-            f'No open position for {symbol} in broker — removing from tracking (no sell placed)',
-            user_id=user_id)
-        with lock:
-            active_positions.pop(position_id, None)
-            closing_positions.discard(position_id)
+        if _broker_ok:
+            # Broker CONFIRMED it holds nothing → the position is gone (already
+            # closed, or the BUY never filled). Mark the DB row closed so it can't
+            # linger as an orphaned 'open' row that pollutes today's P&L and gets
+            # reloaded on every restart. Status-guarded → won't clobber a P&L that
+            # another path already recorded.
+            db_manager.reconcile_close_brown_position(
+                position_id, 'RECONCILED_NO_BROKER_POS', user_id=user_id,
+                exit_price=float(position.get('_current_price') or position.get('entry_price') or 0))
+            _add_brown_log('warning',
+                f'No open position for {symbol} in broker — marked closed (reconciled)',
+                user_id=user_id)
+            with lock:
+                active_positions.pop(position_id, None)
+                closing_positions.discard(position_id)
+        else:
+            # Broker lookup FAILED (transient) — do NOT close or abandon a
+            # possibly-live position. Release the closing lock and retry next tick.
+            _add_brown_log('warning',
+                f'{symbol}: broker lookup failed — not closing, will retry next tick',
+                user_id=user_id)
+            with lock:
+                closing_positions.discard(position_id)
         return False
 
     _brown_debug(user_id,
@@ -7280,6 +7299,17 @@ def start_brown_bot():
                         except Exception:
                             pass
                         app_logger.info(f'BrownBot startup: deleted phantom entry {sym} (entry_oid={entry_oid})')
+                    elif not exit_written:
+                        # Catch-all: not held at broker, no exit recovered, and no
+                        # entry_oid to delete by → an orphaned 'open' row. Mark it
+                        # closed so it stops reloading every restart and no longer
+                        # pollutes today's P&L. Status-guarded (safe no-op if already
+                        # closed/deleted above).
+                        if db_manager.reconcile_close_brown_position(
+                                pid, 'RECONCILED_ON_RESTART', user_id=user_id):
+                            app_logger.info(
+                                f'BrownBot startup: reconciled orphaned open position '
+                                f'{sym} ({str(pid)[:8]}…)')
 
                 if stale:
                     _add_brown_log('info',
